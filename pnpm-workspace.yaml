@@ -1,0 +1,4 @@
+# For teams using pnpm instead of npm workspaces.
+packages:
+  - 'apps/*'
+  - 'packages/*'

@@ -1,0 +1,25 @@
+{
+  "name": "@investoyard/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Investoyard web — SEO IPO info (Tier 0) + responsive app (Next.js)",
+  "scripts": {
+    "dev": "next dev -p 4300",
+    "build": "next build",
+    "start": "npx --yes serve@latest out -l 4300",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@investoyard/shared-types": "*",
+    "@investoyard/i18n": "*",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.0"
+  }
+}

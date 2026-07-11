@@ -1,0 +1,16 @@
+{
+  "name": "Investoyard — IPO info & application",
+  "short_name": "Investoyard",
+  "description": "Track and apply to every Mainboard & SME IPO in India — dates, price band, live subscription, GMP and allotment.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#3c2e7e",
+  "categories": ["finance", "business"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

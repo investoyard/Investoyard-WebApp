@@ -1,0 +1,78 @@
+# Investoyard — full production stack (API + web + Postgres + Redis).
+#
+#   cp deploy/.env.production.example .env.deploy   # fill in the secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.deploy up -d --build
+#   → then run the one-time DB init in DEPLOY.md (§C, step 3).
+#
+# Web is on :80 (nginx serves the static site and proxies /api to the api
+# container — single origin, Host header preserved for white-label tenants).
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.deploy}
+      POSTGRES_DB: investoyard
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # RLS provisioning script available inside the container for step 3.
+      - ./apps/api/prisma/setup-rls.sql:/setup-rls.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d investoyard"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      # Runtime: non-superuser role (RLS-enforced). Created in DEPLOY.md step 3.
+      DATABASE_URL: postgresql://investoyard_app:${APP_DB_PASSWORD:?set in .env.deploy}@db:5432/investoyard?schema=public
+      # Migrations / db push / seed: superuser (bypasses RLS).
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/investoyard?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?set in .env.deploy}
+      PII_VAULT_KEY: ${PII_VAULT_KEY:?set in .env.deploy}
+      PORT: "3000"
+      QUEUE_CONCURRENCY: "5"
+      NSE_BASE_URL: ${NSE_BASE_URL:-https://uat.example/eipo}
+      # Optional providers — set to go live:
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      KMS_KEY_ID: ${KMS_KEY_ID:-}
+    # Uncomment to reach the API directly (not needed — web proxies /api):
+    # ports: ["3000:3000"]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+  redisdata:

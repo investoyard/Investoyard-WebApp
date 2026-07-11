@@ -1,0 +1,33 @@
+# deps & build output
+node_modules/
+dist/
+out/
+.next/
+.turbo/
+coverage/
+.expo/
+.expoexport/
+
+# local dev infrastructure (portable Postgres/Redis binaries + data)
+.tools/
+.pgdata/
+.redisdata/
+
+# logs & scratch
+*.log
+.apilog.txt
+.redislog.txt
+.expolog.txt
+.buildall.log
+.testall.log
+
+# secrets — never commit env files (examples are allowlisted)
+.env
+.env.*
+!.env.example
+!deploy/.env.production.example
+.env.deploy
+
+# editor/os
+.DS_Store
+Thumbs.db

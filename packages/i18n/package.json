@@ -1,0 +1,16 @@
+{
+  "name": "@investoyard/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Investoyard translations + t() — national-scale i18n (en, hi, + scaffolds)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

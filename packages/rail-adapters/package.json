@@ -1,0 +1,22 @@
+{
+  "name": "@investoyard/rail-adapters",
+  "version": "0.1.0",
+  "description": "Investoyard exchange rail adapters (NSE e-IPO, BSE iBBS) + callbacks + submission worker",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.4.0"
+  }
+}

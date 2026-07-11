@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Investoyard — Simple Explainer</title><style>body{margin:0}</style></head><body>
+<style>
+  :root{
+    --brand:#3c2e7e;--brand-700:#332765;--brand-400:#7565bd;--brand-200:#d3ccec;--brand-50:#f3f1fb;
+    --gold:#ffcb32;--gold-600:#e6ad12;--gold-50:#fff7df;--pos:#12925a;--pos-50:#e6f4ec;
+    --blue:#2f66d0;--blue-50:#eaf1fc;--violet:#7c4dff;--violet-50:#f0ebff;
+    --bg:#f6f5fa;--surface:#fff;--text:#1a1730;--muted:#5b5870;--faint:#918da2;--border:#e7e4f0;--pill:999px;
+    --ink:linear-gradient(135deg,#3c2e7e,#241b4d);--sh:0 4px 16px rgba(24,20,45,.08);
+    --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  .wrap{font-family:var(--font);color:var(--text);background:var(--bg);padding:40px 20px 64px;font-weight:400;-webkit-font-smoothing:antialiased}
+  .col{max-width:900px;margin:0 auto}
+  .ey{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-600);text-align:center}
+  h1{font-size:30px;font-weight:600;letter-spacing:-.02em;text-align:center;margin:10px 0 8px;line-height:1.15}
+  .sub{text-align:center;color:var(--muted);font-size:16px;max-width:56ch;margin:0 auto 6px;line-height:1.6}
+  .analogy{max-width:60ch;margin:22px auto 30px;background:var(--gold-50);border:1px solid #f0e2ac;border-radius:14px;padding:16px 20px;font-size:15px;line-height:1.65;color:#4a3f14;text-align:center}
+  .analogy b{color:var(--brand)}
+
+  /* three doors */
+  .doors{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:720px){.doors{grid-template-columns:1fr}}
+  .door{background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--dc);border-radius:16px;box-shadow:var(--sh);padding:20px 18px;text-align:center;position:relative}
+  .ic{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;margin:0 auto 12px;background:var(--dc-50);color:var(--dc)}
+  .door h3{font-size:17px;font-weight:600;margin:0 0 4px}
+  .door .tag{font-size:11px;font-weight:600;color:var(--dc);background:var(--dc-50);border-radius:var(--pill);padding:3px 12px;display:inline-block;margin-bottom:10px}
+  .door p{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0}
+  .door p b{color:var(--text);font-weight:600}
+
+  /* connector + shared base */
+  .join{height:34px;position:relative;margin:0 auto;max-width:660px}
+  .join svg{width:100%;height:100%;display:block}
+  .base{background:var(--ink);color:#fff;border-radius:16px;padding:22px 26px;text-align:center;position:relative;overflow:hidden;box-shadow:var(--sh)}
+  .base::before{content:"";position:absolute;inset:0 0 auto auto;width:280px;height:280px;background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--gold) 34%,transparent),transparent 62%)}
+  .base .bt{position:relative;font-size:18px;font-weight:600;letter-spacing:-.01em}
+  .base .bs{position:relative;font-size:14px;color:rgba(255,255,255,.82);margin-top:6px;line-height:1.5}
+  .base .pills{position:relative;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .base .pills span{font-size:12px;font-weight:600;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:var(--pill);padding:5px 13px}
+
+  /* benefits */
+  h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:40px 0 16px;text-align:center}
+  .benes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:620px){.benes{grid-template-columns:1fr}}
+  .bene{display:flex;gap:13px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh)}
+  .bene .bic{flex-shrink:0;width:40px;height:40px;border-radius:11px;background:var(--brand-50);color:var(--brand);display:grid;place-items:center}
+  .bene h4{margin:0 0 3px;font-size:15px;font-weight:600}
+  .bene p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+  .safe{margin-top:20px;background:var(--pos-50);border:1px solid #bfe3cd;border-radius:14px;padding:16px 20px;display:flex;gap:12px;align-items:center}
+  .safe .lk{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#fff;color:var(--pos);display:grid;place-items:center;border:1px solid #bfe3cd}
+  .safe p{margin:0;font-size:14px;color:#1c5138;line-height:1.55}.safe b{color:#0f3f2a}
+  .foot{margin-top:34px;text-align:center;font-size:12.5px;color:var(--faint)}
+</style>
+
+<div class="wrap"><div class="col">
+  <div class="ey">Investoyard · in simple terms</div>
+  <h1>One system. Three ways to grow.</h1>
+  <p class="sub">The same product can be sold three different ways — without building three different products.</p>
+
+  <div class="analogy">
+    Think of it like <b>one building we own</b>. We build the structure, lifts and security <b>once</b>.
+    Then different businesses run inside it through their own doors — but it's all the same building underneath.
+  </div>
+
+  <div class="doors">
+    <!-- Direct -->
+    <div class="door" style="--dc:var(--pos);--dc-50:var(--pos-50)">
+      <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></div>
+      <h3>Direct</h3><div class="tag">Our own brand</div>
+      <p>People come to <b>Investoyard</b> themselves, sign up and apply for IPOs. Our name, our website.</p>
+    </div>
+    <!-- Partner -->
+    <div class="door" style="--dc:var(--blue);--dc-50:var(--blue-50)">
+      <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V7l7-3 7 3v14"/><path d="M4 21h16M9 21v-4h6v4"/></svg></div>
+      <h3>Partner &amp; branches</h3><div class="tag">They join us</div>
+      <p>A partner opens many <b>branches</b>. Each branch sees <b>only its own</b> customers. The partner's head office sees <b>all branches</b> together.</p>
+    </div>
+    <!-- White-label -->
+    <div class="door" style="--dc:var(--violet);--dc-50:var(--violet-50)">
+      <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-4h15L21 9M4 9h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 9h16"/></svg></div>
+      <h3>White-label</h3><div class="tag">Their own brand</div>
+      <p>A partner runs it on <b>their own website &amp; logo</b>. Customers feel it's fully theirs — but it quietly runs on <b>our</b> same system.</p>
+    </div>
+  </div>
+
+  <div class="join">
+    <svg viewBox="0 0 660 34" preserveAspectRatio="none">
+      <path d="M110 0 V16 H550 V0 M330 0 V16 M330 16 V34" stroke="#c9c3de" stroke-width="2" fill="none"/>
+    </svg>
+  </div>
+
+  <div class="base">
+    <div class="bt">One Investoyard system &amp; one database</div>
+    <div class="bs">Built once, shared by all three. Every IPO, every rule, every update lives in one place.</div>
+    <div class="pills"><span>One codebase</span><span>One database</span><span>One team maintains it</span></div>
+  </div>
+
+  <h2>Why this is the smart way</h2>
+  <div class="benes">
+    <div class="bene"><div class="bic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></div><div><h4>Build once, not three times</h4><p>One product serves all three models — big saving in time and cost.</p></div></div>
+    <div class="bene"><div class="bic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><div><h4>Add a new partner fast</h4><p>A new white-label client is mostly a <b>setup form</b> — not months of fresh work.</p></div></div>
+    <div class="bene"><div class="bic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div><div><h4>Everyone's data stays private</h4><p>Each branch and partner sees only their own — kept separate and safe.</p></div></div>
+    <div class="bene"><div class="bic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v5h-5"/></svg></div><div><h4>Improve once, everyone benefits</h4><p>One update or fix reaches all customers and partners at the same time.</p></div></div>
+  </div>
+
+  <div class="safe">
+    <div class="lk"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+    <p><b>Bank-grade separation:</b> every partner and branch is walled off. No one can ever see another's customers or data — enforced automatically by the system.</p>
+  </div>
+
+  <div class="foot">Investoyard — one platform, three go-to-market models · B2C · Partner (B2B2C) · White-label</div>
+</div></div>
+
+</body></html>

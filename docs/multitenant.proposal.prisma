@@ -1,0 +1,178 @@
+// ============================================================================
+// Investoyard — MULTI-TENANCY FOUNDATION  (PROPOSAL — not the active schema)
+// ----------------------------------------------------------------------------
+// This file is a review copy. When provisioning the real DB, merge these models
+// into apps/api/prisma/schema.prisma and add the marked `tenantId` columns to the
+// existing domain models (see the checklist at the bottom), then run a migration.
+// Kept out of prisma/ on purpose so it never affects `prisma generate` today.
+// ============================================================================
+
+enum TenantType {
+  platform      // Investoyard — the OPERATOR root (our staff / super-admin; holds NO customers)
+  direct        // "Investoyard Direct" — our own B2C channel (child of platform; B2C customers live here)
+  partner       // a broker/distributor (B2B2C); may also be white-label
+  branch        // a branch under a partner
+}
+// RULE: a customer always belongs to a CHANNEL tenant (direct | partner | branch) — never to platform.
+// The platform tenant is operator-only and sees everything (scope = all).
+
+enum TenantStatus {
+  onboarding
+  active
+  suspended
+}
+
+// Data visibility a role grants, relative to the member's tenant position.
+enum RoleScope {
+  own           // only the member's own tenant (e.g. a branch user)
+  subtree       // the member's tenant + all descendants (e.g. a partner admin)
+  all           // every tenant (platform super-admin)
+}
+
+// ---------------------------------------------------------------- Tenant tree
+model Tenant {
+  id           String       @id @default(uuid())
+  type         TenantType
+  parentId     String?      // null for platform; partner→platform; branch→partner
+  parent       Tenant?      @relation("TenantTree", fields: [parentId], references: [id])
+  children     Tenant[]     @relation("TenantTree")
+
+  slug         String       @unique          // url-safe identifier
+  name         String
+  status       TenantStatus @default(active)
+
+  // ---- white-label / presentation (null = inherits platform brand) ----
+  customDomain String?      @unique           // e.g. "ipo.partnerbank.com"
+  branding     Json?        // { logoUrl, faviconUrl, name, colors:{ brand, gold, ... } }
+  featureFlags Json?        // { gmpEnabled:false, showPlatformBrand:false, ... }
+
+  // ---- application-rail: a tenant may bring its own merchant-banker creds ----
+  memberCredentials MemberCredential[]        // per-tenant NSE/BSE credentials
+  // ---- consent policy (DPDP) ----
+  consentConfig Json?       // { dataSharingToPartner:true, noticeVersion:"v3", ... }
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  roles        Role[]
+  memberships  Membership[]
+  // Back-relations added on merge (scoped domain models):
+  // users        User[]
+  // applications Application[]
+  // consents     Consent[]        ...etc
+
+  @@index([parentId])
+  @@index([type])
+}
+
+// -------------------------------------------------------------- Roles (RBAC)
+// A role is either a platform template (tenantId null) or tenant-specific.
+model Role {
+  id          String     @id @default(uuid())
+  tenantId    String?                        // null = system/template role
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
+  name        String                         // SuperAdmin | PartnerAdmin | BranchUser | Customer | custom
+  permissions String[]                       // e.g. ["applications.view","bids.manage","reports.view","tenants.manage"]
+  scope       RoleScope  @default(own)        // data visibility (own | subtree | all)
+  isSystem    Boolean    @default(false)      // system roles cannot be deleted
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  memberships Membership[]
+  @@unique([tenantId, name])
+}
+
+// --------------------------------------------- Membership: User ↔ Tenant ↔ Role
+// A person belongs to a tenant with a role. Customers get the "Customer" role;
+// staff (branch/partner/platform) get an admin role. One membership per (user,tenant).
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  isPrimary Boolean  @default(true)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+// ---------------------------------------- configurable features (cascade)
+// EVERY option/feature is configurable at any level. Values resolve down the tree
+// (platform default → partner → branch); deepest override wins; a parent can LOCK a
+// key so descendants can't change it. Only overrides are stored (sparse).
+
+enum FeatureLevel { platform partner branch }   // lowest level allowed to edit a key
+
+model FeatureDefinition {        // the catalog of everything configurable
+  key          String       @id            // "gmp.enabled" | "apply.family" | "limits.maxBids" | "brand.logoUrl" ...
+  category     String                       // branding | features | limits | rail | compliance | notifications
+  label        String
+  valueType    String                       // bool | number | enum | string | json
+  defaultValue Json                          // platform-wide default
+  editableAt   FeatureLevel @default(branch) // who may override (platform = locked to operator only)
+  lockable     Boolean      @default(true)   // can a parent freeze it for descendants?
+  createdAt    DateTime     @default(now())
+}
+
+model TenantSetting {            // SPARSE — a row exists only where a tenant overrides a default
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  key       String                          // → FeatureDefinition.key
+  value     Json
+  locked    Boolean  @default(false)        // if true, descendants inherit but cannot override this key
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+// Add to Tenant on merge:  settings TenantSetting[]
+
+// ---------------------------------------- applicant identity & IPO categories
+// PAN is unique PER TENANT (same PAN may exist under another tenant). PAN itself
+// stays vaulted; store a keyed HMAC ("panHash") for dedup/uniqueness only.
+//
+//   InvestorProfile:  add  panHash String   +   @@unique([tenantId, panHash])
+//
+// A PAN may apply once in EACH category per IPO (Individual / Shareholder / Employee)
+// — up to 3 apps — but never twice in the same category. (Market-wide same-PAN dedup
+// is the registrar's job; we enforce within-tenant.)
+enum ApplicantCategory { individual  shareholder  employee }
+//
+//   Application:  add  applicantCategory ApplicantCategory @default(individual)
+//                 +   @@unique([ipoId, investorProfileId, applicantCategory])
+//
+//   Ipo:          add  allowedApplicantCategories ApplicantCategory[]   // admin-set, per IPO
+//                      (Individual always; Shareholder/Employee optional per IPO;
+//                       a tenant may further narrow via the settings cascade.)
+
+// ============================================================================
+// CHECKLIST — add `tenantId` (+ relation + index) to these existing models:
+//
+//   User, InvestorProfile, Consent, Application, WatchlistItem,
+//   DeviceToken, MemberCredential
+//
+//   Each gets:
+//     tenantId String
+//     tenant   Tenant @relation(fields: [tenantId], references: [id])
+//     @@index([tenantId])
+//
+// STAYS GLOBAL (shared reference data, NO tenantId):
+//   Ipo, IpoCategory, IpoSubscription, IpoGmp, IpoDocument
+//
+// EXTEND the existing ConsentType enum with:
+//   data_sharing_partner     // customer → partner data-sharing consent (B2B2C / DPDP)
+//
+// Add a tenant-scoped audit log:
+//   model AuditEvent { id, tenantId, actorUserId, action, target, meta Json?, at }
+//
+// SEED on install:
+//   1x platform "Investoyard"        (type=platform, parentId=null)  — operator, no customers
+//   1x direct   "Investoyard Direct" (type=direct,  parentId=platform) — home for all B2C customers
+//   Signups on our domain → tenantId = the "Investoyard Direct" tenant (brand inherits platform default).
+// ============================================================================

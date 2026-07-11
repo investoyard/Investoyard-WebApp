@@ -1,0 +1,33 @@
+# Investoyard CI — build every workspace + run the test suite on each push/PR.
+# NOTE: takes effect once the repo is pushed to GitHub (it isn't git-initialized yet).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Turbo builds all 7 workspaces (typechecks web/mobile, compiles api + packages).
+      # A dummy DATABASE_URL satisfies `prisma generate` (no DB connection needed).
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+      - name: Test (rail-adapters — 20 tests)
+        run: npm run test

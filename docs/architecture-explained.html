@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Investoyard — Architecture Explained Simply</title><style>body{margin:0}</style></head><body>
+<style>
+  :root{
+    --brand:#3c2e7e;--brand-700:#332765;--brand-400:#7565bd;--brand-200:#d3ccec;--brand-50:#f3f1fb;
+    --gold:#ffcb32;--gold-600:#e6ad12;--gold-50:#fff7df;--pos:#12925a;--pos-50:#e6f4ec;--pos-br:#bfe3cd;
+    --blue:#2f66d0;--violet:#7c4dff;
+    --bg:#f6f5fa;--surface:#fff;--surface-2:#faf9fc;--text:#1a1730;--muted:#54516a;--faint:#918da2;--border:#e7e4f0;--border-2:#d9d5e6;--pill:999px;
+    --ink:linear-gradient(135deg,#3c2e7e,#241b4d);--sh:0 4px 16px rgba(24,20,45,.07);
+    --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  .wrap{font-family:var(--font);color:var(--text);background:var(--bg);padding:0 0 70px;font-weight:400;-webkit-font-smoothing:antialiased}
+  .col{max-width:840px;margin:0 auto;padding:0 22px}
+  .hero{background:var(--ink);color:#fff;position:relative;overflow:hidden;padding:40px 0 36px;margin-bottom:8px}
+  .hero::before{content:"";position:absolute;inset:0 0 auto auto;width:400px;height:400px;background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--gold) 36%,transparent),transparent 62%)}
+  .hero .col{position:relative}
+  .bm{font-weight:600;font-size:15px}.bm span{color:var(--gold)}
+  .ey{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-top:16px}
+  .hero h1{font-size:29px;font-weight:600;letter-spacing:-.02em;margin:9px 0 8px;line-height:1.15}
+  .hero p{margin:0;max-width:60ch;color:rgba(255,255,255,.85);font-size:15px;line-height:1.6}
+
+  section.s{padding:22px 0;border-bottom:1px solid var(--border)}
+  .sh{display:flex;align-items:center;gap:11px;margin-bottom:10px}
+  .sh .no{width:28px;height:28px;border-radius:8px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:14px;font-weight:600;flex-shrink:0}
+  .sh h2{font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0}
+  .s p{font-size:15px;line-height:1.65;color:var(--muted);margin:0 0 10px;max-width:72ch}
+  .s p b{color:var(--text);font-weight:600}
+  .like{background:var(--gold-50);border-left:3px solid var(--gold-600);border-radius:0 10px 10px 0;padding:11px 16px;font-size:14px;line-height:1.6;color:#4a3f14;margin:12px 0}
+  .like b{color:var(--brand)}
+  ul.plain{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+  ul.plain li{font-size:14.5px;line-height:1.55;color:var(--muted);display:flex;gap:10px}
+  ul.plain li b{color:var(--text);font-weight:600}
+  ul.plain li .k{flex-shrink:0;color:var(--pos);margin-top:2px}
+  .diag{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px;overflow-x:auto;margin:6px 0 4px}
+  .cap{font-size:12.5px;color:var(--faint);text-align:center;margin-top:8px}
+  .callout{display:flex;gap:12px;background:var(--pos-50);border:1px solid var(--pos-br);border-radius:12px;padding:14px 16px;margin-top:10px}
+  .callout .lk{flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#fff;border:1px solid var(--pos-br);color:var(--pos);display:grid;place-items:center}
+  .callout p{margin:0;font-size:13.5px;color:#1c5138;line-height:1.55}.callout b{color:#0f3f2a}
+  .who{display:grid;grid-template-columns:1fr;gap:8px;margin-top:6px}
+  .who .r{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 14px}
+  @media(max-width:560px){.who .r{grid-template-columns:1fr;gap:2px}}
+  .who .r b{font-size:14px}.who .r span{font-size:13.5px;color:var(--muted)}
+  .who .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle}
+  .foot{padding:26px 0 0;text-align:center;font-size:12.5px;color:var(--faint)}
+  .casc-wrap{overflow-x:auto;margin-top:12px}
+  .casc{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+  .casc th,.casc td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  .casc thead th{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--faint);font-weight:600;background:var(--surface-2)}
+  .casc td.set{font-weight:600;color:var(--text)}
+  .casc .inh{color:var(--faint)}
+  .casc .ovr{background:#fff7df;color:#7a5a00;font-weight:600}
+  .casc .lock{color:var(--brand);font-weight:600}
+  .casc .eff{background:var(--brand-50);font-weight:600;color:var(--brand-700)}
+  .casc .eff small{display:block;font-weight:500;color:var(--brand-400);font-size:10px}
+  .casc-legend{font-size:12px;color:var(--muted);margin-top:9px}.casc-legend b{color:var(--text)}
+</style>
+
+<div class="wrap">
+  <div class="hero"><div class="col">
+    <div class="bm">investo<span>yard</span></div>
+    <div class="ey">How it works — the full picture, in plain words</div>
+    <h1>One system, sold three ways</h1>
+    <p>The complete design of our platform — explained without technical jargon, so anyone can follow every part.</p>
+  </div></div>
+
+  <div class="col">
+
+    <section class="s">
+      <div class="sh"><span class="no">1</span><h2>The big idea</h2></div>
+      <p>We build <b>one single system</b> and offer it in three business models. Between the three, only <b>two things</b> ever change:</p>
+      <ul class="plain">
+        <li><span class="k">1.</span><span><b>Who is allowed to see the data</b> — a branch, a partner, or us.</span></li>
+        <li><span class="k">2.</span><span><b>Whose brand shows on the screen</b> — Investoyard's, or the partner's own.</span></li>
+      </ul>
+      <p style="margin-top:10px">Everything else — the IPO data, the apply process, the rules — is <b>shared</b>. That's why we never build three separate products.</p>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">2</span><h2>The three models</h2></div>
+      <ul class="plain">
+        <li><span class="k">•</span><span><b>Direct (B2C):</b> customers come to Investoyard, sign up and apply themselves. Our name, our website.</span></li>
+        <li><span class="k">•</span><span><b>Partner with branches:</b> a partner company joins us and opens many branches. Each branch sees only its own customers; the partner's head office sees all its branches.</span></li>
+        <li><span class="k">•</span><span><b>White-label:</b> a partner uses their own website and logo. Customers feel it's fully theirs — but it runs on our same system inside.</span></li>
+      </ul>
+      <div class="like">🏢 <b>Picture one building we own.</b> We build the structure, lifts and security once. Different businesses operate inside through their own doors — but it's the same building underneath.</div>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">3</span><h2>Everyone is a "tenant" in a family tree</h2></div>
+      <p>Every business using the system is a <b>tenant</b> — think of a renter in our building. We arrange them in a simple family tree: <b>Investoyard</b> at the top, <b>partners</b> below, and each partner's <b>branches</b> under it.</p>
+      <p>Our own direct customers sit in a channel called <b>Investoyard Direct</b>. So the rule stays simple: <b>every customer belongs to a channel</b> — Investoyard Direct, or a partner's branch. And each record carries a small <b>label</b> for which tenant it belongs to — that's what keeps everything separated.</p>
+      <div class="diag">
+        <svg viewBox="0 0 860 285" width="100%" style="min-width:640px" font-family="var(--font)">
+          <rect x="330" y="12" width="200" height="48" rx="11" fill="#3c2e7e"/>
+          <text x="430" y="33" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">Investoyard</text>
+          <text x="430" y="50" text-anchor="middle" fill="#d3ccec" font-size="10.5">operator · sees everyone</text>
+          <path d="M430 60 V84 M115 84 H745 M115 84 V110 M430 84 V110 M745 84 V110" stroke="#c9c3de" stroke-width="2" fill="none"/>
+          <rect x="30" y="110" width="170" height="48" rx="11" fill="#fff" stroke="#12925a" stroke-width="1.5"/>
+          <text x="115" y="131" text-anchor="middle" font-size="13" font-weight="600">Investoyard Direct</text>
+          <text x="115" y="148" text-anchor="middle" font-size="10.5" fill="#12925a" font-weight="600">our B2C customers</text>
+          <rect x="345" y="110" width="170" height="48" rx="11" fill="#fff" stroke="#2f66d0" stroke-width="1.5"/>
+          <text x="430" y="131" text-anchor="middle" font-size="13" font-weight="600">Partner A</text>
+          <text x="430" y="148" text-anchor="middle" font-size="10.5" fill="#54516a">uses our brand</text>
+          <rect x="660" y="110" width="170" height="48" rx="11" fill="#fff" stroke="#7c4dff" stroke-width="1.5"/>
+          <text x="745" y="129" text-anchor="middle" font-size="13" font-weight="600">Partner B</text>
+          <text x="745" y="146" text-anchor="middle" font-size="10" fill="#7c4dff" font-weight="600">WHITE-LABEL · own site</text>
+          <path d="M430 158 V184 M365 184 H495 M365 184 V210 M495 184 V210" stroke="#c9c3de" stroke-width="2" fill="none"/>
+          <rect x="305" y="210" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+          <text x="365" y="230" text-anchor="middle" font-size="11.5" font-weight="600">Branch 1</text>
+          <text x="365" y="246" text-anchor="middle" font-size="10" fill="#54516a">own data</text>
+          <rect x="435" y="210" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+          <text x="495" y="230" text-anchor="middle" font-size="11.5" font-weight="600">Branch 2</text>
+          <text x="495" y="246" text-anchor="middle" font-size="10" fill="#54516a">own data</text>
+          <path d="M745 158 V210" stroke="#c9c3de" stroke-width="2" fill="none"/>
+          <rect x="685" y="210" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+          <text x="745" y="230" text-anchor="middle" font-size="11.5" font-weight="600">Branch</text>
+          <text x="745" y="246" text-anchor="middle" font-size="10" fill="#54516a">own data</text>
+        </svg>
+        <div class="cap">Investoyard is the <b>operator</b> (sees all). Every customer lives in a <b>channel</b> — Investoyard Direct (B2C), or a partner's branch.</div>
+      </div>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">4</span><h2>How the system knows "who is this for?"</h2></div>
+      <p>On <b>every page — even the public landing page where nobody is logged in</b> — our server first reads the <b>web address (domain)</b> the page was opened on, and instantly loads the right brand:</p>
+      <ul class="plain">
+        <li><span class="k">→</span><span>Opened on a <b>partner's own domain</b> (e.g. ipo.partnerbank.com)? → show <b>that partner's</b> logo, colours &amp; name.</span></li>
+        <li><span class="k">→</span><span>Opened on <b>our domain</b> (investoyard.com)? → show <b>our</b> brand.</span></li>
+        <li><span class="k">→</span><span>Once a partner/branch staff member <b>logs in</b>, the login also decides <b>which data</b> they're allowed to see.</span></li>
+      </ul>
+      <div class="like"><b>Decided approach:</b> the brand is picked from the <b>web address, on our server, the moment a page loads</b> — no login needed. This is the same host-based logic Investoyard already uses today; we're formalising it into the partner list.</div>
+      <div class="diag">
+        <svg viewBox="0 0 820 96" width="100%" style="min-width:600px" font-family="var(--font)">
+          <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#7565bd"/></marker></defs>
+          <rect x="8" y="28" width="180" height="46" rx="10" fill="#fff" stroke="#e7e4f0"/>
+          <text x="98" y="49" text-anchor="middle" font-size="12.5" font-weight="600">Someone opens app</text>
+          <text x="98" y="65" text-anchor="middle" font-size="10.5" fill="#54516a">website or login</text>
+          <line x1="190" y1="51" x2="232" y2="51" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+          <rect x="234" y="28" width="180" height="46" rx="10" fill="#fff" stroke="#2f66d0" stroke-width="1.4"/>
+          <text x="324" y="49" text-anchor="middle" font-size="12.5" font-weight="600">System checks:</text>
+          <text x="324" y="65" text-anchor="middle" font-size="10.5" fill="#54516a">which tenant?</text>
+          <line x1="416" y1="51" x2="458" y2="51" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+          <rect x="460" y="28" width="180" height="46" rx="10" fill="#fff" stroke="#e6ad12" stroke-width="1.4"/>
+          <text x="550" y="49" text-anchor="middle" font-size="12.5" font-weight="600">Loads right brand</text>
+          <text x="550" y="65" text-anchor="middle" font-size="10.5" fill="#54516a">logo · colours · rules</text>
+          <line x1="642" y1="51" x2="684" y2="51" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+          <rect x="686" y="28" width="126" height="46" rx="10" fill="#3c2e7e"/>
+          <text x="749" y="49" text-anchor="middle" font-size="12.5" font-weight="600" fill="#fff">Shows their</text>
+          <text x="749" y="65" text-anchor="middle" font-size="10.5" fill="#d3ccec">data only</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">5</span><h2>Keeping each other's data private</h2></div>
+      <p>Every screen automatically shows a person only what they're allowed to see. Staff do nothing special — the system filters it, every single time:</p>
+      <div class="who">
+        <div class="r"><b><span class="dot" style="background:#d9d5e6"></span>A branch</b><span>sees only its own customers</span></div>
+        <div class="r"><b><span class="dot" style="background:#2f66d0"></span>A partner's head office</b><span>sees all its branches together</span></div>
+        <div class="r"><b><span class="dot" style="background:#3c2e7e"></span>Investoyard (us)</b><span>sees everything</span></div>
+      </div>
+      <div class="callout"><div class="lk"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><p><b>Double lock.</b> On top of the automatic filter, there's a second lock inside the database itself — so even a mistake in the software can never leak one partner's data to another.</p></div>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">6</span><h2>Launching a white-label = filling a form</h2></div>
+      <p>When a new partner wants their own branded version, we <b>don't write new software</b>. We just enter their details:</p>
+      <ul class="plain">
+        <li><span class="k">✓</span><span>Upload their <b>logo</b> and pick their <b>colours</b></span></li>
+        <li><span class="k">✓</span><span>Switch options on/off (e.g. hide certain <b>unofficial data</b> if their rules require)</span></li>
+        <li><span class="k">✓</span><span>Register their <b>website address</b> → from then on, anyone opening that address automatically sees their brand</span></li>
+      </ul>
+      <p style="margin-top:10px">That's it — a setup that takes <b>days, not months</b>, because it's all settings, not new development.</p>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">7</span><h2>Every option is set per partner &amp; per branch</h2></div>
+      <p>Brand colours, which features are on, limits — <b>each level can keep the default or change it</b>. A branch inherits whatever its partner set; a partner inherits our platform default. A few important ones (like compliance) we <b>lock</b> so no one below can change them.</p>
+      <div class="casc-wrap"><table class="casc">
+        <thead><tr><th>Option</th><th>Platform</th><th>Partner · Axis</th><th>Branch · Pune</th><th>Effective at Pune</th></tr></thead>
+        <tbody>
+          <tr><td class="set">Show GMP</td><td>ON</td><td class="inh">–</td><td class="inh">–</td><td class="eff">ON<small>inherited</small></td></tr>
+          <tr><td class="set">Languages</td><td>en, hi</td><td class="ovr">+ mr</td><td class="inh">–</td><td class="eff">en, hi, mr<small>from partner</small></td></tr>
+          <tr><td class="set">Family apply</td><td>ON</td><td class="ovr">OFF</td><td class="inh">–</td><td class="eff">OFF<small>from partner</small></td></tr>
+          <tr><td class="set">Max bids</td><td>3</td><td class="inh">–</td><td class="ovr">2</td><td class="eff">2<small>branch override</small></td></tr>
+          <tr><td class="set">Self-PAN rule</td><td class="lock">ON 🔒</td><td class="inh">locked</td><td class="inh">locked</td><td class="eff">ON<small>locked by us</small></td></tr>
+        </tbody>
+      </table></div>
+      <div class="casc-legend"><b>–</b> = inherits from above · <b style="color:#7a5a00">highlighted</b> = changed at that level · <b>🔒</b> = locked (no one below can change).</div>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">8</span><h2>What we store (kept simple)</h2></div>
+      <ul class="plain">
+        <li><span class="k">•</span><span>A <b>"belongs-to" label</b> on each customer and application (which tenant owns it).</span></li>
+        <li><span class="k">•</span><span><b>IPO information is shared by everyone</b> — it's public market data, the same for all.</span></li>
+        <li><span class="k">•</span><span>When a customer signs up through a partner, we also record their <b>permission to share data with that partner</b> — required by India's data-protection law (DPDP).</span></li>
+        <li><span class="k">•</span><span>Applying to an IPO goes to the exchange (NSE/BSE) through licensed banker credentials. A partner can use <b>ours</b>, or plug in <b>their own</b> — the system supports both.</span></li>
+        <li><span class="k">•</span><span>A person's <b>PAN is unique within a partner</b>, but the <b>same PAN can exist under another partner</b> (they may be a customer in two places).</span></li>
+        <li><span class="k">•</span><span>One PAN can apply in up to <b>three ways</b> per IPO — as an <b>Individual</b>, a <b>Shareholder</b>, or an <b>Employee</b> (once each). The admin chooses <b>which of these each IPO allows</b>.</span></li>
+      </ul>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">9</span><h2>The plan, step by step</h2></div>
+      <ul class="plain">
+        <li><span class="k">0.</span><span><b>Foundation first (now):</b> build the tenant system before we go live. Cheap to do now, very expensive to add later.</span></li>
+        <li><span class="k">1.</span><span><b>Direct-to-customer</b> — where we are today.</span></li>
+        <li><span class="k">2.</span><span><b>Partners &amp; branches.</b></span></li>
+        <li><span class="k">3.</span><span><b>White-label</b> partners on their own websites.</span></li>
+        <li><span class="k">4.</span><span><b>Partner commissions</b> — added once the SEBI rules are settled.</span></li>
+      </ul>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">10</span><h2>Safety &amp; rules we never skip</h2></div>
+      <ul class="plain">
+        <li><span class="k">✓</span><span>Data is <b>walled off automatically</b>, with a backup lock in the database.</span></li>
+        <li><span class="k">✓</span><span>A partner's website address is <b>verified as truly theirs</b> before it goes live.</span></li>
+        <li><span class="k">✓</span><span>Passwords &amp; secret keys are kept in a <b>locked vault</b>.</span></li>
+        <li><span class="k">✓</span><span>We keep an <b>activity log</b> for each partner.</span></li>
+        <li><span class="k">✓</span><span>By law, every applicant always uses <b>their own PAN, bank and UPI</b>.</span></li>
+        <li><span class="k">✓</span><span>We regularly <b>test</b> that one partner can never see another's data.</span></li>
+        <li><span class="k">✓</span><span>An <b>independent, government-approved (CERT-In) security company</b> does the security testing (VAPT) — trying to break in both as an <b>outsider with no access (black-box)</b> and with <b>full access to our code (white-box)</b> — before launch and regularly after.</span></li>
+        <li><span class="k">✓</span><span><b>No one can use our back-end (API) directly.</b> Every request must carry a valid, <b>signed login</b> or it's rejected — and the back-end isn't even reachable from the open internet except through our guarded gateway.</span></li>
+        <li><span class="k">✓</span><span>We follow the applicable <b>SEBI cyber-security</b> rules, <b>CERT-In</b> incident-reporting, and India's <b>data-protection law (DPDP)</b> — and data is kept in India.</span></li>
+      </ul>
+    </section>
+
+    <section class="s">
+      <div class="sh"><span class="no">11</span><h2>What it's built with</h2></div>
+      <p>All modern, widely-used, proven technologies — and <b>one programming language (TypeScript) everywhere</b>, so the same small team builds the website, mobile app and back-end efficiently.</p>
+      <ul class="plain">
+        <li><span class="k">•</span><span><b>Website:</b> React / Next.js — fast, SEO-friendly, and installable like an app.</span></li>
+        <li><span class="k">•</span><span><b>Mobile app:</b> React Native — one codebase runs on <b>Android &amp; iOS</b>.</span></li>
+        <li><span class="k">•</span><span><b>Back-end:</b> Node.js (NestJS) with a <b>PostgreSQL</b> database. <span style="color:var(--faint)">(SQL Server is also supported.)</span></span></li>
+        <li><span class="k">•</span><span><b>IPO submission:</b> connects to <b>NSE &amp; BSE</b> through the licensed banker rail.</span></li>
+        <li><span class="k">•</span><span><b>Runs on the cloud</b> — secure and scalable, with sensitive data kept in a protected vault.</span></li>
+      </ul>
+    </section>
+
+    <section class="s" style="border-bottom:0">
+      <div class="sh"><span class="no">12</span><h2>Handling heavy traffic</h2></div>
+      <p>IPO sites get a <b>huge rush in the last hour</b> before a popular IPO closes. We keep the site fast in two simple ways — and it costs nothing extra:</p>
+      <ul class="plain">
+        <li><span class="k">1.</span><span><b>We cache the pages &amp; data.</b> Most visitors are just looking at IPO, GMP and subscription info — we serve them a <b>ready-made copy from memory</b> (refreshed every few seconds) instead of rebuilding it each time. Thousands of visitors, almost no extra work.</span></li>
+        <li><span class="k">2.</span><span><b>We queue the "Apply" rush.</b> Every application joins a <b>line (queue)</b> and is sent to the exchange (NSE/BSE) at a <b>steady pace</b> — so even 50,000 people applying at once can't overwhelm anything. Each person instantly sees "submitted".</span></li>
+      </ul>
+      <p>And because we <b>know the IPO calendar</b>, we can add extra server power automatically on busy days, and slow down non-essential refreshes if things ever get extreme — so the site stays up and fast.</p>
+    </section>
+
+    <div class="foot">Investoyard — one platform · Direct (B2C) · Partner (B2B2C) · White-label</div>
+  </div>
+</div>
+
+</body></html>

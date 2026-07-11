@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Investoyard">
+  <rect width="512" height="512" fill="#ffffff"/>
+  <g transform="translate(52,52) scale(0.80)">
+    <!-- "i" dot — gold up-triangle -->
+    <path d="M62 10 L118 104 L6 104 Z" fill="#ffcb32" stroke="#ffcb32" stroke-width="16" stroke-linejoin="round" />
+    <!-- "i" stem -->
+    <rect x="14" y="132" width="96" height="368" rx="10" fill="#3c2e7e" />
+    <!-- down triangle (top-right) -->
+    <path d="M350 8 L500 8 L425 176 Z" fill="#3c2e7e" stroke="#3c2e7e" stroke-width="16" stroke-linejoin="round" />
+    <!-- "y" chevron -->
+    <polyline points="150,22 402,250 220,498" fill="none" stroke="#ffcb32" stroke-width="100" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

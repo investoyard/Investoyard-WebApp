@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Investoyard — Multi-Tenant Architecture</title><style>body{margin:0}</style></head><body>
+<style>
+  :root{
+    --brand:#3c2e7e;--brand-700:#332765;--brand-400:#7565bd;--brand-200:#d3ccec;--brand-50:#f3f1fb;
+    --gold:#ffcb32;--gold-600:#e6ad12;--gold-50:#fff7df;--pos:#12925a;--neg:#d8412a;
+    --c-qib:#2f66d0;--c-hni2:#7c4dff;
+    --bg:#f6f5fa;--surface:#fff;--surface-2:#faf9fc;--text:#1a1730;--text-muted:#5e5b6e;--text-faint:#918da2;--border:#e7e4f0;--border-2:#d9d5e6;--pill:999px;
+    --ink:linear-gradient(135deg,#3c2e7e,#241b4d);--sh:0 1px 2px rgba(24,20,45,.05);--sh-md:0 6px 20px rgba(24,20,45,.09);
+    --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  .wrap{font-family:var(--font);color:var(--text);background:var(--bg);padding:0 0 70px;-webkit-font-smoothing:antialiased;font-weight:400}
+  .col{max-width:920px;margin:0 auto;padding:0 22px}
+  /* hero */
+  .hero{background:var(--ink);color:#fff;position:relative;overflow:hidden;padding:44px 0 40px;margin-bottom:30px}
+  .hero::before{content:"";position:absolute;inset:0 0 auto auto;width:420px;height:420px;background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--gold) 38%,transparent),transparent 62%)}
+  .hero .col{position:relative}
+  .ey{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+  .hero h1{font-size:32px;font-weight:600;letter-spacing:-.02em;margin:10px 0 8px;line-height:1.12}
+  .hero p{margin:0;max-width:64ch;color:rgba(255,255,255,.82);font-size:15px;line-height:1.6}
+  .brandmark{font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .brandmark span{color:var(--gold)}
+  /* insight */
+  .insight{background:var(--gold-50);border:1px solid #f0e2ac;border-left:4px solid var(--gold-600);border-radius:12px;padding:16px 18px;margin-bottom:28px}
+  .insight b{color:var(--brand)}
+  h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin:34px 0 14px;display:flex;align-items:center;gap:9px}
+  h2 .no{width:22px;height:22px;border-radius:6px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600}
+  p.lead{margin:0 0 14px;color:var(--text-muted);font-size:14.5px;line-height:1.6;max-width:70ch}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh);padding:18px 20px}
+  /* two-axis models */
+  .models{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.models{grid-template-columns:1fr}}
+  .model{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px 16px 16px 19px;box-shadow:var(--sh)}
+  .model::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mc)}
+  .model .mt{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .model .mtag{font-size:10.5px;font-weight:600;color:var(--mc);background:color-mix(in srgb,var(--mc) 12%,#fff);padding:2px 9px;border-radius:var(--pill);display:inline-block;margin-top:5px}
+  .model ul{margin:11px 0 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .model li{font-size:12.5px;color:var(--text-muted);line-height:1.4;display:flex;gap:7px}
+  .model li b{color:var(--text);font-weight:600}
+  .model li::before{content:"›";color:var(--mc);font-weight:600}
+  /* diagram cards */
+  .diag{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:20px;overflow-x:auto}
+  .cap{font-size:12px;color:var(--text-faint);margin-top:10px;text-align:center}
+  /* isolation cols */
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.cols2{grid-template-columns:1fr}}
+  .mini-h{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--brand)}
+  .card p{margin:0;font-size:13px;color:var(--text-muted);line-height:1.55}
+  .chip{display:inline-block;font-size:11px;font-weight:600;background:var(--brand-50);color:var(--brand);border:1px solid var(--brand-200);border-radius:var(--pill);padding:3px 10px;margin:2px 4px 2px 0}
+  /* scope table */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  thead th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);font-weight:600}
+  td b{font-weight:600}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  /* roadmap */
+  .road{display:flex;gap:0;overflow-x:auto;counter-reset:r}
+  .rstep{flex:1 0 150px;position:relative;padding:0 6px}
+  .rstep .ln{position:absolute;top:15px;left:50%;width:100%;height:2px;background:var(--border-2)}
+  .rstep:last-child .ln{display:none}
+  .rstep .nd{position:relative;z-index:1;width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;margin-bottom:9px}
+  .rstep.now .nd{background:var(--gold);color:#4a3600}
+  .rstep .rt{font-size:13px;font-weight:600}
+  .rstep .rd{font-size:11.5px;color:var(--text-muted);margin-top:2px;line-height:1.4}
+  .foot{margin-top:34px;padding-top:18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--brand-50);color:var(--brand-700);padding:1px 6px;border-radius:5px}
+  .casc-wrap{overflow-x:auto;margin-top:12px}
+  .casc{width:100%;border-collapse:collapse;font-size:12.5px;min-width:580px}
+  .casc th,.casc td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  .casc thead th{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint);font-weight:600;background:var(--surface-2)}
+  .casc td.set{font-weight:600}
+  .casc .inh{color:var(--text-faint)}
+  .casc .ovr{background:#fff7df;color:#7a5a00;font-weight:600}
+  .casc .lock{color:var(--brand);font-weight:600}
+  .casc .eff{background:var(--brand-50);font-weight:600;color:var(--brand-700)}
+  .casc .eff small{display:block;font-weight:500;color:var(--brand-400);font-size:10px}
+  .casc-legend{font-size:11.5px;color:var(--text-muted);margin-top:9px}.casc-legend b{color:var(--text)}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="col">
+      <div class="brandmark">investo<span>yard</span></div>
+      <div class="ey" style="margin-top:18px">Enterprise Architecture · Confidential</div>
+      <h1>One platform, three go-to-market models</h1>
+      <p>How Investoyard serves direct customers (B2C), multi-branch partners (B2B2C), and white-label clients — from a single codebase, a single database, and a single deployment.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="insight">
+      <b>The core principle.</b> We don't build three apps. We build one <b>multi-tenant platform</b>, and the three models are simply configurations of a single <code>Tenant</code>. They differ on only two independent axes — <b>who sees the data</b> (identity) and <b>which brand/domain serves it</b> (presentation). The Partner model is a data-scoping concern; White-label is a branding concern. Both ride the same backbone.
+    </div>
+
+    <h2><span class="no">1</span>The three models = two axes</h2>
+    <div class="models">
+      <div class="model" style="--mc:var(--pos)">
+        <div class="mt">Direct — B2C</div><span class="mtag">Platform tenant</span>
+        <ul><li>Customer signs up &amp; applies directly</li><li><b>Our</b> domain, <b>our</b> brand</li><li>Everyone lives under the root <b>platform</b> tenant</li></ul>
+      </div>
+      <div class="model" style="--mc:var(--c-qib)">
+        <div class="mt">Partner — B2B2C</div><span class="mtag">Tenant subtree</span>
+        <ul><li>Partner + many <b>branches</b>, separate logins</li><li>Branch sees <b>only its own</b> data</li><li>Partner admin sees the <b>whole subtree</b></li></ul>
+      </div>
+      <div class="model" style="--mc:var(--c-hni2)">
+        <div class="mt">White-label</div><span class="mtag">Custom domain + brand</span>
+        <ul><li>Partner's <b>own domain</b> &amp; logo</li><li><b>Same DB</b>, same app — only host &amp; theme change</li><li>Config, <b>not a code fork</b></li></ul>
+      </div>
+    </div>
+
+    <h2><span class="no">2</span>The Tenant backbone (a self-referential tree)</h2>
+    <p class="lead">Every business record carries a <code>tenantId</code>. That one column powers isolation, roll-up reporting, and branding. White-label is just a flag + custom domain on a partner node.</p>
+    <div class="diag">
+      <svg viewBox="0 0 860 285" width="100%" style="min-width:640px" font-family="var(--font)">
+        <!-- platform (operator root) -->
+        <rect x="330" y="14" width="200" height="50" rx="11" fill="#3c2e7e"/>
+        <text x="430" y="36" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">platform</text>
+        <text x="430" y="53" text-anchor="middle" fill="#d3ccec" font-size="10.5">Investoyard · operator (sees all)</text>
+        <!-- bus to 3 channels -->
+        <path d="M430 64 V88 M115 88 H745 M115 88 V118 M430 88 V118 M745 88 V118" stroke="#c9c3de" stroke-width="2" fill="none"/>
+        <!-- direct channel (B2C) -->
+        <rect x="30" y="118" width="170" height="50" rx="11" fill="#fff" stroke="#12925a" stroke-width="1.5"/>
+        <text x="115" y="140" text-anchor="middle" fill="#1a1730" font-size="13" font-weight="600">direct</text>
+        <text x="115" y="157" text-anchor="middle" fill="#12925a" font-size="10.5" font-weight="600">Investoyard Direct · B2C</text>
+        <!-- partner A -->
+        <rect x="345" y="118" width="170" height="50" rx="11" fill="#fff" stroke="#2f66d0" stroke-width="1.5"/>
+        <text x="430" y="140" text-anchor="middle" fill="#1a1730" font-size="13" font-weight="600">partner · Axis</text>
+        <text x="430" y="157" text-anchor="middle" fill="#5e5b6e" font-size="10.5">standard brand</text>
+        <!-- partner B whitelabel -->
+        <rect x="660" y="118" width="170" height="50" rx="11" fill="#fff" stroke="#7c4dff" stroke-width="1.5"/>
+        <text x="745" y="138" text-anchor="middle" fill="#1a1730" font-size="13" font-weight="600">partner · PartnerBank</text>
+        <text x="745" y="155" text-anchor="middle" fill="#7c4dff" font-size="9.5" font-weight="600">WHITE-LABEL · own domain</text>
+        <!-- partner A branches -->
+        <path d="M430 168 V194 M365 194 H495 M365 194 V220 M495 194 V220" stroke="#c9c3de" stroke-width="2" fill="none"/>
+        <rect x="305" y="220" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+        <text x="365" y="240" text-anchor="middle" font-size="11.5" font-weight="600" fill="#1a1730">branch · Andheri</text>
+        <text x="365" y="256" text-anchor="middle" font-size="10" fill="#5e5b6e">own data</text>
+        <rect x="435" y="220" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+        <text x="495" y="240" text-anchor="middle" font-size="11.5" font-weight="600" fill="#1a1730">branch · Pune</text>
+        <text x="495" y="256" text-anchor="middle" font-size="10" fill="#5e5b6e">own data</text>
+        <!-- partner B branch -->
+        <path d="M745 168 V220" stroke="#c9c3de" stroke-width="2" fill="none"/>
+        <rect x="685" y="220" width="120" height="44" rx="10" fill="#f3f1fb" stroke="#d3ccec"/>
+        <text x="745" y="240" text-anchor="middle" font-size="11.5" font-weight="600" fill="#1a1730">branch · HQ</text>
+        <text x="745" y="256" text-anchor="middle" font-size="10" fill="#5e5b6e">own data</text>
+      </svg>
+      <div class="cap">Platform = operator (sees all). B2C customers live in the <b>Investoyard Direct</b> channel · partner admins see their subtree · branches see only themselves.</div>
+    </div>
+
+    <h2><span class="no">3</span>How a request finds its tenant</h2>
+    <div class="diag">
+      <svg viewBox="0 0 860 150" width="100%" style="min-width:640px" font-family="var(--font)">
+        <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#7565bd"/></marker></defs>
+        <rect x="10" y="46" width="170" height="58" rx="11" fill="#fff" stroke="#e7e4f0"/>
+        <text x="95" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1a1730">Incoming request</text>
+        <text x="95" y="88" text-anchor="middle" font-size="10.5" fill="#5e5b6e">Host header · or JWT</text>
+        <line x1="182" y1="75" x2="228" y2="75" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+        <rect x="230" y="46" width="180" height="58" rx="11" fill="#fff" stroke="#2f66d0" stroke-width="1.4"/>
+        <text x="320" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1a1730">Resolve tenant</text>
+        <text x="320" y="88" text-anchor="middle" font-size="10.5" fill="#5e5b6e">host→tenant · user→tenant</text>
+        <line x1="412" y1="75" x2="458" y2="75" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+        <rect x="460" y="46" width="180" height="58" rx="11" fill="#fff" stroke="#e6ad12" stroke-width="1.4"/>
+        <text x="550" y="66" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1a1730">Tenant context</text>
+        <text x="550" y="83" text-anchor="middle" font-size="10.5" fill="#5e5b6e">brand · flags · scope</text>
+        <text x="550" y="97" text-anchor="middle" font-size="9.5" fill="#918da2">GMP on/off, logo, colors</text>
+        <line x1="642" y1="75" x2="688" y2="75" stroke="#7565bd" stroke-width="2" marker-end="url(#a)"/>
+        <rect x="690" y="46" width="160" height="58" rx="11" fill="#3c2e7e"/>
+        <text x="770" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#fff">Scoped data</text>
+        <text x="770" y="88" text-anchor="middle" font-size="10.5" fill="#d3ccec">ORM filter + RLS</text>
+      </svg>
+      <div class="cap">White-label resolves by <b>domain</b>; partner/branch resolves by <b>authenticated user</b> — both feed one tenant context.</div>
+    </div>
+    <div class="card" style="margin-top:12px;border-left:4px solid var(--brand)"><p><b>Decided approach — server-side (SSR), by domain.</b> On every page load — including the public <b>landing page where no one is logged in</b> — the server reads the request's <code>Host</code> header and resolves the tenant from the <b>domain</b>: our domains → the platform (Investoyard) brand; a partner's registered <b>custom domain</b> → that partner's tenant. The user's <b>login</b> then narrows the <b>data scope</b> after sign-in. One codebase; the brand is decided per request, never baked into the files — matching Investoyard's current host-based logic.</p></div>
+
+    <h2><span class="no">4</span>Data isolation &amp; scoping</h2>
+    <div class="cols2">
+      <div class="card">
+        <div class="mini-h">Shared DB, two enforcement layers</div>
+        <p>One PostgreSQL, a <code>tenantId</code> on every business table. <b>1)</b> ORM middleware auto-injects the tenant filter on every query — no manual filters, no leaks. <b>2)</b> Postgres <b>Row-Level Security</b> as defense-in-depth: even a buggy query physically cannot read another tenant's rows.</p>
+        <div style="margin-top:10px"><span class="chip">customers</span><span class="chip">applications</span><span class="chip">consents</span><span class="chip">rail creds</span><span class="chip">IPO catalog = shared</span></div>
+      </div>
+      <div class="card">
+        <div class="mini-h">Who sees what (JWT scope)</div>
+        <table>
+          <thead><tr><th>Role</th><th>Visible scope</th></tr></thead>
+          <tbody>
+            <tr><td><span class="dot" style="background:#d9d5e6"></span><b>Branch user</b></td><td>own branch only</td></tr>
+            <tr><td><span class="dot" style="background:#2f66d0"></span><b>Partner admin</b></td><td>partner + all branches (subtree)</td></tr>
+            <tr><td><span class="dot" style="background:#3c2e7e"></span><b>Platform super-admin</b></td><td>all tenants</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2><span class="no">5</span>White-label = per-tenant config, never a fork</h2>
+    <p class="lead">A new white-label client is an <b>onboarding form</b>, not a release. On tenant resolution we load:</p>
+    <div class="cols2">
+      <div class="card"><div class="mini-h">Branding</div><p>Logo, favicon, name, and palette injected into the design-token CSS variables at render — the app is already token-driven.</p></div>
+      <div class="card"><div class="mini-h">Feature flags &amp; compliance</div><p>e.g. <b>GMP OFF</b> for regulated tenants, hide platform branding, and <b>per-tenant merchant-banker rail credentials</b> (partner brings own empanelment or rides ours). Secrets in a vault (KMS).</p></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="mini-h">Every option is configurable — and it cascades (per tenant AND per branch)</div>
+      <p style="margin:0 0 4px">Settings flow <b>down the tree</b> — platform default → partner → branch. The <b>deepest override wins</b>; anything not set is <b>inherited</b>; a parent can <b>lock</b> a key so no one below can change it. Same mechanism for <b>every</b> option — branding, features, limits, rail, compliance.</p>
+      <div class="casc-wrap"><table class="casc">
+        <thead><tr><th>Option</th><th>Platform</th><th>Partner · Axis</th><th>Branch · Pune</th><th>Effective at Pune</th></tr></thead>
+        <tbody>
+          <tr><td class="set">Show GMP</td><td>ON</td><td class="inh">–</td><td class="inh">–</td><td class="eff">ON<small>inherited</small></td></tr>
+          <tr><td class="set">Languages</td><td>en, hi</td><td class="ovr">+ mr</td><td class="inh">–</td><td class="eff">en, hi, mr<small>from partner</small></td></tr>
+          <tr><td class="set">Family apply</td><td>ON</td><td class="ovr">OFF</td><td class="inh">–</td><td class="eff">OFF<small>from partner</small></td></tr>
+          <tr><td class="set">Max bids</td><td>3</td><td class="inh">–</td><td class="ovr">2</td><td class="eff">2<small>branch override</small></td></tr>
+          <tr><td class="set">Self-PAN rule</td><td class="lock">ON 🔒</td><td class="inh">locked</td><td class="inh">locked</td><td class="eff">ON<small>locked by us</small></td></tr>
+        </tbody>
+      </table></div>
+      <div class="casc-legend"><b>–</b> inherits from above · <b style="color:#7a5a00">highlighted</b> = changed at that level · <b>🔒</b> locked (no one below can change).</div>
+    </div>
+
+    <h2><span class="no">6</span>Data model — what changes</h2>
+    <div class="card">
+      <p><b>New:</b> <code>Tenant</code> (tree via <code>parentId</code>, type, branding, flags, railConfig) · <code>Role</code> (tenant-aware permissions) · <code>Membership</code> (User → Tenant → Role). <br><b>Add <code>tenantId</code> to:</b> User, InvestorProfile, Consent, Application, Watchlist, DeviceToken, MemberCredential. <br><b>Stays global (shared reference data):</b> the IPO catalog — Ipo, subscription, GMP, documents. <br><b>New consent type:</b> <code>data_sharing_partner</code> for B2B2C acquisition (DPDP). <br><b>Tenant types:</b> <code>platform</code> (operator root, no customers) · <code>direct</code> (Investoyard Direct — B2C) · <code>partner</code> · <code>branch</code>. Every customer belongs to a channel (direct / partner / branch); the platform root is operator-only.</p>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="mini-h">Applicant identity &amp; IPO application categories</div>
+      <p>• <b>PAN is unique per tenant</b> — one investor profile per PAN within a tenant (<code>@@unique([tenantId, panHash])</code>); the <b>same PAN may exist under another tenant</b>. PAN stays vaulted; a keyed hash is used only for dedup. &nbsp;• <b>Three application categories</b> — <code>Individual</code>, <code>Shareholder</code>, <code>Employee</code>. One PAN may apply <b>once in each</b> per IPO (up to 3), never twice in the same category (<code>@@unique([ipoId, investorProfileId, applicantCategory])</code>); market-wide same-PAN dedup remains the registrar's job. &nbsp;• <b>Admin enables the allowed categories per IPO</b> (<code>Ipo.allowedApplicantCategories</code>); a tenant may further narrow them via the settings cascade.</p>
+    </div>
+
+    <h2><span class="no">7</span>Delivery roadmap</h2>
+    <div class="diag">
+      <div class="road">
+        <div class="rstep now"><div class="ln"></div><div class="nd">0</div><div class="rt">Tenant foundation</div><div class="rd">Tenant + tenantId everywhere + scoping + RLS — <b>before</b> hosting the DB</div></div>
+        <div class="rstep"><div class="ln"></div><div class="nd">1</div><div class="rt">B2C (M1)</div><div class="rd">Ship on the platform tenant — where you are today</div></div>
+        <div class="rstep"><div class="ln"></div><div class="nd">2</div><div class="rt">Partner (M2)</div><div class="rd">Branch tree, subtree scoping, partner admin console</div></div>
+        <div class="rstep"><div class="ln"></div><div class="nd">3</div><div class="rt">White-label</div><div class="rd">Custom-domain resolution + branding engine + flags</div></div>
+        <div class="rstep"><div class="ln"></div><div class="nd">4</div><div class="rt">Commission (M3)</div><div class="rd">Attaches to the tenant tree once the SEBI regime settles</div></div>
+      </div>
+    </div>
+
+    <h2><span class="no">8</span>Security, audit &amp; regulatory compliance</h2>
+    <div class="cols2">
+      <div class="card">
+        <div class="mini-h">Regulatory (as applicable to our role / empaneling banker)</div>
+        <p>• <b>SEBI Cyber Security &amp; Cyber Resilience Framework (CSCRF)</b> — align as required by the empaneling merchant-banker. &nbsp;• <b>CERT-In</b> directions — 6-hour incident reporting, ≥180-day logs held in India, NTP time-sync. &nbsp;• <b>DPDP Act 2023</b> — itemised consent, data-sharing consent to partner, breach notification. &nbsp;• <b>ISO/IEC 27001</b> ISMS (target). &nbsp;• <b>Data residency in India.</b></p>
+      </div>
+      <div class="card">
+        <div class="mini-h">Security controls</div>
+        <p>• <b>Periodic VAPT by an independent, CERT-In empanelled third-party vendor</b> — <b>black-box</b> (outsider, no access), <b>grey-box</b>, and <b>white-box</b> (full source + architecture) testing; before go-live, ≥ annually and after major releases; scope <b>explicitly includes multi-tenant isolation and the public APIs</b>. &nbsp;• <b>Secure SDLC</b> — SAST, DAST, dependency &amp; secret scanning in CI. &nbsp;• <b>WAF + DDoS</b>, rate-limiting. &nbsp;• <b>Encryption</b> — TLS 1.2+/1.3 in transit, AES-256 at rest, PII in a KMS-backed vault. &nbsp;• <b>MFA</b> for all staff, least-privilege RBAC. &nbsp;• Backups + DR (RPO/RTO), incident-response plan.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="mini-h">API &amp; access security — no direct / unauthorised use</div>
+      <p>Every endpoint requires a <b>valid, short-lived, signed token</b> — <b>no anonymous or direct API access</b>. The backend sits behind an <b>API gateway + WAF on a private network</b> (not internet-reachable directly); with a <b>CORS allow-list</b>, CSRF protection, <b>HMAC-signed</b> sensitive calls, <b>mTLS</b> for rail / server-to-server, <b>rate-limiting + bot/DDoS</b> protection, replay / idempotency guards, and strict request-schema validation. Even a <b>valid</b> token is confined to its own tenant by RLS — it can never reach another tenant's data.</p>
+    </div>
+    <div class="card" style="margin-top:12px"><p><b>Data-layer musts:</b> isolation enforced at the ORM + <b>Postgres RLS</b> layer (never per-endpoint) · per-tenant secrets in a vault · custom domains verified (TXT) before activation · tenant-scoped <b>audit log</b> · CI test "tenant A can never read tenant B" · <b>self-PAN rule</b> universal (each applicant applies with their own PAN / demat / UPI).</p></div>
+
+    <h2><span class="no">9</span>Technology stack</h2>
+    <p class="lead">Modern, proven, and <b>all-TypeScript end to end</b> — Next.js (web), React Native (mobile) and NestJS (backend) share one language, so types and logic are shared and the team stays small. Monorepo (npm workspaces + Turborepo).</p>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Layer</th><th>Technology</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>Web app</b></td><td>Next.js (React) · TypeScript</td><td>Server-rendered (SSR) for per-domain white-label branding + SEO; PWA; design-token theming</td></tr>
+        <tr><td><b>Mobile app</b></td><td>React Native (Expo) · TypeScript</td><td>Android + iOS from one codebase; EAS builds; SVG branding</td></tr>
+        <tr><td><b>Backend / API</b></td><td><b>NestJS (Node.js) · TypeScript</b></td><td>REST; OTP + JWT auth; modular services; queue-backed apply</td></tr>
+        <tr><td><b>Database</b></td><td><b>PostgreSQL</b> — recommended<br><span style="color:var(--text-muted)">(SQL Server also supported via Prisma)</span></td><td>Multi-tenant with <b>Row-Level Security (RLS)</b>; <b>JSONB</b> for the branding / flags / settings-cascade config</td></tr>
+        <tr><td><b>ORM</b></td><td>Prisma (or TypeORM)</td><td>Auto-scopes every tenant query via a client extension</td></tr>
+        <tr><td><b>Jobs / queue</b></td><td>BullMQ · Redis</td><td>Reliable IPO-submission worker with retries</td></tr>
+        <tr><td><b>Shared packages</b></td><td>shared-types · design-tokens · i18n</td><td>One type contract; brand palette; en / hi (+ ta te bn mr)</td></tr>
+        <tr><td><b>Exchange rail</b></td><td>NSE e-IPO &amp; BSE iBBS adapters (TypeScript)</td><td>Native apply via the merchant-banker empanelment</td></tr>
+        <tr><td><b>Secrets / PII</b></td><td>AWS KMS · Secrets Manager</td><td>PAN / bank / UPI tokenised in a vault; per-tenant rail credentials</td></tr>
+        <tr><td><b>Notifications</b></td><td>SMS (OTP) · FCM push · Email</td><td></td></tr>
+        <tr><td><b>Hosting / DevOps</b></td><td>Cloud: Node/Vercel (web) · managed Postgres + Redis · EAS (mobile) · Docker · CI/CD</td><td>Can also run Node behind IIS on-prem</td></tr>
+        <tr><td><b>Security</b></td><td>TLS · WAF/DDoS · MFA · SAST/DAST/SCA in CI</td><td>see §8</td></tr>
+      </tbody>
+    </table></div>
+    <div class="card" style="margin-top:12px"><p><b>Chosen: Node (NestJS).</b> The database is <b>PostgreSQL</b> — the best-supported, lowest-friction pairing for Node / Prisma, with best-in-class JSON (<b>JSONB</b>) for our config cascade, mature <b>Row-Level Security</b>, and no licensing cost as we scale. <b>SQL Server is also supported</b> (Prisma has a SQL Server driver) — choose it only to reuse existing SQL Server DBAs / licences. The multi-tenant design (RLS + ORM query filters) is the same on either DB; web + mobile are unchanged.</p></div>
+
+    <h2><span class="no">10</span>Performance &amp; scale</h2>
+    <p class="lead">IPO traffic is <b>spiky but predictable</b> — it surges in the <b>last day / last hour</b> before a popular IPO closes, plus constant refreshing of live subscription &amp; GMP. Because the calendar is known, we design for the spike and pre-scale for it. Two rules carry it — <b>cache the reads, queue the writes</b> — using only in-house (free) infrastructure.</p>
+    <div class="cols2">
+      <div class="card">
+        <div class="mini-h">Reads → in-house caching</div>
+        <p>Most traffic is browsing IPO / GMP / subscription. Served from cache, not rebuilt per request: <b>Next.js ISR</b> (regenerate a page every few seconds) · <b>Redis</b> for the catalog, live snapshots &amp; tenant config · <b>reverse-proxy cache</b> (IIS / Nginx) · <b>gzip / Brotli</b> compression + cache headers. Thousands of identical requests collapse to one.</p>
+      </div>
+      <div class="card">
+        <div class="mini-h">Writes (Apply) → queue &amp; meter</div>
+        <p>The apply-rush never hits the exchange synchronously — accept → <b>BullMQ queue</b> → <b>workers submit to NSE/BSE at a controlled rate</b>; the user instantly sees "submitted · processing", status arrives via the exchange callback. 50,000 last-hour applications just fill a queue that drains steadily. Idempotency keys make retries safe.</p>
+      </div>
+    </div>
+    <div class="diag">
+      <svg viewBox="0 0 860 168" width="100%" style="min-width:620px" font-family="var(--font)">
+        <defs><marker id="pa" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#7565bd"/></marker></defs>
+        <text x="10" y="22" font-size="11" font-weight="600" fill="#12925a">READS — most traffic, no DB rebuild</text>
+        <rect x="10" y="30" width="150" height="42" rx="10" fill="#fff" stroke="#e7e4f0"/><text x="85" y="55" text-anchor="middle" font-size="12" font-weight="600">Browse IPO / GMP</text>
+        <line x1="162" y1="51" x2="206" y2="51" stroke="#7565bd" stroke-width="2" marker-end="url(#pa)"/>
+        <rect x="208" y="30" width="180" height="42" rx="10" fill="#eaf1fc" stroke="#2f66d0"/><text x="298" y="50" text-anchor="middle" font-size="12" font-weight="600">ISR + Redis cache</text><text x="298" y="64" text-anchor="middle" font-size="10" fill="#54516a">served from memory</text>
+        <line x1="390" y1="51" x2="434" y2="51" stroke="#7565bd" stroke-width="2" marker-end="url(#pa)"/>
+        <rect x="436" y="30" width="160" height="42" rx="10" fill="#e6f4ec" stroke="#12925a"/><text x="516" y="55" text-anchor="middle" font-size="12" font-weight="600">Instant response</text>
+        <text x="10" y="110" font-size="11" font-weight="600" fill="#7c4dff">WRITES — Apply rush, metered &amp; steady</text>
+        <rect x="10" y="118" width="140" height="40" rx="10" fill="#fff" stroke="#e7e4f0"/><text x="80" y="142" text-anchor="middle" font-size="12" font-weight="600">Apply rush</text>
+        <line x1="152" y1="138" x2="192" y2="138" stroke="#7565bd" stroke-width="2" marker-end="url(#pa)"/>
+        <rect x="194" y="118" width="110" height="40" rx="10" fill="#f0ebff" stroke="#7c4dff"/><text x="249" y="142" text-anchor="middle" font-size="12" font-weight="600">Queue</text>
+        <line x1="306" y1="138" x2="346" y2="138" stroke="#7565bd" stroke-width="2" marker-end="url(#pa)"/>
+        <rect x="348" y="118" width="120" height="40" rx="10" fill="#f0ebff" stroke="#7c4dff"/><text x="408" y="142" text-anchor="middle" font-size="12" font-weight="600">Workers</text>
+        <line x1="470" y1="138" x2="510" y2="138" stroke="#7565bd" stroke-width="2" marker-end="url(#pa)"/>
+        <rect x="512" y="118" width="130" height="40" rx="10" fill="#3c2e7e"/><text x="577" y="142" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">NSE / BSE</text>
+      </svg>
+      <div class="cap">Reads are absorbed by in-house cache (no rebuild); the apply-rush is queued and sent to the exchange at a steady, safe rate.</div>
+    </div>
+    <div class="card" style="margin-top:12px"><p><b>Also:</b> live subscription / GMP fetched once every few seconds into a <b>Redis snapshot</b> all users read (N requests → 1 upstream fetch; mobile via <b>FCM push</b>, not polling) · <b>Postgres read replicas + PgBouncer</b> pooling · <b>stateless API + workers auto-scale</b> horizontally (on CPU + queue depth) · <b>rate-limiting</b> stops bots / scrapers · <b>pre-scale on the IPO calendar</b> + <b>load-test</b> (k6 / JMeter) before go-live · monitoring + <b>graceful degradation</b> (circuit breakers; a flag to slow live-refresh under extreme load).</p></div>
+
+    <div class="foot">
+      <span>Investoyard — Multi-Tenant Platform Architecture</span>
+      <span>One codebase · one database · one deployment</span>
+    </div>
+  </div>
+</div>
+
+</body></html>

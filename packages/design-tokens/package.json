@@ -1,0 +1,20 @@
+{
+  "name": "@investoyard/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Investoyard AMC-grade design tokens (brand palette from investoyard.com)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "tokens.css"],
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./tokens.css": "./tokens.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

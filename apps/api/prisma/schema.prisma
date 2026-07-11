@@ -1,0 +1,476 @@
+// Investoyard API — Prisma schema (PostgreSQL)
+// Implements the Phase 1 Data Model. PII fields hold VAULT TOKEN REFS, not raw values.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Runtime connects as the non-superuser `investoyard_app` role (RLS-enforced).
+  url       = env("DATABASE_URL")
+  // Migrations / db push run as postgres (superuser, DDL + bypasses RLS).
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+enum Relationship {
+  self
+  spouse
+  child
+  parent
+  sibling
+  other
+}
+
+enum Depository {
+  NSDL
+  CDSL
+}
+
+enum KycStatus {
+  unverified
+  verified
+  failed
+}
+
+enum ConsentType {
+  service
+  marketing
+  data_sharing_rail
+  analytics
+}
+
+enum IpoType {
+  mainboard
+  sme
+}
+
+enum IpoStatus {
+  upcoming
+  open
+  closed
+  listed
+  withdrawn
+}
+
+enum Exchange {
+  NSE_EIPO
+  BSE_IBBS
+}
+
+enum ApplyMethod {
+  native
+  pdf
+}
+
+/// SEBI applicant / reservation category. `individual` is the general public;
+/// `shareholder` and `employee` are reserved quotas an issue may (or may not) offer.
+enum ApplicantCategory {
+  individual
+  shareholder
+  employee
+}
+
+enum ApplicationStatus {
+  draft
+  submitted
+  dp_verified
+  dp_failed
+  mandate_pending
+  upi_blocked
+  confirmed
+  allotted
+  not_allotted
+  released
+  rejected
+  failed
+}
+
+enum TenantType {
+  platform
+  direct
+  partner
+  branch
+}
+
+enum RoleScope {
+  own
+  subtree
+  all
+}
+
+enum FeatureValueType {
+  boolean
+  number
+  string
+}
+
+/// The tenant tree: platform (operator) → direct / partner → branch.
+model Tenant {
+  id           String     @id @default(uuid())
+  type         TenantType
+  parentId     String?
+  parent       Tenant?    @relation("TenantTree", fields: [parentId], references: [id])
+  children     Tenant[]   @relation("TenantTree")
+  slug         String     @unique
+  name         String
+  status       String     @default("active")
+  customDomain String?    @unique
+  brandColor   String?
+  goldColor    String?
+  logoUrl      String?
+  flags        Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roles             Role[]
+  memberships       Membership[]
+  users             User[]
+  investorProfiles  InvestorProfile[]
+  consents          Consent[]
+  applications      Application[]
+  watchlist         WatchlistItem[]
+  devices           DeviceToken[]
+  memberCredentials MemberCredential[]
+  settings          TenantSetting[]
+
+  @@index([parentId])
+  @@index([type])
+}
+
+/// Catalog of settable features/flags (platform-global). The defaultValue is the
+/// platform-wide baseline; tenants override via TenantSetting, cascading down the tree.
+model FeatureDefinition {
+  key          String           @id
+  label        String
+  description  String?
+  valueType    FeatureValueType
+  defaultValue Json
+  isPublic     Boolean          @default(false) // exposed to the client/branding API
+  createdAt    DateTime         @default(now())
+  settings     TenantSetting[]
+}
+
+/// A tenant's override for one feature. `locked` freezes the value for the whole
+/// subtree below this tenant (descendants inherit it and cannot override).
+/// NOT tenant-scoped by RLS: the resolver walks ANCESTOR tenants' settings.
+model TenantSetting {
+  id         String            @id @default(uuid())
+  tenantId   String
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  featureKey String
+  feature    FeatureDefinition @relation(fields: [featureKey], references: [key])
+  value      Json
+  locked     Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([tenantId, featureKey])
+  @@index([tenantId])
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  tenantId    String?
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  name        String
+  permissions String[]
+  scope       RoleScope @default(own)
+  isSystem    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  memberships Membership[]
+
+  @@unique([tenantId, name])
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  isPrimary Boolean  @default(true)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+model User {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  mobile           String   @unique
+  email            String?
+  name             String?
+  status           UserStatus @default(active)
+  marketingConsent Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  profiles      InvestorProfile[]
+  consents      Consent[]
+  applications  Application[]
+  watchlist     WatchlistItem[]
+  devices       DeviceToken[]
+  memberships   Membership[]
+
+  @@index([tenantId])
+}
+
+model InvestorProfile {
+  id           String     @id @default(uuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  relationship Relationship @default(self)
+  fullName     String
+  panTokenRef  String     // PII (vault, reversible — used at rail-call time)
+  panHash      String     // deterministic HMAC of the PAN — uniqueness + dup detection
+  dateOfBirth  DateTime?
+  depository   Depository
+  dpId         String
+  clientId     String
+  bankTokenRef String?    // PII (vault)
+  ifsc         String?
+  upiTokenRef  String?    // PII (vault)
+  kycStatus    KycStatus  @default(unverified)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  applications Application[]
+  @@unique([tenantId, panHash]) // a PAN is registered once per tenant (self-PAN rule)
+  @@index([userId])
+  @@index([tenantId])
+}
+
+model Consent {
+  id            String      @id @default(uuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  type          ConsentType
+  noticeVersion String
+  grantedAt     DateTime    @default(now())
+  withdrawnAt   DateTime?
+  channel       String?
+  applications  Application[]
+  @@index([userId, type])
+  @@index([tenantId])
+}
+
+model Ipo {
+  id            String    @id @default(uuid())
+  symbol        String    @unique
+  name          String
+  logoUrl       String?
+  type          IpoType
+  exchanges     String[]
+  status        IpoStatus @default(upcoming)
+  openDate       DateTime?
+  closeDate      DateTime?
+  allotmentDate  DateTime?
+  listingDate    DateTime?
+  listingGainPct Decimal?
+  priceBandMin   Decimal?
+  priceBandMax   Decimal?
+  lotSize        Int?
+  minAmount      Decimal?
+  issueSize      Decimal?
+  isin          String?
+  registrar     String?
+  objectsOfIssue String?
+  smeFlags      Json?
+  reservations  String[]  @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
+  categories    IpoCategory[]
+  subscriptions IpoSubscription[]
+  gmps          IpoGmp[]
+  documents     IpoDocument[]
+  applications  Application[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model IpoCategory {
+  id    String @id @default(uuid())
+  ipoId String
+  ipo   Ipo    @relation(fields: [ipoId], references: [id])
+  code  String
+  label String?
+  @@unique([ipoId, code])
+}
+
+model IpoSubscription {
+  id             String   @id @default(uuid())
+  ipoId          String
+  ipo            Ipo      @relation(fields: [ipoId], references: [id])
+  category       String
+  timesSubscribed Decimal
+  asOf           DateTime @default(now())
+  @@index([ipoId, asOf])
+}
+
+model IpoGmp {
+  id     String   @id @default(uuid())
+  ipoId  String
+  ipo    Ipo      @relation(fields: [ipoId], references: [id])
+  value  Decimal
+  trend  String?
+  source String?
+  asOf   DateTime @default(now())
+  @@index([ipoId, asOf])
+}
+
+model IpoDocument {
+  id      String @id @default(uuid())
+  ipoId   String
+  ipo     Ipo    @relation(fields: [ipoId], references: [id])
+  type    String // RHP / DRHP / prospectus
+  url     String
+  summary String?
+}
+
+model MemberCredential {
+  id              String   @id @default(uuid())
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+  exchange        Exchange
+  memberName      String
+  memberType      String   // broker / merchant_banker / syndicate
+  loginId         String
+  memberCode      String
+  passwordRef     String   // vault ref
+  ibbsIdRef       String?  // vault ref (BSE)
+  subBrokerCode   String?
+  baseUrl         String
+  env             String   // live / uat
+  active          Boolean  @default(true)
+  applications    Application[]
+  @@index([tenantId])
+}
+
+model Application {
+  id                 String      @id @default(uuid())
+  tenantId           String
+  tenant             Tenant      @relation(fields: [tenantId], references: [id])
+  userId             String
+  user               User        @relation(fields: [userId], references: [id])
+  investorProfileId  String
+  profile            InvestorProfile @relation(fields: [investorProfileId], references: [id])
+  ipoId              String
+  ipo                Ipo         @relation(fields: [ipoId], references: [id])
+  memberCredentialId String?
+  memberCredential   MemberCredential? @relation(fields: [memberCredentialId], references: [id])
+  consentId          String?           // DPDP: the data-sharing consent this bid was submitted under
+  consent            Consent?          @relation(fields: [consentId], references: [id])
+
+  category           String            // investor bucket (retail / sNII / bNII / qib)
+  applicantType      ApplicantCategory @default(individual)
+  lots               Int
+  atCutoff           Boolean     @default(true)
+  bidPrice           Decimal?
+  amount             Decimal
+  applyMethod        ApplyMethod
+  rail               Exchange?
+  applicationNumber  String?
+  bidReferenceNumber String?
+  upiFlag            String?
+  asbaBlockRef       String?
+  remark             String?     // our bid UID, echoed to rail
+  amountBlocked      Decimal?
+  allottedLots       Int?        // lots actually allotted (0 = not allotted)
+  allottedAmount     Decimal?    // amount debited for the allotted shares
+  refundAmount       Decimal?    // blocked amount released back
+  allottedAt         DateTime?
+  status             ApplicationStatus @default(draft)
+  idempotencyKey     String      @unique
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  events             ApplicationStatusEvent[]
+  @@index([userId])
+  @@index([ipoId])
+  @@index([tenantId])
+  @@index([rail, applicationNumber])
+}
+
+/// User notifications (allotment / listing / status). Persisted so the app has an
+/// in-app inbox and so a push send is auditable. Denormalized (userId, no FK).
+model Notification {
+  id        String    @id @default(uuid())
+  tenantId  String?
+  userId    String
+  type      String    // allotment | listing | status
+  title     String
+  body      String
+  data      Json?     // { applicationId, ipoSymbol, status, ... }
+  channel   String    @default("push")
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Denormalized audit trail of operator mutations (create/update/delete across the
+/// admin, catalog, settings and allotment endpoints). A historical snapshot — no FKs.
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  actorMobile String?
+  action      String   // e.g. role.create, member.add, ipo.update, setting.set, allotment.record
+  targetType  String?
+  targetId    String?
+  targetLabel String?
+  tenantSlug  String?
+  detail      Json?
+  at          DateTime @default(now())
+
+  @@index([at])
+}
+
+model ApplicationStatusEvent {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  status        ApplicationStatus
+  detail        Json?
+  at            DateTime @default(now())
+  @@index([applicationId])
+}
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  ipoId     String
+  createdAt DateTime @default(now())
+  @@unique([userId, ipoId])
+  @@index([tenantId])
+}
+
+model DeviceToken {
+  id       String  @id @default(uuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  userId   String
+  user     User    @relation(fields: [userId], references: [id])
+  platform String
+  token    String
+  active   Boolean @default(true)
+  @@unique([token])
+  @@index([tenantId])
+}

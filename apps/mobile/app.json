@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Investoyard",
+    "slug": "investoyard",
+    "scheme": "investoyard",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "splash": { "resizeMode": "contain", "backgroundColor": "#0b5cab" },
+    "ios": { "supportsTablet": true },
+    "android": {}
+  }
+}
