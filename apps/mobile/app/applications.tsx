@@ -5,18 +5,29 @@ import type { ApplicationView } from '@investoyard/shared-types';
 import { colors } from '@investoyard/design-tokens';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
-import { listApplications } from '../lib/api';
+import { listApplications, withdrawApplication } from '../lib/api';
 
 const POSITIVE = ['allotted', 'upi_blocked', 'confirmed', 'dp_verified'];
 const NEGATIVE = ['not_allotted', 'rejected', 'failed', 'dp_failed'];
+// SEBI: a bid may be withdrawn while the issue is still open and isn't decided yet.
+const WITHDRAWABLE = ['submitted', 'mandate_pending', 'upi_blocked', 'dp_verified', 'confirmed'];
 
 export default function ApplicationsScreen() {
   const t = useT();
   const router = useRouter();
   const { token } = useAuth();
   const [apps, setApps] = useState<ApplicationView[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => { if (token) listApplications(token).then(setApps); }, [token]);
+
+  const onWithdraw = async (id: string) => {
+    if (!token) return;
+    setBusyId(id);
+    await withdrawApplication(token, id);
+    setApps(await listApplications(token));
+    setBusyId(null);
+  };
 
   if (!token) {
     return (
@@ -62,6 +73,11 @@ export default function ApplicationsScreen() {
                 </Text>
               </View>
             ) : null}
+            {a.ipoStatus === 'open' && WITHDRAWABLE.includes(a.status) ? (
+              <Pressable style={styles.withdraw} disabled={busyId === a.id} onPress={() => onWithdraw(a.id)}>
+                <Text style={styles.withdrawTxt}>{busyId === a.id ? '…' : t('apps.withdraw')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         );
       })}
@@ -87,6 +103,8 @@ const styles = StyleSheet.create({
   gainTxt: { fontSize: 14, fontWeight: '700' },
   gainPos: { color: colors.state.success },
   gainNeg: { color: colors.state.danger },
+  withdraw: { alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 980, borderWidth: 1, borderColor: colors.state.danger },
+  withdrawTxt: { color: colors.state.danger, fontWeight: '600', fontSize: 13 },
   btn: { backgroundColor: colors.brand.primary, padding: 15, borderRadius: 980, alignItems: 'center', marginTop: 20 },
   btnText: { color: colors.brand.primaryInk, fontWeight: '600', fontSize: 16 },
 });

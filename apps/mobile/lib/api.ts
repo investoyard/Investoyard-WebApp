@@ -130,6 +130,16 @@ export async function createBulkApplication(token: string, input: CreateBulkAppl
   return null;
 }
 
+/** Withdraw a bid (SEBI: allowed while the issue is open). */
+export async function withdrawApplication(token: string, id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/applications/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function listApplications(token: string): Promise<ApplicationView[]> {
   try {
     const res = await fetch(`${API_BASE}/applications`, { headers: { Authorization: `Bearer ${token}` } });

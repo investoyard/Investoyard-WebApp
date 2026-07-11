@@ -104,6 +104,8 @@ const en: Dict = {
   'apps.blocked': 'blocked',
   'apps.listingGain': 'Listing gain',
   'apps.listingLoss': 'Listing loss',
+  'apps.withdraw': 'Withdraw',
+  'apps.withdrawNote': 'You can withdraw while the issue is open.',
   // profiles / family
   'profiles.title': 'Profiles & family',
   'profiles.add': 'Add family member',
@@ -228,6 +230,8 @@ const hi: Dict = {
   'apps.blocked': 'अवरुद्ध',
   'apps.listingGain': 'लिस्टिंग लाभ',
   'apps.listingLoss': 'लिस्टिंग हानि',
+  'apps.withdraw': 'वापस लें',
+  'apps.withdrawNote': 'इश्यू खुला रहने तक आप आवेदन वापस ले सकते हैं।',
   'apply.noApplicant': 'आवेदन के लिए एक निवेशक प्रोफ़ाइल जोड़ें।',
   // profiles / family
   'profiles.title': 'प्रोफ़ाइल और परिवार',

@@ -157,6 +157,41 @@ export class ApplicationsService {
   }
 
   /**
+   * Withdraw an application (SEBI: retail may withdraw until issue close). Allowed
+   * only while the IPO is still open and the bid isn't already decided/withdrawn.
+   * Marks the row `released` (blocked funds unblock), logs a status event and
+   * notifies the investor. TODO(rail): once live, also send the rail's cancel
+   * activity when an applicationNumber exists.
+   */
+  async withdraw(userId: string, id: string) {
+    const app = await this.prisma.application.findFirst({ where: { id, userId }, include: { ipo: true } });
+    if (!app) throw new NotFoundException();
+    if (app.ipo.status !== 'open') {
+      throw new BadRequestException('The withdrawal window has closed — bids can be withdrawn only while the issue is open.');
+    }
+    const WITHDRAWABLE = ['submitted', 'mandate_pending', 'upi_blocked', 'dp_verified', 'confirmed'];
+    if (!WITHDRAWABLE.includes(app.status)) {
+      throw new BadRequestException(`A ${app.status.replace(/_/g, ' ')} application cannot be withdrawn.`);
+    }
+
+    const updated = await this.prisma.application.update({
+      where: { id: app.id },
+      data: { status: 'released', refundAmount: app.amountBlocked ?? app.amount },
+    });
+    await this.prisma.applicationStatusEvent.create({
+      data: { applicationId: app.id, status: 'released', detail: { withdrawnBy: 'investor' } as any },
+    });
+    await this.notifications.pushToUser(userId, {
+      type: 'status', tenantId: app.tenantId,
+      title: `Withdrawn — ${app.ipo.symbol}`,
+      body: `Your ${app.ipo.symbol} application has been withdrawn. Blocked ₹${Number(app.amountBlocked ?? app.amount).toLocaleString('en-IN')} will be released.`,
+      data: { applicationId: app.id, ipoSymbol: app.ipo.symbol, status: 'released' },
+    }).catch(() => { /* best-effort */ });
+
+    return toView({ ...updated, ipo: app.ipo });
+  }
+
+  /**
    * Family / group apply — validates EVERY applicant first (all-or-nothing), creates
    * all application rows in one transaction, and enqueues a SINGLE bulk job that the
    * rail submits as one NSE addbulk call (≤100 applicants, one UPI mandate each —

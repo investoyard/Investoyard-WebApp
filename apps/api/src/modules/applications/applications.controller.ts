@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -29,6 +29,12 @@ export class ApplicationsController {
   @Post('bulk')
   createBulk(@Req() req: any, @Body() dto: CreateBulkApplicationDto) {
     return this.apps.createBulk(req.user.sub, dto);
+  }
+
+  /** Withdraw a bid (SEBI: allowed while the issue is open). */
+  @Delete(':id')
+  withdraw(@Req() req: any, @Param('id') id: string) {
+    return this.apps.withdraw(req.user.sub, id);
   }
 
   /** Back-office: record the registrar's allotment (platform operator — bids.manage). */

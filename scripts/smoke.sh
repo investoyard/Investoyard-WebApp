@@ -54,6 +54,11 @@ curl -s -o /dev/null -X POST $API/applications/$APPID/allotment -H 'Content-Type
 ck "refund math"             "$(curl -s $API/applications -H "Authorization: Bearer $CUST" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d[0].status+"/"+d[0].refundAmount')" "allotted/14910"
 ck "allotment notification"  "$(curl -s $API/notifications -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).filter(n=>n.type==="allotment").length')" "1"
 
+# 6b. withdrawal (SEBI: allowed while the issue is open)
+WAPP=$(curl -s -X POST $API/applications -H "Content-Type: application/json" -H "Authorization: Bearer $CUST" -d "{\"investorProfileId\":\"$PROF\",\"ipoId\":\"$(curl -s $API/ipos/by-symbol/NIMBUS | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')\",\"category\":\"IND\",\"lots\":1,\"atCutoff\":true,\"applyMethod\":\"native\",\"dataSharingConsent\":true}" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).application.id')
+ck "withdraw while open"     "$(curl -s -X DELETE $API/applications/$WAPP -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).status')" "released"
+ck "re-withdraw 400"         "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE $API/applications/$WAPP -H "Authorization: Bearer $CUST")" "400"
+
 # 7. family bulk apply (NSE addbulk path)
 FAM=$(tok 9995554444)
 curl -s -o /dev/null -X POST $API/profiles -H "Content-Type: application/json" -H "Authorization: Bearer $FAM" -d '{"relationship":"self","fullName":"Fam Self","pan":"AAAQZ0001A","depository":"NSDL","dpId":"IN300001","clientId":"1001","upiId":"f1@upi"}'
@@ -73,8 +78,8 @@ ck "bulk batch grouped"      "$(curl -s $API/admin/applications/investoyard -H "
 ck "allotment CSV import"    "$(curl -s -X POST $API/admin/allotments/NIMBUS/import -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"csv":"AAAQZ0001A,1\nAAAQZ0002B,0"}' | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.updated+"/"+d.notFound.length+"/"+d.errors.length')" "2/0/0"
 
 # 8. reports + audit + rails + dashboard
-# 3 applications in scope by now: 1 single (allotted) + 2 family bulk (1 allotted via CSV import).
-ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "3/2"
+# 4 applications in scope by now: 1 single (allotted) + 1 withdrawn + 2 family bulk (1 allotted via CSV import).
+ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "4/2"
 ck "csv export header"       "$(curl -s -D - -o /dev/null $API/admin/reports/investoyard/export -H "Authorization: Bearer $SUPER" | grep -ci 'text/csv')" "1"
 ck "audit recorded"          "$(curl -s $API/admin/audit -H "Authorization: Bearer $SUPER" | node -pe 'String(JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.action==="allotment.record").length>=1)')" "true"
 ck "rail handshake classify" "$(curl -s -X POST $API/admin/rails/seed-nse-axis/test -H "Authorization: Bearer $SUPER" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).outcome')" "invalid_secret"
