@@ -54,8 +54,25 @@ curl -s -o /dev/null -X POST $API/applications/$APPID/allotment -H 'Content-Type
 ck "refund math"             "$(curl -s $API/applications -H "Authorization: Bearer $CUST" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d[0].status+"/"+d[0].refundAmount')" "allotted/14910"
 ck "allotment notification"  "$(curl -s $API/notifications -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).filter(n=>n.type==="allotment").length')" "1"
 
-# 7. reports + audit + rails + dashboard
-ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "1/1"
+# 7. family bulk apply (NSE addbulk path)
+FAM=$(tok 9995554444)
+curl -s -o /dev/null -X POST $API/profiles -H "Content-Type: application/json" -H "Authorization: Bearer $FAM" -d '{"relationship":"self","fullName":"Fam Self","pan":"AAAQZ0001A","depository":"NSDL","dpId":"IN300001","clientId":"1001","upiId":"f1@upi"}'
+curl -s -o /dev/null -X POST $API/profiles -H "Content-Type: application/json" -H "Authorization: Bearer $FAM" -d '{"relationship":"spouse","fullName":"Fam Spouse","pan":"AAAQZ0002B","depository":"NSDL","dpId":"IN300001","clientId":"1001","upiId":"f2@upi"}'
+FPROFS=$(curl -s $API/profiles -H "Authorization: Bearer $FAM" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).map(p=>p.id).join(" ")')
+set -- $FPROFS; F1=$1; F2=$2
+NIMBUS=$(curl -s $API/ipos/by-symbol/NIMBUS | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')
+HELIOS=$(curl -s $API/ipos/by-symbol/HELIOS | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')
+ck "bulk apply 2 members"    "$(curl -s -X POST $API/applications/bulk -H 'Content-Type: application/json' -H "Authorization: Bearer $FAM" -d "{\"ipoId\":\"$NIMBUS\",\"category\":\"IND\",\"applyMethod\":\"native\",\"dataSharingConsent\":true,\"applicants\":[{\"investorProfileId\":\"$F1\",\"lots\":1},{\"investorProfileId\":\"$F2\",\"lots\":1}]}" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.count+"/"+d.applications.every(a=>a.status==="submitted")')" "2/true"
+ck "bulk all-or-nothing 400" "$(curl -s -o /dev/null -w '%{http_code}' -X POST $API/applications/bulk -H 'Content-Type: application/json' -H "Authorization: Bearer $FAM" -d "{\"ipoId\":\"$HELIOS\",\"category\":\"IND\",\"applyMethod\":\"native\",\"dataSharingConsent\":true,\"applicants\":[{\"investorProfileId\":\"$F1\",\"lots\":1},{\"investorProfileId\":\"$F2\",\"lots\":1,\"applicantType\":\"shareholder\"}]}")/$(P "select count(*) from \"Application\" a join \"User\" u on u.id=a.\"userId\" where u.mobile='9995554444' and a.\"ipoId\"='$HELIOS';")" "400/0"
+ck "bulk dup-in-batch 409"   "$(curl -s -o /dev/null -w '%{http_code}' -X POST $API/applications/bulk -H 'Content-Type: application/json' -H "Authorization: Bearer $FAM" -d "{\"ipoId\":\"$HELIOS\",\"category\":\"IND\",\"applyMethod\":\"native\",\"dataSharingConsent\":true,\"applicants\":[{\"investorProfileId\":\"$F1\",\"lots\":1},{\"investorProfileId\":\"$F1\",\"lots\":1}]}")" "409"
+sleep 2
+BKEY=$(R keys "bull:submissions:bulk:*" | tr -d '\r' | head -1)
+if [ -n "$BKEY" ]; then BPAY=$(R hget "$BKEY" data | tr -d '\r'); BOK=$(echo "$BPAY" | node -pe 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); j.applicationIds.length+"/"+String(JSON.stringify(j).includes("pan"))'); else BOK="nokey"; fi
+ck "bulk lean job (no PII)"  "$BOK" "2/false"
+
+# 8. reports + audit + rails + dashboard
+# 3 applications in scope by now: 1 single (allotted) + 2 from the family bulk.
+ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "3/1"
 ck "csv export header"       "$(curl -s -D - -o /dev/null $API/admin/reports/investoyard/export -H "Authorization: Bearer $SUPER" | grep -ci 'text/csv')" "1"
 ck "audit recorded"          "$(curl -s $API/admin/audit -H "Authorization: Bearer $SUPER" | node -pe 'String(JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.action==="allotment.record").length>=1)')" "true"
 ck "rail handshake classify" "$(curl -s -X POST $API/admin/rails/seed-nse-axis/test -H "Authorization: Bearer $SUPER" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).outcome')" "invalid_secret"
