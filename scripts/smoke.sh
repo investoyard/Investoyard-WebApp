@@ -70,10 +70,11 @@ BKEY=$(R keys "bull:submissions:bulk:*" | tr -d '\r' | head -1)
 if [ -n "$BKEY" ]; then BPAY=$(R hget "$BKEY" data | tr -d '\r'); BOK=$(echo "$BPAY" | node -pe 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); j.applicationIds.length+"/"+String(JSON.stringify(j).includes("pan"))'); else BOK="nokey"; fi
 ck "bulk lean job (no PII)"  "$BOK" "2/false"
 ck "bulk batch grouped"      "$(curl -s $API/admin/applications/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.mobileMasked==="99****4444"); d.length+"/"+new Set(d.map(a=>a.batchId)).size+"/"+String(d.every(a=>!!a.batchId))')" "2/1/true"
+ck "allotment CSV import"    "$(curl -s -X POST $API/admin/allotments/NIMBUS/import -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"csv":"AAAQZ0001A,1\nAAAQZ0002B,0"}' | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.updated+"/"+d.notFound.length+"/"+d.errors.length')" "2/0/0"
 
 # 8. reports + audit + rails + dashboard
-# 3 applications in scope by now: 1 single (allotted) + 2 from the family bulk.
-ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "3/1"
+# 3 applications in scope by now: 1 single (allotted) + 2 family bulk (1 allotted via CSV import).
+ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.totals.applications+"/"+d.allotment.allotted')" "3/2"
 ck "csv export header"       "$(curl -s -D - -o /dev/null $API/admin/reports/investoyard/export -H "Authorization: Bearer $SUPER" | grep -ci 'text/csv')" "1"
 ck "audit recorded"          "$(curl -s $API/admin/audit -H "Authorization: Bearer $SUPER" | node -pe 'String(JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.action==="allotment.record").length>=1)')" "true"
 ck "rail handshake classify" "$(curl -s -X POST $API/admin/rails/seed-nse-axis/test -H "Authorization: Bearer $SUPER" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).outcome')" "invalid_secret"
