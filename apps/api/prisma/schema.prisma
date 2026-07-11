@@ -377,6 +377,7 @@ model Application {
 
   category           String            // investor bucket (retail / sNII / bNII / qib)
   applicantType      ApplicantCategory @default(individual)
+  batchId            String?           // set when created via family/bulk apply — groups the batch
   lots               Int
   atCutoff           Boolean     @default(true)
   bidPrice           Decimal?

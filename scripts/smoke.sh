@@ -69,6 +69,7 @@ sleep 2
 BKEY=$(R keys "bull:submissions:bulk:*" | tr -d '\r' | head -1)
 if [ -n "$BKEY" ]; then BPAY=$(R hget "$BKEY" data | tr -d '\r'); BOK=$(echo "$BPAY" | node -pe 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); j.applicationIds.length+"/"+String(JSON.stringify(j).includes("pan"))'); else BOK="nokey"; fi
 ck "bulk lean job (no PII)"  "$BOK" "2/false"
+ck "bulk batch grouped"      "$(curl -s $API/admin/applications/investoyard -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.mobileMasked==="99****4444"); d.length+"/"+new Set(d.map(a=>a.batchId)).size+"/"+String(d.every(a=>!!a.batchId))')" "2/1/true"
 
 # 8. reports + audit + rails + dashboard
 # 3 applications in scope by now: 1 single (allotted) + 2 from the family bulk.

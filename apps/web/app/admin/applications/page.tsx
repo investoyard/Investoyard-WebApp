@@ -85,10 +85,23 @@ export default function AdminApplications() {
                 <thead><tr><th>IPO</th><th>Applicant</th><th>Cat.</th><th>Lots</th><th>Amount</th><th>Status</th><th>Allotment</th></tr></thead>
                 <tbody>
                   {rows.length === 0 ? <tr><td colSpan={7} className="muted" style={{ padding: 14 }}>No applications in this scope.</td></tr> :
-                    rows.map((a) => (
+                    (() => {
+                      // Family/bulk batches share a batchId — count members for the badge.
+                      const batchSize: Record<string, number> = {};
+                      rows.forEach((r) => { if (r.batchId) batchSize[r.batchId] = (batchSize[r.batchId] ?? 0) + 1; });
+                      return rows.map((a) => (
                       <tr key={a.id}>
                         <td className="mono" style={{ fontWeight: 600 }}>{a.ipoSymbol}</td>
-                        <td>{a.applicantName ?? '—'}<div className="muted mono" style={{ fontSize: 11 }}>{a.mobileMasked}</div></td>
+                        <td>
+                          {a.applicantName ?? '—'}
+                          {a.batchId && batchSize[a.batchId] > 1 && (
+                            <span className="pill" style={{ marginLeft: 8, fontSize: 10, background: 'var(--brand-50)', color: 'var(--brand-700)' }}
+                              title={`Applied together as one family batch of ${batchSize[a.batchId]}`}>
+                              family ×{batchSize[a.batchId]}
+                            </span>
+                          )}
+                          <div className="muted mono" style={{ fontSize: 11 }}>{a.mobileMasked}</div>
+                        </td>
                         <td className="muted">{a.applicantType}</td>
                         <td className="mono">{a.lots}</td>
                         <td className="mono">{inr(a.amount)}</td>
@@ -105,7 +118,8 @@ export default function AdminApplications() {
                           ) : <span className="muted">—</span>}
                         </td>
                       </tr>
-                    ))}
+                      ));
+                    })()}
                 </tbody>
               </table>
             </div>

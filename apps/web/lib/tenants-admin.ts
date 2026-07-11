@@ -107,6 +107,7 @@ export interface IpoWrite {
 export interface AdminApplication {
   id: string; tenantSlug: string; ipoSymbol: string; ipoName: string;
   applicantName?: string; mobileMasked?: string; category: string; applicantType: string;
+  batchId?: string; // family/bulk batches share one id
   lots: number; amount: number; status: string; allottedLots?: number; refundAmount?: number; appliedAt: string;
 }
 export const fetchApplications = (slug: string) => authed<AdminApplication[]>(`${API}/admin/applications/${slug}`, { method: 'GET' });

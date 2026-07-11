@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
@@ -169,6 +170,7 @@ export class ApplicationsService {
     const consent = await this.captureDataSharingConsent(userId, dto);
 
     // ---- validate every applicant before creating anything (all-or-nothing) ----
+    const batchId = randomUUID(); // groups the family batch (admin view, reconciliation)
     const seenPans = new Set<string>();
     const rows: any[] = [];
     for (let i = 0; i < dto.applicants.length; i++) {
@@ -218,6 +220,7 @@ export class ApplicationsService {
         status: 'submitted',
         idempotencyKey: `${userId}:${dto.ipoId}:${profile.id}`,
         consentId: consent.id,
+        batchId,
       });
     }
 

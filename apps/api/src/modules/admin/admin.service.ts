@@ -279,6 +279,7 @@ export class AdminService {
         mobileMasked: a.user?.mobile ? a.user.mobile.slice(0, 2) + '****' + a.user.mobile.slice(-4) : undefined,
         category: a.category,
         applicantType: a.applicantType,
+        batchId: a.batchId ?? undefined, // family/bulk batches share one id
         lots: a.lots,
         amount: Number(a.amount),
         status: a.status,
