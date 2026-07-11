@@ -169,6 +169,11 @@ export const updateRail = (id: string, body: any) =>
 export const testRail = (id: string) =>
   authed<{ ok: boolean; outcome: 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret'; note: string }>(
     `${API}/admin/rails/${id}/test`, { method: 'POST' });
+export interface AllotmentImportResult { ipo: string; lines: number; updated: number; notFound: string[]; errors: string[] }
+export const importAllotments = (symbol: string, csv: string) =>
+  authed<AllotmentImportResult>(`${API}/admin/allotments/${symbol}/import`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv }),
+  });
 export const recordAllotment = (id: string, allottedLots: number) =>
   authed<any>(`${API}/applications/${id}/allotment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allottedLots }) });
 

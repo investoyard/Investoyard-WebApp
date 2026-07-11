@@ -14,6 +14,9 @@ export default function AdminApplications() {
   const [sel, setSel] = useState<string | null>(null);
   const [rows, setRows] = useState<api.AdminApplication[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [csvSymbol, setCsvSymbol] = useState('');
+  const [csvText, setCsvText] = useState('');
+  const [csvResult, setCsvResult] = useState<api.AllotmentImportResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -36,6 +39,13 @@ export default function AdminApplications() {
   }, [loadRows]);
 
   const select = async (slug: string) => { setSel(slug); await loadRows(slug); };
+  const importCsv = async () => {
+    if (!/^[A-Z0-9]{2,12}$/.test(csvSymbol) || !csvText.trim()) { setErr('Enter the IPO symbol and paste the registrar CSV.'); return; }
+    setBusy(true); setErr(null); setCsvResult(null);
+    try { setCsvResult(await api.importAllotments(csvSymbol, csvText)); if (sel) await loadRows(sel); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
   const allot = async (id: string) => {
     const lots = Number(draft[id]);
     if (!Number.isInteger(lots) || lots < 0) { setErr('Enter a whole number of allotted lots.'); return; }
@@ -79,6 +89,7 @@ export default function AdminApplications() {
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>{roots.map((r) => renderNode(r, 0))}</div>
           </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="panel">
             <div style={{ overflowX: 'auto' }}>
               <table className="table" style={{ width: '100%' }}>
@@ -123,6 +134,33 @@ export default function AdminApplications() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {canManage && (
+            <div className="panel">
+              <h3 style={{ marginTop: 0 }}>Import allotment (registrar CSV)</h3>
+              <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                Paste the registrar&apos;s file — one <span className="mono">PAN,allottedLots</span> per line
+                (0 = not allotted). Matched by PAN across all tenants; refunds &amp; investor notifications
+                are recorded automatically.
+              </p>
+              <div className="row" style={{ gap: 10, marginTop: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <input className="input mono" style={{ width: 110 }} placeholder="SYMBOL" value={csvSymbol}
+                  onChange={(e) => setCsvSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))} />
+                <textarea className="input mono" style={{ flex: '1 1 280px', minHeight: 90, fontSize: 12 }}
+                  placeholder={'PAN,allottedLots\nABCDE1234F,1\nFGHIJ5678K,0'}
+                  value={csvText} onChange={(e) => setCsvText(e.target.value)} />
+                <button className="btn" disabled={busy} onClick={importCsv}>Import</button>
+              </div>
+              {csvResult && (
+                <div className="banner info" style={{ marginTop: 12, fontSize: 13 }}>
+                  <b>{csvResult.ipo}</b>: {csvResult.updated} of {csvResult.lines} line(s) recorded.
+                  {csvResult.notFound.length > 0 && <> No match: {csvResult.notFound.join('; ')}.</>}
+                  {csvResult.errors.length > 0 && <> Errors: {csvResult.errors.join('; ')}.</>}
+                </div>
+              )}
+            </div>
+          )}
           </div>
         </div>
       )}

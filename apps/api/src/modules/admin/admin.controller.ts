@@ -3,6 +3,7 @@ import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches 
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { ApplicationsService } from '../applications/applications.service';
 import { AdminService } from './admin.service';
 
 class AddMemberDto {
@@ -49,10 +50,21 @@ class UpdateRailDto {
   @IsOptional() @IsBoolean() active?: boolean;
 }
 
+class ImportAllotmentsDto {
+  @IsString() csv!: string; // registrar file: lines of "PAN,allottedLots" (optional header)
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly apps: ApplicationsService) {}
+
+  /** Back-office: bulk allotment from the registrar's CSV (platform operator). */
+  @Post('allotments/:symbol/import')
+  @RequirePermissions('bids.manage')
+  importAllotments(@Param('symbol') symbol: string, @Body() dto: ImportAllotmentsDto) {
+    return this.admin.importAllotments(symbol, dto.csv, (id, lots) => this.apps.recordAllotment(id, lots));
+  }
 
   @Get('roles')
   @RequirePermissions('roles.view')

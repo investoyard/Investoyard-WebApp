@@ -14,5 +14,6 @@ import { ApplicationsService } from './applications.service';
   imports: [RailModule, QueueModule, NotificationsModule, JwtModule.register({})],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  exports: [ApplicationsService],
 })
 export class ApplicationsModule {}

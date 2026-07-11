@@ -388,6 +388,53 @@ export class AdminService {
     });
   }
 
+  /**
+   * Bulk allotment import — the registrar's file as CSV lines of `PAN,allottedLots`.
+   * Matches each PAN (via its deterministic hash — raw PANs are never stored) to the
+   * IPO's live application and records the allotment through the same path as the
+   * single flow (refund math + status event + push notification). Cross-tenant by
+   * nature (registrar files span all channels) → runs unscoped like the callbacks.
+   * Returns a per-line summary; processing continues past bad lines.
+   */
+  async importAllotments(
+    ipoSymbol: string,
+    csv: string,
+    recordOne: (applicationId: string, lots: number) => Promise<any>,
+  ) {
+    const ipo = await this.prisma.ipo.findUnique({ where: { symbol: ipoSymbol.toUpperCase() } });
+    if (!ipo) throw new NotFoundException(`IPO '${ipoSymbol}' not found`);
+
+    const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      .filter((l, i) => !(i === 0 && /pan/i.test(l) && /lot/i.test(l))); // skip a header row
+    let updated = 0;
+    const notFound: string[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const [panRaw, lotsRaw] = lines[i].split(',').map((s) => s?.trim());
+      const lineNo = `line ${i + 1}`;
+      if (!panRaw || !/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/.test(panRaw)) { errors.push(`${lineNo}: invalid PAN`); continue; }
+      const lots = Number(lotsRaw);
+      if (!Number.isInteger(lots) || lots < 0) { errors.push(`${lineNo}: invalid lots '${lotsRaw}'`); continue; }
+
+      const panHash = this.vault.hash(panRaw);
+      const app = await tenantContext.runUnscoped(async () =>
+        this.prisma.application.findFirst({
+          where: { ipoId: ipo.id, profile: { panHash }, status: { notIn: ['draft', 'failed', 'rejected'] } },
+          select: { id: true },
+        }),
+      );
+      if (!app) { notFound.push(`${lineNo}: ${this.vault.mask(panRaw)}`); continue; }
+      try {
+        await recordOne(app.id, lots);
+        updated++;
+      } catch (e: any) {
+        errors.push(`${lineNo}: ${String(e?.message ?? e).slice(0, 80)}`);
+      }
+    }
+    return { ipo: ipo.symbol, lines: lines.length, updated, notFound, errors };
+  }
+
   /** Change a membership's role and/or active status (must belong to the tenant subtree). */
   async updateMember(slug: string, membershipId: string, patch: { roleName?: string; status?: 'active' | 'inactive' }) {
     const tenant = await this.tenantBySlug(slug);
