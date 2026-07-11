@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from './applications.service';
-import { CreateApplicationDto, RecordAllotmentDto } from './applications.dto';
+import { CreateApplicationDto, CreateBulkApplicationDto, RecordAllotmentDto } from './applications.dto';
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)
@@ -23,6 +23,12 @@ export class ApplicationsController {
   @Post()
   create(@Req() req: any, @Body() dto: CreateApplicationDto) {
     return this.apps.create(req.user.sub, dto);
+  }
+
+  /** Family / group apply — one rail addbulk call for the whole batch. */
+  @Post('bulk')
+  createBulk(@Req() req: any, @Body() dto: CreateBulkApplicationDto) {
+    return this.apps.createBulk(req.user.sub, dto);
   }
 
   /** Back-office: record the registrar's allotment (platform operator — bids.manage). */

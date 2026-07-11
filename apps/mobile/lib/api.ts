@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { IpoListItem, IpoDetail, ApplicationView, CreateApplicationInput, ConsentNotice, ConsentView, NotificationView } from '@investoyard/shared-types';
+import type { IpoListItem, IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView } from '@investoyard/shared-types';
 
 /**
  * Resolve the API base URL.
@@ -115,6 +115,19 @@ export async function createApplication(token: string, input: CreateApplicationI
   };
   localApplications.unshift(app);
   return app;
+}
+
+/** Family / group apply — the whole batch goes to the exchange as ONE bulk call. */
+export async function createBulkApplication(token: string, input: CreateBulkApplicationInput): Promise<{ count: number } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/applications/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    });
+    if (res.ok) return res.json();
+  } catch {}
+  return null;
 }
 
 export async function listApplications(token: string): Promise<ApplicationView[]> {

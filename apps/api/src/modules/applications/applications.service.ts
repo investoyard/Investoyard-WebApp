@@ -6,7 +6,7 @@ import { RailService } from '../rail/rail.service';
 import { SubmissionQueueService } from '../queue/submission-queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
-import { ApplicantCategory, ApplyMethod, CreateApplicationDto } from './applications.dto';
+import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
 
 @Injectable()
 export class ApplicationsService {
@@ -156,11 +156,90 @@ export class ApplicationsService {
   }
 
   /**
+   * Family / group apply — validates EVERY applicant first (all-or-nothing), creates
+   * all application rows in one transaction, and enqueues a SINGLE bulk job that the
+   * rail submits as one NSE addbulk call (≤100 applicants, one UPI mandate each —
+   * the self-PAN rule holds: every member bids with their own PAN/demat/UPI).
+   */
+  async createBulk(userId: string, dto: CreateBulkApplicationDto) {
+    const ipo = await this.prisma.ipo.findUnique({ where: { id: dto.ipoId } });
+    if (!ipo || !ipo.lotSize) throw new NotFoundException('IPO not found');
+
+    // DPDP consent — one grant by the account holder covers this batch's sharing.
+    const consent = await this.captureDataSharingConsent(userId, dto);
+
+    // ---- validate every applicant before creating anything (all-or-nothing) ----
+    const seenPans = new Set<string>();
+    const rows: any[] = [];
+    for (let i = 0; i < dto.applicants.length; i++) {
+      const a = dto.applicants[i];
+      const who = `applicant ${i + 1}`;
+      const atCutoff = a.atCutoff ?? true;
+
+      const profile = await this.prisma.investorProfile.findFirst({ where: { id: a.investorProfileId, userId } });
+      if (!profile) throw new ForbiddenException(`${who}: profile not owned by user`);
+      if (!atCutoff && !a.bidPrice) throw new BadRequestException(`${who}: bidPrice required when not at cut-off`);
+
+      const applicantType = a.applicantType ?? ApplicantCategory.individual;
+      if (applicantType !== ApplicantCategory.individual && !ipo.reservations.includes(applicantType)) {
+        throw new BadRequestException(`${who}: this IPO does not offer a ${applicantType} reservation.`);
+      }
+
+      // Self-PAN: once per IPO — against the DB and within this batch.
+      if (seenPans.has(profile.panHash)) throw new ConflictException(`${who}: duplicate PAN within this family batch.`);
+      seenPans.add(profile.panHash);
+      const dup = await this.prisma.application.findFirst({
+        where: { ipoId: ipo.id, profile: { panHash: profile.panHash }, status: { notIn: ['draft', 'failed', 'rejected'] } },
+      });
+      if (dup) throw new ConflictException(`${who}: this PAN already has an application for this IPO.`);
+
+      const qty = a.lots * ipo.lotSize;
+      const unit = atCutoff ? Number(ipo.priceBandMax ?? 0) : (a.bidPrice as number);
+      const amount = qty * unit;
+      if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+        throw new BadRequestException(`${who}: cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.`);
+      }
+      if (amount > 500000) {
+        throw new BadRequestException(`${who}: amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).`);
+      }
+
+      rows.push({
+        tenantId: tenantContext.requireTenantId(),
+        userId,
+        investorProfileId: profile.id,
+        ipoId: ipo.id,
+        category: dto.category,
+        applicantType,
+        lots: a.lots,
+        atCutoff,
+        bidPrice: atCutoff ? null : a.bidPrice,
+        amount,
+        applyMethod: 'native',
+        status: 'submitted',
+        idempotencyKey: `${userId}:${dto.ipoId}:${profile.id}`,
+        consentId: consent.id,
+      });
+    }
+
+    // ---- create all rows atomically, then ONE lean bulk job (no PII in Redis) ----
+    const created = await this.prisma.$transaction(rows.map((data) => this.prisma.application.create({ data })));
+    const memberCredentialId = await this.rail.launchRailCredentialId();
+    const applicationIds = created.map((c) => c.id);
+    await this.queue.enqueueBulk({
+      applicationIds,
+      memberCredentialId,
+      idempotencyKey: `bulk:${applicationIds[0]}:${applicationIds.length}`,
+    });
+
+    return { count: created.length, applications: created.map((c) => toView({ ...c, ipo })) };
+  }
+
+  /**
    * DPDP data-sharing consent. Rejects the apply unless the user explicitly accepted;
    * then reuses their active consent for the current notice version, or records a new
    * one (just-in-time, itemised, versioned, auditable via grantedAt/withdrawnAt).
    */
-  private async captureDataSharingConsent(userId: string, dto: CreateApplicationDto) {
+  private async captureDataSharingConsent(userId: string, dto: CreateApplicationDto | CreateBulkApplicationDto) {
     if (dto.dataSharingConsent !== true) {
       throw new ForbiddenException('Data-sharing consent is required to submit an application (DPDP).');
     }
@@ -202,6 +281,7 @@ function toView(a: any) {
     ipoName: a.ipo?.name,
     status: a.status,
     applyMethod: a.applyMethod,
+    applicantType: a.applicantType ?? undefined,
     amount: Number(a.amount),
     applicationNumber: a.applicationNumber ?? undefined,
     amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : undefined,

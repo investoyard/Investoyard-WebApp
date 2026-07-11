@@ -20,6 +20,13 @@ export interface LeanSubmissionJob {
   idempotencyKey: string;
 }
 
+/** Family / group submission — hydrated per-application, sent as ONE rail addbulk call. */
+export interface LeanBulkSubmissionJob {
+  applicationIds: string[];
+  memberCredentialId: string;
+  idempotencyKey: string;
+}
+
 /**
  * SubmissionQueueService — entry point for native bid submission.
  *
@@ -37,8 +44,8 @@ export class SubmissionQueueService implements OnModuleInit, OnModuleDestroy {
   private worker?: Worker;
 
   constructor(
-    rail: RailService,
-    store: PrismaSubmissionStore,
+    private rail: RailService,
+    private store: PrismaSubmissionStore,
     private prisma: PrismaService,
     private vault: PiiVaultService,
   ) {
@@ -62,15 +69,19 @@ export class SubmissionQueueService implements OnModuleInit, OnModuleDestroy {
       this.queue = new Queue(QUEUE, { connection });
       this.worker = new Worker(
         QUEUE,
-        async (job) => this.processor.process(await this.hydrate(job.data as LeanSubmissionJob)),
+        async (job) =>
+          job.name === 'submit-bulk'
+            ? this.processBulk(job.data as LeanBulkSubmissionJob)
+            : this.processor.process(await this.hydrate(job.data as LeanSubmissionJob)),
         {
           connection,
           concurrency: Number(process.env.QUEUE_CONCURRENCY ?? 5),
           limiter: { max: 25, duration: 1000 }, // ≤25 submissions/sec across workers
         },
       );
-      this.worker.on('completed', (job, res) => this.log.log(`✓ ${(job.data as any).applicationId}: ${JSON.stringify(res).slice(0, 100)}`));
-      this.worker.on('failed', (job, err) => this.log.warn(`✗ ${(job?.data as any)?.applicationId} (attempt ${job?.attemptsMade}): ${err?.message}`));
+      const label = (d: any) => d?.applicationId ?? `bulk[${d?.applicationIds?.length ?? '?'}]`;
+      this.worker.on('completed', (job, res) => this.log.log(`✓ ${label(job.data)}: ${JSON.stringify(res).slice(0, 100)}`));
+      this.worker.on('failed', (job, err) => this.log.warn(`✗ ${label(job?.data)} (attempt ${job?.attemptsMade}): ${err?.message}`));
       this.log.log(`BullMQ submission queue connected → ${u.host} (PII never enqueued — hydrated in the worker)`);
     } catch (e) {
       this.log.error(`BullMQ init failed (${(e as Error).message}) — falling back to inline.`);
@@ -105,6 +116,52 @@ export class SubmissionQueueService implements OnModuleInit, OnModuleDestroy {
       bids: [{ quantity: qty, atCutOff: app.atCutoff, price: app.bidPrice != null ? Number(app.bidPrice) : undefined, amount: Number(app.amount) }],
     };
     return { ...lean, bid };
+  }
+
+  /**
+   * Bulk (family) processing: hydrate each still-pending application, submit them
+   * as ONE rail addbulk call, then persist each member's own result. Per-application
+   * idempotency means a queue retry only re-submits members that didn't get through.
+   */
+  private async processBulk(lean: LeanBulkSubmissionJob) {
+    const jobs: SubmissionJob[] = [];
+    for (const applicationId of lean.applicationIds) {
+      const app = await this.prisma.application.findUnique({ where: { id: applicationId }, select: { idempotencyKey: true } });
+      if (!app || (await this.store.isAlreadySubmitted(app.idempotencyKey))) continue; // already through — skip on retry
+      jobs.push(await this.hydrate({ applicationId, memberCredentialId: lean.memberCredentialId, idempotencyKey: app.idempotencyKey }));
+    }
+    if (!jobs.length) return { skipped: true, count: lean.applicationIds.length };
+
+    const results = await this.rail.orchestrator.submitBulk(jobs.map((j) => j.bid), lean.memberCredentialId);
+    let ok = 0, failed = 0;
+    for (let i = 0; i < jobs.length; i++) {
+      const r = results[i];
+      if (r?.ok) { await this.store.saveResult(jobs[i], r); ok++; }
+      else { await this.store.markFailed(jobs[i], { code: r?.errorCode, message: r?.message ?? 'rejected' }); failed++; }
+    }
+    return { bulk: true, submitted: ok, failed };
+  }
+
+  async enqueueBulk(lean: LeanBulkSubmissionJob): Promise<void> {
+    if (this.queue) {
+      await this.queue.add('submit-bulk', lean, {
+        jobId: lean.idempotencyKey,
+        attempts: Number(process.env.QUEUE_ATTEMPTS ?? 5),
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: 1000,
+        removeOnFail: 2000,
+      });
+      this.log.log(`enqueued bulk[${lean.applicationIds.length}] (job ${lean.idempotencyKey})`);
+      return;
+    }
+    // Inline fallback (no Redis configured).
+    try {
+      const outcome = await this.processBulk(lean);
+      this.log.log(`processed bulk inline: ${JSON.stringify(outcome).slice(0, 120)}`);
+    } catch (err) {
+      this.log.warn(`transient bulk failure: ${(err as Error).message}`);
+      throw err;
+    }
   }
 
   async enqueue(lean: LeanSubmissionJob): Promise<void> {

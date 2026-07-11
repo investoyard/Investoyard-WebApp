@@ -6,7 +6,7 @@ import { colors } from '@investoyard/design-tokens';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { useProfiles } from '../../components/profiles';
-import { getIpo, createApplication, getConsentNotices } from '../../lib/api';
+import { getIpo, createApplication, createBulkApplication, getConsentNotices } from '../../lib/api';
 
 type ApplicantType = 'individual' | 'shareholder' | 'employee';
 
@@ -17,7 +17,7 @@ export default function ApplyScreen() {
   const { profiles } = useProfiles();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const [ipo, setIpo] = useState<IpoDetail | null | undefined>(undefined);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lots, setLots] = useState(1);
   const [method, setMethod] = useState<'upi' | 'pdf'>('upi');
   const [consent, setConsent] = useState(false);
@@ -52,11 +52,14 @@ export default function ApplyScreen() {
     );
   }
 
-  const selected = profiles.find((p) => p.id === selectedId) ?? profiles[0];
+  // Multi-select: tap to add/remove family members; the batch goes as ONE bulk call.
+  const chosen = selectedIds.length ? profiles.filter((p) => selectedIds.includes(p.id)) : [profiles[0]];
+  const toggleApplicant = (id: string) =>
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const lot = ipo.lotSize ?? 0;
   const unit = ipo.priceBandMax ?? 0;
   const shares = lots * lot;
-  const amount = shares * unit;
+  const amount = shares * unit * chosen.length; // same lots per member (v1)
 
   return (
     <View style={styles.screen}>
@@ -64,13 +67,13 @@ export default function ApplyScreen() {
       <Text style={styles.note}>{t('apply.selfPan')}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.label}>{t('apply.applicant')}</Text>
+        <Text style={styles.label}>{t('apply.applicant')}{chosen.length > 1 ? `  ·  ${chosen.length}` : ''}</Text>
         <View style={styles.applicants}>
           {profiles.map((p) => {
-            const on = p.id === selected.id;
+            const on = chosen.some((c) => c.id === p.id);
             return (
-              <Pressable key={p.id} onPress={() => setSelectedId(p.id)} style={[styles.appChip, on && styles.appChipOn]}>
-                <Text style={[styles.appTxt, on && styles.appTxtOn]}>{t(`rel.${p.relationship}`)} · {p.fullName}</Text>
+              <Pressable key={p.id} onPress={() => toggleApplicant(p.id)} style={[styles.appChip, on && styles.appChipOn]}>
+                <Text style={[styles.appTxt, on && styles.appTxtOn]}>{on ? '✓ ' : ''}{t(`rel.${p.relationship}`)} · {p.fullName}</Text>
               </Pressable>
             );
           })}
@@ -122,12 +125,21 @@ export default function ApplyScreen() {
             style={[styles.btn, !consent && styles.btnDisabled]}
             disabled={!consent}
             onPress={async () => {
-              await createApplication(token!, {
-                investorProfileId: selected.id, ipoId: ipo.id, category: 'IND',
-                applicantType,
-                lots, atCutoff: true, applyMethod: method === 'upi' ? 'native' : 'pdf',
-                dataSharingConsent: consent, consentNoticeVersion: noticeVersion,
-              });
+              if (chosen.length > 1 && method === 'upi') {
+                // Family batch → ONE rail addbulk call; each member bids with their own PAN/UPI.
+                await createBulkApplication(token!, {
+                  ipoId: ipo.id, category: 'IND', applyMethod: 'native',
+                  applicants: chosen.map((p) => ({ investorProfileId: p.id, lots, atCutoff: true, applicantType })),
+                  dataSharingConsent: consent, consentNoticeVersion: noticeVersion,
+                });
+              } else {
+                await createApplication(token!, {
+                  investorProfileId: chosen[0].id, ipoId: ipo.id, category: 'IND',
+                  applicantType,
+                  lots, atCutoff: true, applyMethod: method === 'upi' ? 'native' : 'pdf',
+                  dataSharingConsent: consent, consentNoticeVersion: noticeVersion,
+                });
+              }
               setPlaced(true);
             }}
           >

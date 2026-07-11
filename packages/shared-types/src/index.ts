@@ -59,6 +59,25 @@ export interface ConsentNotice {
   summary: string;
 }
 
+/** One family member's bid inside a bulk apply. */
+export interface BulkApplicant {
+  investorProfileId: string;
+  lots: number;
+  atCutoff?: boolean;
+  bidPrice?: number;
+  applicantType?: ApplicantCategory;
+}
+
+/** Family / group apply — submitted to the rail as ONE addbulk call (≤100). */
+export interface CreateBulkApplicationInput {
+  ipoId: string;
+  category: string;
+  applicants: BulkApplicant[];
+  applyMethod: 'native';
+  dataSharingConsent: boolean;
+  consentNoticeVersion?: string;
+}
+
 /** An in-app / push notification (allotment, listing, status). */
 export interface NotificationView {
   id: string;
@@ -114,6 +133,7 @@ export interface ApplicationView {
   ipoName?: string;
   status: ApplicationStatus;
   applyMethod: ApplyMethod;
+  applicantType?: ApplicantCategory;
   amount: number;
   applicationNumber?: string;
   amountBlocked?: number;

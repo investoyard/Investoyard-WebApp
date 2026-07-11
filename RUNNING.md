@@ -175,6 +175,16 @@ is set (DEK generated/unwrapped by KMS; the master key never leaves KMS; needs
   configured modes (queue = BullMQ/inline, SMS = provider/dev, vault = KMS/AES, Node, uptime). Surfaced
   at **`/admin/system`** (web), auto-refreshing. See [health.module.ts](apps/api/src/modules/health/health.module.ts).
 
+### Family / bulk apply (NSE addbulk)
+`POST /api/applications/bulk` applies for up to **100 family members in one call**: every applicant
+is validated first (**all-or-nothing** — profile ownership, self-PAN vs DB *and* within the batch,
+reservation eligibility, cut-off/UPI caps), all rows are created in one transaction, and a **single
+lean bulk job** goes to the queue. The worker hydrates each member (DB + vault) and submits the
+whole batch as ONE rail `addbulk` call (`orchestrator.submitBulk`); per-application idempotency
+means a retry only re-submits members that didn't get through. Self-PAN holds throughout — each
+member bids with their own PAN/demat/UPI and approves their own mandate. The mobile apply screen
+supports multi-select (tap several family chips → one bulk submission).
+
 ### Submission queue (BullMQ)
 Native bids submit through a **BullMQ** queue when `REDIS_URL` is set
 ([submission-queue.service.ts](apps/api/src/modules/queue/submission-queue.service.ts)): `enqueue()`
