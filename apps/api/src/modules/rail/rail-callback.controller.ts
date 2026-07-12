@@ -1,20 +1,23 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import {
   AppDpStatusRequest,
   AppPayStatusRequest,
   CallbackAck,
   RailCallbackService,
 } from '@investoyard/rail-adapters';
+import { RailCallbackGuard } from './rail-callback.guard';
 
 /**
  * Endpoints the NSE host calls to push status (Chapter 4).
  * With global prefix 'api' these resolve to /api/v1/appdpstatus etc. —
  * give the exchange this callback base when onboarding the member.
  *
- * TODO: protect with a guard verifying Authorization = base64(SHA256(SHA1(password)))
- *       (verifyAuthHeader from @investoyard/rail-adapters), keyed to the active member.
+ * Auth: RailCallbackGuard verifies Authorization = base64(SHA256(SHA1(password)))
+ * against the active member credentials — enforced when RAIL_CALLBACK_AUTH=enabled
+ * (production); pass-through in dev.
  */
 @Controller('v1')
+@UseGuards(RailCallbackGuard)
 export class RailCallbackController {
   constructor(private readonly svc: RailCallbackService) {}
 

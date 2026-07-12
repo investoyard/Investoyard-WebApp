@@ -5,6 +5,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RailService } from './rail.service';
 import { RailCallbackController } from './rail-callback.controller';
+import { RailCallbackGuard } from './rail-callback.guard';
 import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
 
 @Module({
@@ -14,6 +15,7 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
     RailService,
     PrismaService,
     PiiVaultService,
+    RailCallbackGuard,
     PrismaApplicationRepo,
     PushNotifier,
     {
