@@ -59,6 +59,14 @@ WAPP=$(curl -s -X POST $API/applications -H "Content-Type: application/json" -H 
 ck "withdraw while open"     "$(curl -s -X DELETE $API/applications/$WAPP -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).status')" "released"
 ck "re-withdraw 400"         "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE $API/applications/$WAPP -H "Authorization: Bearer $CUST")" "400"
 
+# 6c. watchlist alerts (open / closing-soon, deduped)
+ACMEID=$(curl -s $API/ipos/by-symbol/ACME | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')
+curl -s -o /dev/null -X POST $API/watchlist -H "Content-Type: application/json" -H "Authorization: Bearer $CUST" -d "{\"ipoId\":\"$ACMEID\"}"
+curl -s -o /dev/null -X POST $API/admin/alerts/run -H "Authorization: Bearer $SUPER"
+ck "watchlist alert sent"    "$(curl -s $API/notifications -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).filter(n=>n.type==="ipo_open").length')" "1"
+curl -s -o /dev/null -X POST $API/admin/alerts/run -H "Authorization: Bearer $SUPER"
+ck "watchlist alert dedup"   "$(curl -s $API/notifications -H "Authorization: Bearer $CUST" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).filter(n=>n.type==="ipo_open").length')" "1"
+
 # 7. family bulk apply (NSE addbulk path)
 FAM=$(tok 9995554444)
 curl -s -o /dev/null -X POST $API/profiles -H "Content-Type: application/json" -H "Authorization: Bearer $FAM" -d '{"relationship":"self","fullName":"Fam Self","pan":"AAAQZ0001A","depository":"NSDL","dpId":"IN300001","clientId":"1001","upiId":"f1@upi"}'
@@ -94,6 +102,7 @@ P 'delete from "ApplicationStatusEvent" e using "Application" a,"User" u where e
 P 'delete from "Application" x using "User" u where x."userId"=u.id and u.mobile like $$999555%$$;' >/dev/null
 P 'delete from "Consent" x using "User" u where x."userId"=u.id and u.mobile like $$999555%$$;' >/dev/null
 P 'delete from "InvestorProfile" x using "User" u where x."userId"=u.id and u.mobile like $$999555%$$;' >/dev/null
+P 'delete from "WatchlistItem" x using "User" u where x."userId"=u.id and u.mobile like $$999555%$$;' >/dev/null
 P 'delete from "User" where mobile like $$999555%$$;' >/dev/null
 P 'delete from "AuditLog";' >/dev/null
 for k in $(R keys "bull:submissions:*" | tr -d '\r'); do R del "$k" >/dev/null; done
