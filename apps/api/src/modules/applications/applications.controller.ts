@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -35,6 +35,15 @@ export class ApplicationsController {
   @Delete(':id')
   withdraw(@Req() req: any, @Param('id') id: string) {
     return this.apps.withdraw(req.user.sub, id);
+  }
+
+  /** Prefilled ASBA bank form (the `pdf` apply method's download). */
+  @Get(':id/pdf')
+  async pdf(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {
+    const { buffer, filename } = await this.apps.generatePdf(req.user.sub, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return new StreamableFile(buffer);
   }
 
   /** Back-office: record the registrar's allotment (platform operator — bids.manage). */

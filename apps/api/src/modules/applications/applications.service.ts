@@ -7,6 +7,7 @@ import { RailService } from '../rail/rail.service';
 import { SubmissionQueueService } from '../queue/submission-queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
+import { buildAsbaPdf } from './asba-pdf';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
 
 @Injectable()
@@ -154,6 +155,45 @@ export class ApplicationsService {
 
     const current = await this.prisma.application.findUnique({ where: { id: app.id } });
     return { application: current, status: current?.status };
+  }
+
+  /**
+   * Prefilled ASBA bank form — the investor prints/signs it and submits it to
+   * their SCSB branch (the `pdf` apply method). PII is vault-resolved here for
+   * the owner's own document; nothing is persisted.
+   */
+  async generatePdf(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+    const app = await this.prisma.application.findFirst({
+      where: { id, userId },
+      include: { profile: true, ipo: true, tenant: { select: { name: true } } },
+    });
+    if (!app) throw new NotFoundException();
+
+    const buffer = await buildAsbaPdf({
+      applicationId: app.id,
+      channelName: app.tenant?.name ?? 'Investoyard',
+      ipo: {
+        symbol: app.ipo.symbol, name: app.ipo.name,
+        priceBandMin: app.ipo.priceBandMin as any, priceBandMax: app.ipo.priceBandMax as any,
+        lotSize: app.ipo.lotSize, closeDate: app.ipo.closeDate ? app.ipo.closeDate.toISOString().slice(0, 10) : null,
+      },
+      applicant: {
+        fullName: app.profile.fullName,
+        pan: await this.vault.resolve(app.profile.panTokenRef), // owner's own form → full PAN
+        relationship: app.profile.relationship,
+        depository: app.profile.depository, dpId: app.profile.dpId, clientId: app.profile.clientId,
+      },
+      bid: {
+        lots: app.lots, shares: app.lots * (app.ipo.lotSize ?? 0), atCutoff: app.atCutoff,
+        bidPrice: app.bidPrice != null ? Number(app.bidPrice) : null, amount: Number(app.amount),
+        category: app.category, applicantType: app.applicantType,
+      },
+      bank: {
+        account: app.profile.bankTokenRef ? await this.vault.resolve(app.profile.bankTokenRef) : null,
+        ifsc: app.profile.ifsc,
+      },
+    });
+    return { buffer, filename: `asba-${app.ipo.symbol}-${app.id.slice(0, 8)}.pdf` };
   }
 
   /**
