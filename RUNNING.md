@@ -243,6 +243,16 @@ processing (the previous behaviour) — the app runs with or without Redis.
   active record). The mobile **Privacy & consents** screen (linked from Profiles) lists consents and
   withdraws them.
 
+## Per-locale SEO routes (web)
+The public content pages are statically generated **per locale**: `/` + `/ipos/[symbol]/` (English)
+and `/hi/` + `/hi/ipos/[symbol]/` (Hindi — server-rendered Devanagari content, Hindi titles/meta).
+Every page carries the full **hreflang cluster** (`en`, `hi`, `x-default` + canonical), and `/hi/`
+cards link within the locale. Views live in [components/views](apps/web/components/views) (Next
+forbids extra exports from page files); add a locale by extending
+[lib/locales.ts](apps/web/lib/locales.ts) once its translations are ready. App-like pages
+(login/apply/portfolio/admin) intentionally stay on the `?lang=` query — they're client-side and
+not SEO surfaces; the language switcher handles both forms.
+
 ## Regression smoke test
 With the live stack up (DB + Redis + API), `bash scripts/smoke.sh` runs a 23-check end-to-end
 battery — health, tenancy cascade + lock, RBAC (200/403/401), Redis OTP store + real-OTP verify,

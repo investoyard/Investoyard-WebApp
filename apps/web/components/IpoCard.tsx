@@ -63,6 +63,8 @@ function CloseHint({ ipo }: { ipo: IpoFull }) {
 export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
+  // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
+  const detailHref = lang === 'en' ? `/ipos/${ipo.symbol}` : `/${lang}/ipos/${ipo.symbol}`;
   const [open, setOpen] = useState<Topic | null>(null);
   const canApply = ipo.status === 'open' || ipo.status === 'upcoming';
   const watched = useStore((s) => s.watchlist.includes(ipo.symbol));
@@ -88,7 +90,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-top">
         <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
         <div className="grow">
-          <a className="ic-name" href={`/ipos/${ipo.symbol}${q}`}>{ipo.name}</a>
+          <a className="ic-name" href={detailHref}>{ipo.name}</a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
