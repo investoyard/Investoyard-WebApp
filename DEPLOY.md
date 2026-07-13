@@ -75,6 +75,48 @@ Notes:
 - Run `prisma db push`, `apps/api/prisma/setup-rls.sql`, and `npm run seed` against the hosted DB (same order as §C step 3).
 - Set `NEXT_PUBLIC_API_URL` (web) and `EXPO_PUBLIC_API_URL` (mobile) to the hosted API URL.
 
+## E. Database security (READ BEFORE GOING LIVE)
+
+The **local dev** database uses `trust` auth — it accepts connections with **no password**
+(that's why pgAdmin connects with a blank password locally). This is a dev-only convenience: the DB
+listens on `localhost` only. **It must never be run this way in production.** Production closes every
+one of these shortcuts, and the Docker pack in §C already enforces most of them.
+
+**Checklist before go-live:**
+
+1. **Strong, unique passwords** — set both in `.env.deploy` (never commit it):
+   - `POSTGRES_PASSWORD` — the superuser (`postgres`), used only for migrations/admin.
+   - `APP_DB_PASSWORD` — the app's runtime role (`investoyard_app`).
+
+   The compose refuses to start if either is unset (`:?` guard). Password auth is **scram-sha-256**
+   (the `postgres:16` image's default once a password is set) — not `trust`. After §C step 3's
+   `ALTER ROLE … WITH PASSWORD`, no blank-password connection works.
+
+2. **Keep the database off the public network.** In `docker-compose.prod.yml` the `db` service has
+   **no published `ports:`** — only the `api` container reaches it over Docker's private network.
+   Do **not** add a `ports:` mapping to `db` (or `redis`) on a public server. Verify with
+   `docker compose ps` that only web `:80`/`:443` is exposed.
+
+3. **Least privilege for the app.** The API connects as `investoyard_app` — a `NOSUPERUSER`,
+   `NOBYPASSRLS` role. Row-Level Security keeps even that role from seeing across tenants without the
+   per-request tenant context. `postgres` (superuser) is used only for `db push` / seed.
+
+4. **TLS on the wire** — required when the DB is on a **separate host / managed provider**
+   (AWS RDS, etc. enforce SSL): append `?sslmode=require` to `DATABASE_URL` / `DIRECT_URL`. Not
+   needed for the single-box Docker setup where DB traffic never leaves the host.
+
+5. **Admin access to the prod DB** — never open the DB port to the internet to use pgAdmin. Connect
+   over an **SSH tunnel** to the server instead:
+   ```
+   ssh -L 5433:localhost:5432 user@your-server     # then point pgAdmin at localhost:5433
+   ```
+   (Map to `5432` inside the box if you temporarily publish the port on `127.0.0.1` only, or tunnel
+   straight into the container's network.) Use the `POSTGRES_PASSWORD` you set.
+
+6. **Also protect the rest** — `PII_VAULT_KEY`, `JWT_SECRET`, and Redis live in the same trust
+   boundary. Set `RAIL_CALLBACK_AUTH=enabled` (signed exchange callbacks), keep `.env.deploy` off
+   version control, and restrict who can `docker exec` into the host.
+
 ## Quick recap
 | Target | Command | Result |
 |---|---|---|
