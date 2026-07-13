@@ -96,6 +96,11 @@ curl -s -o /dev/null -X PUT $API/admin/providers/sms -H 'Content-Type: applicati
 ck "provider key vaulted"    "$(curl -s $API/admin/providers -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).find(p=>p.provider==="sms"); d.secretKeys.join(",")+"/"+String(JSON.stringify(d).includes("SMOKE-KEY-XYZ"))')" "apiKey/false"
 curl -s -o /dev/null -X PUT $API/admin/providers/sms -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"enabled":false}' # leave disabled for other checks
 ck "dashboard counts"        "$(curl -s $API/admin/dashboard/investoyard-platform -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.counts.iposTotal+"/"+d.counts.tenants')" "9/5"
+# IPO catalog: full create (docs + reservations), coherence validation, guarded delete
+SMKI=$(curl -s -X POST $API/ipos -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"symbol":"SMOKEIPO","name":"Smoke Co","type":"sme","priceBandMin":50,"priceBandMax":55,"lotSize":100,"reservations":["employee"],"documents":[{"type":"RHP","url":"https://x.io/r.pdf"}],"gmp":5}' | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')
+ck "ipo create w/ docs"      "$(curl -s $API/ipos/$SMKI | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.reservations.join(",")+"/"+d.documents.length+"/"+d.gmp')" "employee/1/5"
+ck "ipo coherence 400"       "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH $API/ipos/$SMKI -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"openDate":"2026-09-10","closeDate":"2026-09-01"}')" "400"
+ck "ipo delete (no apps)"    "$(curl -s -X DELETE $API/ipos/$SMKI -H "Authorization: Bearer $SUPER" | node -pe 'String(JSON.parse(require("fs").readFileSync(0,"utf8")).deleted)')" "true"
 
 echo
 echo "================= SWEEP RESULT: $PASS passed, $FAIL failed ================="

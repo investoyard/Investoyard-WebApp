@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -28,6 +28,13 @@ export class IpoController {
   @RequirePermissions('ipos.manage')
   update(@Param('id') id: string, @Body() dto: UpdateIpoDto) {
     return this.ipo.update(id, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('ipos.manage')
+  remove(@Param('id') id: string) {
+    return this.ipo.remove(id);
   }
 
   @Get('by-symbol/:symbol')

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -29,7 +29,11 @@ function toDetail(ipo: any) {
     allotmentDate: day(ipo.allotmentDate), listingDate: day(ipo.listingDate),
     priceBandMin: num(ipo.priceBandMin), priceBandMax: num(ipo.priceBandMax),
     lotSize: ipo.lotSize ?? undefined, minAmount: num(ipo.minAmount),
-    issueSize: crStr(ipo.issueSize), registrar: ipo.registrar ?? undefined,
+    issueSize: crStr(ipo.issueSize),
+    issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e7) : undefined, // raw ₹cr for admin edit
+    registrar: ipo.registrar ?? undefined,
+    isin: ipo.isin ?? undefined,
+    logoUrl: ipo.logoUrl ?? undefined,
     objectsOfIssue: ipo.objectsOfIssue ?? undefined,
     listingGainPct: num(ipo.listingGainPct),
     subscriptionTimes: total ? Number(total.timesSubscribed) : undefined,
@@ -78,8 +82,12 @@ export class IpoService {
 
   /** Admin: create a new IPO in the catalog (global — operator-managed). */
   async create(dto: CreateIpoDto) {
+    this.validateCoherence(dto);
     try {
       const ipo = await this.prisma.ipo.create({ data: this.mapWrite(dto, dto.symbol, dto.type) });
+      if (dto.documents?.length) {
+        await this.prisma.ipoDocument.createMany({ data: dto.documents.map((doc) => ({ ipoId: ipo.id, type: doc.type, url: doc.url, summary: doc.summary })) });
+      }
       if (dto.gmp != null) await this.prisma.ipoGmp.create({ data: { ipoId: ipo.id, value: dto.gmp, trend: 'flat', source: 'admin' } });
       return this.get(ipo.id);
     } catch (e: any) {
@@ -92,7 +100,23 @@ export class IpoService {
   async update(id: string, dto: UpdateIpoDto) {
     const existing = await this.prisma.ipo.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('IPO not found');
+    // Validate the EFFECTIVE record (existing + this patch) so partial edits are still coherent.
+    this.validateCoherence({
+      priceBandMin: dto.priceBandMin ?? (existing.priceBandMin != null ? Number(existing.priceBandMin) : undefined),
+      priceBandMax: dto.priceBandMax ?? (existing.priceBandMax != null ? Number(existing.priceBandMax) : undefined),
+      openDate: dto.openDate ?? day(existing.openDate),
+      closeDate: dto.closeDate ?? day(existing.closeDate),
+      allotmentDate: dto.allotmentDate ?? day(existing.allotmentDate),
+      listingDate: dto.listingDate ?? day(existing.listingDate),
+    });
     await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, undefined, dto.type) });
+    // Documents are a full replace when provided (predictable admin editing).
+    if (dto.documents) {
+      await this.prisma.ipoDocument.deleteMany({ where: { ipoId: id } });
+      if (dto.documents.length) {
+        await this.prisma.ipoDocument.createMany({ data: dto.documents.map((doc) => ({ ipoId: id, type: doc.type, url: doc.url, summary: doc.summary })) });
+      }
+    }
     if (dto.gmp != null) {
       await this.prisma.ipoGmp.deleteMany({ where: { ipoId: id } });
       await this.prisma.ipoGmp.create({ data: { ipoId: id, value: dto.gmp, trend: 'flat', source: 'admin' } });
@@ -102,6 +126,55 @@ export class IpoService {
       await this.notifyListing(id).catch(() => { /* notifications are best-effort */ });
     }
     return this.get(id);
+  }
+
+  /**
+   * Delete an IPO — only when it has NO applications (a genuine mistake / test row).
+   * Otherwise the operator should set status to `withdrawn` instead of destroying data.
+   * Removes the IPO's own children + any watchlist entries (unscoped: watchlist is
+   * tenant-scoped and this is a platform op).
+   */
+  async remove(id: string) {
+    const existing = await this.prisma.ipo.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('IPO not found');
+    const apps = await tenantContext.runUnscoped(async () => this.prisma.application.count({ where: { ipoId: id } }));
+    if (apps > 0) {
+      throw new ConflictException(`This IPO has ${apps} application(s) and cannot be deleted — set its status to 'withdrawn' instead.`);
+    }
+    await tenantContext.runUnscoped(async () =>
+      this.prisma.$transaction([
+        this.prisma.ipoGmp.deleteMany({ where: { ipoId: id } }),
+        this.prisma.ipoSubscription.deleteMany({ where: { ipoId: id } }),
+        this.prisma.ipoDocument.deleteMany({ where: { ipoId: id } }),
+        this.prisma.ipoCategory.deleteMany({ where: { ipoId: id } }),
+        this.prisma.watchlistItem.deleteMany({ where: { ipoId: id } }),
+        this.prisma.ipo.delete({ where: { id } }),
+      ]),
+    );
+    return { deleted: true, symbol: existing.symbol };
+  }
+
+  /** Reject incoherent data: price band ordering + chronological date ordering. */
+  private validateCoherence(v: {
+    priceBandMin?: number; priceBandMax?: number;
+    openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
+  }) {
+    if (v.priceBandMin != null && v.priceBandMax != null && v.priceBandMin > v.priceBandMax) {
+      throw new BadRequestException('Price band minimum cannot exceed the maximum.');
+    }
+    const seq: { label: string; date?: string }[] = [
+      { label: 'open', date: v.openDate },
+      { label: 'close', date: v.closeDate },
+      { label: 'allotment', date: v.allotmentDate },
+      { label: 'listing', date: v.listingDate },
+    ];
+    const present = seq.filter((s) => s.date).map((s) => ({ label: s.label, t: Date.parse(s.date + 'T00:00:00Z') }));
+    for (const p of present) if (Number.isNaN(p.t)) throw new BadRequestException(`Invalid ${p.label} date (use YYYY-MM-DD).`);
+    for (let i = 1; i < present.length; i++) {
+      if (present[i].t < present[i - 1].t) {
+        throw new BadRequestException(`The ${present[i].label} date cannot be before the ${present[i - 1].label} date.`);
+      }
+    }
   }
 
   /** Notify every allotted investor of an IPO's listing-day gain/loss on their shares. */
@@ -144,6 +217,9 @@ export class IpoService {
       minAmount: dto.minAmount,
       issueSize: dto.issueSizeCr != null ? dto.issueSizeCr * 1e7 : undefined,
       registrar: dto.registrar,
+      isin: dto.isin,
+      objectsOfIssue: dto.objectsOfIssue,
+      logoUrl: dto.logoUrl,
       openDate: d(dto.openDate),
       closeDate: d(dto.closeDate),
       allotmentDate: d(dto.allotmentDate),

@@ -96,12 +96,24 @@ export interface AdminIpo {
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; issueSize?: string;
   openDate?: string; closeDate?: string; registrar?: string; gmp?: number; reservations?: string[];
 }
+export interface IpoDoc { type: string; url: string; summary?: string }
 export interface IpoWrite {
   symbol?: string; name?: string; type?: string; status?: string;
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; minAmount?: number;
-  issueSizeCr?: number; registrar?: string; openDate?: string; closeDate?: string;
-  reservations?: string[]; gmp?: number; listingGainPct?: number;
+  issueSizeCr?: number; registrar?: string; isin?: string; objectsOfIssue?: string; logoUrl?: string;
+  openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
+  reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
 }
+/** Full record for the edit form (from GET /ipos/:id). */
+export interface AdminIpoDetail {
+  id: string; symbol: string; name: string; type: 'mainboard' | 'sme'; status: string;
+  priceBandMin?: number; priceBandMax?: number; lotSize?: number; minAmount?: number; issueSizeCr?: number;
+  registrar?: string; isin?: string; logoUrl?: string; objectsOfIssue?: string;
+  openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
+  reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
+}
+export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminIpoDetail>);
+export const deleteIpo = (id: string) => authed<{ deleted: boolean }>(`${API}/ipos/${id}`, { method: 'DELETE' });
 
 /* -------------------------------------------------- admin: applications (bids) */
 export interface AdminApplication {
