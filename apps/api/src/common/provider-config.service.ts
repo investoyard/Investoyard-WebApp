@@ -11,8 +11,11 @@ export const PROVIDER_SPECS = [
     key: 'sms',
     label: 'SMS — OTP delivery',
     fields: [
-      { name: 'providerName', label: 'Provider', placeholder: 'msg91 / gupshup / twilio' },
+      { name: 'providerName', label: 'Provider', placeholder: 'msg91' },
       { name: 'senderId', label: 'Sender ID (DLT)', placeholder: 'INVYRD' },
+      { name: 'templateId', label: 'DLT template ID (MSG91 Flow)', placeholder: '6XXXXXXXXXXXXXXXXX' },
+      { name: 'otpVar', label: 'OTP variable name in template', placeholder: 'otp' },
+      { name: 'apiUrl', label: 'API URL (override, optional)', placeholder: 'https://control.msg91.com/api/v5/flow/' },
     ],
     secretFields: [
       { name: 'apiKey', label: 'API key' },

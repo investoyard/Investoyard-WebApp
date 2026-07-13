@@ -8,10 +8,13 @@ import * as api from '@/lib/tenants-admin';
 const SPECS = [
   {
     key: 'sms', label: 'SMS — OTP delivery',
-    hint: 'When enabled, real OTPs are sent and the dev code 123456 stops working.',
+    hint: 'MSG91 (India, DLT). When enabled, real OTPs are sent and the dev code 123456 stops working.',
     fields: [
-      { name: 'providerName', label: 'Provider', placeholder: 'msg91 / gupshup / twilio' },
+      { name: 'providerName', label: 'Provider', placeholder: 'msg91' },
       { name: 'senderId', label: 'Sender ID (DLT)', placeholder: 'INVYRD' },
+      { name: 'templateId', label: 'DLT template ID', placeholder: '6XXXXXXXXXXXXXXXXX' },
+      { name: 'otpVar', label: 'OTP variable name', placeholder: 'otp' },
+      { name: 'apiUrl', label: 'API URL (optional override)', placeholder: 'control.msg91.com/api/v5/flow/' },
     ],
     secretFields: [
       { name: 'apiKey', label: 'API key' },

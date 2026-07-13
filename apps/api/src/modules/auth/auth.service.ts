@@ -60,7 +60,7 @@ export class AuthService {
     const requestId = randomBytes(16).toString('hex');
     const otp = String(randomInt(100000, 1000000)); // real 6-digit code
     await this.storeOtp(requestId, { mobile, otp, exp: Date.now() + OTP_TTL * 1000 });
-    await this.sms.send(mobile, `Your Investoyard OTP is ${otp}. Valid for 5 minutes.`);
+    await this.sms.send(mobile, `Your Investoyard OTP is ${otp}. Valid for 5 minutes.`, { otp });
     return { requestId };
   }
 
