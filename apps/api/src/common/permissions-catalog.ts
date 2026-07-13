@@ -18,6 +18,7 @@ export const PERMISSION_CATALOG = [
   { key: 'rails.manage', label: 'Configure exchange APIs (NSE/BSE)', group: 'Exchange rails' },
   { key: 'tenants.manage', label: 'Manage tenants & white-label settings', group: 'Tenants' },
   { key: 'settings.manage', label: 'Manage settings', group: 'Settings' },
+  { key: 'providers.manage', label: 'Manage provider keys (SMS / push)', group: 'Settings' },
 ] as const;
 
 export const VALID_PERMISSIONS = new Set<string>(PERMISSION_CATALOG.map((p) => p.key));

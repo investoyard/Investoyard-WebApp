@@ -150,6 +150,17 @@ export interface AuditEntry {
 }
 export const fetchAudit = () => authed<AuditEntry[]>(`${API}/admin/audit`, { method: 'GET' });
 
+export interface ProviderConfig {
+  provider: string; enabled: boolean; settings: Record<string, any>; secretKeys: string[];
+}
+export const fetchProviders = () => authed<ProviderConfig[]>(`${API}/admin/providers`, { method: 'GET' });
+export const saveProvider = (
+  provider: string,
+  body: { enabled?: boolean; settings?: Record<string, any>; secrets?: Record<string, string> },
+) => authed<ProviderConfig>(`${API}/admin/providers/${provider}`, {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
 export interface SystemStatus {
   database: 'up' | 'down'; redis: 'up' | 'down' | 'disabled';
   queue: string; sms: string; vault: string; node: string; uptimeSec: number;

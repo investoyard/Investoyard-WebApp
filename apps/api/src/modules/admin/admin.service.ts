@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { RailService } from '../rail/rail.service';
 import { HealthService } from '../health/health.module';
+import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
 import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common/permissions-catalog';
 
@@ -14,16 +15,26 @@ import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common
  */
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService, private vault: PiiVaultService, private health: HealthService, private rail: RailService) {}
+  constructor(
+    private prisma: PrismaService,
+    private vault: PiiVaultService,
+    private health: HealthService,
+    private rail: RailService,
+    private providers: ProviderConfigService,
+  ) {}
 
   /** Operator-facing system/infra status (component health + configured modes). */
   async systemStatus() {
-    const [database, redis] = await Promise.all([this.health.database(), this.health.redisState()]);
+    const [database, redis, sms] = await Promise.all([
+      this.health.database(),
+      this.health.redisState(),
+      this.providers.effective('sms'),
+    ]);
     return {
       database,
       redis,
       queue: process.env.REDIS_URL ? 'BullMQ (Redis)' : 'inline (dev)',
-      sms: process.env.SMS_PROVIDER ? `provider: ${process.env.SMS_PROVIDER}` : 'dev (logged)',
+      sms: sms ? `configured: ${sms.settings.providerName ?? 'provider'}` : 'dev (logged)',
       vault: process.env.KMS_KEY_ID ? 'AWS KMS' : 'local AES (dev)',
       node: process.version,
       uptimeSec: Math.round(process.uptime()),

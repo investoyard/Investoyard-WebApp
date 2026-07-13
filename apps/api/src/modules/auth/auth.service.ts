@@ -46,7 +46,7 @@ export class AuthService {
   /** Throttle OTP requests per mobile (cooldown + hourly cap). Only when real SMS is
    *  configured — dev logs OTPs (no cost/bombing risk) and stays unthrottled. */
   private async rateLimit(mobile: string) {
-    if (!this.redis.client || !this.sms.enabled) return;
+    if (!this.redis.client || !(await this.sms.isEnabled())) return;
     const cd = await this.redis.client.set(`otp:cd:${mobile}`, '1', 'EX', RL_COOLDOWN, 'NX');
     if (cd === null) throw new HttpException('Please wait before requesting another OTP.', HttpStatus.TOO_MANY_REQUESTS);
     const n = await this.redis.client.incr(`otp:rl:${mobile}`);
@@ -67,7 +67,7 @@ export class AuthService {
   async verifyOtp(requestId: string, otp: string) {
     const rec = await this.readOtp(requestId);
     if (!rec || rec.exp < Date.now()) throw new BadRequestException('OTP expired');
-    const devBypass = !this.sms.enabled && otp === DEV_OTP;
+    const devBypass = !(await this.sms.isEnabled()) && otp === DEV_OTP;
     if (rec.otp !== otp && !devBypass) throw new BadRequestException('Invalid OTP');
     await this.dropOtp(requestId);
 

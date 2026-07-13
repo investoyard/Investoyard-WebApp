@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   { key: 'rails.manage', label: 'Configure exchange APIs (NSE/BSE)', group: 'Exchange rails' },
   { key: 'tenants.manage', label: 'Manage tenants & white-label settings', group: 'Tenants' },
   { key: 'settings.manage', label: 'Manage settings', group: 'Settings' },
+  { key: 'providers.manage', label: 'Manage provider keys (SMS / push)', group: 'Settings' },
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number]['key'];
 export const ALL_PERMS: Permission[] = PERMISSIONS.map((p) => p.key);

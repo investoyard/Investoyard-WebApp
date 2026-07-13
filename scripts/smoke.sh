@@ -91,6 +91,10 @@ ck "reports aggregate"       "$(curl -s $API/admin/reports/investoyard -H "Autho
 ck "csv export header"       "$(curl -s -D - -o /dev/null $API/admin/reports/investoyard/export -H "Authorization: Bearer $SUPER" | grep -ci 'text/csv')" "1"
 ck "audit recorded"          "$(curl -s $API/admin/audit -H "Authorization: Bearer $SUPER" | node -pe 'String(JSON.parse(require("fs").readFileSync(0,"utf8")).filter(a=>a.action==="allotment.record").length>=1)')" "true"
 ck "rail handshake classify" "$(curl -s -X POST $API/admin/rails/seed-nse-axis/test -H "Authorization: Bearer $SUPER" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).outcome')" "invalid_secret"
+# provider keys: save w/ secret → vaulted (v2), never echoed, then remove
+curl -s -o /dev/null -X PUT $API/admin/providers/sms -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"enabled":false,"settings":{"providerName":"msg91"},"secrets":{"apiKey":"SMOKE-KEY-XYZ"}}'
+ck "provider key vaulted"    "$(curl -s $API/admin/providers -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).find(p=>p.provider==="sms"); d.secretKeys.join(",")+"/"+String(JSON.stringify(d).includes("SMOKE-KEY-XYZ"))')" "apiKey/false"
+curl -s -o /dev/null -X PUT $API/admin/providers/sms -H 'Content-Type: application/json' -H "Authorization: Bearer $SUPER" -d '{"enabled":false}' # leave disabled for other checks
 ck "dashboard counts"        "$(curl -s $API/admin/dashboard/investoyard-platform -H "Authorization: Bearer $SUPER" | node -pe 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); d.counts.iposTotal+"/"+d.counts.tenants')" "9/5"
 
 echo
@@ -105,5 +109,6 @@ P 'delete from "InvestorProfile" x using "User" u where x."userId"=u.id and u.mo
 P 'delete from "WatchlistItem" x using "User" u where x."userId"=u.id and u.mobile like $$999555%$$;' >/dev/null
 P 'delete from "User" where mobile like $$999555%$$;' >/dev/null
 P 'delete from "AuditLog";' >/dev/null
+P 'delete from "ProviderConfig";' >/dev/null
 for k in $(R keys "bull:submissions:*" | tr -d '\r'); do R del "$k" >/dev/null; done
 echo "cleaned -> users:$(P 'select count(*) from "User";') apps:$(P 'select count(*) from "Application";')"

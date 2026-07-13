@@ -23,6 +23,7 @@ const NAV: { href: string; label: string; icon: Parameters<typeof Icon>[0]['name
   { href: '/admin/rails-live', label: 'Exchange rails (live)', icon: 'globe', perm: 'rails.manage' },
   { href: '/admin/tenants', label: 'Tenants', icon: 'globe', perm: 'tenants.manage' },
   { href: '/admin/settings', label: 'Settings', icon: 'lock', perm: 'settings.manage' },
+  { href: '/admin/integrations', label: 'Provider keys', icon: 'lock', perm: 'providers.manage' },
   { href: '/admin/system', label: 'System status', icon: 'globe', perm: 'dashboard.view' },
 ];
 

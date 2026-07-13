@@ -146,6 +146,19 @@ model Tenant {
 
 /// Catalog of settable features/flags (platform-global). The defaultValue is the
 /// platform-wide baseline; tenants override via TenantSetting, cascading down the tree.
+/// Operator-managed provider/integration config (SMS, push, …). Non-secret settings
+/// are stored in the clear; secret values are vault-tokenized (field → v2: token),
+/// never returned raw. Platform-level (the operator's own accounts) — no tenantId,
+/// so it's outside RLS and only reachable via admin RBAC.
+model ProviderConfig {
+  provider  String   @id // 'sms' | 'push'
+  enabled   Boolean  @default(false)
+  settings  Json     @default("{}") // non-secret config (providerName, senderId, …)
+  secrets   Json     @default("{}") // field name → vault token
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model FeatureDefinition {
   key          String           @id
   label        String

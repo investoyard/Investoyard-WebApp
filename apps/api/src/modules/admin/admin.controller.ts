@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Res, UseGuards } from '@nestjs/common';
 import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from '../applications/applications.service';
+import { ProviderConfigService } from '../../common/provider-config.service';
 import { AdminService } from './admin.service';
 
 class AddMemberDto {
@@ -54,10 +55,33 @@ class ImportAllotmentsDto {
   @IsString() csv!: string; // registrar file: lines of "PAN,allottedLots" (optional header)
 }
 
+class ProviderConfigDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() settings?: Record<string, any>;
+  @IsOptional() secrets?: Record<string, string>; // field → new value (omit to keep existing)
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly apps: ApplicationsService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly apps: ApplicationsService,
+    private readonly providers: ProviderConfigService,
+  ) {}
+
+  /** Provider keys & integrations (SMS, push) — secrets vaulted, never returned. */
+  @Get('providers')
+  @RequirePermissions('providers.manage')
+  listProviders() {
+    return this.providers.list();
+  }
+
+  @Put('providers/:provider')
+  @RequirePermissions('providers.manage')
+  saveProvider(@Param('provider') provider: string, @Body() dto: ProviderConfigDto) {
+    return this.providers.upsert(provider, dto);
+  }
 
   /** Back-office: bulk allotment from the registrar's CSV (platform operator). */
   @Post('allotments/:symbol/import')

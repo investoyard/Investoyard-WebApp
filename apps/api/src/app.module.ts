@@ -5,6 +5,7 @@ import { PrismaService } from './prisma/prisma.service';
 import { TenantMiddleware } from './common/tenant.middleware';
 import { AuditInterceptor } from './common/audit.interceptor';
 import { RedisModule } from './common/redis.service';
+import { ProviderConfigModule } from './common/provider-config.service';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
@@ -24,6 +25,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     RedisModule,
+    ProviderConfigModule,
     HealthModule,
     AuthModule,
     ProfilesModule,
