@@ -117,6 +117,49 @@ one of these shortcuts, and the Docker pack in §C already enforces most of them
    boundary. Set `RAIL_CALLBACK_AUTH=enabled` (signed exchange callbacks), keep `.env.deploy` off
    version control, and restrict who can `docker exec` into the host.
 
+## F. Windows + IIS (static web + reverse-proxied API)
+
+Host the static web export in **IIS** and reverse-proxy `/api` to the local Node API. The public
+browse pages are a **build-time snapshot** of the DB; the dynamic pages (login, apply, **admin panel**)
+call the API live via `/api`.
+
+**Prerequisites (one-time):** install the IIS modules **URL Rewrite** and **Application Request
+Routing (ARR)**, then enable proxying: IIS Manager → *(server node)* → *Application Request Routing
+Cache* → *Server Proxy Settings* → tick **Enable proxy**.
+
+1. **Run the data + API** (keep these running; make them Windows services for a real server):
+   ```
+   pwsh scripts/db.ps1 start          # Postgres :5433   (or your own Postgres)
+   pwsh scripts/redis.ps1 start       # Redis :6379
+   node apps/api/dist/main.js         # API :3000 (reads apps/api/.env: DATABASE_URL, REDIS_URL, …)
+   ```
+   Confirm: `curl http://localhost:3000/api/health` → `{"status":"ok",…}`.
+
+2. **Configure the web build** — `apps/web/.env.production` (already present; not secret):
+   ```
+   NEXT_PUBLIC_API_URL=/api                    # browser → same origin, IIS proxies it
+   API_INTERNAL_ORIGIN=http://localhost:3000   # build-time SSG fetches the live API
+   ```
+
+3. **Build the web with the API running** (so the static pages bake in real DB data):
+   ```
+   cd apps/web && npm run build       # outputs apps/web/out/ (incl. web.config with the /api proxy rule)
+   ```
+
+4. **Point the IIS site** at `apps/web/out`. Its `web.config` already contains the rewrite rule
+   `^api/(.*)` → `http://localhost:3000/api/{R:1}` (needs ARR + URL Rewrite from the prerequisites).
+
+5. Browse the site. The **admin panel, login and apply** work live against the DB immediately (they
+   call `/api` at runtime). To refresh the **public browse pages** after catalog changes, rebuild:
+   ```
+   cd apps/web && rmdir /s /q .next\cache & npm run build     # re-snapshots the DB
+   ```
+
+Notes:
+- Reverse proxy keeps the API on `localhost:3000` — **don't** bind the API or DB to a public address.
+- Put HTTPS on the IIS site (a real cert) before exposing it; see §E for DB security.
+- Mobile app: point `EXPO_PUBLIC_API_URL` at `https://<your-domain>/api`.
+
 ## Quick recap
 | Target | Command | Result |
 |---|---|---|

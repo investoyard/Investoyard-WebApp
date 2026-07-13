@@ -1,13 +1,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Lang } from '@investoyard/i18n';
-import { getIpoDetail, mockIpos } from '@/lib/api';
+import { getIpoDetail, ipoSymbols } from '@/lib/api';
 import { priceBand } from '@/lib/format';
 import { IpoDetailView, detailAlternates } from '@/components/views/IpoDetailView';
 import { SUPPORTED_LOCALES } from '@/lib/locales';
 
-export function generateStaticParams() {
-  return SUPPORTED_LOCALES.flatMap((lang) => mockIpos().map((i) => ({ lang, symbol: i.symbol })));
+export async function generateStaticParams() {
+  const symbols = await ipoSymbols();
+  return SUPPORTED_LOCALES.flatMap((lang) => symbols.map((symbol) => ({ lang, symbol })));
 }
 
 export async function generateMetadata({ params }: { params: { lang: string; symbol: string } }): Promise<Metadata> {

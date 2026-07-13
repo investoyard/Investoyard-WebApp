@@ -30,7 +30,21 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   faqs?: { q: string; a: string }[];
 }
 
+// The browser uses NEXT_PUBLIC_API_URL (e.g. '/api', which IIS/nginx reverse-proxies
+// to the API same-origin). But a RELATIVE base can't be fetched by Node during the
+// static build — so at build (no `window`) a relative base is resolved against a local
+// origin (API_INTERNAL_ORIGIN, default http://localhost:3000) so the exported pages are
+// generated from live DB data. Set an absolute NEXT_PUBLIC_API_URL to bypass this.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+function apiUrl(path: string): string {
+  // Server-only branch (dead-code-eliminated from the client bundle): resolve a
+  // relative base to an absolute local origin so the build can fetch the API.
+  if (typeof window === 'undefined' && API_BASE.startsWith('/')) {
+    const origin = process.env.API_INTERNAL_ORIGIN ?? 'http://localhost:3000';
+    return `${origin}${API_BASE}${path}`;
+  }
+  return `${API_BASE}${path}`;
+}
 
 const MOCK: IpoDetail[] = [
   {
@@ -172,7 +186,9 @@ const MOCK: IpoDetail[] = [
 
 async function safeGet<T>(path: string, fallback: T): Promise<T> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 60 } });
+    // Default (cacheable) fetch — required by `output: export`. The static pages are a
+    // build-time snapshot of the DB; rebuild (clearing .next/cache) to refresh them.
+    const res = await fetch(apiUrl(path));
     if (!res.ok) return fallback;
     return (await res.json()) as T;
   } catch {
@@ -296,3 +312,9 @@ export function mockIpoBySymbol(symbol: string): IpoFull | undefined {
   return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
 }
 export function mockIpos(): IpoFull[] { return FULL; }
+
+/** Symbols to statically generate — the live DB list at build time (mock fallback). */
+export async function ipoSymbols(): Promise<string[]> {
+  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  return list.map((i) => i.symbol);
+}

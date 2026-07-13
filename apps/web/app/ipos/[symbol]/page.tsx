@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { getIpoDetail, mockIpos } from '@/lib/api';
+import { getIpoDetail, ipoSymbols } from '@/lib/api';
 import { priceBand } from '@/lib/format';
 import { IpoDetailView, detailAlternates } from '@/components/views/IpoDetailView';
 
-export function generateStaticParams() {
-  return mockIpos().map((i) => ({ symbol: i.symbol }));
+export async function generateStaticParams() {
+  return (await ipoSymbols()).map((symbol) => ({ symbol }));
 }
 
 export async function generateMetadata({ params }: { params: { symbol: string } }): Promise<Metadata> {
