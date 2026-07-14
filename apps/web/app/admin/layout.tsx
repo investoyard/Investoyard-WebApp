@@ -24,7 +24,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [me, setMe] = useState<OperatorMe | null | undefined>(undefined); // undefined = loading
 
-  const isLogin = path === '/admin/login';
+  // trailingSlash:true means pathname can end with "/" — normalise before comparing.
+  const clean = path.replace(/\/+$/, '') || '/';
+  const isLogin = clean === '/admin/login';
 
   useEffect(() => {
     if (isLogin) return;
@@ -33,10 +35,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (!alive) return;
       setMe(m);
       if (!m) router.replace('/admin/login');
-      else if (path === '/admin') router.replace('/admin/overview');
+      else if (clean === '/admin') router.replace('/admin/overview');
     });
     return () => { alive = false; };
-  }, [isLogin, path, router]);
+  }, [isLogin, clean, router]);
 
   // The login page renders itself, outside the gated shell.
   if (isLogin) return <>{children}</>;
