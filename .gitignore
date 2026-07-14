@@ -32,3 +32,6 @@ coverage/
 # editor/os
 .DS_Store
 Thumbs.db
+
+# API-uploaded images (logos)
+apps/api/uploads/

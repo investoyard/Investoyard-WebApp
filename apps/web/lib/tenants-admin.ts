@@ -119,6 +119,7 @@ export interface AdminIpo {
   status: 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; issueSize?: string;
   openDate?: string; closeDate?: string; registrar?: string; gmp?: number; reservations?: string[];
+  logoUrl?: string;
 }
 export interface IpoDoc { type: string; url: string; summary?: string }
 export interface IpoWrite {
@@ -138,6 +139,15 @@ export interface AdminIpoDetail {
 }
 export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminIpoDetail>);
 export const deleteIpo = (id: string) => authed<{ deleted: boolean }>(`${API}/ipos/${id}`, { method: 'DELETE' });
+
+/** Upload an image (logo) — returns an absolute URL served by the API. */
+export async function uploadImage(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/upload`, { method: 'POST', headers: { Authorization: `Bearer ${getOperatorToken()}` }, body: fd });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Upload failed'); }
+  return (await res.json()).url as string;
+}
 
 /* -------------------------------------------------- admin: applications (bids) */
 export interface AdminApplication {

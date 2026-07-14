@@ -7,6 +7,7 @@ import { AuditInterceptor } from './common/audit.interceptor';
 import { RedisModule } from './common/redis.service';
 import { ProviderConfigModule } from './common/provider-config.service';
 import { HealthModule } from './modules/health/health.module';
+import { UploadModule } from './modules/upload/upload.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { IpoModule } from './modules/ipo/ipo.module';
@@ -27,6 +28,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     RedisModule,
     ProviderConfigModule,
     HealthModule,
+    UploadModule,
     AuthModule,
     ProfilesModule,
     IpoModule,
