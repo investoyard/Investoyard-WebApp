@@ -10,6 +10,9 @@ async function bootstrap() {
   // CORS to the frontend origin(s) via CORS_ORIGIN (comma-separated); unset = allow all (dev).
   const origins = process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()).filter(Boolean);
   app.enableCors({ origin: origins && origins.length ? origins : true });
-  await app.listen(process.env.PORT ? Number(process.env.PORT) : 3000);
+  // Pass PORT through verbatim: a number/numeric-string for standalone runs, or a
+  // named pipe (e.g. \\.\pipe\...) when hosted under IIS via iisnode. Number() would
+  // turn the pipe into NaN and the server would fail to bind.
+  await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
