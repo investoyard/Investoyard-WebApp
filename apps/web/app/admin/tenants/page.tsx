@@ -80,8 +80,31 @@ export default function AdminTenants() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const blankReg = { kind: 'partner', name: '', slug: '', parentSlug: '', customDomain: '', brandColor: '', adminName: '', adminUsername: '', adminPassword: '' };
+  const [showReg, setShowReg] = useState(false);
+  const [reg, setReg] = useState({ ...blankReg });
+  const [regResult, setRegResult] = useState<api.RegisterTenantResult | null>(null);
+  const [regErr, setRegErr] = useState<string | null>(null);
+  const [regBusy, setRegBusy] = useState(false);
 
   const refreshTree = useCallback(async () => { setTree(await api.fetchTree()); }, []);
+
+  const onRegister = async () => {
+    if (!reg.name.trim() || !/^[A-Za-z0-9-]{2,40}$/.test(reg.slug) || !reg.adminName.trim() || !/^[A-Za-z0-9_.]{3,40}$/.test(reg.adminUsername)) { setRegErr('Fill name, slug, admin name and a valid username.'); return; }
+    if (reg.kind === 'branch' && !reg.parentSlug) { setRegErr('Pick the parent partner for this branch.'); return; }
+    setRegBusy(true); setRegErr(null); setRegResult(null);
+    try {
+      const res = await api.registerTenant({
+        kind: reg.kind as any, name: reg.name, slug: reg.slug,
+        parentSlug: reg.kind === 'branch' ? reg.parentSlug : undefined,
+        customDomain: reg.kind === 'whitelabel' ? (reg.customDomain || undefined) : undefined,
+        brandColor: reg.kind === 'whitelabel' ? (reg.brandColor || undefined) : undefined,
+        adminName: reg.adminName, adminUsername: reg.adminUsername, adminPassword: reg.adminPassword || undefined,
+      });
+      setRegResult(res); setReg({ ...blankReg }); await refreshTree();
+    } catch (e: any) { setRegErr(String(e?.message ?? e)); }
+    finally { setRegBusy(false); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -140,9 +163,50 @@ export default function AdminTenants() {
   return (
     <>
       <div className="between" style={{ marginBottom: 16 }}>
-        <div><h1 style={{ margin: 0 }}>Tenants</h1><p className="muted">White-label channels &amp; the settings cascade — live from the API.</p></div>
+        <div><h1 style={{ margin: 0 }}>Partners &amp; tenants</h1><p className="muted">Register partners, white-label channels &amp; branches — and manage the settings cascade.</p></div>
+        {operatorCan(me, 'tenants.manage') && <button className="btn" onClick={() => { setShowReg((v) => !v); setRegResult(null); setRegErr(null); }}>{showReg ? 'Close' : '＋ Register partner / branch'}</button>}
       </div>
 
+      {regResult && (
+        <div className="banner info" style={{ marginBottom: 16 }}>
+          Registered <b>{regResult.tenant.name}</b> ({regResult.tenant.type}{regResult.tenant.whitelabel ? ', white-label' : ''}{regResult.tenant.customDomain ? ` · ${regResult.tenant.customDomain}` : ''}).
+          Admin login: <b className="mono">{regResult.admin.username}</b>
+          {regResult.admin.temporaryPassword ? <> · temp password <b className="mono">{regResult.admin.temporaryPassword}</b> — share it securely.</> : <> · password set as provided.</>}
+        </div>
+      )}
+      {showReg && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Register a partner, white-label partner or branch</h3>
+          {regErr && <div className="banner warn" style={{ marginBottom: 12 }}>{regErr}</div>}
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <RF label="Kind"><select className="input" style={{ width: 160 }} value={reg.kind} onChange={(e) => setReg({ ...reg, kind: e.target.value })}>
+              <option value="partner">Partner (our brand)</option>
+              <option value="whitelabel">White-label (own brand)</option>
+              <option value="branch">Branch (under a partner)</option>
+            </select></RF>
+            {reg.kind === 'branch' && (
+              <RF label="Parent partner"><select className="input" style={{ width: 170 }} value={reg.parentSlug} onChange={(e) => setReg({ ...reg, parentSlug: e.target.value })}>
+                <option value="">— select —</option>
+                {tree.filter((t) => t.type === 'partner').map((t) => <option key={t.id} value={t.slug}>{t.name}</option>)}
+              </select></RF>
+            )}
+            <RF label="Name"><input className="input" style={{ width: 180 }} value={reg.name} onChange={(e) => setReg({ ...reg, name: e.target.value })} /></RF>
+            <RF label="Slug"><input className="input mono" style={{ width: 130 }} placeholder="axis" value={reg.slug} onChange={(e) => setReg({ ...reg, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) })} /></RF>
+            {reg.kind === 'whitelabel' && <>
+              <RF label="Custom domain"><input className="input mono" style={{ width: 190 }} placeholder="ipo.partner.com" value={reg.customDomain} onChange={(e) => setReg({ ...reg, customDomain: e.target.value })} /></RF>
+              <RF label="Brand color"><input className="input mono" style={{ width: 100 }} placeholder="#0b5cad" value={reg.brandColor} onChange={(e) => setReg({ ...reg, brandColor: e.target.value })} /></RF>
+            </>}
+          </div>
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>Admin login (auto-created):</span>
+            <RF label="Admin name"><input className="input" style={{ width: 160 }} value={reg.adminName} onChange={(e) => setReg({ ...reg, adminName: e.target.value })} /></RF>
+            <RF label="Username"><input className="input mono" style={{ width: 140 }} value={reg.adminUsername} onChange={(e) => setReg({ ...reg, adminUsername: e.target.value.replace(/[^A-Za-z0-9_.]/g, '').slice(0, 40) })} /></RF>
+            <RF label="Password (optional)"><input className="input mono" style={{ width: 160 }} type="password" placeholder="auto-generate" value={reg.adminPassword} onChange={(e) => setReg({ ...reg, adminPassword: e.target.value })} /></RF>
+            <button className="btn" disabled={regBusy} onClick={onRegister}>{regBusy ? 'Registering…' : 'Register'}</button>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>White-label partners get their own brand + domain and GMP is turned off (locked) for compliance. Leave the password blank to auto-generate a temporary one (shown once).</p>
+        </div>
+      )}
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>API error: {err}. Make sure the API is running on <span className="mono">{process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}</span>.</div>}
       {loading ? <div className="muted">Loading tenants…</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: 20, alignItems: 'start' }}>
@@ -183,4 +247,8 @@ export default function AdminTenants() {
       )}
     </>
   );
+}
+
+function RF({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><label className="muted" style={{ fontSize: 11 }}>{label}</label>{children}</div>;
 }

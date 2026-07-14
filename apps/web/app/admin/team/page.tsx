@@ -1,136 +1,140 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { useOperator } from "@/lib/operator-context";
-import { operatorCan } from "@/lib/operator";
+import { useOperator } from '@/lib/operator-context';
+import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
-const TYPE_LABEL: Record<string, string> = { platform: 'Operator', direct: 'Direct (B2C)', partner: 'Partner', branch: 'Branch' };
+const TYPE_LABEL: Record<string, string> = { platform: 'Operator', direct: 'Direct', partner: 'Partner', branch: 'Branch' };
 
-export default function AdminTeam() {
+export default function AdminUsers() {
   const me = useOperator();
+  const [ops, setOps] = useState<api.Operator[]>([]);
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
   const [roles, setRoles] = useState<api.Role[]>([]);
-  const [sel, setSel] = useState<string | null>(null);
-  const [members, setMembers] = useState<api.Member[]>([]);
-  const [form, setForm] = useState({ mobile: '', name: '', roleName: '' });
+  const [form, setForm] = useState({ username: '', name: '', tenantSlug: '', roleName: 'Admin', password: '' });
+  const [created, setCreated] = useState<{ username: string; temporaryPassword?: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const loadMembers = useCallback(async (slug: string) => {
-    try { setMembers(await api.fetchMembers(slug)); setErr(null); }
-    catch (e: any) { setErr(String(e?.message ?? e)); setMembers([]); }
+  const load = useCallback(async () => {
+    try { setOps(await api.fetchOperators()); setErr(null); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
   }, []);
-
   useEffect(() => {
     (async () => {
       try {
-        const [t, r] = await Promise.all([api.fetchTree(), api.fetchRoles()]);
-        setTree(t); setRoles(r);
-        setForm((f) => ({ ...f, roleName: r.find((x) => x.name === 'BranchUser')?.name ?? r[0]?.name ?? '' }));
-        const first = t.find((x) => x.type !== 'platform') ?? t[0];
-        if (first) { setSel(first.slug); await loadMembers(first.slug); }
+        const [o, t, r] = await Promise.all([api.fetchOperators(), api.fetchTree(), api.fetchRoles()]);
+        setOps(o); setTree(t); setRoles(r);
+        const firstManageable = t.find((x) => x.type !== 'platform') ?? t[0];
+        setForm((f) => ({ ...f, tenantSlug: firstManageable?.slug ?? '' }));
       } catch (e: any) { setErr(String(e?.message ?? e)); }
       finally { setLoading(false); }
     })();
-  }, [loadMembers]);
-
-  const select = async (slug: string) => { setSel(slug); await loadMembers(slug); };
+  }, []);
 
   const run = async (fn: () => Promise<any>) => {
     setBusy(true); setErr(null);
-    try { await fn(); if (sel) await loadMembers(sel); }
-    catch (e: any) { setErr(String(e?.message ?? e)); }
+    try { await fn(); await load(); } catch (e: any) { setErr(String(e?.message ?? e)); } finally { setBusy(false); }
+  };
+
+  const onCreate = async () => {
+    if (!/^[A-Za-z0-9_.]{3,40}$/.test(form.username) || !form.name.trim() || !form.tenantSlug || !form.roleName) {
+      setErr('Enter a username (3–40, letters/digits/._), name, tenant and role.'); return;
+    }
+    setBusy(true); setErr(null); setCreated(null);
+    try {
+      const res = await api.createOperator({
+        username: form.username, name: form.name, tenantSlug: form.tenantSlug, roleName: form.roleName,
+        password: form.password || undefined,
+      });
+      setCreated({ username: res.username, temporaryPassword: res.temporaryPassword });
+      setForm((f) => ({ ...f, username: '', name: '', password: '' }));
+      await load();
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
-  const onAdd = () => {
-    if (!sel || !/^\d{10}$/.test(form.mobile) || !form.roleName) { setErr('Enter a 10-digit mobile and pick a role.'); return; }
-    run(async () => { await api.addMember(sel, { mobile: form.mobile, name: form.name || undefined, roleName: form.roleName }); setForm((f) => ({ ...f, mobile: '', name: '' })); });
+
+  const resetPassword = (o: api.Operator) => {
+    const pw = typeof window !== 'undefined' ? window.prompt(`New password for ${o.username}:`) : '';
+    if (pw) run(() => api.updateOperator(o.id, { password: pw }));
   };
 
   if (!operatorCan(me, 'users.view')) return <NoAccess />;
-
-  const selected = tree.find((t) => t.slug === sel);
-  const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);
-  const roots = tree.filter((t) => !t.parentId || !tree.some((x) => x.id === t.parentId));
-  const renderNode = (t: api.AdminTenant, depth: number): React.ReactNode => (
-    <div key={t.id}>
-      <button onClick={() => select(t.slug)} style={{
-        width: '100%', textAlign: 'left', padding: '9px 12px', paddingLeft: 12 + depth * 20, border: 'none',
-        borderRadius: 10, cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center',
-        background: sel === t.slug ? 'var(--brand-50)' : 'transparent',
-        boxShadow: sel === t.slug ? 'inset 0 0 0 1px var(--brand-200)' : 'none',
-      }}>
-        <span style={{ width: 8, height: 8, borderRadius: 3, background: t.brandColor ?? 'var(--border-2)' }} />
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</span>
-        <span className="muted" style={{ fontSize: 12 }}>{TYPE_LABEL[t.type] ?? t.type}</span>
-      </button>
-      {childrenOf(t.id).map((c) => renderNode(c, depth + 1))}
-    </div>
-  );
+  const canManage = operatorCan(me, 'users.manage');
 
   return (
     <>
       <div className="between" style={{ marginBottom: 16 }}>
-        <div><h1 style={{ margin: 0 }}>Team &amp; access</h1><p className="muted">Operators, roles &amp; tenant scope — live from the API.</p></div>
+        <div><h1 style={{ margin: 0 }}>Users &amp; access</h1><p className="muted">Operator accounts across your tenants — {ops.length} user(s).</p></div>
       </div>
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
+      {created && (
+        <div className="banner info" style={{ marginBottom: 16 }}>
+          Created <b className="mono">{created.username}</b>.
+          {created.temporaryPassword
+            ? <> Temporary password: <b className="mono">{created.temporaryPassword}</b> — share it securely; they should change it.</>
+            : <> Password set as provided.</>}
+        </div>
+      )}
       {loading ? <div className="muted">Loading…</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) 1fr', gap: 20, alignItems: 'start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="panel">
-            <h3 style={{ marginTop: 0 }}>Tenant</h3>
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>{roots.map((r) => renderNode(r, 0))}</div>
-          </div>
-
-          <div className="panel">
-            <h3 style={{ marginTop: 0 }}>{selected?.name} — operators</h3>
             <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', marginTop: 8 }}>
-                <thead><tr><th>Name</th><th>Mobile</th><th>Role</th><th>Tenant</th><th>Status</th><th></th></tr></thead>
+              <table className="table" style={{ width: '100%' }}>
+                <thead><tr><th>Username</th><th>Name</th><th>Tenant</th><th>Role · scope</th><th>Status</th>{canManage && <th></th>}</tr></thead>
                 <tbody>
-                  {members.length === 0 ? <tr><td colSpan={6} className="muted" style={{ padding: 14 }}>No operators yet.</td></tr> :
-                    members.map((m) => (
-                      <tr key={m.membershipId}>
-                        <td>{m.name ?? '—'}</td>
-                        <td className="mono">{m.mobile}</td>
-                        <td>
-                          <select className="input" style={{ padding: '5px 8px', fontSize: 13 }} value={m.roleName} disabled={busy}
-                            onChange={(e) => run(() => api.updateMember(m.tenantSlug, m.membershipId, { roleName: e.target.value }))}>
-                            {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="muted">{m.tenantSlug}</td>
-                        <td><span className="pill" style={{ background: m.status === 'active' ? '#eaf5ee' : 'var(--bg-subtle)', color: m.status === 'active' ? 'var(--good, #1a7f4b)' : 'var(--text-faint)' }}>{m.status}</span></td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button className="btn btn-secondary btn-sm" disabled={busy}
-                            onClick={() => run(() => api.updateMember(m.tenantSlug, m.membershipId, { status: m.status === 'active' ? 'inactive' : 'active' }))}>
-                            {m.status === 'active' ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </td>
+                  {ops.length === 0 ? <tr><td colSpan={6} className="muted" style={{ padding: 14 }}>No operators yet.</td></tr> :
+                    ops.map((o) => (
+                      <tr key={o.id}>
+                        <td className="mono" style={{ fontWeight: 600 }}>{o.username}</td>
+                        <td>{o.name}</td>
+                        <td>{o.tenant.name}<div className="muted" style={{ fontSize: 11 }}>{TYPE_LABEL[o.tenant.type] ?? o.tenant.type}</div></td>
+                        <td>{o.roles.map((r) => `${r.role} · ${r.scope}`).join(', ') || '—'}</td>
+                        <td><span className="pill" style={{ background: o.status === 'active' ? '#eaf5ee' : 'var(--bg-subtle)', color: o.status === 'active' ? 'var(--good, #1a7f4b)' : 'var(--text-faint)' }}>{o.status}</span></td>
+                        {canManage && (
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {o.username !== 'superadmin' && (
+                              <button className="btn btn-secondary btn-sm" disabled={busy}
+                                onClick={() => run(() => api.updateOperator(o.id, { status: o.status === 'active' ? 'inactive' : 'active' }))}>
+                                {o.status === 'active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            )}{' '}
+                            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resetPassword(o)}>Reset password</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                 </tbody>
               </table>
             </div>
-
-            <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 600, marginBottom: 10 }}>Add operator to {selected?.name}</div>
-              <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input className="input mono" style={{ width: 150 }} placeholder="10-digit mobile" value={form.mobile}
-                  onChange={(e) => setForm({ ...form, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
-                <input className="input" style={{ width: 170 }} placeholder="Name (optional)" value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                <select className="input" style={{ width: 150 }} value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
-                  {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-                </select>
-                <button className="btn" disabled={busy} onClick={onAdd}>Add</button>
-              </div>
-              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>They sign in via OTP with that mobile; the role &amp; scope decide what they can manage.</p>
-            </div>
           </div>
+
+          {canManage && (
+            <div className="panel">
+              <h3 style={{ marginTop: 0 }}>Add an operator</h3>
+              <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <F label="Username"><input className="input mono" style={{ width: 150 }} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.replace(/[^A-Za-z0-9_.]/g, '').slice(0, 40) })} /></F>
+                <F label="Name"><input className="input" style={{ width: 180 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></F>
+                <F label="Tenant"><select className="input" style={{ width: 190 }} value={form.tenantSlug} onChange={(e) => setForm({ ...form, tenantSlug: e.target.value })}>
+                  {tree.map((t) => <option key={t.id} value={t.slug}>{t.name} ({TYPE_LABEL[t.type] ?? t.type})</option>)}
+                </select></F>
+                <F label="Role"><select className="input" style={{ width: 140 }} value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
+                  {Array.from(new Set(['Admin', ...roles.map((r) => r.name)])).map((n) => <option key={n} value={n}>{n}</option>)}
+                </select></F>
+                <F label="Password (optional)"><input className="input mono" style={{ width: 160 }} type="password" placeholder="auto-generate" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></F>
+                <button className="btn" disabled={busy} onClick={onCreate}>Add operator</button>
+              </div>
+              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Leave the password blank to auto-generate a temporary one (shown once). The role must exist on the chosen tenant.</p>
+            </div>
+          )}
         </div>
       )}
     </>
   );
+}
+
+function F({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><label className="muted" style={{ fontSize: 11 }}>{label}</label>{children}</div>;
 }

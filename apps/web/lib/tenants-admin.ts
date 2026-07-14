@@ -81,6 +81,32 @@ export const createRole = (body: { name: string; scope: string; permissions: str
 export const updateRole = (id: string, body: { scope?: string; permissions?: string[] }) =>
   authed<Role>(`${API}/admin/roles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const deleteRole = (id: string) => authed<any>(`${API}/admin/roles/${id}`, { method: 'DELETE' });
+
+/* -------------------------------------------------- admin: partners / branches */
+export interface RegisterTenantBody {
+  kind: 'partner' | 'whitelabel' | 'branch'; name: string; slug: string; parentSlug?: string;
+  brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
+  adminName: string; adminUsername: string; adminPassword?: string;
+}
+export interface RegisterTenantResult {
+  tenant: { slug: string; name: string; type: string; customDomain?: string; whitelabel?: boolean };
+  admin: { username: string; name: string; temporaryPassword?: string };
+}
+export const registerTenant = (body: RegisterTenantBody) =>
+  authed<RegisterTenantResult>(`${API}/admin/tenants`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/* -------------------------------------------------- admin: operator users */
+export interface Operator {
+  id: string; username: string; name: string; status: 'active' | 'inactive';
+  tenant: { slug: string; name: string; type: string };
+  roles: { tenantSlug: string; tenantName: string; role: string; scope: string }[];
+  createdAt: string;
+}
+export const fetchOperators = () => authed<Operator[]>(`${API}/admin/operators`, { method: 'GET' });
+export const createOperator = (body: { username: string; name: string; password?: string; tenantSlug: string; roleName: string }) =>
+  authed<{ id: string; username: string; name: string; temporaryPassword?: string }>(`${API}/admin/operators`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updateOperator = (id: string, body: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string }) =>
+  authed<{ ok: boolean }>(`${API}/admin/operators/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const fetchMembers = (slug: string) => authed<Member[]>(`${API}/admin/members/${slug}`, { method: 'GET' });
 export const addMember = (slug: string, body: { mobile: string; name?: string; roleName: string }) =>
   authed<Member>(`${API}/admin/members/${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
