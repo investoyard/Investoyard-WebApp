@@ -160,6 +160,39 @@ Notes:
 - Put HTTPS on the IIS site (a real cert) before exposing it; see §E for DB security.
 - Mobile app: point `EXPO_PUBLIC_API_URL` at `https://<your-domain>/api`.
 
+## G. Separate frontend + API (two origins) — e.g. Finwave hosting
+
+The frontend and the Node API live on **different domains** and talk cross-origin (CORS). No ARR
+needed. Example in use:
+
+- **Frontend:** `https://newipo.finwave.co` — serves the static `apps/web/out`
+- **API:** `https://newipoapi.finwave.co` — the Node API (routes under `/api`)
+
+**API side (`newipoapi.finwave.co`):**
+- Run the Node API (`node apps/api/dist/main.js`) behind HTTPS on its own domain (iisnode, an ARR
+  site, or any TLS reverse proxy — whatever your host uses for Node apps). Keep DB/Redis private.
+- Lock CORS to the frontend origin (in the API's env):
+  ```
+  CORS_ORIGIN=https://newipo.finwave.co     # comma-separated for multiple; unset = allow all (dev)
+  ```
+
+**Frontend side (`newipo.finwave.co`):** `apps/web/.env.production`
+```
+NEXT_PUBLIC_API_URL=https://newipoapi.finwave.co/api   # browser → the API domain (absolute)
+API_INTERNAL_URL=http://localhost:3000/api             # build-time SSG → LOCAL live API (real DB data)
+```
+Then build with the local API + DB running, and point the IIS site at `apps/web/out`:
+```
+cd apps/web && rmdir /s /q .next\cache & npm run build   # bakes real DB data; client calls the API domain
+```
+The frontend `web.config` here is **static-only** (no proxy rule). Rebuild to refresh the public browse
+pages after catalog changes; the dynamic pages (login/apply/admin) are always live via the API domain.
+
+> Gotcha: a Next `.env.local` **overrides** `.env.production` for every build. If a dev `.env.local`
+> pins `NEXT_PUBLIC_API_URL=http://localhost:3000/api`, remove it (the code default is the same) so the
+> production build picks up the API domain. Also: an HTTPS frontend must call an **HTTPS** API
+> (browsers block HTTPS→HTTP mixed content).
+
 ## Quick recap
 | Target | Command | Result |
 |---|---|---|
