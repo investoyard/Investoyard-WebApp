@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
@@ -61,6 +61,33 @@ class ProviderConfigDto {
   @IsOptional() secrets?: Record<string, string>; // field → new value (omit to keep existing)
 }
 
+class RegisterTenantDto {
+  @IsIn(['partner', 'whitelabel', 'branch']) kind!: string;
+  @IsString() name!: string;
+  @Matches(/^[A-Za-z0-9-]{2,40}$/, { message: 'slug must be 2–40 letters/digits/hyphens' }) slug!: string;
+  @IsOptional() @IsString() parentSlug?: string;
+  @IsOptional() @IsString() brandColor?: string;
+  @IsOptional() @IsString() goldColor?: string;
+  @IsOptional() @IsString() logoUrl?: string;
+  @IsOptional() @IsString() customDomain?: string;
+  @IsString() adminName!: string;
+  @Matches(/^[A-Za-z0-9_.]{3,40}$/, { message: 'username must be 3–40 letters/digits/._' }) adminUsername!: string;
+  @IsOptional() @IsString() adminPassword?: string;
+}
+class CreateOperatorDto {
+  @Matches(/^[A-Za-z0-9_.]{3,40}$/) username!: string;
+  @IsString() name!: string;
+  @IsOptional() @IsString() password?: string;
+  @IsString() tenantSlug!: string;
+  @IsString() roleName!: string;
+}
+class UpdateOperatorDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
+  @IsOptional() @IsString() roleName?: string;
+  @IsOptional() @IsString() password?: string;
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminController {
@@ -81,6 +108,32 @@ export class AdminController {
   @RequirePermissions('providers.manage')
   saveProvider(@Param('provider') provider: string, @Body() dto: ProviderConfigDto) {
     return this.providers.upsert(provider, dto);
+  }
+
+  /** Register a partner / white-label partner / branch + auto-create its admin login. */
+  @Post('tenants')
+  @RequirePermissions('tenants.manage')
+  registerTenant(@Req() req: any, @Body() dto: RegisterTenantDto) {
+    return this.admin.registerTenant(req.user.sub, dto as any);
+  }
+
+  /** Operator (username) accounts in the caller's scope. */
+  @Get('operators')
+  @RequirePermissions('users.view')
+  operators(@Req() req: any) {
+    return this.admin.listOperators(req.user.sub);
+  }
+
+  @Post('operators')
+  @RequirePermissions('users.manage')
+  createOperator(@Req() req: any, @Body() dto: CreateOperatorDto) {
+    return this.admin.createOperator(req.user.sub, dto);
+  }
+
+  @Patch('operators/:id')
+  @RequirePermissions('users.manage')
+  updateOperator(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateOperatorDto) {
+    return this.admin.updateOperator(req.user.sub, id, dto);
   }
 
   /** Back-office: bulk allotment from the registrar's CSV (platform operator). */

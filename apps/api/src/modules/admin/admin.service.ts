@@ -1,6 +1,8 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
+import { hashPassword } from '../../common/password';
 import { RailService } from '../rail/rail.service';
 import { HealthService } from '../health/health.module';
 import { ProviderConfigService } from '../../common/provider-config.service';
@@ -209,6 +211,169 @@ export class AdminService {
       for (const k of kids) { ids.push(k.id); queue.push(k.id); }
     }
     return ids;
+  }
+
+  /* ------------------------------------------------ partners / branches / operators */
+
+  // Default permission sets for auto-created tenant admins.
+  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage'];
+  private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'reports.view', 'users.view'];
+
+  /** What tenants can the caller manage? superadmin → all; else the union of their subtree/own scopes. */
+  private async callerScope(userId: string): Promise<{ superadmin: boolean; tenantIds: Set<string> }> {
+    return tenantContext.runUnscoped(async () => {
+      const memberships = await this.prisma.membership.findMany({ where: { userId, status: 'active' }, include: { role: true } });
+      if (memberships.some((m) => m.role.scope === 'all')) return { superadmin: true, tenantIds: new Set<string>() };
+      const ids = new Set<string>();
+      for (const m of memberships) {
+        if (m.role.scope === 'subtree') (await this.subtreeIds(m.tenantId)).forEach((i) => ids.add(i));
+        else if (m.role.scope === 'own') ids.add(m.tenantId);
+      }
+      return { superadmin: false, tenantIds: ids };
+    });
+  }
+
+  private genPassword(): string {
+    // Readable temporary password: 3 blocks, avoids ambiguous chars.
+    const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ', b = 'abcdefghijkmnpqrstuvwxyz', d = '23456789';
+    const pick = (s: string, n: number) => Array.from(randomBytes(n)).map((x) => s[x % s.length]).join('');
+    return `${pick(a, 2)}${pick(b, 4)}-${pick(d, 4)}`;
+  }
+
+  /**
+   * Register a partner / white-label partner / branch and auto-create its admin login.
+   *   partner    → under the platform, Investoyard-branded, admin scope 'subtree'
+   *   whitelabel → under the platform, own brand + domain, GMP off & locked
+   *   branch     → under a partner (parentSlug), admin scope 'own'
+   * Returns the tenant + the admin credential (temporary password shown ONCE if generated).
+   */
+  async registerTenant(callerId: string, dto: {
+    kind: 'partner' | 'whitelabel' | 'branch'; name: string; slug: string; parentSlug?: string;
+    brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
+    adminName: string; adminUsername: string; adminPassword?: string;
+  }) {
+    const scope = await this.callerScope(callerId);
+    const slug = dto.slug.trim().toLowerCase();
+    const adminUsername = dto.adminUsername.trim().toLowerCase();
+
+    let parentId: string; let type: string; let roleScope: 'own' | 'subtree'; let perms: string[];
+    let flags: any; let lockGmpOff = false;
+
+    if (dto.kind === 'branch') {
+      if (!dto.parentSlug) throw new BadRequestException('A branch needs a parent partner.');
+      const parent = await this.tenantBySlug(dto.parentSlug);
+      if (!scope.superadmin && !scope.tenantIds.has(parent.id)) throw new ForbiddenException('You can only add branches under your own partner.');
+      parentId = parent.id; type = 'branch'; roleScope = 'own'; perms = AdminService.BRANCH_ADMIN_PERMS;
+    } else {
+      if (!scope.superadmin) throw new ForbiddenException('Only a platform admin can register partners.');
+      const platform = await tenantContext.runUnscoped(async () => this.prisma.tenant.findFirst({ where: { type: 'platform' } }));
+      if (!platform) throw new NotFoundException('Platform tenant missing');
+      parentId = platform.id; type = 'partner'; roleScope = 'subtree'; perms = AdminService.PARTNER_ADMIN_PERMS;
+      if (dto.kind === 'whitelabel') { flags = { whitelabel: true, gmpEnabled: false }; lockGmpOff = true; }
+    }
+
+    return tenantContext.runUnscoped(async () => {
+      try {
+        const tenant = await this.prisma.tenant.create({
+          data: {
+            type: type as any, parentId, slug, name: dto.name.trim(),
+            brandColor: dto.brandColor || undefined, goldColor: dto.goldColor || undefined,
+            logoUrl: dto.logoUrl || undefined, customDomain: dto.customDomain?.trim() || undefined,
+            flags: flags ?? undefined,
+          },
+        });
+        if (lockGmpOff) {
+          await this.prisma.tenantSetting.create({ data: { tenantId: tenant.id, featureKey: 'gmpEnabled', value: false, locked: true } });
+        }
+        const role = await this.prisma.role.create({ data: { tenantId: tenant.id, name: 'Admin', scope: roleScope, permissions: perms, isSystem: true } });
+        const password = dto.adminPassword?.trim() || this.genPassword();
+        const user = await this.prisma.user.create({
+          data: { tenantId: tenant.id, username: adminUsername, name: dto.adminName.trim(), passwordHash: await hashPassword(password), status: 'active' },
+        });
+        await this.prisma.membership.create({ data: { userId: user.id, tenantId: tenant.id, roleId: role.id } });
+        return {
+          tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, type: tenant.type, customDomain: tenant.customDomain, whitelabel: dto.kind === 'whitelabel' },
+          admin: { username: user.username, name: user.name, ...(dto.adminPassword ? {} : { temporaryPassword: password }) },
+        };
+      } catch (e: any) {
+        if (e?.code === 'P2002') {
+          const field = String(e?.meta?.target ?? '').includes('username') ? 'username' : String(e?.meta?.target ?? '').includes('customDomain') ? 'custom domain' : 'slug';
+          throw new ConflictException(`That ${field} is already taken.`);
+        }
+        throw e;
+      }
+    });
+  }
+
+  /** Operator (username) accounts the caller can see. */
+  async listOperators(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const where: any = { username: { not: null } };
+      if (!scope.superadmin) where.tenantId = { in: [...scope.tenantIds] };
+      const users = await this.prisma.user.findMany({
+        where,
+        include: { tenant: { select: { slug: true, name: true, type: true } }, memberships: { where: { status: 'active' }, include: { role: true, tenant: { select: { slug: true, name: true } } } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      return users.map((u) => ({
+        id: u.id, username: u.username, name: u.name,
+        status: u.status === 'active' ? 'active' : 'inactive', // UI-facing (suspended → inactive)
+        tenant: u.tenant,
+        roles: u.memberships.map((m) => ({ tenantSlug: m.tenant.slug, tenantName: m.tenant.name, role: m.role.name, scope: m.role.scope })),
+        createdAt: u.createdAt.toISOString().slice(0, 10),
+      }));
+    });
+  }
+
+  /** Create an operator user (username+password) on a tenant in the caller's scope. */
+  async createOperator(callerId: string, dto: { username: string; name: string; password?: string; tenantSlug: string; roleName: string }) {
+    const scope = await this.callerScope(callerId);
+    const tenant = await this.tenantBySlug(dto.tenantSlug);
+    if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) throw new ForbiddenException('Outside your scope.');
+    const role = await tenantContext.runUnscoped(async () =>
+      this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [tenant.id, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } }),
+    );
+    if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
+    return tenantContext.runUnscoped(async () => {
+      try {
+        const password = dto.password?.trim() || this.genPassword();
+        const user = await this.prisma.user.create({ data: { tenantId: tenant.id, username: dto.username.trim().toLowerCase(), name: dto.name.trim(), passwordHash: await hashPassword(password), status: 'active' } });
+        await this.prisma.membership.create({ data: { userId: user.id, tenantId: tenant.id, roleId: role.id } });
+        return { id: user.id, username: user.username, name: user.name, ...(dto.password ? {} : { temporaryPassword: password }) };
+      } catch (e: any) {
+        if (e?.code === 'P2002') throw new ConflictException('That username is already taken.');
+        throw e;
+      }
+    });
+  }
+
+  /** Edit an operator: rename, activate/deactivate, change role, or reset password. */
+  async updateOperator(callerId: string, id: string, dto: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string }) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const user = await this.prisma.user.findUnique({ where: { id }, include: { memberships: true } });
+      if (!user || !user.username) throw new NotFoundException('Operator not found');
+      if (!scope.superadmin && !scope.tenantIds.has(user.tenantId)) throw new ForbiddenException('Outside your scope.');
+      if (user.username === 'superadmin' && dto.status === 'inactive') throw new BadRequestException('The superadmin cannot be deactivated.');
+
+      const data: any = {};
+      if (dto.name !== undefined) data.name = dto.name.trim();
+      if (dto.status) data.status = dto.status === 'inactive' ? 'suspended' : 'active'; // UserStatus enum
+      if (dto.password) data.passwordHash = await hashPassword(dto.password.trim());
+      if (Object.keys(data).length) await this.prisma.user.update({ where: { id }, data });
+
+      if (dto.roleName) {
+        const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
+        if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found.`);
+        await this.prisma.membership.upsert({
+          where: { userId_tenantId: { userId: id, tenantId: user.tenantId } },
+          update: { roleId: role.id, status: 'active' },
+          create: { userId: id, tenantId: user.tenantId, roleId: role.id },
+        });
+      }
+      return { ok: true, resetPassword: !!dto.password };
+    });
   }
 
   private memberView(m: any) {
