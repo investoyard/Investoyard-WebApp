@@ -30,26 +30,24 @@ async function j<T>(res: Response): Promise<T> {
 
 /**
  * Admin API session. The settings writes require `tenants.manage`, so we obtain a
- * real JWT for an admin user. DEV: signs in as the seeded Platform Admin via the OTP
- * stub (123456); PROD: replace with proper admin SSO / login.
+ * real operator JWT (username+password login — see lib/operator.ts).
  */
-const ADMIN_MOBILE = process.env.NEXT_PUBLIC_ADMIN_MOBILE ?? '9000000001';
-let cachedToken: string | null = null;
+import { getOperatorToken, clearOperator } from './operator';
 
 async function adminToken(): Promise<string> {
-  if (cachedToken) return cachedToken;
-  try { const s = sessionStorage.getItem('iy_admin_token'); if (s) return (cachedToken = s); } catch { /* ignore */ }
-  const rq = await fetch(`${API}/auth/otp/request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile: ADMIN_MOBILE }) }).then(j<{ requestId: string }>);
-  const vr = await fetch(`${API}/auth/otp/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: rq.requestId, otp: '123456' }) }).then(j<{ accessToken: string }>);
-  cachedToken = vr.accessToken;
-  try { sessionStorage.setItem('iy_admin_token', cachedToken); } catch { /* ignore */ }
-  return cachedToken;
+  const t = getOperatorToken();
+  if (!t) throw new Error('Not signed in');
+  return t;
 }
 
 async function authed<T>(url: string, init: RequestInit): Promise<T> {
-  const doFetch = async () => fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await adminToken()}` } });
-  let res = await doFetch();
-  if (res.status === 401) { cachedToken = null; try { sessionStorage.removeItem('iy_admin_token'); } catch {} res = await doFetch(); }
+  const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await adminToken()}` } });
+  if (res.status === 401) {
+    // Token expired/invalid — drop it and bounce to the login screen.
+    clearOperator();
+    if (typeof window !== 'undefined') window.location.href = '/admin/login';
+    throw new Error('Session expired');
+  }
   return j<T>(res);
 }
 
