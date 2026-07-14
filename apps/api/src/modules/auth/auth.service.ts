@@ -1,9 +1,10 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SmsService } from '../../common/sms.service';
 import { RedisService } from '../../common/redis.service';
+import { verifyPassword } from '../../common/password';
 import { tenantContext } from '../../common/tenant-context';
 
 const DEV_OTP = '123456';      // accepted only when SMS delivery is not configured
@@ -91,5 +92,56 @@ export class AuthService {
       { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN ?? '30d' },
     );
     return { accessToken, user: { id: user.id, mobile: user.mobile, name: user.name, tenantId: user.tenantId } };
+  }
+
+  /**
+   * Operator login (superadmin / partner / branch) — username + password. Tenant-
+   * agnostic lookup (operators' home tenant varies); issues the same JWT shape as
+   * the OTP flow so JwtAuthGuard + PermissionsGuard work identically.
+   */
+  async operatorLogin(username: string, password: string) {
+    const uname = (username ?? '').trim().toLowerCase();
+    const user = await tenantContext.runUnscoped(async () =>
+      this.prisma.user.findUnique({ where: { username: uname } }),
+    );
+    if (!user || user.status !== 'active' || !(await verifyPassword(password, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid username or password');
+    }
+    const accessToken = await this.jwt.signAsync(
+      { sub: user.id, username: user.username, tenant: user.tenantId ?? undefined },
+      { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN ?? '30d' },
+    );
+    return { accessToken, user: { id: user.id, username: user.username, name: user.name, tenantId: user.tenantId } };
+  }
+
+  /** The logged-in operator's identity + effective permissions (drives the admin UI). */
+  async me(userId: string) {
+    return tenantContext.runUnscoped(async () => {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { tenant: { select: { slug: true, name: true, type: true } } },
+      });
+      if (!user) throw new NotFoundException();
+      const memberships = await this.prisma.membership.findMany({
+        where: { userId, status: 'active' },
+        include: { role: true, tenant: { select: { slug: true, name: true, type: true } } },
+      });
+      const permissions = new Set<string>();
+      let isSuperAdmin = false;
+      for (const m of memberships) {
+        for (const p of m.role.permissions ?? []) permissions.add(p);
+        if ((m.role.permissions ?? []).includes('*') && m.role.scope === 'all') isSuperAdmin = true;
+      }
+      return {
+        id: user.id, username: user.username, name: user.name, email: user.email,
+        homeTenant: user.tenant,
+        isSuperAdmin,
+        permissions: [...permissions],
+        memberships: memberships.map((m) => ({
+          tenantSlug: m.tenant.slug, tenantName: m.tenant.name, tenantType: m.tenant.type,
+          role: m.role.name, scope: m.role.scope, permissions: m.role.permissions,
+        })),
+      };
+    });
   }
 }
