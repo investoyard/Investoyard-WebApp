@@ -8,8 +8,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "plugins": ["expo-router"],
-    "splash": { "resizeMode": "contain", "backgroundColor": "#0b5cab" },
-    "ios": { "supportsTablet": true },
-    "android": {}
+    "splash": { "resizeMode": "contain", "backgroundColor": "#3c2e7e" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "co.finwave.investoyard" },
+    "android": { "package": "co.finwave.investoyard" }
   }
 }
