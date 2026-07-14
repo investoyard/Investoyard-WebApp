@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useAdmin, can } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import { BarChart, DonutChart } from '@/components/admin/Charts';
 import { Icon } from '@/components/Icon';
@@ -12,7 +13,7 @@ const PLATFORM = 'investoyard-platform'; // dashboard is scoped to the whole tre
 const stCls = (s: string) => (s === 'allotted' ? 'good' : s === 'not_allotted' ? 'bad' : s === 'mandate_pending' ? 'wait' : 'info');
 
 export default function AdminOverview() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [d, setD] = useState<api.AdminDashboard | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,7 @@ export default function AdminOverview() {
     })();
   }, []);
 
-  if (!can(s, 'dashboard.view')) return <NoAccess />;
+  if (!operatorCan(me, 'dashboard.view')) return <NoAccess />;
 
   const byStatus = d ? Object.entries(d.byStatus).map(([label, value]) => ({ label: label.replace(/_/g, ' '), value })) : [];
   const byIpo = d ? d.topIpos.map((i) => ({ label: i.symbol, value: i.applications })) : [];

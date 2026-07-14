@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -26,7 +27,7 @@ const blankForm = (): FormState => ({
 const str = (v: any) => (v == null ? '' : String(v));
 
 export default function AdminCatalog() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [ipos, setIpos] = useState<api.AdminIpo[]>([]);
   const [form, setForm] = useState<FormState>(blankForm());
   const [editing, setEditing] = useState(false);
@@ -98,8 +99,8 @@ export default function AdminCatalog() {
     run(() => api.deleteIpo(i.id)).catch(() => { /* 409 (has applications) shown in banner */ });
   };
 
-  if (!can(s, 'ipos.view')) return <NoAccess />;
-  const canManage = can(s, 'ipos.manage');
+  if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
+  const canManage = operatorCan(me, 'ipos.manage');
   const toggleRes = (r: string) => set({ reservations: form.reservations.includes(r) ? form.reservations.filter((x) => x !== r) : [...form.reservations, r] });
 
   return (

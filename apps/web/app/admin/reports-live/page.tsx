@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -18,7 +19,7 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
 }
 
 export default function AdminReportsLive() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [rep, setRep] = useState<api.AdminReport | null>(null);
@@ -51,7 +52,7 @@ export default function AdminReportsLive() {
     finally { setExporting(false); }
   };
 
-  if (!can(s, 'reports.view')) return <NoAccess />;
+  if (!operatorCan(me, 'reports.view')) return <NoAccess />;
 
   const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);
   const roots = tree.filter((t) => !t.parentId || !tree.some((x) => x.id === t.parentId));

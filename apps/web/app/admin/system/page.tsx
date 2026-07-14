@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -26,7 +27,7 @@ function Card({ label, value, tone }: { label: string; value: string; tone?: { c
 }
 
 export default function AdminSystem() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [st, setSt] = useState<api.SystemStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [at, setAt] = useState<string>('');
@@ -37,7 +38,7 @@ export default function AdminSystem() {
   }, []);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
 
-  if (!can(s, 'dashboard.view')) return <NoAccess />;
+  if (!operatorCan(me, 'dashboard.view')) return <NoAccess />;
 
   const db = st ? health(st.database) : null;
   const rd = st ? health(st.redis) : null;

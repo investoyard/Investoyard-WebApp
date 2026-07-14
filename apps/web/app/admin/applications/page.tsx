@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -9,7 +10,7 @@ const RESULT_DONE = ['allotted', 'not_allotted', 'released', 'rejected', 'failed
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
 
 export default function AdminApplications() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [rows, setRows] = useState<api.AdminApplication[]>([]);
@@ -55,8 +56,8 @@ export default function AdminApplications() {
     finally { setBusy(false); }
   };
 
-  if (!can(s, 'bids.view')) return <NoAccess />;
-  const canManage = can(s, 'bids.manage');
+  if (!operatorCan(me, 'bids.view')) return <NoAccess />;
+  const canManage = operatorCan(me, 'bids.manage');
 
   const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);
   const roots = tree.filter((t) => !t.parentId || !tree.some((x) => x.id === t.parentId));

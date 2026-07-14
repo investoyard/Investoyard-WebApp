@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -11,7 +12,7 @@ const SCOPES = [
 ];
 
 export default function AdminRolesLive() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [roles, setRoles] = useState<api.Role[]>([]);
   const [perms, setPerms] = useState<api.Permission[]>([]);
   const [editing, setEditing] = useState<string | null>(null); // role id, or null = create
@@ -52,8 +53,8 @@ export default function AdminRolesLive() {
     else run(() => api.createRole({ name: form.name.trim(), scope: form.scope, permissions }), 'Role created.').then(resetForm);
   };
 
-  if (!can(s, 'roles.view')) return <NoAccess />;
-  const canManage = can(s, 'roles.manage');
+  if (!operatorCan(me, 'roles.view')) return <NoAccess />;
+  const canManage = operatorCan(me, 'roles.manage');
 
   return (
     <>

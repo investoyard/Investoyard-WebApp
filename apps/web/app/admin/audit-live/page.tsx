@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -15,7 +16,7 @@ const TONE: Record<string, string> = { create: '#1a7f4b', add: '#1a7f4b', update
 const maskMobile = (m?: string) => (m ? m.slice(0, 2) + '****' + m.slice(-4) : 'system');
 
 export default function AdminAuditLive() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [rows, setRows] = useState<api.AuditEntry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -25,7 +26,7 @@ export default function AdminAuditLive() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (!can(s, 'audit.view')) return <NoAccess />;
+  if (!operatorCan(me, 'audit.view')) return <NoAccess />;
 
   const when = (iso: string) => {
     const d = new Date(iso);

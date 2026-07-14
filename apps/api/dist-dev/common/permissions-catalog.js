@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ROLE_SCOPES = exports.VALID_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
+/**
+ * Canonical permission catalog (server-owned). The admin role editor renders these
+ * as checkboxes, and role writes are validated against them — a role can only grant
+ * a known permission.
+ */
+exports.PERMISSION_CATALOG = [
+    { key: 'dashboard.view', label: 'View dashboard', group: 'General' },
+    { key: 'users.view', label: 'View users', group: 'Users' },
+    { key: 'users.manage', label: 'Create / edit users', group: 'Users' },
+    { key: 'roles.view', label: 'View roles', group: 'Roles & permissions' },
+    { key: 'roles.manage', label: 'Create / edit roles', group: 'Roles & permissions' },
+    { key: 'ipos.view', label: 'View IPOs', group: 'IPOs' },
+    { key: 'ipos.manage', label: 'Create / edit IPOs', group: 'IPOs' },
+    { key: 'bids.view', label: 'View bids', group: 'Bids' },
+    { key: 'bids.manage', label: 'Manage bids / allotment', group: 'Bids' },
+    { key: 'reports.view', label: 'View reports', group: 'Reports' },
+    { key: 'audit.view', label: 'View audit log', group: 'Audit' },
+    { key: 'rails.manage', label: 'Configure exchange APIs (NSE/BSE)', group: 'Exchange rails' },
+    { key: 'tenants.manage', label: 'Manage tenants & white-label settings', group: 'Tenants' },
+    { key: 'settings.manage', label: 'Manage settings', group: 'Settings' },
+    { key: 'providers.manage', label: 'Manage provider keys (SMS / push)', group: 'Settings' },
+];
+exports.VALID_PERMISSIONS = new Set(exports.PERMISSION_CATALOG.map((p) => p.key));
+exports.ROLE_SCOPES = ['own', 'subtree', 'all'];

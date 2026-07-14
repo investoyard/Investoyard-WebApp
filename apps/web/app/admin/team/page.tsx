@@ -1,13 +1,14 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
 const TYPE_LABEL: Record<string, string> = { platform: 'Operator', direct: 'Direct (B2C)', partner: 'Partner', branch: 'Branch' };
 
 export default function AdminTeam() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
   const [roles, setRoles] = useState<api.Role[]>([]);
   const [sel, setSel] = useState<string | null>(null);
@@ -48,7 +49,7 @@ export default function AdminTeam() {
     run(async () => { await api.addMember(sel, { mobile: form.mobile, name: form.name || undefined, roleName: form.roleName }); setForm((f) => ({ ...f, mobile: '', name: '' })); });
   };
 
-  if (!can(s, 'users.view')) return <NoAccess />;
+  if (!operatorCan(me, 'users.view')) return <NoAccess />;
 
   const selected = tree.find((t) => t.slug === sel);
   const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);

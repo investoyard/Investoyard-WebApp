@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -32,7 +33,7 @@ const SPECS = [
 type Draft = { enabled: boolean; settings: Record<string, string>; secrets: Record<string, string> };
 
 export default function AdminIntegrations() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [rows, setRows] = useState<api.ProviderConfig[] | null>(null);
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -58,7 +59,7 @@ export default function AdminIntegrations() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (!can(s, 'providers.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'providers.manage')) return <NoAccess />;
 
   const secretSet = (provider: string, name: string) =>
     rows?.find((r) => r.provider === provider)?.secretKeys.includes(name);

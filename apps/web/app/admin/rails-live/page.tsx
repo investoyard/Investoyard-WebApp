@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -8,7 +9,7 @@ const EX_LABEL: Record<string, string> = { NSE_EIPO: 'NSE e-IPO', BSE_IBBS: 'BSE
 const blank = { exchange: 'NSE_EIPO', memberName: '', memberType: 'merchant_banker', loginId: '', memberCode: '', password: '', subBrokerCode: '', ibbsId: '', baseUrl: '', env: 'uat' };
 
 export default function AdminRailsLive() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [rails, setRails] = useState<api.RailCred[]>([]);
   const [form, setForm] = useState<any>({ ...blank });
   const [test, setTest] = useState<Record<string, string>>({});
@@ -42,7 +43,7 @@ export default function AdminRailsLive() {
     finally { setBusy(false); }
   };
 
-  if (!can(s, 'rails.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'rails.manage')) return <NoAccess />;
 
   return (
     <>

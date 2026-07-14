@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { can, useAdmin } from '@/lib/admin-store';
+import { useOperator } from "@/lib/operator-context";
+import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
 import * as api from '@/lib/tenants-admin';
 
@@ -71,7 +72,7 @@ function FeatureRow({ slug, feature, r, busy, onSet, onClear }: {
 }
 
 export default function AdminTenants() {
-  const s = useAdmin((x) => x);
+  const me = useOperator();
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
   const [catalog, setCatalog] = useState<api.Feature[]>([]);
   const [sel, setSel] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export default function AdminTenants() {
   const onSet = (key: string, value: any, locked: boolean) => sel && run(key, () => api.setOverride(sel, key, value, locked));
   const onClear = (key: string) => sel && run(key, () => api.clearOverride(sel, key));
 
-  if (!can(s, 'tenants.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'tenants.manage')) return <NoAccess />;
 
   const selected = tree.find((t) => t.slug === sel);
   const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);

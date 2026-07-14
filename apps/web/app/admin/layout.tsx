@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { fetchMe, clearOperator, operatorCan, type OperatorMe } from '@/lib/operator';
+import { OperatorContext } from '@/lib/operator-context';
 
 const NAV: { href: string; label: string; icon: Parameters<typeof Icon>[0]['name']; perm: string }[] = [
   { href: '/admin/overview', label: 'Dashboard', icon: 'sparkle', perm: 'dashboard.view' },
@@ -77,7 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div style={{ flex: 1 }} />
           <button className="btn btn-secondary btn-sm" onClick={signOut}>Sign out</button>
         </header>
-        <main className="admin-main">{children}</main>
+        <main className="admin-main"><OperatorContext.Provider value={me}>{children}</OperatorContext.Provider></main>
       </div>
     </div>
   );
