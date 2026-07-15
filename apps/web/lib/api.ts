@@ -319,8 +319,12 @@ export function mockIpoBySymbol(symbol: string): IpoFull | undefined {
 }
 export function mockIpos(): IpoFull[] { return FULL; }
 
-/** Symbols to statically generate — the live DB list at build time (mock fallback). */
+/** Symbols to statically generate — the live DB list at build time. Never empty:
+ *  `output: export` rejects a dynamic route with zero params, so when the catalog is
+ *  empty we fall back to placeholder symbols (their pages are simply unreachable from
+ *  the empty home until real IPOs are added). */
 export async function ipoSymbols(): Promise<string[]> {
   const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
-  return list.map((i) => i.symbol);
+  const symbols = list.map((i) => i.symbol);
+  return symbols.length ? symbols : MOCK.map((i) => i.symbol);
 }

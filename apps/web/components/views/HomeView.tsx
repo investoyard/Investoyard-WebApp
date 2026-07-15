@@ -46,10 +46,10 @@ export async function HomeView({ lang }: { lang: Lang }) {
         <div className="hero-visual" aria-hidden="true">
           <div className="showcase">
             <div className="sc-top">
-              <CompanyMark name={feature.name} symbol={feature.symbol} size="md" />
+              <CompanyMark name={feature?.name ?? 'Investoyard'} symbol={feature?.symbol ?? 'IPO'} size="md" />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{feature.name}</div>
-                <div className="muted mono" style={{ fontSize: 13 }}>{priceBand(feature.priceBandMin, feature.priceBandMax)} · Lot {feature.lotSize ?? '—'}</div>
+                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{feature?.name ?? 'Your next IPO'}</div>
+                <div className="muted mono" style={{ fontSize: 13 }}>{feature ? `${priceBand(feature.priceBandMin, feature.priceBandMax)} · Lot ${feature.lotSize ?? '—'}` : 'Coming soon'}</div>
               </div>
               <span className="status open">open</span>
             </div>
