@@ -1,8 +1,14 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useOperator } from "@/lib/operator-context";
-import { operatorCan } from "@/lib/operator";
+import { useOperator } from '@/lib/operator-context';
+import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
+import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
+import { Loader } from '@/components/ui/Loader';
+import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
 const SCOPES = [
@@ -15,7 +21,8 @@ export default function AdminRolesLive() {
   const me = useOperator();
   const [roles, setRoles] = useState<api.Role[]>([]);
   const [perms, setPerms] = useState<api.Permission[]>([]);
-  const [editing, setEditing] = useState<string | null>(null); // role id, or null = create
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null); // role id being edited, or null = create/duplicate
   const [form, setForm] = useState<{ name: string; scope: string; perms: Set<string> }>({ name: '', scope: 'own', perms: new Set() });
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -34,23 +41,40 @@ export default function AdminRolesLive() {
     for (const p of perms) (g[p.group] ??= []).push(p);
     return g;
   }, [perms]);
+  const allKeys = useMemo(() => perms.map((p) => p.key), [perms]);
 
-  const resetForm = () => { setEditing(null); setForm({ name: '', scope: 'own', perms: new Set() }); };
-  const startEdit = (r: api.Role) => { setEditing(r.id); setForm({ name: r.name, scope: r.scope, perms: new Set(r.permissions) }); setMsg(null); setErr(null); };
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const isSuper = (r: api.Role) => r.permissions.includes('*');
+  const askDelete = (r: api.Role) => setConfirm({
+    title: `Delete role “${r.name}”?`, danger: true, confirmLabel: 'Delete role',
+    message: <>Operators using this role will lose its permissions. This can’t be undone.</>,
+    onConfirm: () => run(() => api.deleteRole(r.id), 'Role deleted.'),
+  });
+  const openCreate = () => { setEditing(null); setForm({ name: '', scope: 'own', perms: new Set() }); setErr(null); setOpen(true); };
+  const openEdit = (r: api.Role, duplicate = false) => {
+    const star = isSuper(r);
+    setEditing(duplicate || star ? null : r.id); // '*' role → force duplicate (can't edit)
+    setForm({ name: duplicate || star ? `${r.name} copy` : r.name, scope: r.scope, perms: new Set(star ? allKeys : r.permissions) });
+    setErr(null); setOpen(true);
+  };
   const toggle = (key: string) => setForm((f) => { const p = new Set(f.perms); p.has(key) ? p.delete(key) : p.add(key); return { ...f, perms: p }; });
+  const setGroup = (keys: string[], on: boolean) => setForm((f) => { const p = new Set(f.perms); keys.forEach((k) => (on ? p.add(k) : p.delete(k))); return { ...f, perms: p }; });
+  const allOn = form.perms.size === allKeys.length && allKeys.length > 0;
 
   const run = async (fn: () => Promise<any>, okMsg: string) => {
     setBusy(true); setErr(null); setMsg(null);
-    try { await fn(); await load(); setMsg(okMsg); }
-    catch (e: any) { setErr(String(e?.message ?? e)); }
+    try { await fn(); await load(); setMsg(okMsg); return true; }
+    catch (e: any) { setErr(String(e?.message ?? e)); return false; }
     finally { setBusy(false); }
   };
-  const onSave = () => {
+  const onSave = async () => {
     const permissions = [...form.perms];
-    if (!editing && !form.name.trim()) { setErr('Enter a role name.'); return; }
-    if (permissions.length === 0) { setErr('Select at least one permission.'); return; }
-    if (editing) run(() => api.updateRole(editing, { scope: form.scope, permissions }), 'Role updated.').then(resetForm);
-    else run(() => api.createRole({ name: form.name.trim(), scope: form.scope, permissions }), 'Role created.').then(resetForm);
+    if (!form.name.trim()) return setErr('Enter a role name.');
+    if (permissions.length === 0) return setErr('Select at least one permission.');
+    const ok = editing
+      ? await run(() => api.updateRole(editing, { scope: form.scope, permissions }), 'Role updated.')
+      : await run(() => api.createRole({ name: form.name.trim(), scope: form.scope, permissions }), 'Role created.');
+    if (ok) setOpen(false);
   };
 
   if (!operatorCan(me, 'roles.view')) return <NoAccess />;
@@ -58,78 +82,88 @@ export default function AdminRolesLive() {
 
   return (
     <>
-      <div className="between" style={{ marginBottom: 16 }}>
-        <div><h1 style={{ margin: 0 }}>Roles &amp; permissions</h1><p className="muted">Live role definitions — assigned to operators in Team &amp; access.</p></div>
-      </div>
-      {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
+      <PageHead
+        title="Roles & permissions"
+        sub="What each operator type can do. Edit any role's permissions; only the SuperAdmin role is locked."
+        actions={canManage ? <button className="btn" onClick={openCreate}>＋ New role</button> : undefined}
+      />
+      {err && !open && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
       {msg && <div className="banner ok" style={{ marginBottom: 16 }}>{msg}</div>}
-      {loading ? <div className="muted">Loading…</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-          <div className="panel">
-            <h3 style={{ marginTop: 0 }}>Roles</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+
+      {loading ? <Loader /> : (
+        <div className="card">
+          <div className="card-head"><span className="t">Roles <span className="count-badge">{roles.length}</span></span></div>
+          <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ width: '100%' }}>
+            <thead><tr><th>Role</th><th>Scope</th><th>Permissions</th><th></th></tr></thead>
+            <tbody>
               {roles.map((r) => (
-                <div key={r.id} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 12 }}>
-                  <div className="between">
-                    <div>
-                      <span style={{ fontWeight: 600 }}>{r.name}</span>
-                      {r.isSystem && <span className="pill" style={{ marginLeft: 8, fontSize: 11 }}>system</span>}
-                      <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>scope: {r.scope}</span>
-                    </div>
-                    {canManage && !r.isSystem && (
-                      <div className="row" style={{ gap: 6 }}>
-                        <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => startEdit(r)}>Edit</button>
-                        <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.deleteRole(r.id), 'Role deleted.')}>Delete</button>
-                      </div>
+                <tr key={r.id}>
+                  <td><b>{r.name}</b>{r.isSystem && <span className="st mut" style={{ marginLeft: 8 }}>system</span>}</td>
+                  <td className="mono" style={{ fontSize: 13 }}>{r.scope}</td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{isSuper(r) ? 'All permissions' : `${r.permissions.length} permission${r.permissions.length === 1 ? '' : 's'}`}</td>
+                  <td>
+                    {canManage && (
+                      <span className="row-actions">
+                        {!isSuper(r) && <button className="icon-btn" onClick={() => openEdit(r)} title="Edit"><Icon name="edit" size={15} /></button>}
+                        <RowMenu>
+                          <button onClick={() => openEdit(r, true)}><Icon name="copy" size={15} /> Duplicate</button>
+                          {!r.isSystem && !isSuper(r) && <button className="danger" disabled={busy} onClick={() => askDelete(r)}><Icon name="trash" size={15} /> Delete role</button>}
+                        </RowMenu>
+                      </span>
                     )}
-                  </div>
-                  <div className="muted mono" style={{ fontSize: 11, marginTop: 6, lineHeight: 1.5 }}>
-                    {r.permissions.includes('*') ? 'all permissions (*)' : r.permissions.join(' · ')}
-                  </div>
-                </div>
+                  </td>
+                </tr>
               ))}
-            </div>
+            </tbody>
+          </table>
+        </div></div>
+      )}
+
+      {open && (
+        <Modal title={editing ? `Edit role — ${form.name}` : 'New role'} sub="Pick a scope, then tick the areas this role can access." onClose={() => setOpen(false)} wide>
+          {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
+          <div className="form-grid" style={{ marginBottom: 16 }}>
+            <Field label="Role name" required span={2}><input className="input" value={form.name} disabled={!!editing} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Regional Manager" /></Field>
+            <Field label="Scope"><select className="input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>{SCOPES.map((sc) => <option key={sc.v} value={sc.v}>{sc.d}</option>)}</select></Field>
           </div>
 
-          {canManage ? (
-            <div className="panel">
-              <div className="between"><h3 style={{ marginTop: 0 }}>{editing ? `Edit role — ${form.name}` : 'Create a role'}</h3>{editing && <button className="btn btn-secondary btn-sm" onClick={resetForm}>New</button>}</div>
-              <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>Name</label>
-                  <input className="input" style={{ width: 180 }} value={form.name} disabled={!!editing} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Regional Manager" />
+          <div className="between" style={{ marginBottom: 10 }}>
+            <label className="muted" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Permissions</label>
+            <label className="row" style={{ gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--brand)', cursor: 'pointer' }}>
+              <input type="checkbox" style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} checked={allOn} onChange={(e) => setGroup(allKeys, e.target.checked)} /> Select all
+            </label>
+          </div>
+
+          {Object.entries(groups).map(([group, list]) => {
+            const keys = list.map((p) => p.key);
+            const on = keys.filter((k) => form.perms.has(k));
+            const groupAll = on.length === keys.length;
+            return (
+              <div className="perm-card" key={group}>
+                <div className="perm-card-head">
+                  <span className="g">{group} <span style={{ color: 'var(--text-faint)' }}>· {on.length}/{keys.length}</span></span>
+                  <label className="sa"><input type="checkbox" checked={groupAll} ref={(el) => { if (el) el.indeterminate = on.length > 0 && !groupAll; }} onChange={(e) => setGroup(keys, e.target.checked)} /> Select all</label>
                 </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label>Scope</label>
-                  <select className="input" style={{ width: 200 }} value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
-                    {SCOPES.map((sc) => <option key={sc.v} value={sc.v}>{sc.d}</option>)}
-                  </select>
+                <div className="perm-list">
+                  {list.map((p) => {
+                    const isOn = form.perms.has(p.key);
+                    return <label key={p.key} className={`perm-check ${isOn ? 'on' : ''}`}><input type="checkbox" checked={isOn} onChange={() => toggle(p.key)} /> {p.label}</label>;
+                  })}
                 </div>
               </div>
-              <div style={{ marginTop: 14 }}>
-                <label className="muted" style={{ fontSize: 12 }}>Permissions</label>
-                {Object.entries(groups).map(([group, list]) => (
-                  <div key={group} style={{ marginTop: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-faint)' }}>{group}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                      {list.map((p) => {
-                        const on = form.perms.has(p.key);
-                        return (
-                          <button key={p.key} type="button" onClick={() => toggle(p.key)}
-                            style={{ padding: '5px 10px', borderRadius: 999, fontSize: 12, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--brand)' : 'var(--border)'), background: on ? 'var(--brand-50)' : 'transparent', color: on ? 'var(--brand-700)' : 'var(--text)' }}>
-                            {on ? '✓ ' : ''}{p.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="btn" style={{ marginTop: 16 }} disabled={busy} onClick={onSave}>{editing ? 'Save changes' : 'Create role'}</button>
-            </div>
-          ) : <div className="panel muted">You need the “Create / edit roles” permission to manage roles.</div>}
-        </div>
+            );
+          })}
+
+          <FormActions>
+            <button className="btn" disabled={busy} onClick={onSave}>{editing ? 'Save changes' : 'Create role'}</button>
+            <button className="btn btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+            <span className="spacer" />
+            <span className="muted" style={{ fontSize: 12 }}>{form.perms.size} selected</span>
+          </FormActions>
+        </Modal>
       )}
+      {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
   );
 }

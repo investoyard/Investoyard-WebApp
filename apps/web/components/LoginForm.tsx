@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { store } from '@/lib/store';
+import { requestOtp, verifyOtp, setConsumerSession } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
@@ -18,9 +19,23 @@ export function LoginForm() {
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [requestId, setRequestId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const valid = /^[6-9]\d{9}$/.test(mobile);
   const otpFull = otp.every((d) => d !== '');
+
+  async function sendOtp() {
+    setBusy(true); setErr(null);
+    try {
+      const { requestId } = await requestOtp(mobile);
+      setRequestId(requestId);
+      setOtp(['', '', '', '', '', '']);
+      setStep('otp');
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
 
   function setDigit(i: number, v: string) {
     const d = v.replace(/\D/g, '').slice(-1);
@@ -34,9 +49,15 @@ export function LoginForm() {
     if (e.key === 'Backspace' && !otp[i] && i > 0) inputs.current[i - 1]?.focus();
   }
 
-  function verify() {
-    store.signIn(mobile);
-    router.push(next);
+  async function verify() {
+    setBusy(true); setErr(null);
+    try {
+      const { accessToken, user } = await verifyOtp(requestId, otp.join(''));
+      setConsumerSession(accessToken, user);
+      store.signIn(mobile);
+      router.push(next);
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
   }
 
   return (
@@ -57,9 +78,10 @@ export function LoginForm() {
               />
             </div>
           </div>
-          <button className="btn btn-block btn-lg" disabled={!valid} onClick={() => setStep('otp')}>
-            {tr('login.getOtp')}
+          <button className="btn btn-block btn-lg" disabled={!valid || busy} onClick={sendOtp}>
+            {busy ? '…' : tr('login.getOtp')}
           </button>
+          {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
         </div>
       ) : (
         <div style={{ marginTop: 20 }}>
@@ -78,15 +100,13 @@ export function LoginForm() {
             </div>
             <span className="hint">Sent to +91 {mobile} · <span className="linklike" onClick={() => setStep('mobile')}>change</span></span>
           </div>
-          <button className="btn btn-block btn-lg" disabled={!otpFull} onClick={verify}>
-            {tr('login.verify')}
+          <button className="btn btn-block btn-lg" disabled={!otpFull || busy} onClick={verify}>
+            {busy ? '…' : tr('login.verify')}
           </button>
+          {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
           <p style={{ textAlign: 'center', marginTop: 14 }}>
-            <span className="linklike">{tr('login.resend')}</span>
+            <span className="linklike" onClick={() => { if (!busy) sendOtp(); }}>{tr('login.resend')}</span>
           </p>
-          <div className="banner info" style={{ marginTop: 6 }}>
-            Demo: enter any 6 digits to continue.
-          </div>
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@ import { LiveSubscription } from '@/components/LiveSubscription';
 import { GmpTrend } from '@/components/GmpTrend';
 import { Icon } from '@/components/Icon';
 import * as calc from '@/lib/ipoCalc';
+import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
 
@@ -22,13 +23,32 @@ export function detailAlternates(symbol: string, lang: Lang): Metadata['alternat
 
 /** Locale-parameterized detail view — rendered at /ipos/[symbol] (en) and /[lang]/ipos/[symbol]. */
 export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: string }) {
+  const ipo = await getIpoDetail(symbol);
+  if (!ipo) {
+    const tr0 = makeT(lang);
+    const home0 = lang === 'en' ? '/' : `/${lang}/`;
+    return <p className="muted">{tr0('detail.notFound')} <a className="linklike" href={home0}>← All IPOs</a></p>;
+  }
+  return <IpoDetailBody lang={lang} ipo={ipo} />;
+}
+
+/**
+ * Pure presentational body — shared by the build-time page above and the client-side
+ * fallback route (/ipos/live) that serves IPOs added AFTER the last static build.
+ */
+export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awaited<ReturnType<typeof getIpoDetail>>> }) {
   const tr = makeT(lang);
   const q = lang === 'en' ? '' : `?lang=${lang}`; // app-page links keep the query form
   const home = lang === 'en' ? '/' : `/${lang}/`;
-  const ipo = await getIpoDetail(symbol);
-  if (!ipo) return <p className="muted">{tr('detail.notFound')} <a className="linklike" href={home}>← All IPOs</a></p>;
 
   const closes = ipo.status === 'open' ? closesInLabel(ipo.closeDate) : null;
+
+  // operator-entered rich content (from the admin form's `extra`); prefer it when present.
+  const ex: Record<string, any> = ipo.extra ?? {};
+  const rich = (s?: string) => (typeof s === 'string' && s.replace(/<[^>]*>/g, '').trim().length > 0 ? s : null);
+  const isHtml = (s?: string) => typeof s === 'string' && /<[a-z][\s\S]*>/i.test(s);
+  const opFaqs: { q: string; a: string }[] = Array.isArray(ex.faqs) ? ex.faqs.filter((f: any) => f?.q?.trim()) : [];
+  const faqList = opFaqs.length ? opFaqs : (ipo.faqs ?? []);
 
   const tlStates = timelineStates(calc.timeline(ipo));
   const todayMs = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
@@ -212,13 +232,16 @@ export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: stri
             <GmpTrend ipo={ipo} />
           </section>
 
-          {ipo.financialRows && ipo.financialYears && (
+          {(rich(ex.companyFinancials) || (ipo.financialRows && ipo.financialYears)) && (
             <section id="financials">
               <div className="section-title">Financials</div>
+              {rich(ex.companyFinancials) ? (
+              <div className="panel"><div className="prose" dangerouslySetInnerHTML={{ __html: cleanRich(ex.companyFinancials) }} /></div>
+              ) : (
               <div className="panel">
                 <div className="between"><h3>Total income trend</h3><span className="muted mono" style={{ fontSize: 13 }}>₹ Crore</span></div>
                 <div className="fin-bars">
-                  {ipo.financialRows[0].values.slice().reverse().map((v, i) => (
+                  {ipo.financialRows![0].values.slice().reverse().map((v, i) => (
                     <div className="fb" key={i}>
                       <div className="val">₹{Math.round(v)}</div>
                       <div className="bar" style={{ height: `${Math.max(8, (v / finMax) * 100)}%` }} />
@@ -228,9 +251,9 @@ export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: stri
                 </div>
                 <div className="fin-scroll">
                   <table className="fin-tab">
-                    <thead><tr><th>Metric</th>{ipo.financialYears.map((y) => <th key={y}>{y}</th>)}</tr></thead>
+                    <thead><tr><th>Metric</th>{ipo.financialYears!.map((y) => <th key={y}>{y}</th>)}</tr></thead>
                     <tbody>
-                      {ipo.financialRows.map((row) => (
+                      {ipo.financialRows!.map((row) => (
                         <tr key={row.metric}>
                           <td>{row.metric}</td>
                           {row.values.map((v, i) => <td key={i} className={i === 0 ? 'up' : ''}>{v.toLocaleString('en-IN')}</td>)}
@@ -240,51 +263,69 @@ export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: stri
                   </table>
                 </div>
               </div>
+              )}
             </section>
           )}
 
-          {ipo.objects && (
+          {(isHtml(ipo.objectsOfIssue) || ipo.objects) && (
             <section id="objects">
               <div className="section-title">Objects of the issue</div>
               <div className="panel">
-                <div className="obj-list">
-                  {ipo.objects.map((o, i) => (
-                    <div className="obj-row" key={i}>
-                      <span className="obj-n">{i + 1}</span>
-                      <span className="obj-t">{o.text}</span>
-                      {o.amount && <span className="obj-amt mono">{o.amount}</span>}
-                    </div>
-                  ))}
-                </div>
+                {isHtml(ipo.objectsOfIssue) ? (
+                  <div className="prose" dangerouslySetInnerHTML={{ __html: cleanRich(ipo.objectsOfIssue) }} />
+                ) : (
+                  <div className="obj-list">
+                    {ipo.objects!.map((o, i) => (
+                      <div className="obj-row" key={i}>
+                        <span className="obj-n">{i + 1}</span>
+                        <span className="obj-t">{o.text}</span>
+                        {o.amount && <span className="obj-amt mono">{o.amount}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </section>
           )}
 
-          {(ipo.about || ipo.strengths) && (
+          {(rich(ex.companyDescription) || rich(ex.companyStrength) || rich(ex.contactInfo) || ipo.about || ipo.strengths) && (
             <section id="about">
               <div className="section-title">About the company</div>
               <div className="panel">
-                {ipo.about && <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>{ipo.about}</p>}
-                {(ipo.strengths || ipo.strategies) && (
-                  <div className="cols-2" style={{ marginTop: 16 }}>
-                    {ipo.strengths && (
-                      <div>
-                        <h3 style={{ fontSize: 14 }}>Competitive strengths</h3>
-                        <ul className="chk str">{ipo.strengths.map((s) => <li key={s}><Icon name="check" size={15} strokeWidth={3} />{s}</li>)}</ul>
-                      </div>
-                    )}
-                    {ipo.strategies && (
-                      <div>
-                        <h3 style={{ fontSize: 14 }}>Business strategies</h3>
-                        <ul className="chk strat">{ipo.strategies.map((s) => <li key={s}><Icon name="arrow-right" size={15} strokeWidth={2.4} />{s}</li>)}</ul>
-                      </div>
-                    )}
+                {rich(ex.companyDescription)
+                  ? <div className="prose" dangerouslySetInnerHTML={{ __html: cleanRich(ex.companyDescription) }} />
+                  : (ipo.about && <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>{ipo.about}</p>)}
+
+                {rich(ex.companyStrength)
+                  ? <div style={{ marginTop: 18 }}><h3 style={{ fontSize: 14 }}>Company strengths</h3><div className="prose" dangerouslySetInnerHTML={{ __html: cleanRich(ex.companyStrength) }} /></div>
+                  : ((ipo.strengths || ipo.strategies) && (
+                    <div className="cols-2" style={{ marginTop: 16 }}>
+                      {ipo.strengths && (
+                        <div>
+                          <h3 style={{ fontSize: 14 }}>Competitive strengths</h3>
+                          <ul className="chk str">{ipo.strengths.map((s) => <li key={s}><Icon name="check" size={15} strokeWidth={3} />{s}</li>)}</ul>
+                        </div>
+                      )}
+                      {ipo.strategies && (
+                        <div>
+                          <h3 style={{ fontSize: 14 }}>Business strategies</h3>
+                          <ul className="chk strat">{ipo.strategies.map((s) => <li key={s}><Icon name="arrow-right" size={15} strokeWidth={2.4} />{s}</li>)}</ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                {(ex.companyPromoter || ipo.promoters) && (
+                  <div style={{ marginTop: 18 }}>
+                    <h3 style={{ fontSize: 14 }}>Promoters</h3>
+                    <div className="row" style={{ marginTop: 8, gap: 8 }}>{(ex.companyPromoter ? [String(ex.companyPromoter)] : ipo.promoters!).map((p: string) => <span className="chip" key={p}>{p}</span>)}</div>
                   </div>
                 )}
-                {ipo.promoters && (
-                  <div style={{ marginTop: 16 }}>
-                    <h3 style={{ fontSize: 14 }}>Promoters</h3>
-                    <div className="row" style={{ marginTop: 8, gap: 8 }}>{ipo.promoters.map((p) => <span className="chip" key={p}>{p}</span>)}</div>
+
+                {rich(ex.contactInfo) && (
+                  <div style={{ marginTop: 18 }}>
+                    <h3 style={{ fontSize: 14 }}>Registered office &amp; contact</h3>
+                    <div className="prose" dangerouslySetInnerHTML={{ __html: cleanRich(ex.contactInfo) }} />
                   </div>
                 )}
               </div>
@@ -300,11 +341,14 @@ export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: stri
                 </div>
               )}
 
-              {ipo.documents && (
+              {(ipo.documents ?? []).filter((d) => !d.type?.startsWith('asba_form')).length > 0 && (
                 <div className="panel" style={{ marginTop: 14 }}>
                   <h3>Documents</h3>
                   <div style={{ marginTop: 8 }}>
-                    {ipo.documents.map((d) => <div className="kv" key={d.type}><span className="k">{d.type}</span><a href={d.url} className="linklike">Open ↗</a></div>)}
+                    {/* internal ASBA print blanks (asba_form_*) are operator assets — never shown publicly */}
+                    {ipo.documents!.filter((d) => !d.type?.startsWith('asba_form')).map((d) => (
+                      <div className="kv" key={d.type}><span className="k">{d.type}</span><a href={d.url} className="linklike" target="_blank" rel="noreferrer">Open ↗</a></div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -324,14 +368,14 @@ export async function IpoDetailView({ lang, symbol }: { lang: Lang; symbol: stri
             </div>
           </section>
 
-          {ipo.faqs && (
+          {faqList.length > 0 && (
             <section id="faq">
               <div className="section-title">Frequently asked questions</div>
               <div className="faq-acc">
-                {ipo.faqs.map((f, i) => (
+                {faqList.map((f, i) => (
                   <details key={i} open={i === 0}>
                     <summary>{f.q}</summary>
-                    <p>{f.a}</p>
+                    {isHtml(f.a) ? <div className="prose" dangerouslySetInnerHTML={{ __html: f.a }} /> : <p>{f.a}</p>}
                   </details>
                 ))}
               </div>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useOperator } from "@/lib/operator-context";
 import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
+import { Loader } from '@/components/ui/Loader';
 import * as api from '@/lib/tenants-admin';
 
 const health = (v: string) => (v === 'up' ? { c: 'var(--good, #187a48)', b: '#e6f4ec', t: 'Up' }
@@ -50,7 +51,7 @@ export default function AdminSystem() {
         <button className="btn btn-secondary btn-sm" onClick={load}>Refresh</button>
       </div>
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err} — is the API running?</div>}
-      {!st ? <div className="muted">Loading…</div> : (
+      {!st ? <Loader /> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
           <Card label="Database" value={db!.t} tone={db!} />
           <Card label="Redis" value={rd!.t} tone={rd!} />

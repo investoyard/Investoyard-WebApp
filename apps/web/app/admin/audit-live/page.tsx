@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useOperator } from "@/lib/operator-context";
 import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
+import { Loader } from '@/components/ui/Loader';
 import * as api from '@/lib/tenants-admin';
 
 const ACTION_LABEL: Record<string, string> = {
@@ -45,7 +46,7 @@ export default function AdminAuditLive() {
           <table className="table" style={{ width: '100%' }}>
             <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Tenant</th></tr></thead>
             <tbody>
-              {rows === null ? <tr><td colSpan={5} className="muted" style={{ padding: 14 }}>Loading…</td></tr> :
+              {rows === null ? <tr><td colSpan={5}><Loader /></td></tr> :
                 rows.length === 0 ? <tr><td colSpan={5} className="muted" style={{ padding: 14 }}>No activity recorded yet.</td></tr> :
                   rows.map((r) => {
                     const verb = r.action.split('.')[1] ?? '';

@@ -5,10 +5,39 @@ import { inr, priceBand } from '@/lib/format';
 import { mockIpoBySymbol, type IpoDetail } from '@/lib/api';
 import { CompanyMark } from '@/components/CompanyMark';
 import { Icon } from '@/components/Icon';
-import { useStore, store, Application, AppStatus, Profile } from '@/lib/store';
+import { useStore, store, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
+import { getConsumerToken, listApplications, type ApiApplication } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
+
+/** Map a live API application into the local Application shape the cards render. */
+function mapApiApp(v: ApiApplication): Application {
+  return {
+    id: v.id,
+    ipoSymbol: v.ipoSymbol,
+    ipoName: v.ipoName,
+    profileId: '',
+    profileName: v.profileName ?? '',
+    lots: v.lots ?? 0,
+    shares: v.shares ?? 0,
+    pricePerShare: v.shares && v.amount ? Math.round(v.amount / v.shares) : 0,
+    atCutoff: false,
+    category: (v.category as InvestorCategory) ?? 'Retail',
+    amount: v.amount,
+    method: v.applyMethod === 'pdf' ? 'pdf' : 'upi',
+    status: v.status as AppStatus,
+    applicationNumber: v.applicationNumber ?? 'IY' + v.id.replace(/-/g, '').slice(0, 9).toUpperCase(),
+    createdAt: v.createdAt ?? new Date().toISOString(),
+    amountBlocked: v.amountBlocked,
+    amountReleased: v.refundAmount,
+    allottedShares: v.allottedShares,
+    listingGainPct: v.listingGainPct,
+    categorySubscribedTimes: v.categorySubscribedTimes,
+    allotmentOddsPct: v.allotmentOddsPct,
+    missingDetails: v.missingDetails,
+  };
+}
 
 const STATUS_CLASS: Record<AppStatus, string> = {
   draft: 'wait', submitted: 'info', dp_verified: 'info', dp_failed: 'bad',
@@ -82,7 +111,7 @@ function stageOf(a: Application): number {
 
 function resultText(a: Application): string {
   switch (a.status) {
-    case 'submitted': return 'Bid pushed to NSE / BSE — awaiting depository (DP) verification.';
+    case 'submitted': return 'Application received — queued for exchange submission.';
     case 'dp_verified': return `DP & PAN verified · awaiting ${a.method === 'upi' ? 'UPI mandate approval' : 'ASBA submission'}.`;
     case 'mandate_pending':
       return a.method === 'upi' ? `Approve the UPI mandate in your UPI app to block ${inr(a.amount)}.` : `Submit the ASBA form at your bank to block ${inr(a.amount)}.`;
@@ -102,10 +131,21 @@ export function Portfolio() {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
 
   const mobile = useStore((s) => s.mobile);
-  const applications = useStore((s) => s.applications);
+  const storeApps = useStore((s) => s.applications);
   const profiles = useStore((s) => s.profiles);
   const watchlist = useStore((s) => s.watchlist);
   const [tab, setTab] = useState<'apps' | 'check' | 'watch'>('apps');
+
+  // Live mode: signed in against the API → real applications history from GET /applications.
+  const useApi = typeof window !== 'undefined' && !!getConsumerToken();
+  const [apiApps, setApiApps] = useState<Application[] | null>(null);
+  useEffect(() => {
+    if (!useApi) return;
+    listApplications().then((rows) => setApiApps(rows.map(mapApiApp))).catch(() => setApiApps([]));
+    store.syncWatchlist();
+  }, [useApi]);
+  const loadingApps = useApi && apiApps === null;
+  const applications = useApi ? (apiApps ?? []) : storeApps;
 
   // My Applications filters + paging
   const [fIpo, setFIpo] = useState('all');
@@ -135,7 +175,8 @@ export function Portfolio() {
 
   const live = applications.map((a) => {
     const ipo = mockIpoBySymbol(a.ipoSymbol);
-    return { d: deriveLifecycle(a, ipo), ipo, raw: a };
+    // API mode: status is server-driven (rail/registrar). Demo mode: simulate the lifecycle.
+    return { d: useApi ? a : deriveLifecycle(a, ipo), ipo, raw: a };
   });
   const blocked = live.reduce((s, { d }) => s + (d.amountBlocked ?? 0), 0);
   const allottedN = live.filter(({ d }) => d.status === 'allotted').length;
@@ -181,14 +222,12 @@ export function Portfolio() {
       </div>
 
       {tab === 'apps' && (
-        applications.length === 0 ? (
+        loadingApps ? (
+          <div className="muted" style={{ padding: 16 }}>Loading your applications…</div>
+        ) : applications.length === 0 ? (
           <Empty emoji="📄" title={tr('apps.empty')} cta={<a className="btn" href={`/${q}`}>Explore IPOs</a>} />
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 4 }}>
-              <Icon name="bolt" size={14} style={{ verticalAlign: '-2px' }} /> Status updates automatically — bid &amp; status via the <b>NSE e-IPO / BSE iBBS</b> webhook; allotment from the <b>registrar</b> file/API. The bank blocks the funds.
-            </p>
-
             <div className="filters">
               <div className="fg">
                 <label>IPO</label>
@@ -321,6 +360,20 @@ function AppCard({ a, ipo, detail, q, tr }: { a: Application; ipo?: IpoDetail; d
         </div>
         {detail && <div className="faint mono" style={{ fontSize: 12, marginTop: 5 }}>{detail}</div>}
         <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
+        {(a.missingDetails ?? []).map((m) => (
+          <div key={m} style={{ marginTop: 6, fontSize: 13, color: 'var(--warn, #b45309)' }}>
+            ⚠ {m} — <a href="/account" style={{ color: 'inherit', textDecoration: 'underline' }}>fix on the account page</a>
+          </div>
+        ))}
+        {(a.categorySubscribedTimes != null || a.allotmentOddsPct != null) && (
+          <div className="between" style={{ marginTop: 8 }}>
+            <span className="muted">{catShort(a.category)} subscription (live)</span>
+            <span className="mono" style={{ fontWeight: 700 }}>
+              {a.categorySubscribedTimes != null ? `${a.categorySubscribedTimes}x` : '—'}
+              {a.allotmentOddsPct != null ? ` · ~${a.allotmentOddsPct}% allotment odds` : ''}
+            </span>
+          </div>
+        )}
         {a.status === 'allotted' && a.listingGainPct != null && (
           <div className="between" style={{ marginTop: 8 }}>
             <span className="muted">Listing gain (est.)</span>
@@ -387,13 +440,17 @@ function Checker({ applications, profiles, q, tr }: {
                     </div>
                     <div className="faint mono" style={{ fontSize: 12, marginTop: 8 }}>{applicantLine(a, profiles)}</div>
                     <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
+                    {(a.missingDetails ?? []).map((m) => (
+                      <div key={m} style={{ marginTop: 6, fontSize: 13, color: 'var(--warn, #b45309)' }}>
+                        ⚠ {m} — <a href="/account" style={{ color: 'inherit', textDecoration: 'underline' }}>fix on the account page</a>
+                      </div>
+                    ))}
                   </div>
                 );
               })}
             </div>
           )
         )}
-        <p className="disclaimer" style={{ marginTop: 14 }}>Demo: searches your own applications. Production checks the registrar (KFin / Link Intime / Bigshare) by PAN.</p>
       </div>
     </div>
   );

@@ -8,7 +8,22 @@ import { SubmissionQueueService } from '../queue/submission-queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
 import { buildAsbaPdf } from './asba-pdf';
+import { fillAsbaForm, mergePdfs, AsbaOverlayData } from './asba-overlay';
+import { UPLOAD_DIR } from '../upload/upload.module';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
+
+/** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
+const ASBA_RETAIL_LIMIT = 500000;
+
+/** Shared relations needed to fill an ASBA form for an application. */
+const ASBA_INCLUDE = {
+  profile: true,
+  ipo: { include: { documents: true } },
+  user: { select: { mobile: true } },
+  tenant: { select: { name: true } },
+};
 
 @Injectable()
 export class ApplicationsService {
@@ -24,7 +39,15 @@ export class ApplicationsService {
     const rows = await this.prisma.application.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true } } },
+      include: {
+        ipo: {
+          select: {
+            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true,
+            subscriptions: { select: { category: true, timesSubscribed: true, applicationsSubscribed: true } },
+          },
+        },
+        profile: { select: { fullName: true, relationship: true, depository: true, dpId: true, clientId: true, upiTokenRef: true } },
+      },
     });
     return rows.map(toView);
   }
@@ -149,7 +172,7 @@ export class ApplicationsService {
     // NATIVE: ENQUEUE by reference only — no PII in the job/Redis. The worker
     // hydrates (DB row + vault resolve) just-in-time before the rail call; the
     // queue handles idempotency + retry + closing-day bursts.
-    const memberCredentialId = await this.rail.launchRailCredentialId();
+    const memberCredentialId = await this.rail.resolveBidCredentialId(ipo);
     await this.prisma.application.update({ where: { id: app.id }, data: { status: 'submitted' } });
     await this.queue.enqueue({ applicationId: app.id, memberCredentialId, idempotencyKey });
 
@@ -163,12 +186,83 @@ export class ApplicationsService {
    * the owner's own document; nothing is persisted.
    */
   async generatePdf(userId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
-    const app = await this.prisma.application.findFirst({
-      where: { id, userId },
-      include: { profile: true, ipo: true, tenant: { select: { name: true } } },
-    });
+    const app = await this.prisma.application.findFirst({ where: { id, userId }, include: ASBA_INCLUDE });
     if (!app) throw new NotFoundException();
+    const { buffer, formNo } = await this.buildAsbaForApp(app);
+    return { buffer, filename: `${app.ipo.symbol}_${formNo ?? app.id.slice(0, 8)}.pdf` };
+  }
 
+  /**
+   * Family / group print — every application in the batch (same batchId, this user)
+   * filled onto its own ASBA form and merged into ONE multi-page PDF.
+   */
+  async generateBatchPdf(userId: string, batchId: string): Promise<{ buffer: Buffer; filename: string }> {
+    const apps = await this.prisma.application.findMany({
+      where: { batchId, userId }, include: ASBA_INCLUDE, orderBy: { createdAt: 'asc' },
+    });
+    if (apps.length === 0) throw new NotFoundException();
+    const buffers: Buffer[] = [];
+    for (const app of apps) buffers.push((await this.buildAsbaForApp(app)).buffer);
+    const buffer = await mergePdfs(buffers);
+    return { buffer, filename: `${apps[0].ipo.symbol}_family_${apps.length}.pdf` };
+  }
+
+  /**
+   * Print a chosen set of applications (this user's) — filled onto their ASBA forms
+   * and merged into one PDF, in the given order. Used by the web family-apply flow
+   * (which creates one application per member rather than a rail batch).
+   */
+  async generateFormsPdf(userId: string, ids: string[]): Promise<{ buffer: Buffer; filename: string }> {
+    const rows = await this.prisma.application.findMany({ where: { id: { in: ids }, userId }, include: ASBA_INCLUDE });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as any[];
+    if (ordered.length === 0) throw new NotFoundException();
+    const built: { buffer: Buffer; formNo: string | null }[] = [];
+    for (const app of ordered) built.push(await this.buildAsbaForApp(app));
+    const sym = ordered[0].ipo.symbol;
+    if (built.length === 1) return { buffer: built[0].buffer, filename: `${sym}_${built[0].formNo ?? ordered[0].id.slice(0, 8)}.pdf` };
+    return { buffer: await mergePdfs(built.map((b) => b.buffer)), filename: `${sym}_family_${built.length}.pdf` };
+  }
+
+  /** Fill one application onto its ASBA form (overlay the uploaded blank, else placeholder). */
+  private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
+    const template = this.pickAsbaTemplate(app.ipo, Number(app.amount));
+    if (template) {
+      const formNo = await this.allocateAsbaFormNo(app.ipo, app.id, app.asbaFormNo);
+      const data: AsbaOverlayData = {
+        formNo,
+        applicant: {
+          fullName: app.profile.fullName,
+          pan: await this.vault.resolve(app.profile.panTokenRef),
+          depository: app.profile.depository,
+          dpId: app.profile.dpId,
+          clientId: app.profile.clientId,
+          address: app.profile.address,
+          city: app.profile.city,
+          state: app.profile.state,
+          pincode: app.profile.pincode,
+          email: app.profile.email,
+          mobile: app.profile.mobile ?? app.user?.mobile ?? null, // applicant's own number wins on the printed form
+
+        },
+        bid: {
+          shares: app.lots * (app.ipo.lotSize ?? 0),
+          atCutoff: app.atCutoff,
+          bidPrice: app.bidPrice != null ? Number(app.bidPrice) : null,
+          amount: Number(app.amount),
+        },
+        bank: {
+          account: app.profile.bankTokenRef ? await this.vault.resolve(app.profile.bankTokenRef) : null,
+          ifsc: app.profile.ifsc,
+          bankName: app.profile.bankName,
+          branchName: app.profile.branchName,
+          upi: app.profile.upiTokenRef ? await this.vault.resolve(app.profile.upiTokenRef) : null,
+        },
+      };
+      return { buffer: await fillAsbaForm(readFileSync(template), data), formNo };
+    }
+
+    // Fallback: no template uploaded → the generated placeholder form.
     const buffer = await buildAsbaPdf({
       applicationId: app.id,
       channelName: app.tenant?.name ?? 'Investoyard',
@@ -179,7 +273,7 @@ export class ApplicationsService {
       },
       applicant: {
         fullName: app.profile.fullName,
-        pan: await this.vault.resolve(app.profile.panTokenRef), // owner's own form → full PAN
+        pan: await this.vault.resolve(app.profile.panTokenRef),
         relationship: app.profile.relationship,
         depository: app.profile.depository, dpId: app.profile.dpId, clientId: app.profile.clientId,
       },
@@ -193,7 +287,57 @@ export class ApplicationsService {
         ifsc: app.profile.ifsc,
       },
     });
-    return { buffer, filename: `asba-${app.ipo.symbol}-${app.id.slice(0, 8)}.pdf` };
+    return { buffer, formNo: null };
+  }
+
+  /**
+   * Pick the on-disk blank ASBA form to overlay, per the operator's uploads.
+   * Mainboard: ≤₹5L → Resident, above → Syndicate. SME/NCD → single form for any amount.
+   * Returns the absolute file path, or null to fall back to the generated placeholder.
+   */
+  private pickAsbaTemplate(ipo: any, amount: number): string | null {
+    const docs: Array<{ type: string; url: string }> = ipo.documents ?? [];
+    const isNcd = /ncd|debt/i.test(String(ipo.extra?.issueType ?? ''));
+    const isMainboard = ipo.type === 'mainboard' && !isNcd;
+    const wanted = isMainboard
+      ? amount > ASBA_RETAIL_LIMIT ? 'asba_form_syndicate' : 'asba_form_resident'
+      : 'asba_form_single';
+    const doc =
+      docs.find((d) => d.type === wanted) ||
+      docs.find((d) => d.type === 'asba_form_single') ||       // SME/NCD single, or mainboard fallback
+      docs.find((d) => d.type?.startsWith('asba_form'));       // any ASBA form as last resort
+    if (!doc?.url) return null;
+    const filename = doc.url.split('/uploads/')[1]?.split('?')[0];
+    if (!filename) return null;
+    const path = join(UPLOAD_DIR, decodeURIComponent(filename));
+    return existsSync(path) ? path : null;
+  }
+
+  /**
+   * Allocate the ASBA print-form number from the IPO's active "PDF Printing" series.
+   * Reuses the already-assigned number on reprint; returns null if no series is configured.
+   */
+  private async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
+    if (existing) return existing;
+    const series: Array<{ member: string; from: string; to: string; active: boolean }> =
+      Array.isArray(ipo.extra?.pdfSeries) ? ipo.extra.pdfSeries : [];
+    const active = series.find((s) => s.active) ?? series[0];
+    const from = Number(active?.from), to = Number(active?.to);
+    if (!Number.isFinite(from)) return null;
+    // next = max assigned within this IPO's range + 1 (or `from` if none yet)
+    const rows = await this.prisma.application.findMany({
+      where: { ipoId: ipo.id, asbaFormNo: { not: null } },
+      select: { asbaFormNo: true },
+    });
+    let next = from;
+    for (const r of rows) {
+      const n = Number(r.asbaFormNo);
+      if (Number.isFinite(n) && n >= from && (!Number.isFinite(to) || n <= to) && n + 1 > next) next = n + 1;
+    }
+    if (Number.isFinite(to) && next > to) return null; // series exhausted — leave blank rather than misnumber
+    const formNo = String(next);
+    await this.prisma.application.update({ where: { id: appId }, data: { asbaFormNo: formNo } });
+    return formNo;
   }
 
   /**
@@ -301,7 +445,7 @@ export class ApplicationsService {
 
     // ---- create all rows atomically, then ONE lean bulk job (no PII in Redis) ----
     const created = await this.prisma.$transaction(rows.map((data) => this.prisma.application.create({ data })));
-    const memberCredentialId = await this.rail.launchRailCredentialId();
+    const memberCredentialId = await this.rail.resolveBidCredentialId(ipo);
     const applicationIds = created.map((c) => c.id);
     await this.queue.enqueueBulk({
       applicationIds,
@@ -352,23 +496,63 @@ function toView(a: any) {
     a.status === 'allotted' && ipoStatus === 'listed' && listingGainPct != null && allottedAmount != null
       ? Math.round((allottedAmount * listingGainPct) / 100)
       : undefined;
+  const lotSize = a.ipo?.lotSize ?? 0;
+  // Live subscription for this application's category (only meaningful while the issue is open).
+  const bucket = APP_CATEGORY_BUCKET[String(a.category ?? '').toLowerCase()]
+    ?? (a.applicantType === 'employee' ? 'employee' : 'retail');
+  const subRow = (a.ipo?.subscriptions ?? []).find((s: any) => s.category === bucket);
+  const categorySubscribedTimes =
+    ipoStatus === 'open' && subRow?.timesSubscribed != null ? Number(subRow.timesSubscribed) : undefined;
+  // Retail allotment odds: each application is one lottery ticket, so odds ≈ 1 / (bids ÷ max-allottees).
+  const appsX = subRow?.applicationsSubscribed != null ? Number(subRow.applicationsSubscribed) : undefined;
+  const allotmentOddsPct =
+    ipoStatus === 'open' && bucket === 'retail' && appsX != null && appsX > 0
+      ? Math.min(100, Math.round(100 / Math.max(appsX, 1)))
+      : undefined;
+  // What still blocks this bid from reaching the exchange (shown on the portfolio
+  // card while the application is in 'submitted'). Only computable when the list
+  // query included the profile's demat/UPI fields.
+  const missingDetails: string[] = [];
+  if (a.status === 'submitted' && a.profile && 'upiTokenRef' in a.profile) {
+    if (a.applyMethod === 'upi' && !a.profile.upiTokenRef) missingDetails.push('UPI ID missing — add it on the account page to receive the mandate');
+    const dematOk = a.profile.depository === 'CDSL' ? !!a.profile.clientId : !!(a.profile.dpId && a.profile.clientId);
+    if (!dematOk) missingDetails.push('Demat details incomplete');
+  }
   return {
     id: a.id,
     ipoId: a.ipoId,
     ipoSymbol: a.ipo?.symbol,
     ipoName: a.ipo?.name,
     status: a.status,
+    missingDetails: missingDetails.length ? missingDetails : undefined,
     applyMethod: a.applyMethod,
     applicantType: a.applicantType ?? undefined,
+    category: a.category ?? undefined,
+    lots: a.lots ?? undefined,
+    shares: a.lots != null ? a.lots * lotSize : undefined,
+    profileName: a.profile?.fullName ?? undefined,
+    relationship: a.profile?.relationship ?? undefined,
+    createdAt: a.createdAt ? a.createdAt.toISOString() : undefined,
     amount: Number(a.amount),
     applicationNumber: a.applicationNumber ?? undefined,
     amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : undefined,
     allottedLots: a.allottedLots ?? undefined,
+    allottedShares: a.allottedLots != null ? a.allottedLots * lotSize : undefined,
     allottedAmount,
     refundAmount: a.refundAmount != null ? Number(a.refundAmount) : undefined,
     allottedAt: a.allottedAt ? a.allottedAt.toISOString().slice(0, 10) : undefined,
     ipoStatus,
     listingGainPct: ipoStatus === 'listed' ? listingGainPct : undefined,
     listingGain,
+    categorySubscribedTimes,
+    allotmentOddsPct,
   };
 }
+
+/** Application investor bucket → subscription-row category. */
+const APP_CATEGORY_BUCKET: Record<string, 'qib' | 'nii' | 'retail' | 'employee'> = {
+  retail: 'retail', rii: 'retail', ind: 'retail', individual: 'retail',
+  snii: 'nii', bnii: 'nii', nii: 'nii', hni: 'nii',
+  qib: 'qib',
+  employee: 'employee', emp: 'employee',
+};

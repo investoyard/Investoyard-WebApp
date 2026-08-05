@@ -13,6 +13,8 @@ export const PERMISSION_CATALOG = [
   { key: 'ipos.manage', label: 'Create / edit IPOs', group: 'IPOs' },
   { key: 'bids.view', label: 'View bids', group: 'Bids' },
   { key: 'bids.manage', label: 'Manage bids / allotment', group: 'Bids' },
+  { key: 'clients.view', label: 'View clients (investors)', group: 'Clients' },
+  { key: 'clients.manage', label: 'Create / edit clients', group: 'Clients' },
   { key: 'reports.view', label: 'View reports', group: 'Reports' },
   { key: 'audit.view', label: 'View audit log', group: 'Audit' },
   { key: 'rails.manage', label: 'Configure exchange APIs (NSE/BSE)', group: 'Exchange rails' },

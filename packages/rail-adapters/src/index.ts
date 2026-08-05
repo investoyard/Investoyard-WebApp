@@ -3,7 +3,12 @@
  */
 export * from './rail-adapter.types';
 export { NseEipoAdapter } from './nse-eipo.adapter';
+export type { HolidayEntry } from './nse-eipo.adapter';
+export { NseQueryAdapter } from './nse-query.adapter';
+export type { CatwiseRow, DemandRow } from './nse-query.adapter';
 export { BseIbbsAdapter } from './bse-ibbs.adapter';
+export { BseQueryAdapter } from './bse-query.adapter';
+export type { BseDemandRow } from './bse-query.adapter';
 
 // Framework-agnostic callback + submission building blocks (the NestJS
 // controller stays in the app, not the shared package).

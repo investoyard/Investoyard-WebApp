@@ -7,6 +7,8 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { Depository } from '@investoyard/shared-types';
+import { getConsumerToken, listWatchlist, addWatchlist, removeWatchlist } from './consumer-api';
+import { getIpoDetail } from './api';
 
 export type Relationship = 'self' | 'spouse' | 'child' | 'parent' | 'sibling' | 'other';
 
@@ -62,6 +64,11 @@ export interface Application {
   amountReleased?: number;
   allottedShares?: number;
   listingGainPct?: number;
+  // live subscription for this application's category (while the IPO is open)
+  categorySubscribedTimes?: number;
+  allotmentOddsPct?: number;
+  /** While 'submitted': applicant details still blocking the exchange bid (from the API). */
+  missingDetails?: string[];
 }
 
 interface State {
@@ -110,6 +117,7 @@ export const store = {
     // Fresh users get ready-to-use demo applicants so the apply flow is walkable immediately.
     const profiles = state.profiles.length ? state.profiles : demoProfiles();
     set({ mobile, profiles });
+    void store.syncWatchlist(); // pull the server watchlist for this user
   },
   /** Fill an incomplete profile with realistic sample details (demo) so it becomes selectable. */
   fillSample(id: string) {
@@ -149,7 +157,23 @@ export const store = {
   toggleWatch(symbol: string) {
     load();
     const has = state.watchlist.includes(symbol);
-    set({ watchlist: has ? state.watchlist.filter((s) => s !== symbol) : [...state.watchlist, symbol] });
+    set({ watchlist: has ? state.watchlist.filter((s) => s !== symbol) : [...state.watchlist, symbol] }); // optimistic
+    // Sync to the server watchlist for real (live-catalog) IPOs when signed in.
+    if (typeof window !== 'undefined' && getConsumerToken()) {
+      getIpoDetail(symbol)
+        .then((d) => { if (d?.live && d.id) (has ? removeWatchlist(d.id) : addWatchlist(d.id)).catch(() => {}); })
+        .catch(() => { /* keep local */ });
+    }
+  },
+  /** Load the server watchlist (symbols) for a signed-in user; no-op otherwise. */
+  async syncWatchlist() {
+    if (typeof window === 'undefined' || !getConsumerToken()) return;
+    try {
+      const items = await listWatchlist();
+      const symbols = items.map((i) => i.ipo?.symbol).filter((s): s is string => !!s);
+      load();
+      set({ watchlist: symbols });
+    } catch { /* keep local */ }
   },
   /** Demo: walk an application through its lifecycle (block → allotment → listing). */
   advanceApplication(id: string) {

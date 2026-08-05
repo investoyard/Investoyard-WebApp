@@ -16,7 +16,9 @@ coverage/
 
 # logs & scratch
 *.log
+*.tsbuildinfo
 .apilog.txt
+.apilog2.txt
 .redislog.txt
 .expolog.txt
 .buildall.log
@@ -28,6 +30,9 @@ coverage/
 !.env.example
 !deploy/.env.production.example
 .env.deploy
+# PII vault master key — never commit; back it up securely out-of-band
+.pii-vault.key
+*.pii-vault.key
 
 # editor/os
 .DS_Store
@@ -35,3 +40,6 @@ Thumbs.db
 
 # API-uploaded images (logos)
 apps/api/uploads/
+
+# exchange API documentation (member-confidential; kept out of the repo)
+apis/

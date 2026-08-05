@@ -23,6 +23,10 @@ export class RecordAllotmentDto {
   @IsInt() @Min(0) allottedLots!: number;
 }
 
+export class FormsPdfDto {
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @IsString({ each: true }) ids!: string[];
+}
+
 export class BulkApplicantDto {
   @IsString() investorProfileId!: string;
   @IsInt() @Min(1) lots!: number;

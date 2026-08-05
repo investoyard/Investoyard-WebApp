@@ -3,7 +3,7 @@
  * -------------------------------------------------------------
  * Implements RailAdapter against the NSE e-IPO WEB API.
  * Verified source: "NSEIL Initial Public Offering System — WEB API
- * Protocol, Version 1.20.5, Sep 2025".
+ * Protocol, Version 1.20.6, June 2026".
  *
  * Investoyard logs in as a MEMBER (the empaneled member's credentials)
  * and submits UPI-ASBA retail bids with upiFlag = 'Y'. Per the doc, the
@@ -38,13 +38,22 @@ import {
 const VERSION = 'v1';
 
 const PATHS = {
-  login: `/login`,
+  // v1.20.6 §login + Appendix C: the route is version-prefixed (/v1/login).
+  login: `/${VERSION}/login`,
   ipomaster: `/${VERSION}/ipomaster`,
   add: `/${VERSION}/transactions/add`,
   addbulk: `/${VERSION}/transactions/addbulk`,
   fetch: `/${VERSION}/transactions/fetch`,
   allotment: (w: TimeWindow) => `/${VERSION}/allotment/${w.from}/${w.to}`,
+  holidaymaster: (from: string, to: string) => `/${VERSION}/holidaymaster/${from}/${to}`,
 };
+
+/** One NSE trading-holiday row (v1.20.6 §holidaymaster). Dates are "dd-MM-yyyy". */
+export interface HolidayEntry {
+  date: string;
+  desc?: string;
+  segments: string[]; // segmentEligibility, e.g. ["Equity","SME","FPO"]
+}
 
 const ACTIVITY_CODE: Record<BidSubmission['activity'], string> = {
   new: 'new',
@@ -60,7 +69,9 @@ export class NseEipoAdapter implements RailAdapter {
   }
 
   private authHeaders(session: AuthSession): Record<string, string> {
-    return { Authorization: session.token };
+    // v1.20.6 §"Basic Security (v1)": the login token is sent in the
+    // "Access-Token" header on every subsequent call (NOT Authorization).
+    return { 'Access-Token': session.token };
   }
 
   async login(cred: MemberCredential): Promise<AuthSession> {
@@ -75,7 +86,9 @@ export class NseEipoAdapter implements RailAdapter {
     });
     const token = res?.token ?? res?.Token;
     if (!token) {
-      throw new RailError('Login did not return a token', this.exchange, res?.errorCode, undefined, res);
+      // Login failure carries status:"failed" + a "reason" string (v1.20.6 §login).
+      const reason = res?.reason ?? 'Login did not return a token';
+      throw new RailError(reason, this.exchange, res?.errorCode, undefined, res);
     }
     return { token, memberCode: cred.memberCode, loginId: cred.loginId };
   }
@@ -99,6 +112,13 @@ export class NseEipoAdapter implements RailAdapter {
       categories: (r.categoryDetails ?? r.categories ?? []).map((c: any) => ({
         code: c.category ?? c.code,
         label: c.label ?? c.description,
+        // Shares reserved/offered for this category — the denominator for
+        // "times subscribed". Field name varies by host build; probe the common
+        // spellings and confirm the exact key against your UAT ipomaster copy.
+        offered: num(
+          c.offeredQuantity ?? c.offered ?? c.sharesOffered ?? c.quantityOffered ??
+          c.noOfSharesOffered ?? c.reservedQuantity ?? c.offerQuantity,
+        ),
       })),
       raw: r,
     }));
@@ -139,15 +159,22 @@ export class NseEipoAdapter implements RailAdapter {
   }
 
   private parseAddResponse(req: BidSubmission, res: any): BidResult {
-    const errorCode = res?.errorCode ?? res?.statusCode;
-    const ok = errorCode === '0' || errorCode === 0 || res?.status === 'SUCCESS';
+    // v1.20.6 §transactions/add response: success is signalled by
+    // status:"success" (lowercase); failure by status:"failed" + reasonCode/reason.
+    // Fall back to the legacy errorCode==0 convention when no "status" is present
+    // (older hosts / mocks) so we stay robust across environments.
+    const statusStr = String(res?.status ?? '').toLowerCase();
+    const ok =
+      statusStr === 'success' ||
+      (res?.status == null && (res?.errorCode === '0' || res?.errorCode === 0));
+    const errorCode = res?.reasonCode ?? res?.errorCode ?? res?.statusCode;
     return {
       clientRef: req.clientRef,
-      ok: !!ok,
+      ok,
       applicationNumber: res?.applicationNumber,
-      bidIds: (res?.bids ?? []).map((b: any) => b.bidId ?? b.bidReferenceNumber).filter(Boolean),
+      bidIds: (res?.bids ?? []).map((b: any) => b.bidReferenceNumber ?? b.bidId).filter(Boolean),
       errorCode: errorCode != null ? String(errorCode) : undefined,
-      message: res?.message ?? res?.statusMessage,
+      message: res?.reason ?? res?.message ?? res?.statusMessage,
       raw: res,
     };
   }
@@ -218,6 +245,21 @@ export class NseEipoAdapter implements RailAdapter {
       amountDebited: num(r.amountDebited),
       status: r.status,
       raw: r,
+    }));
+  }
+
+  /** NSE trading-holiday calendar for a date range (dates "dd-MM-yyyy"). Used to pause polling on market holidays. */
+  async getHolidayMaster(from: string, to: string, session: AuthSession, cred: MemberCredential): Promise<HolidayEntry[]> {
+    const res = await httpJson<any>(this.url(cred, PATHS.holidaymaster(from, to)), {
+      method: 'GET',
+      exchange: this.exchange,
+      headers: this.authHeaders(session),
+    });
+    const rows: any[] = res?.data ?? (Array.isArray(res) ? res : []);
+    return rows.map((r) => ({
+      date: r.date,
+      desc: r.desc,
+      segments: r.segmentEligibility ?? r.segments ?? [],
     }));
   }
 }

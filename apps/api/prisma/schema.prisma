@@ -19,14 +19,7 @@ enum UserStatus {
   deleted
 }
 
-enum Relationship {
-  self
-  spouse
-  child
-  parent
-  sibling
-  other
-}
+// Relationship values are admin-managed (RelationshipMaster) — stored lowercase.
 
 enum Depository {
   NSDL
@@ -126,6 +119,9 @@ model Tenant {
   goldColor    String?
   logoUrl      String?
   flags        Json?
+  profile      Json?      // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
+  code         String?    @unique  // 6-digit channel code (partners/branches), sequential from 601001
+  commissionRate Decimal? @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -151,12 +147,116 @@ model Tenant {
 /// never returned raw. Platform-level (the operator's own accounts) — no tenantId,
 /// so it's outside RLS and only reachable via admin RBAC.
 model ProviderConfig {
-  provider  String   @id // 'sms' | 'push'
+  tenantId  String   @default("t-platform") // 't-platform' = platform default; else a white-label tenant's own config
+  provider  String   // 'sms' | 'email' | 'push' | 'whatsapp' | 'ai'
   enabled   Boolean  @default(false)
-  settings  Json     @default("{}") // non-secret config (providerName, senderId, …)
+  settings  Json     @default("{}") // non-secret config (providerName, senderId, templateId, …)
   secrets   Json     @default("{}") // field name → vault token
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@id([tenantId, provider])
+  @@index([tenantId])
+}
+
+// Admin-managed relationship options for applicants. allowMultiple=false ⇒ that
+// relation (self, spouse, mother, father) can exist ONCE per account.
+model RelationshipMaster {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  allowMultiple Boolean  @default(false)
+  sortOrder     Int      @default(100)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
+
+model IpoCategoryMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g. "Main Board IPO", "SME IPO"
+  baseType  String   @default("mainboard") // engine mapping: 'mainboard' | 'sme'
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issueTypes IssueTypeMaster[]
+}
+
+model IssueTypeMaster {
+  id         String             @id @default(uuid())
+  name       String             @unique // e.g. "IPO", "FPO", "Rights Issue", "OFS"
+  categoryId String?
+  category   IpoCategoryMaster? @relation(fields: [categoryId], references: [id])
+  active     Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model LeadManager {
+  id            String   @id @default(uuid())
+  name          String
+  shortCode     String   @unique
+  contactPerson String?
+  mobile        String?
+  email         String?
+  phone         String?
+  gstin         String?
+  address1      String?
+  address2      String?
+  city          String?
+  state         String?
+  pincode       String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Registrar {
+  id            String   @id @default(uuid())
+  name          String
+  shortCode     String   @unique
+  contactPerson String?
+  mobile        String?
+  email         String?
+  phone         String?
+  gstin         String?
+  address1      String?
+  address2      String?
+  city          String?
+  state         String?
+  pincode       String?
+  allotmentUrl  String?  // IPO allotment-status check URL
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model MessageType {
+  id          String   @id @default(uuid())
+  channel     String   // 'sms' | 'email' | 'whatsapp'
+  key         String   // 'otp' | 'allotment' | …
+  label       String
+  description String?
+  vars        String[] @default([]) // variable names the caller supplies ({{var}})
+  system      Boolean  @default(false) // built-in — protected from delete / key change
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([channel, key])
+}
+
+model MessageTemplate {
+  id            String   @id @default(uuid())
+  tenantId      String   @default("t-platform") // platform default; white-label tenants override
+  channel       String   // 'sms' | 'email' | 'whatsapp'
+  key           String   // 'otp' | 'whatsapp_verify' | 'empanelment' | …
+  locale        String   @default("en")
+  enabled       Boolean  @default(true)
+  dltTemplateId String?  // SMS: DLT-registered template id (text lives in DLT)
+  senderId      String?  // SMS: sender/header override
+  body          String?  // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
+  subject       String?  // Email subject
+  bodyHtml      String?  // Email HTML body ({{var}} placeholders)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([tenantId, channel, key, locale])
+  @@index([tenantId])
 }
 
 model FeatureDefinition {
@@ -248,7 +348,7 @@ model InvestorProfile {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   userId       String
   user         User       @relation(fields: [userId], references: [id])
-  relationship Relationship @default(self)
+  relationship String     @default("self") // validated against RelationshipMaster (lowercase)
   fullName     String
   panTokenRef  String     // PII (vault, reversible — used at rail-call time)
   panHash      String     // deterministic HMAC of the PAN — uniqueness + dup detection
@@ -256,9 +356,19 @@ model InvestorProfile {
   depository   Depository
   dpId         String
   clientId     String
-  bankTokenRef String?    // PII (vault)
+  bankTokenRef String?    // PII (vault) — bank A/C number
   ifsc         String?
   upiTokenRef  String?    // PII (vault)
+  // optional contact/bank fields used to prefill the ASBA form (not vaulted — low sensitivity)
+  bankName     String?
+  branchName   String?
+  address      String?
+  city         String?
+  state        String?
+  pincode      String?
+  email        String?
+  mobile       String?    // applicant's own contact (falls back to the account mobile on ASBA print)
+  active       Boolean    @default(true) // false = deactivated (has applications, so never hard-deleted)
   kycStatus    KycStatus  @default(unverified)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -308,6 +418,9 @@ model Ipo {
   objectsOfIssue String?
   smeFlags      Json?
   reservations  String[]  @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
+  autoPollSubscription Boolean @default(true) // admin per-IPO switch for the live NSE subscription poller
+  subscriptionAsOf     DateTime?             // last time the poller refreshed this IPO's subscription
+  extra         Json?     // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
   categories    IpoCategory[]
   subscriptions IpoSubscription[]
   gmps          IpoGmp[]
@@ -331,7 +444,9 @@ model IpoSubscription {
   ipoId          String
   ipo            Ipo      @relation(fields: [ipoId], references: [id])
   category       String
-  timesSubscribed Decimal
+  timesSubscribed Decimal              // subscription by SHARES (demand qty ÷ offered)
+  bidCount       Int?                  // number of applications/bids in this category (from catwise)
+  applicationsSubscribed Decimal?      // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
   asOf           DateTime @default(now())
   @@index([ipoId, asOf])
 }
@@ -367,10 +482,12 @@ model MemberCredential {
   memberCode      String
   passwordRef     String   // vault ref
   ibbsIdRef       String?  // vault ref (BSE)
+  checksumKeyRef  String?  // vault ref (BSE) — AES-256 key for the request Checksum header
   subBrokerCode   String?
   baseUrl         String
   env             String   // live / uat
   active          Boolean  @default(true)
+  subscriptionUse Boolean  @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
   applications    Application[]
   @@index([tenantId])
 }
@@ -400,6 +517,7 @@ model Application {
   applyMethod        ApplyMethod
   rail               Exchange?
   applicationNumber  String?
+  asbaFormNo         String?     // ASBA print-form number, allocated from the IPO's active "PDF Printing" series
   bidReferenceNumber String?
   upiFlag            String?
   asbaBlockRef       String?

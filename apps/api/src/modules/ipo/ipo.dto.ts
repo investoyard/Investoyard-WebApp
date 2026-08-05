@@ -1,4 +1,4 @@
-import { IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUrl, Matches, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUrl, Matches, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum IpoTypeDto { mainboard = 'mainboard', sme = 'sme' }
@@ -33,10 +33,12 @@ export class CreateIpoDto {
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => IpoDocumentDto) documents?: IpoDocumentDto[];
   @IsOptional() @IsNumber() gmp?: number;              // creates a GMP snapshot
   @IsOptional() @IsNumber() listingGainPct?: number;
+  @IsOptional() @IsObject() extra?: Record<string, any>; // extended operator fields (JSON)
 }
 
 /** All optional for PATCH (symbol immutable on update — omit it). */
 export class UpdateIpoDto {
+  @IsOptional() @Matches(/^[A-Z0-9]{2,12}$/, { message: 'symbol must be 2–12 uppercase letters/digits' }) symbol?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEnum(IpoTypeDto) type?: IpoTypeDto;
   @IsOptional() @IsEnum(IpoStatusDto) status?: IpoStatusDto;
@@ -57,4 +59,6 @@ export class UpdateIpoDto {
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => IpoDocumentDto) documents?: IpoDocumentDto[];
   @IsOptional() @IsNumber() gmp?: number;
   @IsOptional() @IsNumber() listingGainPct?: number;
+  @IsOptional() @IsBoolean() autoPollSubscription?: boolean;
+  @IsOptional() @IsObject() extra?: Record<string, any>;
 }

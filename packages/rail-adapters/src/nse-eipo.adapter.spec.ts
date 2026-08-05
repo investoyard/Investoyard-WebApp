@@ -50,6 +50,34 @@ describe('NseEipoAdapter.submitBid payload', () => {
     expect(res).toMatchObject({ clientRef: 'app_123', ok: true, applicationNumber: 'APP1', bidIds: ['B1'] });
   });
 
+  it('sends the session token in the "Access-Token" header (v1.20.6 Basic Security)', async () => {
+    mockedHttp.mockResolvedValue({ status: 'success' });
+    await new NseEipoAdapter().submitBid(baseBid, session, cred);
+    const headers: any = mockedHttp.mock.calls[0][1].headers;
+    expect(headers['Access-Token']).toBe('tok');
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('treats the documented status:"success" response as ok and reads bidReferenceNumber', async () => {
+    mockedHttp.mockResolvedValue({
+      status: 'success',
+      applicationNumber: 'APP9',
+      bids: [{ activityType: 'new', bidReferenceNumber: 2015120100000382, status: 'success' }],
+    });
+    const res = await new NseEipoAdapter().submitBid(baseBid, session, cred);
+    expect(res.ok).toBe(true);
+    expect(res.applicationNumber).toBe('APP9');
+    expect(res.bidIds).toEqual([2015120100000382]);
+  });
+
+  it('treats status:"failed" with reasonCode/reason as not ok', async () => {
+    mockedHttp.mockResolvedValue({ status: 'failed', reasonCode: 14, reason: 'Invalid bid amount for category IND' });
+    const res = await new NseEipoAdapter().submitBid(baseBid, session, cred);
+    expect(res.ok).toBe(false);
+    expect(res.errorCode).toBe('14');
+    expect(res.message).toBe('Invalid bid amount for category IND');
+  });
+
   it('sets a price when not at cut-off, and upiFlag=N for bank ASBA', async () => {
     mockedHttp.mockResolvedValue({ errorCode: '0' });
     const bid: BidSubmission = {

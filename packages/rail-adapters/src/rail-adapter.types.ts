@@ -24,6 +24,7 @@ export interface MemberCredential {
   memberCode: string;
   password: string;              // resolved from vault at call time
   ibbsId?: string;               // BSE/iBBS only
+  checksumKey?: string;          // BSE/iBBS only — AES-256 key BSE provisions per member for the request Checksum
   subBrokerCode?: string;        // NSE: populated when logged in as a member
   baseUrl: string;               // env-specific (Live / UAT)
   env: 'live' | 'uat';
@@ -93,7 +94,8 @@ export interface IpoMasterEntry {
   priceMin?: number;
   priceMax?: number;
   lotSize?: number;
-  categories?: { code: string; label?: string }[];
+  /** `offered` = shares reserved for that category (the denominator for "times subscribed"). */
+  categories?: { code: string; label?: string; offered?: number }[];
   raw?: unknown;
 }
 

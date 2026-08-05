@@ -1,23 +1,17 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOperator } from "@/lib/operator-context";
 import { operatorCan } from "@/lib/operator";
 import { NoAccess } from '@/components/AdminUI';
+import { PageHead, SearchBox, Toggle } from '@/components/ui/Form';
+import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
+import { useSort } from '@/components/ui/useSort';
+import { Loader } from '@/components/ui/Loader';
+import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
 const TYPE_LABEL: Record<string, string> = { platform: 'Operator', direct: 'Direct (B2C)', partner: 'Partner', branch: 'Branch' };
-
-function Toggle({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1 }}>
-      <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 44, height: 24, appearance: 'none', WebkitAppearance: 'none', borderRadius: 999, background: on ? 'var(--brand)' : 'var(--border-2)', position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', transition: 'background .15s', outline: 'none' }} />
-      <span style={{ position: 'relative', width: 0 }}>
-        <span style={{ position: 'absolute', top: -12, left: on ? -22 : -42, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.3)', transition: 'left .15s' }} />
-      </span>
-    </label>
-  );
-}
 
 /** One feature's effective value + source + lock controls for the selected tenant. */
 function FeatureRow({ slug, feature, r, busy, onSet, onClear }: {
@@ -80,43 +74,58 @@ export default function AdminTenants() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const blankReg = { kind: 'partner', name: '', slug: '', parentSlug: '', customDomain: '', brandColor: '', adminName: '', adminUsername: '', adminPassword: '' };
-  const [showReg, setShowReg] = useState(false);
-  const [reg, setReg] = useState({ ...blankReg });
-  const [regResult, setRegResult] = useState<api.RegisterTenantResult | null>(null);
-  const [regErr, setRegErr] = useState<string | null>(null);
-  const [regBusy, setRegBusy] = useState(false);
+  // managed partner/branch lists
+  const [partners, setPartners] = useState<api.PartnerRow[]>([]);
+  const [pq, setPq] = useState('');
+  const [wlFilter, setWlFilter] = useState<'all' | 'wl' | 'std'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [busySlug, setBusySlug] = useState<string | null>(null);
 
   const refreshTree = useCallback(async () => { setTree(await api.fetchTree()); }, []);
-
-  const onRegister = async () => {
-    if (!reg.name.trim() || !/^[A-Za-z0-9-]{2,40}$/.test(reg.slug) || !reg.adminName.trim() || !/^[A-Za-z0-9_.]{3,40}$/.test(reg.adminUsername)) { setRegErr('Fill name, slug, admin name and a valid username.'); return; }
-    if (reg.kind === 'branch' && !reg.parentSlug) { setRegErr('Pick the parent partner for this branch.'); return; }
-    setRegBusy(true); setRegErr(null); setRegResult(null);
-    try {
-      const res = await api.registerTenant({
-        kind: reg.kind as any, name: reg.name, slug: reg.slug,
-        parentSlug: reg.kind === 'branch' ? reg.parentSlug : undefined,
-        customDomain: reg.kind === 'whitelabel' ? (reg.customDomain || undefined) : undefined,
-        brandColor: reg.kind === 'whitelabel' ? (reg.brandColor || undefined) : undefined,
-        adminName: reg.adminName, adminUsername: reg.adminUsername, adminPassword: reg.adminPassword || undefined,
-      });
-      setRegResult(res); setReg({ ...blankReg }); await refreshTree();
-    } catch (e: any) { setRegErr(String(e?.message ?? e)); }
-    finally { setRegBusy(false); }
-  };
+  const refreshPartners = useCallback(async () => { setPartners(await api.fetchTenants()); }, []);
 
   useEffect(() => {
     (async () => {
       try {
-        const [t, c] = await Promise.all([api.fetchTree(), api.fetchCatalog()]);
-        setTree(t); setCatalog(c);
+        const [t, c, p] = await Promise.all([api.fetchTree(), api.fetchCatalog(), api.fetchTenants()]);
+        setTree(t); setCatalog(c); setPartners(p);
         const first = t.find((x) => x.type !== 'platform') ?? t[0];
         if (first) { setSel(first.slug); setResolved((await api.fetchResolved(first.slug)).settings); }
       } catch (e: any) { setErr(String(e?.message ?? e)); }
       finally { setLoading(false); }
     })();
   }, []);
+
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const pVal = (r: api.PartnerRow, k: string): string | number => {
+    switch (k) {
+      case 'name': return r.name.toLowerCase();
+      case 'code': return r.code ?? '';
+      case 'comm': return r.commissionRate ?? 0;
+      case 'domain': return r.customDomain ?? '';
+      case 'branches': return r.branches;
+      case 'ops': return r.operators;
+      case 'status': return r.status;
+      case 'parent': return r.parent?.name?.toLowerCase() ?? '';
+      default: return '';
+    }
+  };
+  const partnerSort = useSort<api.PartnerRow>(pVal);
+  const branchSort = useSort<api.PartnerRow>(pVal);
+  const setStatus = async (slug: string, status: 'active' | 'suspended') => {
+    setBusySlug(slug); setErr(null);
+    try { await api.updateTenant(slug, { status }); await Promise.all([refreshPartners(), refreshTree()]); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusySlug(null); }
+  };
+  const toggleStatus = (r: api.PartnerRow) => {
+    if (r.status !== 'active') return setStatus(r.slug, 'active');
+    setConfirm({
+      title: `Suspend ${r.name}?`, danger: true, confirmLabel: 'Suspend',
+      message: <>Its operators won’t be able to sign in, and it will be hidden from active lists until reactivated.</>,
+      onConfirm: () => setStatus(r.slug, 'suspended'),
+    });
+  };
 
   const select = async (slug: string) => {
     setSel(slug); setErr(null);
@@ -137,6 +146,29 @@ export default function AdminTenants() {
   const selected = tree.find((t) => t.slug === sel);
   const childrenOf = (pid: string | null) => tree.filter((t) => t.parentId === pid);
   const roots = tree.filter((t) => !t.parentId || !tree.some((x) => x.id === t.parentId));
+
+  const match = (r: api.PartnerRow) => {
+    const ql = pq.trim().toLowerCase();
+    return (statusFilter === 'all' || r.status === statusFilter) &&
+      (!ql || r.name.toLowerCase().includes(ql) || r.slug.includes(ql) || (r.customDomain ?? '').includes(ql) || (r.parent?.name ?? '').toLowerCase().includes(ql));
+  };
+  const filteredPartners = useMemo(() =>
+    partners.filter((r) => r.type === 'partner' && match(r) && (wlFilter === 'all' || (wlFilter === 'wl') === r.whitelabel)),
+    [partners, pq, wlFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredBranches = useMemo(() =>
+    partners.filter((r) => r.type === 'branch' && match(r)),
+    [partners, pq, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const StatusActions = ({ r }: { r: api.PartnerRow }) => (
+    <span className="row-actions">
+      <a className="icon-btn" href={`/admin/tenants/view?slug=${r.slug}`} title="Open profile"><Icon name="eye" size={15} /></a>
+      <RowMenu>
+        <button onClick={() => api.downloadEmpanelmentPdf(r.slug).catch((e) => setErr(String(e?.message ?? e)))}><Icon name="download" size={15} /> Empanelment form</button>
+        {r.type === 'partner' && <a href={`/admin/tenants/new?kind=branch&parent=${r.slug}`}><Icon name="plus" size={15} /> Add branch</a>}
+        <button className={r.status === 'active' ? 'danger' : ''} disabled={busySlug === r.slug} onClick={() => toggleStatus(r)}><Icon name="power" size={15} /> {r.status === 'active' ? 'Suspend' : 'Activate'}</button>
+      </RowMenu>
+    </span>
+  );
 
   const renderNode = (t: api.AdminTenant, depth: number): React.ReactNode => (
     <div key={t.id}>
@@ -162,53 +194,91 @@ export default function AdminTenants() {
 
   return (
     <>
-      <div className="between" style={{ marginBottom: 16 }}>
-        <div><h1 style={{ margin: 0 }}>Partners &amp; tenants</h1><p className="muted">Register partners, white-label channels &amp; branches — and manage the settings cascade.</p></div>
-        {operatorCan(me, 'tenants.manage') && <button className="btn" onClick={() => { setShowReg((v) => !v); setRegResult(null); setRegErr(null); }}>{showReg ? 'Close' : '＋ Register partner / branch'}</button>}
-      </div>
-
-      {regResult && (
-        <div className="banner info" style={{ marginBottom: 16 }}>
-          Registered <b>{regResult.tenant.name}</b> ({regResult.tenant.type}{regResult.tenant.whitelabel ? ', white-label' : ''}{regResult.tenant.customDomain ? ` · ${regResult.tenant.customDomain}` : ''}).
-          Admin login: <b className="mono">{regResult.admin.username}</b>
-          {regResult.admin.temporaryPassword ? <> · temp password <b className="mono">{regResult.admin.temporaryPassword}</b> — share it securely.</> : <> · password set as provided.</>}
-        </div>
-      )}
-      {showReg && (
-        <div className="panel" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Register a partner, white-label partner or branch</h3>
-          {regErr && <div className="banner warn" style={{ marginBottom: 12 }}>{regErr}</div>}
-          <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <RF label="Kind"><select className="input" style={{ width: 160 }} value={reg.kind} onChange={(e) => setReg({ ...reg, kind: e.target.value })}>
-              <option value="partner">Partner (our brand)</option>
-              <option value="whitelabel">White-label (own brand)</option>
-              <option value="branch">Branch (under a partner)</option>
-            </select></RF>
-            {reg.kind === 'branch' && (
-              <RF label="Parent partner"><select className="input" style={{ width: 170 }} value={reg.parentSlug} onChange={(e) => setReg({ ...reg, parentSlug: e.target.value })}>
-                <option value="">— select —</option>
-                {tree.filter((t) => t.type === 'partner').map((t) => <option key={t.id} value={t.slug}>{t.name}</option>)}
-              </select></RF>
-            )}
-            <RF label="Name"><input className="input" style={{ width: 180 }} value={reg.name} onChange={(e) => setReg({ ...reg, name: e.target.value })} /></RF>
-            <RF label="Slug"><input className="input mono" style={{ width: 130 }} placeholder="axis" value={reg.slug} onChange={(e) => setReg({ ...reg, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) })} /></RF>
-            {reg.kind === 'whitelabel' && <>
-              <RF label="Custom domain"><input className="input mono" style={{ width: 190 }} placeholder="ipo.partner.com" value={reg.customDomain} onChange={(e) => setReg({ ...reg, customDomain: e.target.value })} /></RF>
-              <RF label="Brand color"><input className="input mono" style={{ width: 100 }} placeholder="#0b5cad" value={reg.brandColor} onChange={(e) => setReg({ ...reg, brandColor: e.target.value })} /></RF>
-            </>}
-          </div>
-          <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>Admin login (auto-created):</span>
-            <RF label="Admin name"><input className="input" style={{ width: 160 }} value={reg.adminName} onChange={(e) => setReg({ ...reg, adminName: e.target.value })} /></RF>
-            <RF label="Username"><input className="input mono" style={{ width: 140 }} value={reg.adminUsername} onChange={(e) => setReg({ ...reg, adminUsername: e.target.value.replace(/[^A-Za-z0-9_.]/g, '').slice(0, 40) })} /></RF>
-            <RF label="Password (optional)"><input className="input mono" style={{ width: 160 }} type="password" placeholder="auto-generate" value={reg.adminPassword} onChange={(e) => setReg({ ...reg, adminPassword: e.target.value })} /></RF>
-            <button className="btn" disabled={regBusy} onClick={onRegister}>{regBusy ? 'Registering…' : 'Register'}</button>
-          </div>
-          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>White-label partners get their own brand + domain and GMP is turned off (locked) for compliance. Leave the password blank to auto-generate a temporary one (shown once).</p>
-        </div>
-      )}
+      <PageHead
+        title="Partners & tenants"
+        sub="Register partners, white-label channels & branches — and manage the settings cascade."
+        actions={operatorCan(me, 'tenants.manage') ? <a className="btn" href="/admin/tenants/new">＋ Register partner</a> : undefined}
+      />
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>API error: {err}. Make sure the API is running on <span className="mono">{process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'}</span>.</div>}
-      {loading ? <div className="muted">Loading tenants…</div> : (
+      {loading ? <Loader /> : (
+       <>
+        {/* ---- managed partner + branch lists ---- */}
+        <div className="filter-bar">
+          <label className="filter">
+            <span className="fl">Search</span>
+            <SearchBox value={pq} onChange={setPq} placeholder="Search partner, branch or domain…" />
+          </label>
+          <div className="filter">
+            <span className="fl">Type</span>
+            <div className="seg">
+              {(['all', 'wl', 'std'] as const).map((k) => <button key={k} className={wlFilter === k ? 'on' : ''} onClick={() => setWlFilter(k)}>{k === 'all' ? 'All' : k === 'wl' ? 'White-label' : 'Standard'}</button>)}
+            </div>
+          </div>
+          <div className="filter">
+            <span className="fl">Status</span>
+            <div className="seg">
+              {(['all', 'active', 'suspended'] as const).map((k) => <button key={k} className={statusFilter === k ? 'on' : ''} onClick={() => setStatusFilter(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}
+            </div>
+          </div>
+          <span className="fb-end"><span className="fb-count">{filteredPartners.length} partners · {filteredBranches.length} branches</span></span>
+        </div>
+
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="card-head"><span className="t">Partners <span className="count-badge">{filteredPartners.length}</span></span></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ width: '100%' }}>
+              <thead><tr>
+                <partnerSort.Th k="name" label="Partner" /><partnerSort.Th k="code" label="Code" /><th>Type</th>
+                <partnerSort.Th k="comm" label="Comm." /><partnerSort.Th k="domain" label="Custom domain" /><partnerSort.Th k="branches" label="Branches" />
+                <partnerSort.Th k="ops" label="Ops" /><partnerSort.Th k="status" label="Status" /><th style={{ textAlign: 'right' }}>Action</th>
+              </tr></thead>
+              <tbody>
+                {filteredPartners.length === 0 ? <tr><td colSpan={9} className="muted" style={{ padding: 14 }}>No partners match. <a className="linklike" href="/admin/tenants/new">Register one →</a></td></tr> :
+                  partnerSort.apply(filteredPartners).map((r) => (
+                    <tr key={r.id}>
+                      <td><b>{r.name}</b><div className="muted mono" style={{ fontSize: 11 }}>{r.slug}</div></td>
+                      <td className="mono" style={{ fontWeight: 700 }}>{r.code ?? '—'}</td>
+                      <td>{r.whitelabel ? <span className="st brand">White-label</span> : <span className="st mut">Standard</span>}</td>
+                      <td className="mono">{r.commissionRate != null ? `${r.commissionRate}%` : '—'}</td>
+                      <td className="mono" style={{ fontSize: 13 }}>{r.customDomain ?? '—'}</td>
+                      <td className="mono">{r.branches}</td>
+                      <td className="mono">{r.operators}</td>
+                      <td><span className={`st ${r.status === 'active' ? 'ok' : 'mut'}`}>{r.status}</span></td>
+                      <td style={{ textAlign: 'right' }}><StatusActions r={r} /></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-head"><span className="t">Branches <span className="count-badge">{filteredBranches.length}</span></span></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ width: '100%' }}>
+              <thead><tr>
+                <branchSort.Th k="name" label="Branch" /><branchSort.Th k="code" label="Code" /><branchSort.Th k="parent" label="Parent partner" />
+                <branchSort.Th k="comm" label="Comm." /><branchSort.Th k="ops" label="Ops" /><branchSort.Th k="status" label="Status" /><th style={{ textAlign: 'right' }}>Action</th>
+              </tr></thead>
+              <tbody>
+                {filteredBranches.length === 0 ? <tr><td colSpan={7} className="muted" style={{ padding: 14 }}>No branches match.</td></tr> :
+                  branchSort.apply(filteredBranches).map((r) => (
+                    <tr key={r.id}>
+                      <td><b>{r.name}</b><div className="muted mono" style={{ fontSize: 11 }}>{r.slug}</div></td>
+                      <td className="mono" style={{ fontWeight: 700 }}>{r.code ?? '—'}</td>
+                      <td>{r.parent?.name ?? '—'}</td>
+                      <td className="mono">{r.commissionRate != null ? `${r.commissionRate}%` : '—'}</td>
+                      <td className="mono">{r.operators}</td>
+                      <td><span className={`st ${r.status === 'active' ? 'ok' : 'mut'}`}>{r.status}</span></td>
+                      <td style={{ textAlign: 'right' }}><StatusActions r={r} /></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="fs-head" style={{ marginBottom: 12 }}><div className="t">Settings cascade</div><div className="d">Pick a tenant to view & override its effective feature values (locking freezes them for sub-tenants).</div></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: 20, alignItems: 'start' }}>
           <div className="panel">
             <h3 style={{ marginTop: 0 }}>Tenant tree</h3>
@@ -229,6 +299,9 @@ export default function AdminTenants() {
                       {selected.type === 'branch' && <> · inherits from parent</>}
                     </div>
                   </div>
+                  {(selected.type === 'partner' || selected.type === 'branch') && (
+                    <a className="btn btn-secondary btn-sm" href={`/admin/tenants/view?slug=${selected.slug}`}>View profile →</a>
+                  )}
                 </div>
                 <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
                   Effective feature values for this tenant. Changing one writes an override; locking freezes it for
@@ -244,11 +317,9 @@ export default function AdminTenants() {
             ) : <div className="muted">Select a tenant.</div>}
           </div>
         </div>
+       </>
       )}
+      {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
   );
-}
-
-function RF({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><label className="muted" style={{ fontSize: 11 }}>{label}</label>{children}</div>;
 }

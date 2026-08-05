@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
@@ -6,6 +6,10 @@ import { hashPassword } from '../../common/password';
 import { RailService } from '../rail/rail.service';
 import { HealthService } from '../health/health.module';
 import { ProviderConfigService } from '../../common/provider-config.service';
+import { TemplateService } from '../../common/template.service';
+import { EmailService } from '../../common/email.service';
+import { SmsService } from '../../common/sms.service';
+import { EmpanelmentPdfService } from './empanelment-pdf.service';
 import { tenantContext } from '../../common/tenant-context';
 import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common/permissions-catalog';
 
@@ -23,7 +27,117 @@ export class AdminService {
     private health: HealthService,
     private rail: RailService,
     private providers: ProviderConfigService,
+    private email: EmailService,
+    private empanelmentPdf: EmpanelmentPdfService,
+    private templates: TemplateService,
+    private sms: SmsService,
   ) {}
+
+  /* -------------------------------- white-label integrations (per-tenant SMS/email + templates) */
+
+  /** A tenant's provider configs (masked). Slug resolves the tenant; guard scopes access. */
+  async providersForTenant(slug: string) {
+    const t = await this.tenantBySlug(slug);
+    return this.providers.listForTenant(t.id);
+  }
+  async saveProviderForTenant(slug: string, provider: string, dto: any) {
+    const t = await this.tenantBySlug(slug);
+    return this.providers.upsertForTenant(t.id, provider, dto);
+  }
+  /** Clear a tenant's own provider config → re-inherits the platform default. */
+  async resetProviderForTenant(slug: string, provider: string) {
+    const t = await this.tenantBySlug(slug);
+    return this.providers.deleteForTenant(t.id, provider);
+  }
+  /**
+   * Fire a real test message through the EFFECTIVE config for this scope (own or
+   * inherited) so the operator can prove keys work before go-live. SMS sends the
+   * provider's OTP template with a fixed test code; email sends a short test mail.
+   */
+  async testProviderForTenant(slug: string, provider: string, to: string) {
+    const t = await this.tenantBySlug(slug);
+    if (provider === 'sms') {
+      const mobile = String(to ?? '').replace(/\D/g, '');
+      if (!/^\d{10}$/.test(mobile)) throw new BadRequestException('Enter a 10-digit mobile number.');
+      return this.sms.send(mobile, 'Investoyard test message. Your OTP is 123456.', { otp: '123456' }, { tenantId: t.id });
+    }
+    if (provider === 'email') {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to ?? ''))) throw new BadRequestException('Enter a valid email address.');
+      return this.email.send(
+        {
+          to: String(to),
+          subject: 'Investoyard — test email',
+          html: '<p>This is a test email from the Investoyard admin console. Your email provider configuration works.</p>',
+        },
+        { tenantId: t.id },
+      );
+    }
+    throw new BadRequestException(`Test send is available for SMS and email only.`);
+  }
+
+  /** Message-type catalog (operator-managed) — for the admin Templates UI. */
+  async templatesCatalog() {
+    return { keys: await this.templates.listTypes() };
+  }
+  /** The type catalog is PLATFORM-WIDE — only a platform superadmin may change it
+   *  (the guard alone would pass any tenants.manage holder on slug-less routes). */
+  private async assertSuperadmin(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException('Only a platform admin can manage message types.');
+  }
+  async createMessageType(callerId: string, dto: any) {
+    await this.assertSuperadmin(callerId);
+    return this.templates.createType(dto);
+  }
+  async updateMessageType(callerId: string, id: string, dto: any) {
+    await this.assertSuperadmin(callerId);
+    return this.templates.updateType(id, dto);
+  }
+  async deleteMessageType(callerId: string, id: string) {
+    await this.assertSuperadmin(callerId);
+    return this.templates.deleteType(id);
+  }
+  /** A tenant's OWN template overrides (empty ⇒ inherits platform). */
+  async templatesForTenant(slug: string) {
+    const t = await this.tenantBySlug(slug);
+    return this.templates.listForTenant(t.id);
+  }
+  async saveTemplateForTenant(slug: string, dto: any) {
+    const t = await this.tenantBySlug(slug);
+    return this.templates.upsertForTenant(t.id, dto);
+  }
+  async deleteTemplateForTenant(slug: string, q: { channel: string; key: string; locale?: string }) {
+    const t = await this.tenantBySlug(slug);
+    return this.templates.deleteForTenant(t.id, q);
+  }
+  /** The PLATFORM's template content for a key/locale — powers "Copy from platform" in partner scopes. */
+  resolvePlatformTemplate(channel: string, key: string, locale?: string) {
+    return this.templates.resolve(channel, key, undefined, locale || 'en');
+  }
+
+  /** Platform oversight: which white-label partner has set its own SMS/email + overridden which templates. */
+  async integrationsOverview() {
+    const tenants = await this.prisma.tenant.findMany({
+      where: { flags: { path: ['whitelabel'], equals: true } },
+      select: { id: true, slug: true, name: true, code: true },
+      orderBy: { name: 'asc' },
+    });
+    const ids = tenants.map((t) => t.id);
+    if (ids.length === 0) return [];
+    const [providers, templates] = await Promise.all([
+      this.prisma.providerConfig.findMany({ where: { tenantId: { in: ids }, enabled: true }, select: { tenantId: true, provider: true } }),
+      this.prisma.messageTemplate.findMany({ where: { tenantId: { in: ids } }, select: { tenantId: true, channel: true, key: true } }),
+    ]);
+    return tenants.map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      code: t.code ?? undefined,
+      providers: providers.filter((p) => p.tenantId === t.id).map((p) => p.provider),
+      templates: templates.filter((tp) => tp.tenantId === t.id).map((tp) => `${tp.channel}:${tp.key}`),
+    }));
+  }
+
+  private readonly log = new Logger(AdminService.name);
 
   /** Operator-facing system/infra status (component health + configured modes). */
   async systemStatus() {
@@ -51,8 +165,8 @@ export class AdminService {
     return rows.map((c) => ({
       id: c.id, exchange: c.exchange, memberName: c.memberName, memberType: c.memberType,
       loginId: c.loginId, memberCode: c.memberCode, subBrokerCode: c.subBrokerCode ?? undefined,
-      baseUrl: c.baseUrl, env: c.env, active: c.active,
-      passwordSet: !!c.passwordRef, ibbsIdSet: !!c.ibbsIdRef,
+      baseUrl: c.baseUrl, env: c.env, active: c.active, subscriptionUse: c.subscriptionUse,
+      passwordSet: !!c.passwordRef, ibbsIdSet: !!c.ibbsIdRef, checksumKeySet: !!c.checksumKeyRef,
     }));
   }
 
@@ -65,22 +179,35 @@ export class AdminService {
         memberType: dto.memberType ?? 'merchant_banker', loginId: dto.loginId, memberCode: dto.memberCode,
         passwordRef: await this.vault.tokenize(dto.password), // vaulted, never returned
         ibbsIdRef: dto.ibbsId ? await this.vault.tokenize(dto.ibbsId) : null,
+        checksumKeyRef: dto.checksumKey ? await this.vault.tokenize(dto.checksumKey) : null,
         subBrokerCode: dto.subBrokerCode ?? null, baseUrl: dto.baseUrl, env: dto.env, active: dto.active ?? true,
+        subscriptionUse: dto.subscriptionUse ?? false,
       },
     });
+    if (cred.subscriptionUse) await this.soleSubscriptionCred(cred.id, cred.exchange);
     return { id: cred.id };
+  }
+
+  /** Only ONE credential per exchange carries the "use for subscription" tag. */
+  private async soleSubscriptionCred(keepId: string, exchange: string) {
+    await this.prisma.memberCredential.updateMany({
+      where: { exchange: exchange as any, subscriptionUse: true, id: { not: keepId } },
+      data: { subscriptionUse: false },
+    });
   }
 
   async updateRail(id: string, dto: any) {
     const existing = await this.prisma.memberCredential.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Credential not found');
     const data: any = {};
-    for (const k of ['memberName', 'memberType', 'loginId', 'memberCode', 'subBrokerCode', 'baseUrl', 'env', 'active', 'exchange']) {
+    for (const k of ['memberName', 'memberType', 'loginId', 'memberCode', 'subBrokerCode', 'baseUrl', 'env', 'active', 'exchange', 'subscriptionUse']) {
       if (dto[k] !== undefined) data[k] = dto[k];
     }
     if (dto.password) data.passwordRef = await this.vault.tokenize(dto.password);  // re-set secret
     if (dto.ibbsId !== undefined) data.ibbsIdRef = dto.ibbsId ? await this.vault.tokenize(dto.ibbsId) : null;
-    await this.prisma.memberCredential.update({ where: { id }, data });
+    if (dto.checksumKey !== undefined) data.checksumKeyRef = dto.checksumKey ? await this.vault.tokenize(dto.checksumKey) : null;
+    const updated = await this.prisma.memberCredential.update({ where: { id }, data });
+    if (data.subscriptionUse === true) await this.soleSubscriptionCred(id, updated.exchange);
     return { updated: true };
   }
 
@@ -172,11 +299,11 @@ export class AdminService {
     }
   }
 
-  /** Edit a custom role's scope/permissions (system roles are immutable). */
+  /** Edit a role's scope/permissions. Only the all-powerful SuperAdmin (`*`) role is locked. */
   async updateRole(id: string, dto: { scope?: string; permissions?: string[] }) {
     const role = await this.prisma.role.findUnique({ where: { id } });
     if (!role) throw new NotFoundException('Role not found');
-    if (role.isSystem) throw new BadRequestException('System roles cannot be edited.');
+    if (role.permissions.includes('*')) throw new BadRequestException('The SuperAdmin role cannot be edited.');
     const scope = dto.scope ?? role.scope;
     const permissions = dto.permissions ?? role.permissions;
     this.validateRole(scope, permissions);
@@ -216,8 +343,10 @@ export class AdminService {
   /* ------------------------------------------------ partners / branches / operators */
 
   // Default permission sets for auto-created tenant admins.
-  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage'];
-  private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'reports.view', 'users.view'];
+  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage'];
+  // White-label admins additionally manage their OWN SMS/email keys + message templates.
+  private static WHITELABEL_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage', 'providers.manage'];
+  private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view'];
 
   /** What tenants can the caller manage? superadmin → all; else the union of their subtree/own scopes. */
   private async callerScope(userId: string): Promise<{ superadmin: boolean; tenantIds: Set<string> }> {
@@ -247,10 +376,18 @@ export class AdminService {
    *   branch     → under a partner (parentSlug), admin scope 'own'
    * Returns the tenant + the admin credential (temporary password shown ONCE if generated).
    */
+  /** Next sequential 6-digit channel code (partners + branches share the sequence, from 601001). */
+  private async nextChannelCode(): Promise<string> {
+    const last = await this.prisma.tenant.findFirst({ where: { code: { not: null } }, orderBy: { code: 'desc' }, select: { code: true } });
+    return String(last?.code ? Number(last.code) + 1 : 601001);
+  }
+
   async registerTenant(callerId: string, dto: {
     kind: 'partner' | 'whitelabel' | 'branch'; name: string; slug: string; parentSlug?: string;
     brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
     adminName: string; adminUsername: string; adminPassword?: string;
+    profile?: Record<string, any>; // full empanelment form (JM/Nuvama fields + document URLs)
+    commissionRate?: number; // % commission on this channel's bids
   }) {
     const scope = await this.callerScope(callerId);
     const slug = dto.slug.trim().toLowerCase();
@@ -269,17 +406,21 @@ export class AdminService {
       const platform = await tenantContext.runUnscoped(async () => this.prisma.tenant.findFirst({ where: { type: 'platform' } }));
       if (!platform) throw new NotFoundException('Platform tenant missing');
       parentId = platform.id; type = 'partner'; roleScope = 'subtree'; perms = AdminService.PARTNER_ADMIN_PERMS;
-      if (dto.kind === 'whitelabel') { flags = { whitelabel: true, gmpEnabled: false }; lockGmpOff = true; }
+      if (dto.kind === 'whitelabel') { flags = { whitelabel: true, gmpEnabled: false }; lockGmpOff = true; perms = AdminService.WHITELABEL_ADMIN_PERMS; }
     }
 
     return tenantContext.runUnscoped(async () => {
       try {
+        const code = await this.nextChannelCode();
         const tenant = await this.prisma.tenant.create({
           data: {
             type: type as any, parentId, slug, name: dto.name.trim(),
             brandColor: dto.brandColor || undefined, goldColor: dto.goldColor || undefined,
             logoUrl: dto.logoUrl || undefined, customDomain: dto.customDomain?.trim() || undefined,
             flags: flags ?? undefined,
+            profile: dto.profile && Object.keys(dto.profile).length ? dto.profile : undefined,
+            code,
+            commissionRate: dto.commissionRate != null ? dto.commissionRate : undefined,
           },
         });
         if (lockGmpOff) {
@@ -291,17 +432,302 @@ export class AdminService {
           data: { tenantId: tenant.id, username: adminUsername, name: dto.adminName.trim(), passwordHash: await hashPassword(password), status: 'active' },
         });
         await this.prisma.membership.create({ data: { userId: user.id, tenantId: tenant.id, roleId: role.id } });
+        // Auto-generate the empanelment form and email it to the partner (fire-and-forget —
+        // registration must not fail if email is off or the send errors).
+        void this.sendEmpanelmentForm(
+          { name: tenant.name, code: tenant.code, kind: dto.kind, createdAt: tenant.createdAt },
+          dto.profile,
+        );
         return {
-          tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, type: tenant.type, customDomain: tenant.customDomain, whitelabel: dto.kind === 'whitelabel' },
+          tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, type: tenant.type, code: tenant.code, customDomain: tenant.customDomain, whitelabel: dto.kind === 'whitelabel' },
           admin: { username: user.username, name: user.name, ...(dto.adminPassword ? {} : { temporaryPassword: password }) },
         };
       } catch (e: any) {
         if (e?.code === 'P2002') {
-          const field = String(e?.meta?.target ?? '').includes('username') ? 'username' : String(e?.meta?.target ?? '').includes('customDomain') ? 'custom domain' : 'slug';
+          const t = String(e?.meta?.target ?? '');
+          const field = t.includes('username') ? 'username' : t.includes('customDomain') ? 'custom domain' : t.includes('code') ? 'channel code' : 'slug';
           throw new ConflictException(`That ${field} is already taken.`);
         }
         throw e;
       }
+    });
+  }
+
+  /** Build the empanelment-form PDF for a partner (operator download; scope-checked). */
+  async buildEmpanelmentPdf(callerId: string, slug: string): Promise<{ buffer: Buffer; filename: string }> {
+    const scope = await this.callerScope(callerId);
+    const t = await tenantContext.runUnscoped(async () =>
+      this.prisma.tenant.findUnique({ where: { slug }, select: { id: true, name: true, code: true, type: true, profile: true, createdAt: true } }),
+    );
+    if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+    if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
+    const buffer = await this.empanelmentPdf.build(t.profile as any, { name: t.name, code: t.code, kind: t.type, createdAt: t.createdAt });
+    const safe = String(t.code || slug).replace(/[^a-z0-9_-]/gi, '');
+    return { buffer, filename: `investoyard-empanelment-${safe}.pdf` };
+  }
+
+  /** Generate the empanelment PDF and email it to the partner's contact email (auto on register). */
+  private async sendEmpanelmentForm(
+    meta: { name: string; code?: string | null; kind?: string; createdAt?: Date },
+    profile?: Record<string, any>,
+  ): Promise<void> {
+    try {
+      const to = profile?.contactEmail;
+      if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to))) {
+        this.log.log(`empanelment form for ${meta.name}: no valid contact email — skipping auto-send (still downloadable).`);
+        return;
+      }
+      const buffer = await this.empanelmentPdf.build(profile ?? {}, meta);
+      const who = profile?.fullName || profile?.entityName || meta.name;
+      const res = await this.email.send({
+        to: String(to),
+        subject: `Investoyard — Business Associate Empanelment Form${meta.code ? ` (Code ${meta.code})` : ''}`,
+        text:
+          `Dear ${who},\n\n` +
+          `Welcome to Investoyard. Please find attached your Business Associate Empanelment Form, pre-filled with the ` +
+          `details provided at registration.\n\n` +
+          `Kindly print it, verify the details, sign (and stamp, for entities) where indicated, and return a scanned ` +
+          `copy along with the supporting documents.\n\nRegards,\nTeam Investoyard`,
+        attachments: [{ filename: `investoyard-empanelment-${meta.code || 'form'}.pdf`, content: buffer, contentType: 'application/pdf' }],
+      });
+      if (res.dev) this.log.log(`empanelment form for ${meta.name}: email not configured — generated but not sent (downloadable).`);
+      else if (!res.sent) this.log.warn(`empanelment form email to ${to} failed: ${res.error}`);
+      else this.log.log(`empanelment form emailed to ${to} for ${meta.name}.`);
+    } catch (e: any) {
+      this.log.warn(`sendEmpanelmentForm failed for ${meta.name}: ${e?.message ?? e}`);
+    }
+  }
+
+  /** A single tenant with its full empanelment profile (for the partner detail/edit view). */
+  async tenantDetail(callerId: string, slug: string) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({
+        where: { slug },
+        include: { parent: { select: { slug: true, name: true } }, _count: { select: { children: true, users: true, memberships: true } } },
+      });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
+      const flags = (t.flags as any) ?? {};
+      return {
+        id: t.id, slug: t.slug, name: t.name, type: t.type, status: t.status,
+        parent: t.parent ?? undefined, whitelabel: !!flags.whitelabel,
+        code: t.code ?? undefined, commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+        brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
+        logoUrl: t.logoUrl ?? undefined, customDomain: t.customDomain ?? undefined,
+        profile: (t.profile as any) ?? {},
+        counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
+        createdAt: t.createdAt.toISOString().slice(0, 10),
+      };
+    });
+  }
+
+  /** All partners / branches the caller can manage (tree list for the Partners page). */
+  async listTenants(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const where: any = { type: { in: ['partner', 'branch'] } };
+      if (!scope.superadmin) where.id = { in: [...scope.tenantIds] };
+      const rows = await this.prisma.tenant.findMany({
+        where, orderBy: [{ type: 'asc' }, { name: 'asc' }],
+        include: { parent: { select: { slug: true, name: true } }, _count: { select: { children: true, memberships: true, users: true } } },
+      });
+      return rows.map((t) => {
+        const flags = (t.flags as any) ?? {};
+        const profile = (t.profile as any) ?? {};
+        return {
+          id: t.id, slug: t.slug, name: t.name, type: t.type, status: t.status,
+          whitelabel: !!flags.whitelabel, parent: t.parent ?? undefined,
+          code: t.code ?? undefined, commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+          customDomain: t.customDomain ?? undefined,
+          applicantType: profile.applicantType ?? undefined,
+          city: profile.corrCity ?? profile.city ?? undefined,
+          branches: t._count.children, operators: t._count.memberships,
+          createdAt: t.createdAt.toISOString().slice(0, 10),
+        };
+      });
+    });
+  }
+
+  /** Update a partner/branch's brand + empanelment profile (merges into existing profile). */
+  async updateTenant(callerId: string, slug: string, dto: {
+    name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string;
+    customDomain?: string; profile?: Record<string, any>; commissionRate?: number | null;
+  }) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
+      const data: any = {};
+      for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+      if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
+      if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
+      if (dto.profile) data.profile = { ...((t.profile as any) ?? {}), ...dto.profile };
+      try {
+        await this.prisma.tenant.update({ where: { slug }, data });
+      } catch (e: any) {
+        if (e?.code === 'P2002') throw new ConflictException('That custom domain is already taken.');
+        throw e;
+      }
+      return { ok: true };
+    });
+  }
+
+  /* ------------------------------------------------ clients (investors) */
+
+  private kycSummary(statuses: string[]) {
+    const verified = statuses.filter((s) => s === 'verified').length;
+    return { verified, total: statuses.length };
+  }
+
+  /** Investor clients (customers) in the caller's scope; optional tenant filter + free-text search. */
+  async listClients(callerId: string, opts: { tenantSlug?: string; q?: string } = {}) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const where: any = { username: null, mobile: { not: null } }; // customers, not operators
+      if (opts.tenantSlug) {
+        const t = await this.tenantBySlug(opts.tenantSlug);
+        const ids = await this.subtreeIds(t.id);
+        if (!scope.superadmin && !ids.some((i) => scope.tenantIds.has(i))) throw new ForbiddenException('Outside your scope.');
+        where.tenantId = { in: ids };
+      } else if (!scope.superadmin) {
+        where.tenantId = { in: [...scope.tenantIds] };
+      }
+      const q = opts.q?.trim();
+      if (q) where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { mobile: { contains: q } }, { email: { contains: q, mode: 'insensitive' } }];
+      const users = await this.prisma.user.findMany({
+        where,
+        include: {
+          tenant: { select: { slug: true, name: true, type: true } },
+          profiles: { select: { kycStatus: true } },
+          _count: { select: { profiles: true, applications: true } },
+        },
+        orderBy: { createdAt: 'desc' }, take: 500,
+      });
+      return users.map((u) => ({
+        id: u.id, name: u.name ?? undefined,
+        mobileMasked: u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : undefined,
+        email: u.email ?? undefined, status: u.status, tenant: u.tenant,
+        profiles: u._count.profiles, applications: u._count.applications,
+        kyc: this.kycSummary(u.profiles.map((p) => p.kycStatus)),
+        createdAt: u.createdAt.toISOString().slice(0, 10),
+      }));
+    });
+  }
+
+  /** Full client record — KYC profiles (PII masked) + application history. */
+  async clientDetail(callerId: string, userId: string) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const u = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          tenant: { select: { slug: true, name: true } },
+          profiles: { orderBy: { createdAt: 'asc' } },
+          applications: { include: { ipo: { select: { symbol: true, name: true } } }, orderBy: { createdAt: 'desc' } },
+        },
+      });
+      if (!u) throw new NotFoundException('Client not found');
+      if (!scope.superadmin && !scope.tenantIds.has(u.tenantId)) throw new ForbiddenException('Outside your scope.');
+      const profiles = await Promise.all(u.profiles.map(async (p) => {
+        let panMasked: string | undefined;
+        try { panMasked = this.vault.mask(await this.vault.resolve(p.panTokenRef)); } catch { panMasked = undefined; }
+        return {
+          id: p.id, fullName: p.fullName, relationship: p.relationship, kycStatus: p.kycStatus,
+          depository: p.depository, dpId: p.dpId,
+          clientId: p.clientId ? '••••' + p.clientId.slice(-4) : undefined,
+          panMasked, ifsc: p.ifsc ?? undefined,
+          dateOfBirth: p.dateOfBirth ? p.dateOfBirth.toISOString().slice(0, 10) : undefined,
+        };
+      }));
+      return {
+        id: u.id, name: u.name ?? undefined, email: u.email ?? undefined,
+        mobileMasked: u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : undefined,
+        status: u.status, tenant: u.tenant, marketingConsent: u.marketingConsent,
+        createdAt: u.createdAt.toISOString().slice(0, 10),
+        profiles,
+        applications: u.applications.map((a) => ({
+          id: a.id, ipoSymbol: a.ipo?.symbol, ipoName: a.ipo?.name, category: a.category,
+          lots: a.lots, amount: Number(a.amount), status: a.status,
+          allottedLots: a.allottedLots ?? undefined,
+          appliedAt: a.createdAt.toISOString().slice(0, 10),
+        })),
+      };
+    });
+  }
+
+  /** Create a client shell (mobile + name) on a tenant in scope. Full KYC is added by the customer. */
+  async createClient(callerId: string, dto: { mobile: string; name?: string; email?: string; tenantSlug: string }) {
+    if (!/^\d{10}$/.test(dto.mobile)) throw new BadRequestException('Enter a valid 10-digit mobile.');
+    const scope = await this.callerScope(callerId);
+    const tenant = await this.tenantBySlug(dto.tenantSlug);
+    if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) throw new ForbiddenException('Outside your scope.');
+    return tenantContext.runUnscoped(async () => {
+      const existing = await this.prisma.user.findUnique({ where: { mobile: dto.mobile } });
+      if (existing) throw new ConflictException('A client with that mobile already exists.');
+      const u = await this.prisma.user.create({
+        data: { tenantId: tenant.id, mobile: dto.mobile, name: dto.name?.trim() || undefined, email: dto.email?.trim() || undefined, status: 'active' },
+      });
+      return { id: u.id };
+    });
+  }
+
+  /**
+   * Add a KYC / demat profile for a client (self or family member). PAN + bank + UPI are
+   * vaulted; a PAN is unique per tenant (self-PAN rule). Used when an operator onboards a
+   * client's own PAN / demat / bank on their behalf.
+   */
+  async addClientProfile(callerId: string, userId: string, dto: {
+    fullName: string; relationship?: string; pan: string; dateOfBirth?: string;
+    depository: 'NSDL' | 'CDSL'; dpId: string; clientId: string;
+    bankAccount?: string; ifsc?: string; upi?: string;
+  }) {
+    const scope = await this.callerScope(callerId);
+    if (!/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/.test(dto.pan)) throw new BadRequestException('Enter a valid PAN (e.g. ABCDE1234F).');
+    if (!['NSDL', 'CDSL'].includes(dto.depository)) throw new BadRequestException('Depository must be NSDL or CDSL.');
+    if (!dto.dpId?.trim() || !dto.clientId?.trim()) throw new BadRequestException('DP ID and Client ID are required.');
+    return tenantContext.runUnscoped(async () => {
+      const u = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!u || u.username) throw new NotFoundException('Client not found');
+      if (!scope.superadmin && !scope.tenantIds.has(u.tenantId)) throw new ForbiddenException('Outside your scope.');
+      const pan = dto.pan.trim().toUpperCase();
+      try {
+        const profile = await this.prisma.investorProfile.create({
+          data: {
+            tenantId: u.tenantId, userId: u.id,
+            relationship: (dto.relationship as any) ?? 'self',
+            fullName: dto.fullName.trim(),
+            panTokenRef: await this.vault.tokenize(pan),
+            panHash: this.vault.hash(pan),
+            dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+            depository: dto.depository as any, dpId: dto.dpId.trim(), clientId: dto.clientId.trim(),
+            bankTokenRef: dto.bankAccount?.trim() ? await this.vault.tokenize(dto.bankAccount.trim()) : null,
+            ifsc: dto.ifsc?.trim() || null,
+            upiTokenRef: dto.upi?.trim() ? await this.vault.tokenize(dto.upi.trim()) : null,
+          },
+        });
+        return { id: profile.id };
+      } catch (e: any) {
+        if (e?.code === 'P2002') throw new ConflictException('That PAN is already registered for this channel.');
+        throw e;
+      }
+    });
+  }
+
+  /** Edit a client's contact fields / status. */
+  async updateClient(callerId: string, id: string, dto: { name?: string; email?: string; status?: 'active' | 'suspended' }) {
+    const scope = await this.callerScope(callerId);
+    return tenantContext.runUnscoped(async () => {
+      const u = await this.prisma.user.findUnique({ where: { id } });
+      if (!u || u.username) throw new NotFoundException('Client not found');
+      if (!scope.superadmin && !scope.tenantIds.has(u.tenantId)) throw new ForbiddenException('Outside your scope.');
+      const data: any = {};
+      if (dto.name !== undefined) data.name = dto.name.trim() || null;
+      if (dto.email !== undefined) data.email = dto.email.trim() || null;
+      if (dto.status) data.status = dto.status;
+      if (Object.keys(data).length) await this.prisma.user.update({ where: { id }, data });
+      return { ok: true };
     });
   }
 
@@ -317,7 +743,7 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
       });
       return users.map((u) => ({
-        id: u.id, username: u.username, name: u.name,
+        id: u.id, username: u.username, name: u.name, email: u.email ?? undefined, mobile: u.mobile ?? undefined,
         status: u.status === 'active' ? 'active' : 'inactive', // UI-facing (suspended → inactive)
         tenant: u.tenant,
         roles: u.memberships.map((m) => ({ tenantSlug: m.tenant.slug, tenantName: m.tenant.name, role: m.role.name, scope: m.role.scope })),
@@ -327,10 +753,11 @@ export class AdminService {
   }
 
   /** Create an operator user (username+password) on a tenant in the caller's scope. */
-  async createOperator(callerId: string, dto: { username: string; name: string; password?: string; tenantSlug: string; roleName: string }) {
+  async createOperator(callerId: string, dto: { username: string; name: string; password?: string; tenantSlug: string; roleName: string; email?: string; mobile?: string }) {
     const scope = await this.callerScope(callerId);
     const tenant = await this.tenantBySlug(dto.tenantSlug);
     if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) throw new ForbiddenException('Outside your scope.');
+    if (dto.mobile && !/^\d{10}$/.test(dto.mobile)) throw new BadRequestException('Mobile must be 10 digits.');
     const role = await tenantContext.runUnscoped(async () =>
       this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [tenant.id, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } }),
     );
@@ -338,19 +765,20 @@ export class AdminService {
     return tenantContext.runUnscoped(async () => {
       try {
         const password = dto.password?.trim() || this.genPassword();
-        const user = await this.prisma.user.create({ data: { tenantId: tenant.id, username: dto.username.trim().toLowerCase(), name: dto.name.trim(), passwordHash: await hashPassword(password), status: 'active' } });
+        const user = await this.prisma.user.create({ data: { tenantId: tenant.id, username: dto.username.trim().toLowerCase(), name: dto.name.trim(), email: dto.email?.trim() || undefined, mobile: dto.mobile?.trim() || undefined, passwordHash: await hashPassword(password), status: 'active' } });
         await this.prisma.membership.create({ data: { userId: user.id, tenantId: tenant.id, roleId: role.id } });
         return { id: user.id, username: user.username, name: user.name, ...(dto.password ? {} : { temporaryPassword: password }) };
       } catch (e: any) {
-        if (e?.code === 'P2002') throw new ConflictException('That username is already taken.');
+        if (e?.code === 'P2002') throw new ConflictException(String(e?.meta?.target ?? '').includes('mobile') ? 'That mobile is already registered.' : 'That username is already taken.');
         throw e;
       }
     });
   }
 
-  /** Edit an operator: rename, activate/deactivate, change role, or reset password. */
-  async updateOperator(callerId: string, id: string, dto: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string }) {
+  /** Edit an operator: rename, contact, activate/deactivate, change role, or reset password. */
+  async updateOperator(callerId: string, id: string, dto: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string; email?: string; mobile?: string }) {
     const scope = await this.callerScope(callerId);
+    if (dto.mobile && !/^\d{10}$/.test(dto.mobile)) throw new BadRequestException('Mobile must be 10 digits.');
     return tenantContext.runUnscoped(async () => {
       const user = await this.prisma.user.findUnique({ where: { id }, include: { memberships: true } });
       if (!user || !user.username) throw new NotFoundException('Operator not found');
@@ -359,9 +787,14 @@ export class AdminService {
 
       const data: any = {};
       if (dto.name !== undefined) data.name = dto.name.trim();
+      if (dto.email !== undefined) data.email = dto.email.trim() || null;
+      if (dto.mobile !== undefined) data.mobile = dto.mobile.trim() || null;
       if (dto.status) data.status = dto.status === 'inactive' ? 'suspended' : 'active'; // UserStatus enum
       if (dto.password) data.passwordHash = await hashPassword(dto.password.trim());
-      if (Object.keys(data).length) await this.prisma.user.update({ where: { id }, data });
+      if (Object.keys(data).length) {
+        try { await this.prisma.user.update({ where: { id }, data }); }
+        catch (e: any) { if (e?.code === 'P2002') throw new ConflictException('That mobile is already registered.'); throw e; }
+      }
 
       if (dto.roleName) {
         const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
@@ -442,65 +875,106 @@ export class AdminService {
           ipo: { select: { symbol: true, name: true } },
           profile: { select: { fullName: true } },
           user: { select: { mobile: true } },
-          tenant: { select: { slug: true } },
+          tenant: { select: { slug: true, name: true, code: true, commissionRate: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
-      return rows.map((a) => ({
-        id: a.id,
-        tenantSlug: a.tenant?.slug,
-        ipoSymbol: a.ipo?.symbol,
-        ipoName: a.ipo?.name,
-        applicantName: a.profile?.fullName,
-        mobileMasked: a.user?.mobile ? a.user.mobile.slice(0, 2) + '****' + a.user.mobile.slice(-4) : undefined,
-        category: a.category,
-        applicantType: a.applicantType,
-        batchId: a.batchId ?? undefined, // family/bulk batches share one id
-        lots: a.lots,
-        amount: Number(a.amount),
-        status: a.status,
-        allottedLots: a.allottedLots ?? undefined,
-        refundAmount: a.refundAmount != null ? Number(a.refundAmount) : undefined,
-        appliedAt: a.createdAt.toISOString().slice(0, 10),
-      }));
+      return rows.map((a) => {
+        const rate = a.tenant?.commissionRate != null ? Number(a.tenant.commissionRate) : 0;
+        const allottedAmt = a.allottedAmount != null ? Number(a.allottedAmount) : 0;
+        return {
+          id: a.id,
+          tenantSlug: a.tenant?.slug,
+          tenantName: a.tenant?.name,
+          partnerCode: a.tenant?.code ?? undefined, // channel code auto-mapped on the bid
+          ipoSymbol: a.ipo?.symbol,
+          ipoName: a.ipo?.name,
+          applicantName: a.profile?.fullName,
+          mobileMasked: a.user?.mobile ? a.user.mobile.slice(0, 2) + '****' + a.user.mobile.slice(-4) : undefined,
+          category: a.category,
+          applicantType: a.applicantType,
+          batchId: a.batchId ?? undefined, // family/bulk batches share one id
+          lots: a.lots,
+          amount: Number(a.amount),
+          status: a.status,
+          allottedLots: a.allottedLots ?? undefined,
+          refundAmount: a.refundAmount != null ? Number(a.refundAmount) : undefined,
+          commissionRate: rate || undefined, // % on this channel
+          commissionAmount: Math.round(allottedAmt * rate) / 100, // realized on allotted amount
+          appliedAt: a.createdAt.toISOString().slice(0, 10),
+        };
+      });
     });
   }
 
-  /** Admin home overview — headline counts + application aggregate + open IPOs. */
+  /** Admin home overview — headline counts, live-IPO performance, per-partner & 7-day trends. */
   async dashboard(slug: string) {
     const rep = await this.reports(slug); // scope + application aggregate (runUnscoped inside)
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
-    const [operators, allIpos, openIpos] = await Promise.all([
-      this.prisma.membership.count({ where: { tenantId: { in: ids }, status: 'active' } }),
-      this.prisma.ipo.findMany({ select: { status: true } }),
-      this.prisma.ipo.findMany({
-        where: { status: { in: ['open', 'upcoming'] } },
-        orderBy: { closeDate: 'asc' }, take: 6,
-        select: { symbol: true, name: true, status: true, type: true, closeDate: true, priceBandMin: true, priceBandMax: true },
-      }),
-    ]);
-    const iposOpen = allIpos.filter((i) => i.status === 'open').length;
-    return {
-      scope: rep.scope,
-      counts: {
-        tenants: ids.length,
-        operators,
-        iposOpen,
-        iposTotal: allIpos.length,
-        applications: rep.totals.applications,
-        amount: rep.totals.amount,
-        allotmentRate: rep.allotment.allotmentRate,
-        blocked: rep.totals.amount - rep.allotment.totalAllottedAmount, // applied but not yet allotted/refunded
-      },
-      byStatus: rep.totals.byStatus,
-      topIpos: rep.byIpo.slice(0, 6),
-      openIpos: openIpos.map((i) => ({
-        symbol: i.symbol, name: i.name, status: i.status, type: i.type,
-        closeDate: i.closeDate ? i.closeDate.toISOString().slice(0, 10) : null,
-        band: i.priceBandMin != null ? `₹${Number(i.priceBandMin)}–${Number(i.priceBandMax)}` : null,
-      })),
-    };
+    const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+
+    return tenantContext.runUnscoped(async () => {
+      const [operators, allIpos, liveIpos, channels, clients, apps7, appAgg] = await Promise.all([
+        this.prisma.membership.count({ where: { tenantId: { in: ids }, status: 'active' } }),
+        this.prisma.ipo.findMany({ select: { status: true } }),
+        this.prisma.ipo.findMany({
+          where: { status: 'open' }, orderBy: { closeDate: 'asc' }, take: 8,
+          select: {
+            symbol: true, name: true, status: true, type: true, priceBandMin: true, priceBandMax: true,
+            gmps: { orderBy: { asOf: 'desc' }, take: 1, select: { value: true } },
+            subscriptions: { orderBy: { asOf: 'desc' }, take: 1, select: { timesSubscribed: true } },
+          },
+        }),
+        this.prisma.tenant.findMany({ where: { id: { in: ids }, type: { in: ['partner', 'branch'] } }, select: { type: true, status: true } }),
+        this.prisma.user.count({ where: { tenantId: { in: ids }, username: null, mobile: { not: null } } }),
+        this.prisma.application.findMany({ where: { tenantId: { in: ids }, createdAt: { gte: since } }, select: { createdAt: true } }),
+        this.prisma.application.groupBy({ by: ['tenantId'], where: { tenantId: { in: ids } }, _count: { _all: true }, _sum: { amount: true } }),
+      ]);
+
+      const iposByStatus: Record<string, number> = {};
+      for (const i of allIpos) iposByStatus[i.status] = (iposByStatus[i.status] ?? 0) + 1;
+
+      const partners = channels.filter((t) => t.type === 'partner').length;
+      const branches = channels.filter((t) => t.type === 'branch').length;
+      const partnerActive = channels.filter((t) => t.status === 'active').length;
+
+      // 7-day application trend (zero-filled)
+      const dayMap: Record<string, number> = {};
+      for (let d = 0; d < 7; d++) { const dt = new Date(since); dt.setDate(since.getDate() + d); dayMap[dt.toISOString().slice(0, 10)] = 0; }
+      for (const a of apps7) { const k = a.createdAt.toISOString().slice(0, 10); if (k in dayMap) dayMap[k]++; }
+      const trend7 = Object.entries(dayMap).map(([date, count]) => ({ date, count }));
+
+      // top partners/branches by application volume
+      const meta = new Map((await this.prisma.tenant.findMany({ where: { id: { in: appAgg.map((a) => a.tenantId) } }, select: { id: true, name: true, code: true } })).map((t) => [t.id, t]));
+      const topPartners = appAgg
+        .map((a) => ({ code: meta.get(a.tenantId)?.code ?? '—', name: meta.get(a.tenantId)?.name ?? '—', applications: a._count._all, amount: Number(a._sum.amount ?? 0) }))
+        .sort((a, b) => b.applications - a.applications).slice(0, 5);
+
+      return {
+        scope: rep.scope,
+        counts: {
+          tenants: ids.length, operators, partners, branches, clients,
+          iposOpen: iposByStatus['open'] ?? 0, iposTotal: allIpos.length,
+          iposUpcoming: iposByStatus['upcoming'] ?? 0, iposClosed: (iposByStatus['closed'] ?? 0) + (iposByStatus['listed'] ?? 0),
+          applications: rep.totals.applications, amount: rep.totals.amount,
+          allotmentRate: rep.allotment.allotmentRate,
+          blocked: rep.totals.amount - rep.allotment.totalAllottedAmount,
+          refunds: rep.allotment.totalRefund,
+        },
+        byStatus: rep.totals.byStatus,
+        topIpos: rep.byIpo.slice(0, 6),
+        topPartners,
+        partnerStatus: { active: partnerActive, suspended: channels.length - partnerActive },
+        trend7,
+        livePerformance: liveIpos.map((i) => ({
+          symbol: i.symbol, name: i.name, status: i.status, type: i.type,
+          band: i.priceBandMin != null ? `₹${Number(i.priceBandMin)}–${Number(i.priceBandMax)}` : null,
+          gmp: i.gmps[0] ? Number(i.gmps[0].value) : null,
+          subscription: i.subscriptions[0] ? Number(i.subscriptions[0].timesSubscribed) : null,
+        })),
+      };
+    });
   }
 
   /** The subtree's applications serialised as CSV (the rows behind the report). */

@@ -1,11 +1,14 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { getIpoDetail, mockIpos } from '@/lib/api';
+import { getIpoDetail, ipoSymbols } from '@/lib/api';
 import { ApplyWizard } from '@/components/ApplyWizard';
 import { makeT, Lang } from '@investoyard/i18n';
 
-export function generateStaticParams() {
-  return mockIpos().map((i) => ({ symbol: i.symbol }));
+// Build an apply page per live catalog symbol (falls back to seed symbols when the
+// catalog is empty / the API is unreachable at build) — same source as the detail pages.
+export async function generateStaticParams() {
+  const symbols = await ipoSymbols();
+  return symbols.map((symbol) => ({ symbol }));
 }
 
 export async function generateMetadata({ params }: { params: { symbol: string } }): Promise<Metadata> {

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "investoyard-web",
-      "cwd": "D:\\Investoyard\\apps\\web",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "serve@14", "out", "-l", "4300"],
+      "name": "web",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 4300
     }
   ]

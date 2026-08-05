@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from './applications.service';
-import { CreateApplicationDto, CreateBulkApplicationDto, RecordAllotmentDto } from './applications.dto';
+import { CreateApplicationDto, CreateBulkApplicationDto, FormsPdfDto, RecordAllotmentDto } from './applications.dto';
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)
@@ -41,6 +41,24 @@ export class ApplicationsController {
   @Get(':id/pdf')
   async pdf(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {
     const { buffer, filename } = await this.apps.generatePdf(req.user.sub, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return new StreamableFile(buffer);
+  }
+
+  /** Family / group print — all applications in a batch, merged into one PDF. */
+  @Get('batch/:batchId/pdf')
+  async batchPdf(@Req() req: any, @Param('batchId') batchId: string, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {
+    const { buffer, filename } = await this.apps.generateBatchPdf(req.user.sub, batchId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return new StreamableFile(buffer);
+  }
+
+  /** Print a chosen set of this user's applications, merged into one PDF (web family apply). */
+  @Post('forms/pdf')
+  async formsPdf(@Req() req: any, @Body() dto: FormsPdfDto, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {
+    const { buffer, filename } = await this.apps.generateFormsPdf(req.user.sub, dto.ids);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return new StreamableFile(buffer);

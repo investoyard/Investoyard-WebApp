@@ -54,13 +54,26 @@ export function lotLadder(ipo: IpoFull): LotRow[] {
 export interface ResRow { cat: string; pct: number; shares: number; amount: number; }
 export function reservation(ipo: IpoFull): ResRow[] {
   const total = parseIssueValue(ipo.issueSize);
+  if (!total) return [];
+  // The operator's Share Reservation table (admin form) is authoritative when filled.
+  const sr: any = (ipo as any).extra?.shareResv;
+  if (sr && typeof sr === 'object') {
+    const DEF: [string, string][] = [['qib', 'QIB'], ['hni', 'B-HNI'], ['hni2', 'S-HNI'], ['retail', 'Retail'], ['employee', 'Employee'], ['shareholder', 'Shareholder'], ['other', 'Other']];
+    const rows = DEF
+      .map(([k, label]) => ({ label, on: !!sr[k]?.on, pct: Number(String(sr[k]?.pct ?? '').replace(/[^\d.]/g, '')) || 0 }))
+      .filter((r) => r.on && r.pct > 0)
+      .map((r) => ({ cat: r.label, pct: r.pct, shares: Math.round(((total * r.pct) / 100) / (up(ipo) || 1)), amount: (total * r.pct) / 100 }));
+    if (rows.length) return rows;
+  }
   const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
-  if (!rows.length || !total) return [];
-  return rows.map((r) => {
-    const pct = r.reservedPct ?? 0;
-    const amount = (total * pct) / 100;
-    return { cat: r.category.toUpperCase(), pct, shares: Math.round(amount / (up(ipo) || 1)), amount };
-  });
+  if (!rows.length) return [];
+  return rows
+    .map((r) => {
+      const pct = r.reservedPct ?? 0;
+      const amount = (total * pct) / 100;
+      return { cat: r.category.toUpperCase(), pct, shares: Math.round(amount / (up(ipo) || 1)), amount };
+    })
+    .filter((r) => r.pct > 0); // an all-zero table would render an empty bar — hide instead
 }
 
 export interface SubRowT { cat: string; bookSize: number; subscribed: number; times: number; }

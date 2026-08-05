@@ -28,7 +28,13 @@ function toDetail(ipo: any) {
     openDate: day(ipo.openDate), closeDate: day(ipo.closeDate),
     allotmentDate: day(ipo.allotmentDate), listingDate: day(ipo.listingDate),
     priceBandMin: num(ipo.priceBandMin), priceBandMax: num(ipo.priceBandMax),
-    lotSize: ipo.lotSize ?? undefined, minAmount: num(ipo.minAmount),
+    lotSize: ipo.lotSize ?? undefined,
+    // Min investment is DERIVED: mainboard = 1 lot × max band; SME = 2 lots × max band
+    // (post-2024 SEBI rule: SME retail minimum is two lots). Stored value only as fallback.
+    minAmount:
+      ipo.lotSize && upper
+        ? ipo.lotSize * (ipo.type === 'sme' ? 2 : 1) * upper
+        : num(ipo.minAmount),
     issueSize: crStr(ipo.issueSize),
     issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e7) : undefined, // raw ₹cr for admin edit
     registrar: ipo.registrar ?? undefined,
@@ -38,10 +44,19 @@ function toDetail(ipo: any) {
     listingGainPct: num(ipo.listingGainPct),
     subscriptionTimes: total ? Number(total.timesSubscribed) : undefined,
     gmp, gmpPct: gmp != null && upper ? Math.round((gmp / upper) * 1000) / 10 : undefined,
-    subscription: subs.map((s) => ({ category: s.category, timesSubscribed: Number(s.timesSubscribed), asOf: s.asOf.toISOString() })),
+    subscription: subs.map((s) => ({
+      category: s.category,
+      timesSubscribed: Number(s.timesSubscribed),
+      bidCount: s.bidCount ?? undefined,
+      applicationsSubscribed: s.applicationsSubscribed != null ? Number(s.applicationsSubscribed) : undefined,
+      asOf: s.asOf.toISOString(),
+    })),
+    subscriptionAsOf: ipo.subscriptionAsOf ? ipo.subscriptionAsOf.toISOString() : undefined,
+    autoPollSubscription: ipo.autoPollSubscription ?? undefined,
     documents: (ipo.documents ?? []).map((d: any) => ({ type: d.type, url: d.url })),
     smeCompliance: sme ? { meetsNorms: sme.meetsNorms, ebitdaTest: sme.ebitdaTest, ofsPct: sme.ofsPct, gcpPct: sme.gcpPct } : undefined,
     reservations: ipo.reservations ?? [],
+    extra: ipo.extra ?? undefined,
   };
 }
 
@@ -109,7 +124,13 @@ export class IpoService {
       allotmentDate: dto.allotmentDate ?? day(existing.allotmentDate),
       listingDate: dto.listingDate ?? day(existing.listingDate),
     });
-    await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, undefined, dto.type) });
+    try {
+      // Symbol is editable (unique in DB); other writes unchanged.
+      await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, dto.symbol, dto.type) });
+    } catch (e: any) {
+      if (e?.code === 'P2002') throw new ConflictException(`An IPO with symbol '${dto.symbol}' already exists.`);
+      throw e;
+    }
     // Documents are a full replace when provided (predictable admin editing).
     if (dto.documents) {
       await this.prisma.ipoDocument.deleteMany({ where: { ipoId: id } });
@@ -220,12 +241,14 @@ export class IpoService {
       isin: dto.isin,
       objectsOfIssue: dto.objectsOfIssue,
       logoUrl: dto.logoUrl,
+      extra: (dto as any).extra,
       openDate: d(dto.openDate),
       closeDate: d(dto.closeDate),
       allotmentDate: d(dto.allotmentDate),
       listingDate: d(dto.listingDate),
       listingGainPct: dto.listingGainPct,
       reservations: dto.reservations,
+      autoPollSubscription: (dto as UpdateIpoDto).autoPollSubscription,
       ...(type ? { exchanges: type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'] } : {}),
     };
     // Drop undefined so PATCH only touches provided fields.

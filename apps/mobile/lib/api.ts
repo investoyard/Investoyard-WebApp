@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { IpoListItem, IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView } from '@investoyard/shared-types';
+import type { IpoListItem, IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView, ProfileView, Depository } from '@investoyard/shared-types';
 
 /**
  * Resolve the API base URL.
@@ -182,6 +182,78 @@ export async function listConsents(token: string): Promise<ConsentView[]> {
 export async function withdrawConsent(token: string, type: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/consents/${type}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ── Investor profiles (PII vault) ─────────────────────────────────────────────
+// These MUST persist server-side: apply sends the server profile UUID as
+// `investorProfileId`, so unlike the demo stores above there is no local fallback
+// — a failed create throws so the UI can surface the reason (e.g. duplicate PAN).
+
+export interface CreateProfileInput {
+  relationship: string;
+  fullName: string;
+  pan: string;
+  depository: Depository;
+  dpId: string;
+  clientId: string;
+  upiId?: string;
+  bankAccount?: string;
+  ifsc?: string;
+  dateOfBirth?: string;
+  bankName?: string;
+  branchName?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  email?: string;
+  mobile?: string;
+}
+
+export interface RelationshipOption { name: string; allowMultiple: boolean }
+/** Public list of applicant relationship options (admin-managed master). */
+export async function getRelationships(): Promise<RelationshipOption[]> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles/relationships`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function listProfiles(token: string): Promise<ProfileView[]> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return (await res.json()) as ProfileView[];
+  } catch {}
+  return [];
+}
+
+export async function createProfile(token: string, input: CreateProfileInput): Promise<ProfileView> {
+  const res = await fetch(`${API_BASE}/profiles`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    let msg = `Could not save (HTTP ${res.status})`;
+    try {
+      const b = await res.json();
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
+    } catch {}
+    throw new Error(msg);
+  }
+  return (await res.json()) as ProfileView;
+}
+
+export async function deleteProfile(token: string, id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     return res.ok;
   } catch {
     return false;

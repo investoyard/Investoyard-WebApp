@@ -193,7 +193,7 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
               ))}
             </div>
           </>
-        ) : <p className="muted" style={{ fontSize: 13 }}>Issue: {ipo.issueSize ?? '—'}</p>}
+        ) : <p className="muted" style={{ fontSize: 13 }}>Category-wise reservation not announced yet.</p>}
       </div>
     );
   }

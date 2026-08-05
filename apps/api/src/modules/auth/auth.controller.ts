@@ -15,24 +15,28 @@ class OperatorLoginDto {
   @IsString() @Length(1, 200) password!: string;
 }
 
+/** Client IP for the auth audit trail (behind IIS/Cloudflare the proxy header wins). */
+const clientIp = (req: any): string =>
+  String(req?.headers?.['cf-connecting-ip'] ?? req?.headers?.['x-forwarded-for'] ?? req?.ip ?? '').split(',')[0].trim();
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('otp/request')
-  request(@Body() dto: RequestOtpDto) {
-    return this.auth.requestOtp(dto.mobile);
+  request(@Body() dto: RequestOtpDto, @Req() req: any) {
+    return this.auth.requestOtp(dto.mobile, clientIp(req));
   }
 
   @Post('otp/verify')
-  verify(@Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(dto.requestId, dto.otp);
+  verify(@Body() dto: VerifyOtpDto, @Req() req: any) {
+    return this.auth.verifyOtp(dto.requestId, dto.otp, clientIp(req));
   }
 
   /** Operator login (superadmin / partner / branch) — username + password. */
   @Post('operator/login')
-  operatorLogin(@Body() dto: OperatorLoginDto) {
-    return this.auth.operatorLogin(dto.username, dto.password);
+  operatorLogin(@Body() dto: OperatorLoginDto, @Req() req: any) {
+    return this.auth.operatorLogin(dto.username, dto.password, clientIp(req));
   }
 
   /** Current operator's identity + effective permissions (any logged-in user). */

@@ -7,12 +7,14 @@ import { PermissionsGuard } from '../../common/permissions.guard';
 import { HealthModule } from '../health/health.module';
 import { RailModule } from '../rail/rail.module';
 import { ApplicationsModule } from '../applications/applications.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { EmpanelmentPdfService } from './empanelment-pdf.service';
 
 @Module({
-  imports: [JwtModule.register({}), HealthModule, RailModule, ApplicationsModule],
+  imports: [JwtModule.register({}), HealthModule, RailModule, ApplicationsModule, SubscriptionModule],
   controllers: [AdminController],
-  providers: [AdminService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  providers: [AdminService, EmpanelmentPdfService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
 })
 export class AdminModule {}

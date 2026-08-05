@@ -1,5 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes, createHash, createHmac } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+
+/**
+ * Load the vault master-key material.
+ *   PRIMARY  — from a dedicated key file (PII_VAULT_KEY_FILE, default <cwd>/.pii-vault.key).
+ *              Minted as a strong random key on first run so the secret lives in its own
+ *              ACL-locked, git-ignored file rather than an env var / config.
+ *   FALLBACK — the previous PII_VAULT_KEY env (+ legacy dev default) are still tried on
+ *              DECRYPT, so anything encrypted under the old key keeps resolving. New writes
+ *              always use the PRIMARY key.
+ *
+ * ⚠️ BACK UP THE KEY FILE. If it is lost, data encrypted under it is unrecoverable.
+ */
+function loadVaultKeys(log: Logger): { primary: string; fallbacks: string[] } {
+  const file = process.env.PII_VAULT_KEY_FILE || join(process.cwd(), '.pii-vault.key');
+  const envKey = process.env.PII_VAULT_KEY;
+  let primary: string;
+  if (existsSync(file)) {
+    primary = readFileSync(file, 'utf8').trim();
+  } else {
+    primary = randomBytes(48).toString('base64'); // strong, random
+    try {
+      writeFileSync(file, primary, { encoding: 'utf8', mode: 0o600 });
+      log.log(`PII vault key file created → ${file} (BACK IT UP; ACL it to the app-pool user)`);
+    } catch (e: any) {
+      log.warn(`could not write key file ${file} (${e.message}) — falling back to PII_VAULT_KEY env`);
+      primary = envKey || 'dev-only-key';
+    }
+  }
+  const fallbacks = [envKey, 'dev-only-key'].filter((k): k is string => !!k && k !== primary);
+  return { primary, fallbacks };
+}
 
 /**
  * PiiVaultService — tokenize/resolve sensitive fields (PAN, bank, UPI, rail secrets)
@@ -28,15 +61,18 @@ interface KeyProvider {
   unwrapDataKey(wrapped: string): Promise<Buffer>;
 }
 
-/** Dev: DEK wrapped with a local AES-256-GCM master key from PII_VAULT_KEY. */
+/**
+ * Local: DEK wrapped with an AES-256-GCM master key from the key file.
+ * `masters[0]` is the primary (used to wrap); the rest are prior keys tried on unwrap.
+ */
 class LocalKeyProvider implements KeyProvider {
   readonly name = 'local';
-  private master = createHash('sha256').update(process.env.PII_VAULT_KEY ?? 'dev-only-key').digest();
+  constructor(private readonly masters: Buffer[]) {}
 
   async generateDataKey() {
     const plaintextKey = randomBytes(32);
     const iv = randomBytes(12);
-    const c = createCipheriv('aes-256-gcm', this.master, iv);
+    const c = createCipheriv('aes-256-gcm', this.masters[0], iv);
     const enc = Buffer.concat([c.update(plaintextKey), c.final()]);
     const wrapped = Buffer.concat([iv, c.getAuthTag(), enc]).toString('base64');
     return { plaintextKey, wrapped };
@@ -45,9 +81,15 @@ class LocalKeyProvider implements KeyProvider {
   async unwrapDataKey(wrapped: string) {
     const buf = Buffer.from(wrapped, 'base64');
     const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), enc = buf.subarray(28);
-    const d = createDecipheriv('aes-256-gcm', this.master, iv);
-    d.setAuthTag(tag);
-    return Buffer.concat([d.update(enc), d.final()]);
+    let lastErr: unknown;
+    for (const master of this.masters) {
+      try {
+        const d = createDecipheriv('aes-256-gcm', master, iv);
+        d.setAuthTag(tag);
+        return Buffer.concat([d.update(enc), d.final()]);
+      } catch (e) { lastErr = e; } // wrong key → GCM auth fails; try the next (fallback) key
+    }
+    throw lastErr ?? new Error('unwrap failed');
   }
 }
 
@@ -85,12 +127,19 @@ class AwsKmsProvider implements KeyProvider {
 export class PiiVaultService {
   private readonly log = new Logger('Vault');
   private readonly provider: KeyProvider;
-  private readonly local = new LocalKeyProvider(); // always available for v1 + local v2 tokens
-  private legacyKey = createHash('sha256').update(process.env.PII_VAULT_KEY ?? 'dev-only-key').digest();
+  private readonly local: LocalKeyProvider; // always available for v1 + local v2 tokens
+  /** master keys, primary first — [0] wraps/hashes, the rest are decrypt-only fallbacks */
+  private readonly masters: Buffer[];
 
   constructor() {
+    const { primary, fallbacks } = loadVaultKeys(this.log);
+    this.masters = [primary, ...fallbacks].map((k) => createHash('sha256').update(k).digest());
+    this.local = new LocalKeyProvider(this.masters);
     this.provider = process.env.KMS_KEY_ID ? new AwsKmsProvider(process.env.KMS_KEY_ID) : this.local;
-    this.log.log(`PII vault provider: ${this.provider.name}${this.provider.name === 'local' ? ' (dev — set KMS_KEY_ID for AWS KMS)' : ''}`);
+    this.log.log(
+      `PII vault provider: ${this.provider.name}` +
+        (this.provider.name === 'local' ? ` (key file; ${fallbacks.length} fallback key(s) for decrypt)` : ''),
+    );
   }
 
   /** Envelope-encrypt a value → opaque v2 token ref. */
@@ -117,11 +166,18 @@ export class PiiVaultService {
       dek.fill(0);
       return out;
     }
-    // Legacy v1: direct AES-256-GCM under the local master key.
+    // Legacy v1: direct AES-256-GCM under a master key — try primary then fallbacks.
     const [, ivB64, tagB64, encB64] = tokenRef.split(':');
-    const d = createDecipheriv('aes-256-gcm', this.legacyKey, Buffer.from(ivB64, 'base64'));
-    d.setAuthTag(Buffer.from(tagB64, 'base64'));
-    return Buffer.concat([d.update(Buffer.from(encB64, 'base64')), d.final()]).toString('utf8');
+    const iv = Buffer.from(ivB64, 'base64'), tag = Buffer.from(tagB64, 'base64'), enc = Buffer.from(encB64, 'base64');
+    let lastErr: unknown;
+    for (const master of this.masters) {
+      try {
+        const d = createDecipheriv('aes-256-gcm', master, iv);
+        d.setAuthTag(tag);
+        return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr ?? new Error('legacy resolve failed');
   }
 
   /**
@@ -129,7 +185,7 @@ export class PiiVaultService {
    * where tokenize() can't be used because it randomises the IV. HMAC-SHA256 hex.
    */
   hash(plaintext: string): string {
-    return createHmac('sha256', this.legacyKey).update(plaintext.trim().toUpperCase()).digest('hex');
+    return createHmac('sha256', this.masters[0]).update(plaintext.trim().toUpperCase()).digest('hex');
   }
 
   /** masked display, e.g. PAN → ABCxxxx1F */

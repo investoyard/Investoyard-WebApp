@@ -28,6 +28,11 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   strategies?: string[];
   promoters?: string[];
   faqs?: { q: string; a: string }[];
+  /* operator-entered extended fields (rich HTML + structured data) persisted via the admin form */
+  extra?: Record<string, any>;
+  /** true when this detail came from the live API (a real catalog row with a server id),
+   *  false/absent for the seeded MOCK fallback. Gates real apply submission. */
+  live?: boolean;
 }
 
 // The browser uses NEXT_PUBLIC_API_URL (e.g. '/api', which IIS/nginx reverse-proxies
@@ -234,10 +239,12 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
+  const ex: any = (ipo as any).extra ?? {};
   const f: IpoFull = {
     ...ipo,
+    logo: (ipo as any).logoUrl ?? (ipo as any).logo, // API sends logoUrl; cards/hero read `logo`
     subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
-    leadManagers: ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial'],
+    leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),
     exchanges: ipo.type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'],
   };
   if (ipo.gmp != null) f.gmpHistory = gmpSeries(ipo.symbol, ipo.gmp);
@@ -309,7 +316,7 @@ export async function getIpos(): Promise<IpoListItem[]> {
 
 export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined> {
   const fromApi = await safeGet<IpoDetail | null>(`/ipos/by-symbol/${symbol}`, null);
-  if (fromApi) return enrich(fromApi);
+  if (fromApi) return { ...enrich(fromApi), live: true };
   return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
 }
 

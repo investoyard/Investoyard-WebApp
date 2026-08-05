@@ -1,6 +1,6 @@
 'use client';
-import { useMemo, useState } from 'react';
-import type { IpoListItem } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { getIpos, type IpoListItem } from '@/lib/api';
 import { IpoCard } from '@/components/IpoCard';
 import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
@@ -8,11 +8,21 @@ import { makeT, Lang } from '@investoyard/i18n';
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'listed';
 
-export function IpoExplorer({ ipos, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
+export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
   const tr = makeT(lang);
   const [query, setQuery] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
+
+  // LIVE catalog hydration: this page is a static export built on the server, where the
+  // build-time API fetch can be blocked (Cloudflare bot protection) or simply stale —
+  // IPOs added after the last build would be missing. The browser refetches on mount
+  // and replaces the baked-in list whenever the live call returns data.
+  const [live, setLive] = useState<IpoListItem[] | null>(null);
+  useEffect(() => {
+    getIpos().then((r) => { if (Array.isArray(r) && r.length) setLive(r); }).catch(() => { /* keep the baked-in list */ });
+  }, []);
+  const ipos = live ?? initial;
 
   const statusTabs: { key: StatusFilter; label: string }[] = [
     { key: 'all', label: 'All' },

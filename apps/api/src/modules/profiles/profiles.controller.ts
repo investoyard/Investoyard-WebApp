@@ -1,7 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { ProfilesService } from './profiles.service';
-import { CreateProfileDto } from './profiles.dto';
+import { CreateProfileDto, UpdateProfileDto } from './profiles.dto';
+
+/** Public (no auth): just the relationship option names + allow-multiple flags. */
+@Controller('profiles')
+export class ProfilesPublicController {
+  constructor(private readonly profiles: ProfilesService) {}
+
+  @Get('relationships')
+  relationships() {
+    return this.profiles.relationships();
+  }
+}
 
 @Controller('profiles')
 @UseGuards(JwtAuthGuard)
@@ -16,6 +27,11 @@ export class ProfilesController {
   @Post()
   create(@Req() req: any, @Body() dto: CreateProfileDto) {
     return this.profiles.create(req.user.sub, dto);
+  }
+
+  @Patch(':id')
+  update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateProfileDto) {
+    return this.profiles.update(req.user.sub, id, dto);
   }
 
   @Delete(':id')

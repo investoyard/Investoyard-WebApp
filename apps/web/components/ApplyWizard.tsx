@@ -1,14 +1,52 @@
 'use client';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { IpoDetail } from '@/lib/api';
+import { getIpoDetail } from '@/lib/api';
 import { inr } from '@/lib/format';
 import { CompanyMark } from '@/components/CompanyMark';
 import { Icon } from '@/components/Icon';
-import { useStore, store, profileReady, Application, InvestorCategory, Profile } from '@/lib/store';
+import { useStore, store, Application, InvestorCategory, Profile } from '@/lib/store';
+import { getConsumerToken, listProfiles, createApplication, downloadAsbaForm, downloadAsbaForms, type ApiProfile } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
+
+/**
+ * Can this applicant be selected to apply? PAN + demat are required; the demat
+ * check is depository-aware (CDSL has NO DP ID — one 16-digit number). UPI is
+ * NOT required here — applicants without UPI simply route to bank ASBA.
+ */
+function applyReady(p: Profile): boolean {
+  const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
+  return Boolean(p.fullName && p.pan && dematOk && p.consent);
+}
+
+/** What's still missing, for the not-ready card's message. */
+function missingBits(p: Profile): string {
+  const bits: string[] = [];
+  if (!p.pan) bits.push('PAN');
+  if (p.depository === 'CDSL' ? !p.clientId : !(p.dpId && p.clientId)) bits.push('demat details');
+  return bits.join(' & ') || 'details';
+}
+
+/** Map a masked API profile into the local Profile shape the wizard already renders. */
+function mapApiProfile(p: ApiProfile): Profile {
+  return {
+    id: p.id,
+    relationship: p.relationship as any,
+    fullName: p.fullName,
+    pan: p.pan,
+    depository: p.depository as any,
+    dpId: p.dpId,
+    clientId: p.clientId,
+    upiId: p.hasUpi ? 'upi-verified' : undefined,
+    bankAccount: p.hasBank ? 'set' : undefined,
+    ifsc: p.ifsc,
+    kycStatus: (p.kycStatus as any) ?? 'unverified',
+    consent: true,
+  };
+}
 
 export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang }) {
   const sp = useSearchParams();
@@ -17,8 +55,26 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const q = L !== 'en' ? `?lang=${L}` : '';
 
   const mobile = useStore((s) => s.mobile);
-  const profiles = useStore((s) => s.profiles);
+  const storeProfiles = useStore((s) => s.profiles);
   const applications = useStore((s) => s.applications);
+  // Relationship labels come from the admin master now — translate when known, else capitalize.
+  const relL = (r: string) => { const k = `rel.${r}`; const v = tr(k); return v === k ? String(r).charAt(0).toUpperCase() + String(r).slice(1) : v; };
+
+  // Live mode: a real logged-in session + a real catalog IPO (server UUID id) → submit to the API.
+  const [apiProfiles, setApiProfiles] = useState<Profile[] | null>(null);
+  const [liveId, setLiveId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [placeErr, setPlaceErr] = useState<string | null>(null);
+  const hasToken = typeof window !== 'undefined' && !!getConsumerToken();
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (getConsumerToken()) listProfiles().then((rows) => setApiProfiles(rows.map(mapApiProfile))).catch(() => setApiProfiles([]));
+    // Fetch the live catalog detail client-side to get the real server id (the baked prop may be MOCK).
+    getIpoDetail(ipo.symbol).then((d) => { if (d?.live && d.id) setLiveId(d.id); }).catch(() => { /* stays demo */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const liveMode = !!liveId && hasToken;
+  const profiles = liveMode ? (apiProfiles ?? []) : storeProfiles;
 
   // SEBI category & payment thresholds
   const RETAIL_MAX = 200000;    // ≤ ₹2L → Retail (RII)
@@ -35,6 +91,8 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const [method, setMethod] = useState<'upi' | 'pdf'>('upi');
   const [consent, setConsent] = useState({ share: false, selfpan: false, gmp: false });
   const [placed, setPlaced] = useState<Application[] | null>(null);
+  const [placedLive, setPlacedLive] = useState(false); // placed against the live API (real server ids → real ASBA PDF)
+  const [formBusy, setFormBusy] = useState<string | null>(null); // applicationId | 'all' while a form downloads
 
   // OTP verification on the partner-share consent
   const [otpStage, setOtpStage] = useState<'idle' | 'sent' | 'verified'>('idle');
@@ -55,11 +113,12 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const canIncrease = (lots + 1) * lotSize * pricePerShare <= DEMO_MAX; // allow > ₹5L (ASBA), bounded for demo
 
   const selected = useMemo(
-    () => profiles.filter((p) => selectedIds.includes(p.id) && profileReady(p)),
+    () => profiles.filter((p) => selectedIds.includes(p.id) && applyReady(p)),
     [profiles, selectedIds],
   );
   const hasMinor = selected.some((p) => p.relationship === 'child');     // minors → ASBA (no UPI mandate)
-  const upiAllowed = amount <= UPI_MAX && !hasMinor;                      // UPI ≤ ₹5L and no minor applicant
+  const noUpi = selected.some((p) => !p.upiId);                           // applicants without UPI → bank ASBA
+  const upiAllowed = amount <= UPI_MAX && !hasMinor && !noUpi;            // UPI ≤ ₹5L, no minor, everyone has UPI
   const effMethod: 'upi' | 'pdf' = upiAllowed ? method : 'pdf';
   const totalAmount = amount * Math.max(1, selected.length);
   const allConsent = consent.share && consent.selfpan && consent.gmp;
@@ -91,17 +150,78 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     });
   }
 
-  // Above ₹5L: open a prefilled, printable ASBA form to submit to the bank.
-  function openAsbaForm(a: Application) {
+  // Prefilled, printable ASBA form for the bank. Live apply → the real server-filled
+  // PDF (operator's uploaded blank); demo mode → the client-side sample form.
+  async function openAsbaForm(a: Application) {
+    if (placedLive && a.id) {
+      setFormBusy(a.id); setPlaceErr(null);
+      try { await downloadAsbaForm(a.id); }
+      catch (e: any) { setPlaceErr(String(e?.message ?? e)); }
+      finally { setFormBusy(null); }
+      return;
+    }
     const p = profiles.find((x) => x.id === a.profileId);
     const html = asbaFormHtml(a, p, ipo);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     window.open(url, '_blank');
   }
 
-  function place() {
-    if (!selected.length) return;
-    // One application per selected applicant — each with their own PAN/demat/UPI.
+  // Family: all applicants' forms merged into one PDF (live apply only).
+  async function openAllAsbaForms() {
+    if (!placed) return;
+    setFormBusy('all'); setPlaceErr(null);
+    try { await downloadAsbaForms(placed.map((a) => a.id)); }
+    catch (e: any) { setPlaceErr(String(e?.message ?? e)); }
+    finally { setFormBusy(null); }
+  }
+
+  /** Build a local Application (for the confirmation screen) from a server response. */
+  function toLocalApp(res: any, p: Profile): Application {
+    const app = res?.application ?? {};
+    const idStr = String(app.id ?? '');
+    return {
+      id: idStr || Math.random().toString(36).slice(2),
+      ipoSymbol: ipo.symbol, ipoName: ipo.name, profileId: p.id, profileName: p.fullName || tr('rel.self'),
+      pan: p.pan, depository: p.depository, dpId: p.dpId, clientId: p.clientId, upiId: p.upiId,
+      lots, shares, pricePerShare, atCutoff: effectiveCutoff, category, amount, method: effMethod,
+      status: 'mandate_pending',
+      applicationNumber: idStr ? `IY${idStr.replace(/-/g, '').slice(0, 9).toUpperCase()}` : 'IY' + Math.floor(1e8 + Math.random() * 9e8),
+      createdAt: app.createdAt ?? new Date().toISOString(),
+    };
+  }
+
+  async function place() {
+    if (!selected.length || placing) return;
+
+    // LIVE: real logged-in user + real catalog IPO → create real applications in the DB.
+    if (liveMode && liveId) {
+      setPlacing(true); setPlaceErr(null);
+      try {
+        const results = await Promise.all(selected.map((p) =>
+          createApplication({
+            investorProfileId: p.id,
+            ipoId: liveId,
+            category,
+            lots,
+            atCutoff: effectiveCutoff,
+            bidPrice: effectiveCutoff ? undefined : bidPrice,
+            applyMethod: effMethod === 'upi' ? 'native' : 'pdf',
+            dataSharingConsent: true,
+            consentNoticeVersion: 'ds-rail-v1',
+          }),
+        ));
+        setPlaced(results.map((r, i) => toLocalApp(r, selected[i])));
+        setPlacedLive(true);
+        setStep(5);
+      } catch (e: any) {
+        setPlaceErr(String(e?.message ?? e));
+      } finally {
+        setPlacing(false);
+      }
+      return;
+    }
+
+    // DEMO: no live IPO / not signed in against the API → walk the flow on the local store.
     const apps = selected.map((p) =>
       store.placeApplication({
         ipoSymbol: ipo.symbol, ipoName: ipo.name, profileId: p.id, profileName: p.fullName || tr('rel.self'),
@@ -110,6 +230,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
       }),
     );
     setPlaced(apps);
+    setPlacedLive(false);
     setStep(5);
   }
 
@@ -163,13 +284,19 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
         </div>
         {placed[0].method === 'pdf' && (
           <div className="stack" style={{ marginTop: 14 }}>
+            {placedLive && placed.length > 1 && (
+              <button className="btn" onClick={openAllAsbaForms} disabled={formBusy != null}>
+                <Icon name="doc" size={16} /> {formBusy === 'all' ? 'Preparing…' : `Download all ${placed.length} forms (single PDF)`}
+              </button>
+            )}
             {placed.map((a) => (
-              <button key={a.id} className="btn btn-secondary" onClick={() => openAsbaForm(a)}>
-                <Icon name="doc" size={16} /> Download / print ASBA form — {a.profileName}
+              <button key={a.id} className="btn btn-secondary" onClick={() => openAsbaForm(a)} disabled={formBusy != null}>
+                <Icon name="doc" size={16} /> {formBusy === a.id ? 'Preparing…' : `Download / print ASBA form — ${a.profileName}`}
               </button>
             ))}
           </div>
         )}
+        {placeErr && <div className="banner warn" style={{ marginTop: 10, textAlign: 'left' }}>{placeErr}</div>}
         <p className="disclaimer" style={{ marginTop: 14 }}>
           Bid{placed.length > 1 ? 's' : ''} routed via <b>NSE e-IPO / BSE iBBS</b> · DP &amp; UPI status update automatically via the exchange webhook. Track in your Portfolio.
         </p>
@@ -210,7 +337,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
               ) : (
                 <div className="choice">
                   {profiles.map((p) => {
-                    const ready = profileReady(p);
+                    const ready = applyReady(p);
                     if (ready) {
                       const isSel = selectedIds.includes(p.id);
                       const alreadyApplied = applications.some((a) => a.ipoSymbol === ipo.symbol && a.profileId === p.id);
@@ -223,7 +350,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                             checked={isSel} onChange={() => toggleApplicant(p.id)} />
                           <span className="grow">
                             <span className="t">{p.fullName || tr('profile.new')}</span>
-                            <span className="s">{tr(`rel.${p.relationship}`)}{p.pan ? ` · ${p.pan}` : ''}</span>
+                            <span className="s">{relL(p.relationship)}{p.pan ? ` · ${p.pan}` : ''}{p.upiId ? '' : ' · no UPI → bank ASBA'}</span>
                           </span>
                           {alreadyApplied
                             ? <span className="appstatus info">Already applied</span>
@@ -236,12 +363,16 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                     return (
                       <div key={p.id} className="choice-card" style={{ cursor: 'default' }}>
                         <span className="grow">
-                          <span className="t">{p.fullName || tr(`rel.${p.relationship}`)}</span>
-                          <span className="s">Missing PAN / demat / UPI to apply</span>
+                          <span className="t">{p.fullName || relL(p.relationship)}</span>
+                          <span className="s">Missing {missingBits(p)} to apply</span>
                         </span>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>
-                          Use sample details
-                        </button>
+                        {liveMode ? (
+                          <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
+                        ) : (
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>
+                            Use sample details
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -420,7 +551,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                   <input type="radio" hidden disabled={!upiAllowed} checked={effMethod === 'upi'} onChange={() => setMethod('upi')} />
                   <span className="grow">
                     <span className="t">{tr('apply.method.upi')}</span>
-                    <span className="s">{upiAllowed ? `Each applicant approves their own UPI mandate · up to ${inr(UPI_MAX)}` : `Not available above ${inr(UPI_MAX)}`}</span>
+                    <span className="s">{upiAllowed ? `Each applicant approves their own UPI mandate · up to ${inr(UPI_MAX)}` : noUpi ? 'An applicant has no UPI ID saved' : `Not available above ${inr(UPI_MAX)}`}</span>
                   </span>
                 </label>
                 <label className={`choice-card ${effMethod === 'pdf' ? 'on' : ''}`}>
@@ -433,7 +564,9 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                 <div className="banner warn" style={{ marginTop: 14 }}>
                   {hasMinor
                     ? <>A <b>minor</b> applicant is selected — minors apply via <b>bank ASBA</b> (UPI mandate isn’t available). Download the prefilled form and submit it to the bank (guardian-operated).</>
-                    : <>Above {inr(UPI_MAX)}, UPI isn’t permitted. Apply via <b>bank ASBA</b> — download the prefilled form, submit it to your bank, and the bank bids &amp; blocks the amount.</>}
+                    : noUpi
+                      ? <>An applicant has <b>no UPI ID</b> saved — apply via <b>bank ASBA</b>, or add their UPI on the <a href={`/account${q}`}>account page</a> to enable UPI mandate.</>
+                      : <>Above {inr(UPI_MAX)}, UPI isn’t permitted. Apply via <b>bank ASBA</b> — download the prefilled form, submit it to your bank, and the bank bids &amp; blocks the amount.</>}
                 </div>
               )}
               <div className="banner info" style={{ marginTop: 14 }}>
@@ -443,7 +576,9 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                     ? `You'll receive a UPI mandate to block ${inr(amount)}. No money moves until shares are allotted.`
                     : `Submit the prefilled ASBA form at your bank to block ${inr(amount)} in your account.`}
               </div>
-              <Nav onBack={() => setStep(3)} onNext={place} nextLabel={`${tr('apply.cta')} · ${inr(totalAmount)}`} tr={tr} />
+              {liveMode && <div className="banner ok" style={{ marginTop: 14 }}><Icon name="check" size={15} /> Live — this application will be placed on the exchange rail.</div>}
+              {placeErr && <div className="banner warn" style={{ marginTop: 14 }}>{placeErr}</div>}
+              <Nav onBack={() => setStep(3)} onNext={place} nextLabel={placing ? 'Placing…' : `${tr('apply.cta')} · ${inr(totalAmount)}`} nextDisabled={placing} tr={tr} />
             </Section>
           )}
         </div>

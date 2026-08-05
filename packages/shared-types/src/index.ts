@@ -42,6 +42,10 @@ export interface IpoDetail extends IpoListItem {
   listingDate?: string;
   allotmentDate?: string;
   subscription?: SubscriptionRow[];
+  /** when the live subscription figures were last refreshed by the NSE poller */
+  subscriptionAsOf?: string;
+  /** admin per-IPO switch for the live subscription poller */
+  autoPollSubscription?: boolean;
   financials?: { label: string; value: string }[];
   documents?: { type: string; url: string }[];
   /** SME issues — per the Mar-2025 ICDR norms */
@@ -109,13 +113,17 @@ export interface IpoGmpView {
 
 export interface SubscriptionRow {
   category: 'qib' | 'nii' | 'retail' | 'employee' | 'total';
+  /** number of applications/bids in this category (from NSE catwise) */
+  bidCount?: number;
+  /** subscription by APPLICATIONS (bids ÷ max allottees) — retail allotment-odds driver */
+  applicationsSubscribed?: number;
   timesSubscribed: number;
   asOf: string;
 }
 
 export interface ProfileView {
   id: string;
-  relationship: 'self' | 'spouse' | 'child' | 'parent' | 'sibling' | 'other';
+  relationship: 'self' | 'spouse' | 'child' | 'mother' | 'father' | 'parent' | 'sibling' | 'other';
   fullName: string;
   pan: string;            // masked
   depository: Depository;
@@ -146,6 +154,12 @@ export interface ApplicationView {
   ipoStatus?: IpoStatus;
   listingGainPct?: number;
   listingGain?: number;
+  /** Live subscription for this application's category (shares basis), while the IPO is open. */
+  categorySubscribedTimes?: number;
+  /** Estimated retail allotment odds %, derived from by-applications subscription (retail only). */
+  allotmentOddsPct?: number;
+  /** While 'submitted': applicant details still blocking the exchange bid (UPI / demat). */
+  missingDetails?: string[];
 }
 
 export type ApplicantCategory = 'individual' | 'shareholder' | 'employee';

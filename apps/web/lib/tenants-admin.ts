@@ -87,25 +87,131 @@ export interface RegisterTenantBody {
   kind: 'partner' | 'whitelabel' | 'branch'; name: string; slug: string; parentSlug?: string;
   brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
   adminName: string; adminUsername: string; adminPassword?: string;
+  profile?: Record<string, any>; // full empanelment form (JM/Nuvama) + document URLs
+  commissionRate?: number; // % commission on this channel's bids
 }
 export interface RegisterTenantResult {
-  tenant: { slug: string; name: string; type: string; customDomain?: string; whitelabel?: boolean };
+  tenant: { slug: string; name: string; type: string; code?: string; customDomain?: string; whitelabel?: boolean };
   admin: { username: string; name: string; temporaryPassword?: string };
 }
 export const registerTenant = (body: RegisterTenantBody) =>
   authed<RegisterTenantResult>(`${API}/admin/tenants`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+export interface PartnerRow {
+  id: string; slug: string; name: string; type: 'partner' | 'branch'; status: string;
+  whitelabel: boolean; parent?: { slug: string; name: string };
+  code?: string; commissionRate?: number;
+  customDomain?: string; applicantType?: string; city?: string;
+  branches: number; operators: number; createdAt: string;
+}
+export const fetchTenants = () => authed<PartnerRow[]>(`${API}/admin/tenants`, { method: 'GET' });
+
+export interface PartnerDetail {
+  id: string; slug: string; name: string; type: string; status: string;
+  parent?: { slug: string; name: string }; whitelabel: boolean;
+  code?: string; commissionRate?: number;
+  brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
+  profile: Record<string, any>;
+  counts: { branches: number; users: number; operators: number };
+  createdAt: string;
+}
+export const fetchTenant = (slug: string) => authed<PartnerDetail>(`${API}/admin/tenants/${slug}`, { method: 'GET' });
+export const updateTenant = (slug: string, body: Partial<{ name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; customDomain: string; profile: Record<string, any>; commissionRate: number | null }>) =>
+  authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/* -------------------------------------------------- admin: WhatsApp chatbot flow (Level 1) */
+export type BotAction = 'open' | 'upcoming' | 'listed' | 'gmp' | 'text';
+export interface BotMenuItem { key: string; label: string; keywords: string[]; action: BotAction; text?: string }
+export interface BotFaq { keywords: string[]; answer: string }
+export interface BotFlow { guidedFlows?: boolean; greeting: string; closing: string; fallback: string; menu: BotMenuItem[]; faqs: BotFaq[] }
+
+export const fetchBotFlow = () => authed<BotFlow>(`${API}/admin/chatbot`, { method: 'GET' });
+export const saveBotFlow = (flow: BotFlow) =>
+  authed<BotFlow>(`${API}/admin/chatbot`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(flow) });
+export const testBot = (message: string) =>
+  authed<{ reply: string }>(`${API}/admin/chatbot/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+
+/** Download the partner's pre-filled Business Associate Empanelment Form (PDF). */
+export async function downloadEmpanelmentPdf(slug: string): Promise<void> {
+  const res = await fetch(`${API}/admin/tenants/${slug}/empanelment.pdf`, { headers: { Authorization: `Bearer ${await adminToken()}` } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `investoyard-empanelment-${slug}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* -------------------------------------------------- admin: clients (investors) */
+export interface ClientRow {
+  id: string; name?: string; mobileMasked?: string; email?: string; status: string;
+  tenant: { slug: string; name: string; type: string };
+  profiles: number; applications: number; kyc: { verified: number; total: number }; createdAt: string;
+}
+export const fetchClients = (opts: { tenant?: string; q?: string } = {}) => {
+  const p = new URLSearchParams();
+  if (opts.tenant) p.set('tenant', opts.tenant);
+  if (opts.q) p.set('q', opts.q);
+  const qs = p.toString();
+  return authed<ClientRow[]>(`${API}/admin/clients${qs ? `?${qs}` : ''}`, { method: 'GET' });
+};
+export interface ClientProfile {
+  id: string; fullName: string; relationship: string; kycStatus: string;
+  depository: string; dpId: string; clientId?: string; panMasked?: string; ifsc?: string; dateOfBirth?: string;
+}
+export interface ClientDetail {
+  id: string; name?: string; email?: string; mobileMasked?: string; status: string;
+  tenant: { slug: string; name: string }; marketingConsent: boolean; createdAt: string;
+  profiles: ClientProfile[];
+  applications: { id: string; ipoSymbol?: string; ipoName?: string; category: string; lots: number; amount: number; status: string; allottedLots?: number; appliedAt: string }[];
+}
+export const fetchClient = (id: string) => authed<ClientDetail>(`${API}/admin/clients/${id}`, { method: 'GET' });
+export const createClient = (body: { mobile: string; name?: string; email?: string; tenantSlug: string }) =>
+  authed<{ id: string }>(`${API}/admin/clients`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updateClient = (id: string, body: { name?: string; email?: string; status?: 'active' | 'suspended' }) =>
+  authed<{ ok: boolean }>(`${API}/admin/clients/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export interface AddProfileBody {
+  fullName: string; relationship?: string; pan: string; dateOfBirth?: string;
+  depository: 'NSDL' | 'CDSL'; dpId: string; clientId: string; bankAccount?: string; ifsc?: string; upi?: string;
+}
+export const addClientProfile = (id: string, body: AddProfileBody) =>
+  authed<{ id: string }>(`${API}/admin/clients/${id}/profiles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/** Upload a KYC/empanelment document (PDF or image) — returns { url, name }. */
+export async function uploadDoc(file: File): Promise<{ url: string; name: string }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/upload/doc`, { method: 'POST', headers: { Authorization: `Bearer ${getOperatorToken()}` }, body: fd });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Upload failed'); }
+  const b = await res.json();
+  return { url: b.url as string, name: (b.name as string) ?? file.name };
+}
+
+/** Upload a PDF (ASBA blank form) under ipos.manage. */
+export async function uploadPdf(file: File): Promise<{ url: string; name: string }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/upload/pdf`, { method: 'POST', headers: { Authorization: `Bearer ${getOperatorToken()}` }, body: fd });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Upload failed'); }
+  const b = await res.json();
+  return { url: b.url as string, name: (b.name as string) ?? file.name };
+}
+
 /* -------------------------------------------------- admin: operator users */
 export interface Operator {
-  id: string; username: string; name: string; status: 'active' | 'inactive';
+  id: string; username: string; name: string; email?: string; mobile?: string; status: 'active' | 'inactive';
   tenant: { slug: string; name: string; type: string };
   roles: { tenantSlug: string; tenantName: string; role: string; scope: string }[];
   createdAt: string;
 }
 export const fetchOperators = () => authed<Operator[]>(`${API}/admin/operators`, { method: 'GET' });
-export const createOperator = (body: { username: string; name: string; password?: string; tenantSlug: string; roleName: string }) =>
+export const createOperator = (body: { username: string; name: string; password?: string; tenantSlug: string; roleName: string; email?: string; mobile?: string }) =>
   authed<{ id: string; username: string; name: string; temporaryPassword?: string }>(`${API}/admin/operators`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-export const updateOperator = (id: string, body: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string }) =>
+export const updateOperator = (id: string, body: { name?: string; status?: 'active' | 'inactive'; roleName?: string; password?: string; email?: string; mobile?: string }) =>
   authed<{ ok: boolean }>(`${API}/admin/operators/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const fetchMembers = (slug: string) => authed<Member[]>(`${API}/admin/members/${slug}`, { method: 'GET' });
 export const addMember = (slug: string, body: { mobile: string; name?: string; roleName: string }) =>
@@ -118,8 +224,10 @@ export interface AdminIpo {
   id: string; symbol: string; name: string; type: 'mainboard' | 'sme';
   status: 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; issueSize?: string;
-  openDate?: string; closeDate?: string; registrar?: string; gmp?: number; reservations?: string[];
+  openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
+  registrar?: string; gmp?: number; reservations?: string[];
   logoUrl?: string;
+  extra?: Record<string, any>; // operator-extended fields (categoryName, issueType, …)
 }
 export interface IpoDoc { type: string; url: string; summary?: string }
 export interface IpoWrite {
@@ -128,6 +236,8 @@ export interface IpoWrite {
   issueSizeCr?: number; registrar?: string; isin?: string; objectsOfIssue?: string; logoUrl?: string;
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
+  autoPollSubscription?: boolean;
+  extra?: Record<string, any>;
 }
 /** Full record for the edit form (from GET /ipos/:id). */
 export interface AdminIpoDetail {
@@ -136,6 +246,8 @@ export interface AdminIpoDetail {
   registrar?: string; isin?: string; logoUrl?: string; objectsOfIssue?: string;
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
+  autoPollSubscription?: boolean; subscriptionAsOf?: string;
+  extra?: Record<string, any>;
 }
 export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminIpoDetail>);
 export const deleteIpo = (id: string) => authed<{ deleted: boolean }>(`${API}/ipos/${id}`, { method: 'DELETE' });
@@ -151,10 +263,12 @@ export async function uploadImage(file: File): Promise<string> {
 
 /* -------------------------------------------------- admin: applications (bids) */
 export interface AdminApplication {
-  id: string; tenantSlug: string; ipoSymbol: string; ipoName: string;
+  id: string; tenantSlug: string; tenantName?: string; partnerCode?: string;
+  ipoSymbol: string; ipoName: string;
   applicantName?: string; mobileMasked?: string; category: string; applicantType: string;
   batchId?: string; // family/bulk batches share one id
-  lots: number; amount: number; status: string; allottedLots?: number; refundAmount?: number; appliedAt: string;
+  lots: number; amount: number; status: string; allottedLots?: number; refundAmount?: number;
+  commissionRate?: number; commissionAmount: number; appliedAt: string;
 }
 export const fetchApplications = (slug: string) => authed<AdminApplication[]>(`${API}/admin/applications/${slug}`, { method: 'GET' });
 
@@ -168,10 +282,17 @@ export const fetchReports = (slug: string) => authed<AdminReport>(`${API}/admin/
 
 export interface AdminDashboard {
   scope: { slug: string; name: string };
-  counts: { tenants: number; operators: number; iposOpen: number; iposTotal: number; applications: number; amount: number; allotmentRate: number | null; blocked: number };
+  counts: {
+    tenants: number; operators: number; partners: number; branches: number; clients: number;
+    iposOpen: number; iposTotal: number; iposUpcoming: number; iposClosed: number;
+    applications: number; amount: number; allotmentRate: number | null; blocked: number; refunds: number;
+  };
   byStatus: Record<string, number>;
   topIpos: { symbol: string; name: string; applications: number; amount: number; allotted: number }[];
-  openIpos: { symbol: string; name: string; status: string; type: string; closeDate: string | null; band: string | null }[];
+  topPartners: { code: string; name: string; applications: number; amount: number }[];
+  partnerStatus: { active: number; suspended: number };
+  trend7: { date: string; count: number }[];
+  livePerformance: { symbol: string; name: string; status: string; type: string; band: string | null; gmp: number | null; subscription: number | null }[];
 }
 export const fetchDashboard = (slug: string) => authed<AdminDashboard>(`${API}/admin/dashboard/${slug}`, { method: 'GET' });
 
@@ -197,7 +318,7 @@ export interface AuditEntry {
 export const fetchAudit = () => authed<AuditEntry[]>(`${API}/admin/audit`, { method: 'GET' });
 
 export interface ProviderConfig {
-  provider: string; enabled: boolean; settings: Record<string, any>; secretKeys: string[];
+  provider: string; enabled: boolean; exists?: boolean; settings: Record<string, any>; secretKeys: string[];
 }
 export const fetchProviders = () => authed<ProviderConfig[]>(`${API}/admin/providers`, { method: 'GET' });
 export const saveProvider = (
@@ -206,6 +327,81 @@ export const saveProvider = (
 ) => authed<ProviderConfig>(`${API}/admin/providers/${provider}`, {
   method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 });
+
+// ── per-tenant (white-label) providers + message templates ──
+export const fetchTenantProviders = (slug: string) =>
+  authed<ProviderConfig[]>(`${API}/admin/tenants/${slug}/providers`, { method: 'GET' });
+export const saveTenantProvider = (
+  slug: string, provider: string,
+  body: { enabled?: boolean; settings?: Record<string, any>; secrets?: Record<string, string> },
+) => authed<ProviderConfig>(`${API}/admin/tenants/${slug}/providers/${provider}`, {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+/** Clear a tenant's own provider config → re-inherits the platform default. */
+export const resetTenantProvider = (slug: string, provider: string) =>
+  authed<{ deleted: boolean }>(`${API}/admin/tenants/${slug}/providers/${provider}`, { method: 'DELETE' });
+/** Fire a real test SMS/email through the scope's effective config. */
+export const testTenantProvider = (slug: string, provider: string, to: string) =>
+  authed<{ sent: boolean; dev?: boolean; error?: string }>(`${API}/admin/tenants/${slug}/providers/${provider}/test`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }),
+  });
+
+export interface MessageKeySpec {
+  channel: 'sms' | 'email' | 'whatsapp'; key: string; label: string; vars: string[];
+  id?: string; description?: string | null; system?: boolean; // present when served from the DB catalog
+}
+export interface MessageTemplate {
+  id: string; tenantId: string; channel: string; key: string; locale: string; enabled: boolean;
+  dltTemplateId?: string | null; senderId?: string | null; body?: string | null; subject?: string | null; bodyHtml?: string | null;
+}
+export const fetchTemplateCatalog = () => authed<{ keys: MessageKeySpec[] }>(`${API}/admin/templates`, { method: 'GET' });
+
+// ── masters: lead managers + registrars ──
+export interface MasterRow {
+  id: string; name: string; shortCode: string;
+  contactPerson?: string | null; mobile?: string | null; email?: string | null; phone?: string | null;
+  gstin?: string | null; address1?: string | null; address2?: string | null;
+  city?: string | null; state?: string | null; pincode?: string | null;
+  allotmentUrl?: string | null; // registrars only
+  baseType?: string;            // ipo-categories: 'mainboard' | 'sme'
+  categoryId?: string | null;   // issue-types → IpoCategoryMaster
+  category?: MasterRow | null;  // issue-types (joined)
+  allowMultiple?: boolean;      // relationships: repeatable per account
+  active: boolean;
+}
+export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships';
+export const fetchMaster = (kind: MasterKind) => authed<MasterRow[]>(`${API}/admin/masters/${kind}`, { method: 'GET' });
+export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
+  authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updateMaster = (kind: MasterKind, id: string, body: Partial<MasterRow>) =>
+  authed<MasterRow>(`${API}/admin/masters/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/** Platform oversight: per-white-label-partner integration status. */
+export interface IntegrationStatus { slug: string; name: string; code?: string; providers: string[]; templates: string[] }
+export const fetchIntegrationsOverview = () => authed<IntegrationStatus[]>(`${API}/admin/integrations/overview`, { method: 'GET' });
+export const fetchTenantTemplates = (slug: string) =>
+  authed<MessageTemplate[]>(`${API}/admin/tenants/${slug}/templates`, { method: 'GET' });
+export const saveTenantTemplate = (slug: string, body: Partial<MessageTemplate> & { channel: string; key: string }) =>
+  authed<MessageTemplate>(`${API}/admin/tenants/${slug}/templates`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+/** Remove a template row: tenant override → re-inherits platform; platform → drops that locale variant. */
+/** The platform's content for a template key/locale — powers 'Copy from platform'. */
+export const fetchPlatformTemplate = (channel: string, key: string, locale = 'en') =>
+  authed<MessageTemplate | null>(`${API}/admin/templates/resolve?channel=${encodeURIComponent(channel)}&key=${encodeURIComponent(key)}&locale=${encodeURIComponent(locale)}`, { method: 'GET' });
+export const deleteTenantTemplate = (slug: string, q: { channel: string; key: string; locale?: string }) =>
+  authed<{ deleted: boolean }>(
+    `${API}/admin/tenants/${slug}/templates?channel=${encodeURIComponent(q.channel)}&key=${encodeURIComponent(q.key)}&locale=${encodeURIComponent(q.locale ?? 'en')}`,
+    { method: 'DELETE' },
+  );
+
+// ── message-type catalog CRUD (platform admin) ──
+export const createMessageType = (body: { channel: string; key: string; label: string; description?: string; vars?: string[] }) =>
+  authed<MessageKeySpec>(`${API}/admin/templates/types`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updateMessageType = (id: string, body: { label?: string; description?: string; vars?: string[] }) =>
+  authed<MessageKeySpec>(`${API}/admin/templates/types/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteMessageType = (id: string) =>
+  authed<{ deleted: boolean }>(`${API}/admin/templates/types/${id}`, { method: 'DELETE' });
 
 export interface SystemStatus {
   database: 'up' | 'down'; redis: 'up' | 'down' | 'disabled';
@@ -216,7 +412,7 @@ export const fetchStatus = () => authed<SystemStatus>(`${API}/admin/status`, { m
 export interface RailCred {
   id: string; exchange: 'NSE_EIPO' | 'BSE_IBBS'; memberName: string; memberType: string;
   loginId: string; memberCode: string; subBrokerCode?: string; baseUrl: string;
-  env: 'live' | 'uat'; active: boolean; passwordSet: boolean; ibbsIdSet: boolean;
+  env: 'live' | 'uat'; active: boolean; subscriptionUse?: boolean; passwordSet: boolean; ibbsIdSet: boolean; checksumKeySet?: boolean;
 }
 export const fetchRails = () => authed<RailCred[]>(`${API}/admin/rails`, { method: 'GET' });
 export const createRail = (body: any) =>
@@ -226,6 +422,12 @@ export const updateRail = (id: string, body: any) =>
 export const testRail = (id: string) =>
   authed<{ ok: boolean; outcome: 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret'; note: string }>(
     `${API}/admin/rails/${id}/test`, { method: 'POST' });
+/** Run a live NSE subscription sweep now (all open IPOs). */
+export const pollSubscription = () =>
+  authed<{ open: number; updated: number; reason?: string }>(`${API}/admin/rails/subscription/poll`, { method: 'POST' });
+/** Refresh one IPO's subscription now. */
+export const pollSubscriptionIpo = (ipoId: string) =>
+  authed<{ ok: boolean; changed?: boolean; reason?: string }>(`${API}/admin/rails/subscription/poll/${ipoId}`, { method: 'POST' });
 export interface AllotmentImportResult { ipo: string; lines: number; updated: number; notFound: string[]; errors: string[] }
 export const importAllotments = (symbol: string, csv: string) =>
   authed<AllotmentImportResult>(`${API}/admin/allotments/${symbol}/import`, {

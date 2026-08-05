@@ -1,0 +1,107 @@
+'use client';
+import { useState } from 'react';
+import { Icon } from '@/components/Icon';
+
+/** Password input with a show/hide eye toggle. */
+export function PasswordInput({ value, onChange, placeholder, id, autoFocus, onKeyDown, mono = true }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; id?: string;
+  autoFocus?: boolean; onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void; mono?: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-wrap">
+      <input id={id} className={`input${mono ? ' mono' : ''}`} type={show ? 'text' : 'password'} value={value}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} onKeyDown={onKeyDown} autoComplete="off" />
+      <button type="button" className="pw-toggle" tabIndex={-1} onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}>
+        <Icon name={show ? 'eye-off' : 'eye'} size={17} />
+      </button>
+    </div>
+  );
+}
+
+/** Page header with title, optional subtitle/back-link and right-aligned actions. */
+export function PageHead({ title, sub, back, actions }: { title: string; sub?: string; back?: { href: string; label: string }; actions?: React.ReactNode }) {
+  return (
+    <div className="page-head">
+      <div>
+        {back && <a href={back.href} className="back"><Icon name="arrow-right" size={14} style={{ transform: 'rotate(180deg)' }} /> {back.label}</a>}
+        <h1>{title}</h1>
+        {sub && <div className="sub">{sub}</div>}
+      </div>
+      {actions && <div className="page-actions">{actions}</div>}
+    </div>
+  );
+}
+
+/** A card panel with an underline-accent section title — the reference form layout. */
+export function Panel({ title, desc, actions, children }: { title: string; desc?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="card form-panel">
+      <div className="fp-head">
+        <div><span className="t">{title}</span>{desc && <span className="d">{desc}</span>}</div>
+        {actions && <div className="fp-actions">{actions}</div>}
+      </div>
+      <div className="fp-body">{children}</div>
+    </div>
+  );
+}
+
+/** A numbered form section with heading + description. */
+export function Section({ n, title, desc, children }: { n?: number | string; title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <div className="form-section">
+      <div className="fs-head">
+        <div className="t">{n != null && <span className="n">{n}</span>}{title}</div>
+        {desc && <div className="d">{desc}</div>}
+      </div>
+      <div className="form-grid">{children}</div>
+    </div>
+  );
+}
+
+/** A labelled field. `span` widens it across grid columns; `full` spans the row. */
+export function Field({ label, required, hint, span, full, children }: { label: string; required?: boolean; hint?: string; span?: 2 | 3; full?: boolean; children: React.ReactNode }) {
+  const cls = ['field', full ? 'full' : span === 3 ? 'col-3' : span === 2 ? 'col-2' : ''].filter(Boolean).join(' ');
+  return (
+    <div className={cls}>
+      <label>{label}{required && <span className="req">*</span>}</label>
+      {children}
+      {hint && <span className="hint">{hint}</span>}
+    </div>
+  );
+}
+
+/** Segmented control for a small set of choices. */
+export function Segmented({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+  return (
+    <div className="seg">
+      {options.map((o) => (
+        <button key={o.value} type="button" className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+export function FormActions({ children }: { children: React.ReactNode }) {
+  return <div className="form-actions">{children}</div>;
+}
+
+/** An on/off toggle switch. */
+export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={disabled}
+      className={`switch${on ? ' on' : ''}`} onClick={() => onChange(!on)}>
+      <span className="knob" />
+    </button>
+  );
+}
+
+/** A search input with a leading icon. */
+export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div className="search">
+      <Icon name="sparkle" size={15} />
+      <input className="input" style={{ minWidth: 240 }} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? 'Search…'} />
+    </div>
+  );
+}

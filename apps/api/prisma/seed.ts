@@ -58,9 +58,27 @@ async function main() {
     await prisma.featureDefinition.create({ data: { key, label, valueType, defaultValue, isPublic } });
   }
 
-  // ---- the SuperAdmin role (scope 'all' → every tenant) ----
+  // ---- platform operator roles (assignable to Admin/Staff operators) ----
+  // SuperAdmin: everything, every tenant. Admin: full platform management minus rails/provider
+  // secrets and role editing. Staff: read-mostly back-office (catalog + clients + bids).
   const superRole = await prisma.role.create({
     data: { tenantId: 't-platform', name: 'SuperAdmin', scope: 'all', permissions: ['*'], isSystem: true },
+  });
+  await prisma.role.create({
+    data: {
+      tenantId: 't-platform', name: 'Admin', scope: 'all', isSystem: true,
+      permissions: [
+        'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'bids.manage',
+        'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage',
+        'roles.view', 'audit.view', 'tenants.manage', 'settings.manage',
+      ],
+    },
+  });
+  await prisma.role.create({
+    data: {
+      tenantId: 't-platform', name: 'Staff', scope: 'all', isSystem: true,
+      permissions: ['dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'clients.view', 'reports.view'],
+    },
   });
 
   // ---- the single superadmin operator (username + password) ----

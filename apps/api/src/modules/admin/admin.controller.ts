@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches } from 'class-validator';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from '../applications/applications.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { AdminService } from './admin.service';
 
 class AddMemberDto {
@@ -33,9 +34,11 @@ class CreateRailDto {
   @IsString() memberCode!: string;
   @IsString() password!: string;
   @IsOptional() @IsString() ibbsId?: string;
+  @IsOptional() @IsString() checksumKey?: string;
   @IsOptional() @IsString() subBrokerCode?: string;
   @IsString() baseUrl!: string;
   @IsIn(['live', 'uat']) env!: string;
+  @IsOptional() @IsBoolean() subscriptionUse?: boolean;
 }
 class UpdateRailDto {
   @IsOptional() @IsIn(['NSE_EIPO', 'BSE_IBBS']) exchange?: string;
@@ -45,10 +48,12 @@ class UpdateRailDto {
   @IsOptional() @IsString() memberCode?: string;
   @IsOptional() @IsString() password?: string;
   @IsOptional() @IsString() ibbsId?: string;
+  @IsOptional() @IsString() checksumKey?: string;
   @IsOptional() @IsString() subBrokerCode?: string;
   @IsOptional() @IsString() baseUrl?: string;
   @IsOptional() @IsIn(['live', 'uat']) env?: string;
   @IsOptional() @IsBoolean() active?: boolean;
+  @IsOptional() @IsBoolean() subscriptionUse?: boolean;
 }
 
 class ImportAllotmentsDto {
@@ -59,6 +64,35 @@ class ProviderConfigDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() settings?: Record<string, any>;
   @IsOptional() secrets?: Record<string, string>; // field → new value (omit to keep existing)
+}
+
+class TemplateDto {
+  @IsIn(['sms', 'email', 'whatsapp']) channel!: string;
+  @IsString() key!: string;
+  @IsOptional() @IsString() locale?: string;
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() dltTemplateId?: string;
+  @IsOptional() @IsString() senderId?: string;
+  @IsOptional() @IsString() body?: string;
+  @IsOptional() @IsString() subject?: string;
+  @IsOptional() @IsString() bodyHtml?: string;
+}
+
+class TestProviderDto {
+  @IsString() to!: string; // 10-digit mobile (sms) or email address (email)
+}
+
+class CreateMessageTypeDto {
+  @IsIn(['sms', 'email', 'whatsapp']) channel!: string;
+  @IsString() key!: string;
+  @IsString() label!: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) vars?: string[];
+}
+class UpdateMessageTypeDto {
+  @IsOptional() @IsString() label?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) vars?: string[];
 }
 
 class RegisterTenantDto {
@@ -73,6 +107,41 @@ class RegisterTenantDto {
   @IsString() adminName!: string;
   @Matches(/^[A-Za-z0-9_.]{3,40}$/, { message: 'username must be 3–40 letters/digits/._' }) adminUsername!: string;
   @IsOptional() @IsString() adminPassword?: string;
+  @IsOptional() profile?: Record<string, any>; // full empanelment form (JM/Nuvama) + doc URLs
+  @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number;
+}
+class UpdateTenantDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsIn(['active', 'suspended']) status?: string;
+  @IsOptional() @IsString() brandColor?: string;
+  @IsOptional() @IsString() goldColor?: string;
+  @IsOptional() @IsString() logoUrl?: string;
+  @IsOptional() @IsString() customDomain?: string;
+  @IsOptional() profile?: Record<string, any>;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number | null;
+}
+class CreateClientDto {
+  @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile!: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() email?: string;
+  @IsString() tenantSlug!: string;
+}
+class UpdateClientDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() email?: string;
+  @IsOptional() @IsIn(['active', 'suspended']) status?: 'active' | 'suspended';
+}
+class AddClientProfileDto {
+  @IsString() fullName!: string;
+  @IsOptional() @IsIn(['self', 'spouse', 'child', 'parent', 'sibling', 'other']) relationship?: string;
+  @Matches(/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/, { message: 'PAN must look like ABCDE1234F' }) pan!: string;
+  @IsOptional() @IsString() dateOfBirth?: string;
+  @IsIn(['NSDL', 'CDSL']) depository!: 'NSDL' | 'CDSL';
+  @IsString() dpId!: string;
+  @IsString() clientId!: string;
+  @IsOptional() @IsString() bankAccount?: string;
+  @IsOptional() @IsString() ifsc?: string;
+  @IsOptional() @IsString() upi?: string;
 }
 class CreateOperatorDto {
   @Matches(/^[A-Za-z0-9_.]{3,40}$/) username!: string;
@@ -80,12 +149,16 @@ class CreateOperatorDto {
   @IsOptional() @IsString() password?: string;
   @IsString() tenantSlug!: string;
   @IsString() roleName!: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile?: string;
 }
 class UpdateOperatorDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
   @IsOptional() @IsString() roleName?: string;
   @IsOptional() @IsString() password?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile?: string;
 }
 
 @Controller('admin')
@@ -95,6 +168,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly apps: ApplicationsService,
     private readonly providers: ProviderConfigService,
+    private readonly subscription: SubscriptionService,
   ) {}
 
   /** Provider keys & integrations (SMS, push) — secrets vaulted, never returned. */
@@ -110,11 +184,162 @@ export class AdminController {
     return this.providers.upsert(provider, dto);
   }
 
+  // ── per-tenant (white-label) integrations: SMS/email keys + message templates ──
+  @Get('tenants/:slug/providers')
+  @RequirePermissions('providers.manage')
+  tenantProviders(@Param('slug') slug: string) {
+    return this.admin.providersForTenant(slug);
+  }
+
+  @Put('tenants/:slug/providers/:provider')
+  @RequirePermissions('providers.manage')
+  saveTenantProvider(@Param('slug') slug: string, @Param('provider') provider: string, @Body() dto: ProviderConfigDto) {
+    return this.admin.saveProviderForTenant(slug, provider, dto);
+  }
+
+  /** Clear a tenant's own provider config → re-inherits the platform default. */
+  @Delete('tenants/:slug/providers/:provider')
+  @RequirePermissions('providers.manage')
+  resetTenantProvider(@Param('slug') slug: string, @Param('provider') provider: string) {
+    return this.admin.resetProviderForTenant(slug, provider);
+  }
+
+  /** Send a real test SMS/email through this scope's effective config. */
+  @Post('tenants/:slug/providers/:provider/test')
+  @RequirePermissions('providers.manage')
+  testTenantProvider(@Param('slug') slug: string, @Param('provider') provider: string, @Body() dto: TestProviderDto) {
+    return this.admin.testProviderForTenant(slug, provider, dto.to);
+  }
+
+  @Get('templates')
+  @RequirePermissions('providers.manage')
+  templatesCatalog() {
+    return this.admin.templatesCatalog();
+  }
+
+  // ── message-type catalog CRUD (platform-wide — superadmin only, enforced in service) ──
+  @Post('templates/types')
+  @RequirePermissions('tenants.manage')
+  createMessageType(@Req() req: any, @Body() dto: CreateMessageTypeDto) {
+    return this.admin.createMessageType(req.user.sub, dto);
+  }
+
+  @Patch('templates/types/:id')
+  @RequirePermissions('tenants.manage')
+  updateMessageType(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateMessageTypeDto) {
+    return this.admin.updateMessageType(req.user.sub, id, dto);
+  }
+
+  @Delete('templates/types/:id')
+  @RequirePermissions('tenants.manage')
+  deleteMessageType(@Req() req: any, @Param('id') id: string) {
+    return this.admin.deleteMessageType(req.user.sub, id);
+  }
+
+  /** The platform's template content for a key/locale — "Copy from platform" in partner scopes. */
+  @Get('templates/resolve')
+  @RequirePermissions('providers.manage')
+  resolvePlatformTemplate(@Query('channel') channel: string, @Query('key') key: string, @Query('locale') locale?: string) {
+    return this.admin.resolvePlatformTemplate(channel, key, locale);
+  }
+
+  /** Platform view: which white-label partner set its own SMS/email + overrode which templates. */
+  @Get('integrations/overview')
+  @RequirePermissions('tenants.manage')
+  integrationsOverview() {
+    return this.admin.integrationsOverview();
+  }
+
+  @Get('tenants/:slug/templates')
+  @RequirePermissions('providers.manage')
+  tenantTemplates(@Param('slug') slug: string) {
+    return this.admin.templatesForTenant(slug);
+  }
+
+  @Put('tenants/:slug/templates')
+  @RequirePermissions('providers.manage')
+  saveTenantTemplate(@Param('slug') slug: string, @Body() dto: TemplateDto) {
+    return this.admin.saveTemplateForTenant(slug, dto);
+  }
+
+  /** Remove a template row: tenant override → re-inherits platform; platform → drops that locale variant. */
+  @Delete('tenants/:slug/templates')
+  @RequirePermissions('providers.manage')
+  deleteTenantTemplate(
+    @Param('slug') slug: string,
+    @Query('channel') channel: string,
+    @Query('key') key: string,
+    @Query('locale') locale?: string,
+  ) {
+    return this.admin.deleteTemplateForTenant(slug, { channel, key, locale });
+  }
+
   /** Register a partner / white-label partner / branch + auto-create its admin login. */
   @Post('tenants')
   @RequirePermissions('tenants.manage')
   registerTenant(@Req() req: any, @Body() dto: RegisterTenantDto) {
     return this.admin.registerTenant(req.user.sub, dto as any);
+  }
+
+  /** Partners & branches the caller can manage (tree list). */
+  @Get('tenants')
+  @RequirePermissions('tenants.manage')
+  listTenants(@Req() req: any) {
+    return this.admin.listTenants(req.user.sub);
+  }
+
+  /** A single partner/branch with its full empanelment profile. */
+  @Get('tenants/:slug')
+  @RequirePermissions('tenants.manage')
+  tenantDetail(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.tenantDetail(req.user.sub, slug);
+  }
+
+  /** Download the partner's pre-filled Business Associate Empanelment Form (PDF). */
+  @Get('tenants/:slug/empanelment.pdf')
+  @RequirePermissions('tenants.manage')
+  async empanelmentPdf(@Req() req: any, @Param('slug') slug: string, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {
+    const { buffer, filename } = await this.admin.buildEmpanelmentPdf(req.user.sub, slug);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return new StreamableFile(buffer);
+  }
+
+  @Patch('tenants/:slug')
+  @RequirePermissions('tenants.manage')
+  updateTenant(@Req() req: any, @Param('slug') slug: string, @Body() dto: UpdateTenantDto) {
+    return this.admin.updateTenant(req.user.sub, slug, dto as any);
+  }
+
+  /* ---- clients (investors) ---- */
+  @Get('clients')
+  @RequirePermissions('clients.view')
+  clients(@Req() req: any, @Query('tenant') tenant?: string, @Query('q') q?: string) {
+    return this.admin.listClients(req.user.sub, { tenantSlug: tenant, q });
+  }
+
+  @Get('clients/:id')
+  @RequirePermissions('clients.view')
+  clientDetail(@Req() req: any, @Param('id') id: string) {
+    return this.admin.clientDetail(req.user.sub, id);
+  }
+
+  @Post('clients')
+  @RequirePermissions('clients.manage')
+  createClient(@Req() req: any, @Body() dto: CreateClientDto) {
+    return this.admin.createClient(req.user.sub, dto);
+  }
+
+  @Patch('clients/:id')
+  @RequirePermissions('clients.manage')
+  updateClient(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateClientDto) {
+    return this.admin.updateClient(req.user.sub, id, dto);
+  }
+
+  @Post('clients/:id/profiles')
+  @RequirePermissions('clients.manage')
+  addClientProfile(@Req() req: any, @Param('id') id: string, @Body() dto: AddClientProfileDto) {
+    return this.admin.addClientProfile(req.user.sub, id, dto);
   }
 
   /** Operator (username) accounts in the caller's scope. */
@@ -189,6 +414,20 @@ export class AdminController {
   @RequirePermissions('rails.manage')
   testRail(@Param('id') id: string) {
     return this.admin.testRail(id);
+  }
+
+  /** Run a NSE Query-Server subscription sweep now over all open IPOs (the poller runs automatically in market hours). */
+  @Post('rails/subscription/poll')
+  @RequirePermissions('rails.manage')
+  pollSubscription() {
+    return this.subscription.pollOnce();
+  }
+
+  /** Refresh one IPO's subscription now. */
+  @Post('rails/subscription/poll/:ipoId')
+  @RequirePermissions('rails.manage')
+  pollSubscriptionIpo(@Param('ipoId') ipoId: string) {
+    return this.subscription.pollIpo(ipoId);
   }
 
   @Post('roles')
