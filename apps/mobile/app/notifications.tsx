@@ -1,48 +1,65 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NotificationView } from '@investoyard/shared-types';
-import { colors } from '@investoyard/design-tokens';
+import { shadowCard, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { getNotifications, markNotificationRead } from '../lib/api';
+import { EmptyState } from '../components/ui/EmptyState';
+import { LoginGate } from '../components/ui/LoginGate';
+import { SkeletonCard } from '../components/ui/Skeleton';
+import { BellIcon } from '../components/ui/icons';
+import { fmtDate } from '../lib/format';
 
 export default function NotificationsScreen() {
   const t = useT();
-  const router = useRouter();
   const { token } = useAuth();
   const [items, setItems] = useState<NotificationView[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => { if (token) setItems(await getNotifications(token)); }, [token]);
   useEffect(() => { load(); }, [load]);
 
-  if (!token) {
-    return (
-      <View style={styles.screen}>
-        <Text style={styles.muted}>{t('apply.loginRequired')}</Text>
-        <Pressable style={styles.btn} onPress={() => router.push('/login')}><Text style={styles.btnText}>{t('login.getOtp')}</Text></Pressable>
-      </View>
-    );
-  }
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await load(); } finally { setRefreshing(false); }
+  }, [load]);
+
+  if (!token) return <LoginGate body="Sign in to receive allotment and listing alerts." />;
 
   const onTap = async (n: NotificationView) => { if (!n.read) { await markNotificationRead(token, n.id); load(); } };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
-      <Text style={styles.h1}>{t('notif.title')}</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
+      }
+    >
       {items === null ? (
-        <ActivityIndicator style={{ marginTop: 28 }} color={colors.brand.primary} />
+        <View style={{ gap: 12 }}>
+          <SkeletonCard lines={1} />
+          <SkeletonCard lines={1} />
+        </View>
       ) : items.length === 0 ? (
-        <Text style={styles.empty}>{t('notif.empty')}</Text>
+        <EmptyState
+          icon={<BellIcon size={26} color={ui.indigo} />}
+          title={t('notif.empty')}
+        />
       ) : (
         items.map((n) => (
-          <Pressable key={n.id} onPress={() => onTap(n)} style={[styles.card, !n.read && styles.unread]}>
+          <Pressable
+            key={n.id}
+            onPress={() => onTap(n)}
+            style={({ pressed }) => [styles.card, pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]}
+          >
             <View style={styles.row}>
-              <Text style={styles.title}>{n.title}</Text>
+              <Text style={[styles.title, !n.read && { fontWeight: '800' }]} numberOfLines={2}>{n.title}</Text>
               {!n.read ? <View style={styles.dot} /> : null}
             </View>
             <Text style={styles.body}>{n.body}</Text>
-            <Text style={styles.date}>{n.createdAt.slice(0, 10)}</Text>
+            <Text style={styles.date}>{fmtDate(n.createdAt.slice(0, 10))}</Text>
           </Pressable>
         ))
       )}
@@ -51,17 +68,14 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bgSubtle, padding: 16 },
-  h1: { fontSize: 24, fontWeight: '700', letterSpacing: -0.4, color: colors.text },
-  muted: { color: colors.textMuted, fontSize: 15 },
-  empty: { color: colors.textMuted, fontSize: 15, marginTop: 28, textAlign: 'center' },
-  card: { backgroundColor: colors.surface, marginTop: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
-  unread: { borderColor: colors.brand.primary, backgroundColor: colors.brand.primarySoft },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1, paddingRight: 10 },
-  dot: { width: 9, height: 9, borderRadius: 999, backgroundColor: colors.brand.primary },
-  body: { color: colors.text, fontSize: 14, marginTop: 5, lineHeight: 20 },
-  date: { color: colors.textMuted, fontSize: 12, marginTop: 8 },
-  btn: { backgroundColor: colors.brand.primary, padding: 15, borderRadius: 980, alignItems: 'center', marginTop: 20 },
-  btnText: { color: colors.brand.primaryInk, fontWeight: '600', fontSize: 16 },
+  screen: { flex: 1, backgroundColor: ui.canvas },
+  card: {
+    backgroundColor: '#ffffff', marginBottom: 12, padding: 16, borderRadius: 20,
+    ...shadowCard,
+  },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  title: { fontSize: 15, fontWeight: '700', color: ui.title, flex: 1, lineHeight: 20 },
+  dot: { width: 9, height: 9, borderRadius: 999, backgroundColor: ui.indigo, marginTop: 5 },
+  body: { color: ui.body, fontSize: 13.5, marginTop: 5, lineHeight: 19 },
+  date: { color: ui.muted, fontSize: 11.5, fontWeight: '600', marginTop: 9, fontVariant: ['tabular-nums'] },
 });

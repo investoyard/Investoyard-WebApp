@@ -12,14 +12,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@investoyard/shared-types": "*",
     "@investoyard/design-tokens": "*",
     "@investoyard/i18n": "*",
+    "@investoyard/shared-types": "*",
     "expo": "~51.0.0",
     "expo-constants": "~16.0.0",
-    "expo-secure-store": "~13.0.2",
     "expo-linking": "~6.3.0",
     "expo-router": "~3.5.0",
+    "expo-secure-store": "~13.0.2",
+    "expo-splash-screen": "~0.27.7",
     "expo-status-bar": "~1.12.0",
     "react": "18.2.0",
     "react-native": "0.74.5",

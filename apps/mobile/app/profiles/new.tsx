@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors } from '@investoyard/design-tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useProfiles, Relationship } from '../../components/profiles';
 import { getRelationships, RelationshipOption } from '../../lib/api';
+import { Card } from '../../components/ui/Card';
+import { SectionTitle } from '../../components/ui/SectionTitle';
+import { Button } from '../../components/ui/Button';
 
 /** Fallback when the relationships master can't be fetched (offline). */
 const DEFAULT_OPTIONS: RelationshipOption[] = [
@@ -16,6 +22,7 @@ const DEFAULT_OPTIONS: RelationshipOption[] = [
 export default function NewProfileScreen() {
   const t = useT();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { addProfile, profiles } = useProfiles();
 
   // Options come from the admin-managed Relationships master; single-slot ones
@@ -80,94 +87,151 @@ export default function NewProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
-      <Text style={styles.h1}>{t('profile.new')}</Text>
-      <Text style={styles.note}>{t('profile.note')}</Text>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.note}>{t('profile.note')}</Text>
 
-      <Text style={styles.label}>{t('profile.relationship')}</Text>
-      <View style={styles.segs}>
-        {options.map((r) => (
-          <Pressable key={r} onPress={() => setRelationship(r)} style={[styles.seg, relationship === r && styles.segOn]}>
-            <Text style={[styles.segTxt, relationship === r && styles.segTxtOn]}>{relLabel(r)}</Text>
-          </Pressable>
-        ))}
+        <SectionTitle label={t('profile.relationship')} style={{ marginTop: 20 }} />
+        <Card>
+          <View style={styles.segs}>
+            {options.map((r) => (
+              <Pressable
+                key={r}
+                onPress={() => setRelationship(r)}
+                style={({ pressed }) => [styles.seg, relationship === r && styles.segOn, pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] }]}
+              >
+                <Text style={[styles.segTxt, relationship === r && styles.segTxtOn]}>{relLabel(r)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+
+        <SectionTitle label="Identity" style={{ marginTop: 24 }} />
+        <Card>
+          <Field label={t('profile.fullName')} value={fullName} onChange={setFullName} first />
+          <Field label={t('profile.pan')} value={pan} onChange={setPan} autoCapitalize="characters" maxLength={10} placeholder="ABCDE1234F" mono />
+        </Card>
+
+        <SectionTitle label={t('profile.depository')} style={{ marginTop: 24 }} />
+        <Card>
+          <View style={styles.segs}>
+            {(['NSDL', 'CDSL'] as const).map((d) => (
+              <Pressable
+                key={d}
+                onPress={() => { setDepository(d); setDpId(''); setClientId(''); }}
+                style={({ pressed }) => [styles.seg, styles.segWide, depository === d && styles.segOn, pressed && { opacity: 0.75 }]}
+              >
+                <Text style={[styles.segTxt, depository === d && styles.segTxtOn]}>{d}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {!isCdsl && (
+            <Field label={`${t('profile.dpId')} — IN prefix is added automatically`} value={dpId}
+              onChange={(v) => setDpId(v.replace(/\D/g, '').slice(0, 6))} placeholder="301234 (6 digits)" maxLength={6} mono keyboard="number-pad" />
+          )}
+          <Field label={isCdsl ? 'Demat number (16 digits)' : `${t('profile.clientId')} (8 digits)`} value={clientId}
+            onChange={(v) => setClientId(v.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8))}
+            placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} mono keyboard="number-pad" />
+          <Field label={t('profile.upi')} value={upiId} onChange={setUpiId} placeholder="name@bank" autoCapitalize="none" mono />
+        </Card>
+
+        <SectionTitle label="Bank & contact" meta="optional" style={{ marginTop: 24 }} />
+        <Card>
+          <Text style={styles.hint}>Used to pre-fill the printed ASBA form.</Text>
+          <Field label="Mobile" value={mobile} onChange={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))} maxLength={10} placeholder="98XXXXXXXX" mono keyboard="number-pad" />
+          <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" autoCapitalize="none" />
+          <Field label="Bank name" value={bankName} onChange={setBankName} placeholder="HDFC Bank" />
+          <Field label="Branch name" value={branchName} onChange={setBranchName} placeholder="MG Road" />
+          <Field label="Bank account no." value={bankAccount} onChange={setBankAccount} autoCapitalize="none" mono />
+          <Field label="IFSC" value={ifsc} onChange={setIfsc} autoCapitalize="characters" placeholder="HDFC0001234" mono />
+          <Field label="Address" value={address} onChange={setAddress} />
+          <Field label="City" value={city} onChange={setCity} />
+          <Field label="State" value={stateName} onChange={setStateName} />
+          <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad" />
+        </Card>
+
+        <Pressable style={styles.consentRow} onPress={() => setConsent((c) => !c)}>
+          <Switch
+            value={consent}
+            onValueChange={setConsent}
+            trackColor={{ true: ui.indigo }}
+            thumbColor="#ffffff"
+          />
+          <Text style={styles.consentTxt}>{t('profile.consent')}</Text>
+        </Pressable>
+
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {/* sticky save bar */}
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <Button label={t('profile.save')} onPress={onSave} disabled={!valid} busy={saving} style={{ flex: 1 }} />
       </View>
-
-      <Field label={t('profile.fullName')} value={fullName} onChange={setFullName} />
-      <Field label={t('profile.pan')} value={pan} onChange={setPan} autoCapitalize="characters" maxLength={10} />
-
-      <Text style={styles.label}>{t('profile.depository')}</Text>
-      <View style={styles.segs}>
-        {(['NSDL', 'CDSL'] as const).map((d) => (
-          <Pressable key={d} onPress={() => { setDepository(d); setDpId(''); setClientId(''); }} style={[styles.seg, depository === d && styles.segOn]}>
-            <Text style={[styles.segTxt, depository === d && styles.segTxtOn]}>{d}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {!isCdsl && (
-        <Field label={`${t('profile.dpId')} — IN prefix is added automatically`} value={dpId}
-          onChange={(v) => setDpId(v.replace(/\D/g, '').slice(0, 6))} placeholder="301234 (6 digits)" maxLength={6} />
-      )}
-      <Field label={isCdsl ? 'Demat number (16 digits)' : `${t('profile.clientId')} (8 digits)`} value={clientId}
-        onChange={(v) => setClientId(v.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8))}
-        placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} />
-      <Field label={t('profile.upi')} value={upiId} onChange={setUpiId} placeholder="name@bank" autoCapitalize="none" />
-
-      <Text style={[styles.label, { marginTop: 14, fontWeight: '700' }]}>Bank & contact (optional)</Text>
-      <Text style={styles.note}>Used to pre-fill the printed ASBA form.</Text>
-      <Field label="Mobile" value={mobile} onChange={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))} maxLength={10} placeholder="98XXXXXXXX" />
-      <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" autoCapitalize="none" />
-      <Field label="Bank name" value={bankName} onChange={setBankName} placeholder="HDFC Bank" />
-      <Field label="Branch name" value={branchName} onChange={setBranchName} placeholder="MG Road" />
-      <Field label="Bank account no." value={bankAccount} onChange={setBankAccount} autoCapitalize="none" />
-      <Field label="IFSC" value={ifsc} onChange={setIfsc} autoCapitalize="characters" placeholder="HDFC0001234" />
-      <Field label="Address" value={address} onChange={setAddress} />
-      <Field label="City" value={city} onChange={setCity} />
-      <Field label="State" value={stateName} onChange={setStateName} />
-      <Field label="Pincode" value={pincode} onChange={setPincode} maxLength={6} />
-
-      <View style={styles.consentRow}>
-        <Switch value={consent} onValueChange={setConsent} trackColor={{ true: colors.brand.primary }} />
-        <Text style={styles.consentTxt}>{t('profile.consent')}</Text>
-      </View>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable style={[styles.btn, (!valid || saving) && styles.btnDisabled]} onPress={onSave} disabled={saving}>
-        <Text style={styles.btnText}>{saving ? '…' : t('profile.save')}</Text>
-      </Pressable>
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
-function Field(props: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; autoCapitalize?: 'none' | 'characters'; maxLength?: number }) {
+function Field(props: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+  autoCapitalize?: 'none' | 'characters'; maxLength?: number; first?: boolean; mono?: boolean;
+  keyboard?: 'default' | 'number-pad';
+}) {
+  const [focused, setFocused] = useState(false);
   return (
     <>
-      <Text style={styles.label}>{props.label}</Text>
+      <Text style={[styles.label, props.first && { marginTop: 0 }]}>{props.label}</Text>
       <TextInput
-        style={styles.input} value={props.value} onChangeText={props.onChange}
-        placeholder={props.placeholder} autoCapitalize={props.autoCapitalize ?? 'words'} maxLength={props.maxLength}
+        style={[styles.input, props.mono && { fontVariant: ['tabular-nums'] }, focused && styles.inputOn]}
+        value={props.value}
+        onChangeText={props.onChange}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={props.placeholder}
+        placeholderTextColor={ui.muted}
+        autoCapitalize={props.autoCapitalize ?? 'words'}
+        maxLength={props.maxLength}
+        keyboardType={props.keyboard ?? 'default'}
       />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  h1: { fontSize: 24, fontWeight: '700', letterSpacing: -0.4, color: colors.text },
-  note: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
-  label: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginTop: 18, marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 13, fontSize: 16, color: colors.text, backgroundColor: colors.surface },
+  screen: { flex: 1, backgroundColor: ui.canvas },
+  note: { color: ui.muted, fontSize: 13, lineHeight: 18 },
+  hint: { color: ui.muted, fontSize: 12.5, marginBottom: 4 },
+  label: { ...microLabel, fontSize: 11, marginTop: 16, marginBottom: 7 },
+  input: {
+    height: 48, borderRadius: 12, paddingHorizontal: 14,
+    fontSize: 15.5, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
+    borderWidth: 1.5, borderColor: 'transparent',
+  },
+  inputOn: { borderColor: ui.indigo, backgroundColor: '#ffffff' },
   segs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  seg: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 980, borderWidth: 1, borderColor: colors.border },
-  segOn: { borderColor: colors.brand.primary, backgroundColor: colors.brand.primarySoft },
-  segTxt: { color: colors.textMuted, fontSize: 13, fontWeight: '500' },
-  segTxtOn: { color: colors.brand.primary },
-  consentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 22 },
-  consentTxt: { flex: 1, color: colors.text, fontSize: 13 },
-  error: { color: colors.state.danger, marginTop: 14 },
-  btn: { backgroundColor: colors.brand.primary, padding: 15, borderRadius: 980, alignItems: 'center', marginTop: 20 },
-  btnDisabled: { opacity: 0.5 },
-  btnText: { color: colors.brand.primaryInk, fontWeight: '600', fontSize: 16 },
+  seg: {
+    paddingHorizontal: 14, minHeight: 40, borderRadius: 999,
+    backgroundColor: ui.canvas, justifyContent: 'center',
+  },
+  segWide: { flexGrow: 1, alignItems: 'center' },
+  segOn: { backgroundColor: ui.indigo },
+  segTxt: { color: ui.slate, fontSize: 13.5, fontWeight: '600' },
+  segTxtOn: { color: '#ffffff', fontWeight: '700' },
+  consentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, paddingHorizontal: 2 },
+  consentTxt: { flex: 1, color: ui.body, fontSize: 13, lineHeight: 18 },
+  errorBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 14 },
+  error: { color: ui.red, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  bar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12,
+    backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: ui.divider,
+    ...shadowCard,
+  },
 });

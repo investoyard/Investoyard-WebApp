@@ -1,0 +1,90 @@
+import { Tabs } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ui } from '../../lib/theme';
+import { AppHeader } from '../../components/ui/AppHeader';
+import {
+  DocsIcon, DocsIconFill, GearIcon, GearIconFill,
+  HomeIcon, HomeIconFill, UsersIcon, UsersIconFill, IconProps,
+} from '../../components/ui/icons';
+
+/**
+ * Primary navigation — 4 bottom tabs:
+ *   Home (IPO explorer) · Applications (portfolio/allotment) · Profiles (family/KYC) · Account.
+ * Group folder keeps every historical path (/, /applications, /profiles) unchanged.
+ */
+
+/** Icon slot: filled variant + soft indigo pill behind the icon when active. */
+function TabIcon({ focused, color, Line, Fill }: {
+  focused: boolean;
+  color: string;
+  Line: (p: IconProps) => JSX.Element;
+  Fill: (p: IconProps) => JSX.Element;
+}) {
+  const I = focused ? Fill : Line;
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapOn]}>
+      <I size={24} color={color} strokeWidth={1.8} />
+    </View>
+  );
+}
+
+export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  return (
+    <Tabs
+      screenOptions={{
+        header: () => <AppHeader />,
+        tabBarActiveTintColor: ui.indigo,
+        tabBarInactiveTintColor: ui.muted,
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: ui.divider,
+          height: 64 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          headerShown: false, // Home draws its own gradient hero
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={HomeIcon} Fill={HomeIconFill} />,
+        }}
+      />
+      <Tabs.Screen
+        name="applications"
+        options={{
+          title: 'Applications',
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={DocsIcon} Fill={DocsIconFill} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profiles"
+        options={{
+          title: 'Profiles',
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={UsersIcon} Fill={UsersIconFill} />,
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={GearIcon} Fill={GearIconFill} />,
+        }}
+      />
+    </Tabs>
+  );
+}
+
+const styles = StyleSheet.create({
+  iconWrap: {
+    width: 48, height: 30, borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconWrapOn: { backgroundColor: ui.indigoTint },
+});

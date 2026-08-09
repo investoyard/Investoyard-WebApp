@@ -1,117 +1,249 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+/**
+ * IPO detail — content parity with apps/web/components/views/IpoDetailView.tsx:
+ * hero, key-stat grid, timeline (indigo rail), live subscription, reservation,
+ * GMP (+disclaimer), SME norms, company accordions, issue details — restyled to
+ * the elevated fintech language. Sticky bottom bar: MIN INVESTMENT + Apply.
+ */
+import { useCallback, useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import type { IpoDetail } from '@investoyard/shared-types';
-import { colors } from '@investoyard/design-tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { microLabel, shadowCard, ui } from '../../lib/theme';
+import type { IpoFull } from '../../lib/ipoCalc';
 import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
+import { fmtRange, inr, priceBand, stripHtml, closesInLabel } from '../../lib/format';
+import { Card } from '../../components/ui/Card';
+import { Chip, ChipTone } from '../../components/ui/Chip';
+import { StatTile } from '../../components/ui/StatTile';
+import { SectionTitle } from '../../components/ui/SectionTitle';
+import { Button } from '../../components/ui/Button';
+import { ExpandTile } from '../../components/ui/ExpandTile';
+import { CompanyLogo } from '../../components/ui/CompanyLogo';
+import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
+import { CalendarIcon } from '../../components/ui/icons';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
+
+const STATUS_TONE: Record<string, ChipTone> = {
+  open: 'success', upcoming: 'warn', closed: 'neutral', listed: 'neutral', withdrawn: 'danger',
+};
 
 export default function IpoDetailScreen() {
   const t = useT();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
-  const [ipo, setIpo] = useState<IpoDetail | null | undefined>(undefined);
+  const [ipo, setIpo] = useState<IpoFull | null | undefined>(undefined);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (symbol) getIpo(String(symbol)).then((v) => setIpo(v ?? null));
+  const load = useCallback(async () => {
+    if (symbol) setIpo((await getIpo(String(symbol))) ?? null);
   }, [symbol]);
 
-  if (ipo === undefined) return <View style={styles.center}><ActivityIndicator color={colors.brand.primary} /></View>;
-  if (ipo === null) return <View style={styles.center}><Text style={styles.muted}>{t('detail.notFound')}</Text></View>;
+  useEffect(() => { load(); }, [load]);
 
-  const subMax = Math.max(1, ...(ipo.subscription ?? []).map((s) => s.timesSubscribed));
-  const dates: [string, string | undefined][] = [
-    [t('dates.open'), ipo.openDate], [t('dates.close'), ipo.closeDate], [t('dates.allotment'), ipo.allotmentDate], [t('dates.listing'), ipo.listingDate],
-  ];
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await load(); } finally { setRefreshing(false); }
+  }, [load]);
+
+  if (ipo === undefined) {
+    return (
+      <View style={[styles.screen, { padding: 16, gap: 12 }]}>
+        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+          <Skeleton w={54} h={54} r={14} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton w="80%" h={18} />
+            <Skeleton w="45%" h={12} />
+          </View>
+        </View>
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={2} />
+      </View>
+    );
+  }
+  if (ipo === null) {
+    return (
+      <View style={[styles.screen, { justifyContent: 'center' }]}>
+        <EmptyState title={t('detail.notFound')} />
+      </View>
+    );
+  }
+
+  const canApply = ipo.status === 'open' || ipo.status === 'upcoming';
+  const closes = ipo.status === 'open' ? closesInLabel(ipo.closeDate) : null;
+  const ex: Record<string, any> = ipo.extra ?? {};
+  const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
+    ? ex.leads
+    : ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial'];
+  const exchanges = ipo.type === 'sme' ? 'NSE SME · BSE SME' : 'NSE · BSE';
+  const aboutParas = stripHtml(typeof ex.companyDescription === 'string' && ex.companyDescription.trim() ? ex.companyDescription : ipo.about);
+  const objectParas = stripHtml(ipo.objectsOfIssue);
+  const finParas = stripHtml(typeof ex.companyFinancials === 'string' ? ex.companyFinancials : undefined);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
-      <View style={styles.row}>
-        <Text style={styles.h1}>{ipo.name}</Text>
-        <Text style={[styles.chip, ipo.status === 'open' && styles.chipOpen]}>{t(`status.${ipo.status}`)}</Text>
-      </View>
-      <Text style={styles.muted}>
-        {ipo.type === 'sme' ? 'SME' : 'Mainboard'}
-        {ipo.priceBandMin != null ? `  ·  ₹${ipo.priceBandMin}–${ipo.priceBandMax}` : ''}
-        {ipo.lotSize != null ? `  ·  Lot ${ipo.lotSize}` : ''}
-        {ipo.minAmount != null ? `  ·  Min ₹${ipo.minAmount.toLocaleString('en-IN')}` : ''}
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>{t('detail.keyDates')}</Text>
-        {dates.map(([k, v]) => (
-          <View style={styles.kv} key={k}><Text style={styles.kvK}>{k}</Text><Text style={styles.kvV}>{v ?? '—'}</Text></View>
-        ))}
-      </View>
-
-      {ipo.subscription ? (
-        <View style={styles.card}>
-          <Text style={styles.label}>{t('detail.liveSubscription')}</Text>
-          {ipo.subscription.map((s) => (
-            <View style={styles.subrow} key={s.category}>
-              <Text style={styles.subcat}>{s.category.toUpperCase()}</Text>
-              <View style={styles.subbar}><View style={[styles.subfill, { width: `${Math.min(100, (s.timesSubscribed / subMax) * 100)}%` }]} /></View>
-              <Text style={styles.subx}>{s.timesSubscribed}×</Text>
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: canApply ? 130 : 32 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
+        }
+      >
+        {/* hero */}
+        <View style={styles.hero}>
+          <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={54} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.h1}>{ipo.name}</Text>
+            <View style={styles.heroMeta}>
+              <Chip label={ipo.type === 'sme' ? 'SME' : 'Mainboard'} tone={ipo.type === 'sme' ? 'brand' : 'neutral'} dot={false} />
+              <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
             </View>
-          ))}
+            <View style={styles.heroDates}>
+              <CalendarIcon size={13} color={ui.muted} strokeWidth={1.8} />
+              <Text style={styles.heroDatesTxt}>{fmtRange(ipo.openDate, ipo.closeDate)}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* key stats */}
+        <View style={styles.stats}>
+          <StatTile label="Price band" value={priceBand(ipo.priceBandMin, ipo.priceBandMax)} hilite />
+          <StatTile label="Bid lot" value={ipo.lotSize != null ? String(ipo.lotSize) : '—'} />
+          <StatTile label="Min investment" value={inr(ipo.minAmount)} hilite />
+          <StatTile label="Issue size" value={ipo.issueSize ?? '—'} />
+        </View>
+
+        {/* timeline */}
+        <SectionTitle label={t('detail.keyDates')} style={{ marginTop: 24 }} />
+        <Card><TimelinePanel ipo={ipo} /></Card>
+
+        {/* live subscription */}
+        {ipo.subscription && ipo.subscription.length > 0 ? (
+          <>
+            <SectionTitle
+              label={t('detail.liveSubscription')}
+              meta={ipo.subscriptionAsOf ? `as of ${ipo.subscriptionAsOf.slice(0, 10)}` : undefined}
+              style={{ marginTop: 24 }}
+            />
+            <Card><SubscriptionPanel ipo={ipo} /></Card>
+          </>
+        ) : null}
+
+        {/* reservation */}
+        <SectionTitle label="Issue reservation" meta={ipo.issueSize} style={{ marginTop: 24 }} />
+        <Card><ReservationPanel ipo={ipo} /></Card>
+
+        {/* lot ladder */}
+        <SectionTitle
+          label="Lot ladder"
+          meta={ipo.lotSize != null ? `1 lot = ${ipo.lotSize} shares` : undefined}
+          style={{ marginTop: 24 }}
+        />
+        <Card><LotPanel ipo={ipo} /></Card>
+
+        {/* GMP — always with disclaimer */}
+        <SectionTitle label={t('detail.greyMarket')} style={{ marginTop: 24 }} />
+        <Card><GmpPanel ipo={ipo} disclaimer={t('detail.disclaimer')} /></Card>
+
+        {/* SME norms */}
+        {ipo.type === 'sme' && ipo.smeCompliance ? (
+          <>
+            <SectionTitle label={t('detail.smeNorms')} style={{ marginTop: 24 }} />
+            <Card>
+              {ipo.smeCompliance.meetsNorms ? (
+                <View style={{ marginBottom: 10 }}><Chip label="Meets norms" tone="success" /></View>
+              ) : null}
+              <KV k="₹1cr EBITDA test" v={ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'} />
+              <KV k="OFS %" v={`${ipo.smeCompliance.ofsPct ?? '—'}%`} />
+              <KV k="GCP %" v={`${ipo.smeCompliance.gcpPct ?? '—'}%`} last />
+            </Card>
+          </>
+        ) : null}
+
+        {/* company long-form content — animated in-card accordions */}
+        {aboutParas.length > 0 || objectParas.length > 0 || finParas.length > 0 || (ipo.financials && ipo.financials.length > 0) ? (
+          <>
+            <SectionTitle label="Company" style={{ marginTop: 24 }} />
+            <Card style={{ paddingVertical: 2 }}>
+              {aboutParas.length > 0 ? (
+                <ExpandTile title="About the company" initiallyOpen>
+                  {aboutParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                </ExpandTile>
+              ) : null}
+              {objectParas.length > 0 ? (
+                <ExpandTile title="Objects of the issue">
+                  {objectParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                </ExpandTile>
+              ) : null}
+              {finParas.length > 0 || (ipo.financials && ipo.financials.length > 0) ? (
+                <ExpandTile title="Financials">
+                  {finParas.length > 0
+                    ? finParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)
+                    : ipo.financials!.map((f, i) => <KV key={f.label} k={f.label} v={f.value} last={i === ipo.financials!.length - 1} />)}
+                </ExpandTile>
+              ) : null}
+            </Card>
+          </>
+        ) : null}
+
+        {/* issue details */}
+        <SectionTitle label="Issue details" style={{ marginTop: 24 }} />
+        <Card>
+          <KV k="Lead managers" v={leadManagers.join(', ')} />
+          <KV k="Registrar" v={ipo.registrar ?? '—'} />
+          <KV k="Listing on" v={exchanges} last />
+        </Card>
+      </ScrollView>
+
+      {/* sticky bottom apply bar */}
+      {canApply ? (
+        <View style={[styles.applyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.applyK}>MIN INVESTMENT</Text>
+            <Text style={styles.applyV}>{inr(ipo.minAmount)}</Text>
+            {closes ? <Text style={styles.applyCloses}>{closes}</Text> : null}
+          </View>
+          <Button label="Apply now" onPress={() => router.push(`/apply/${ipo.symbol}`)} style={{ minWidth: 150 }} />
         </View>
       ) : null}
+    </View>
+  );
+}
 
-      <View style={styles.card}>
-        <Text style={styles.label}>{t('detail.greyMarket')}</Text>
-        {ipo.gmp != null ? (
-          <View style={styles.row}>
-            <Text style={styles.muted}>{t('detail.premiumPerShare')}</Text>
-            <Text style={[styles.gmpVal, ipo.gmp >= 0 ? styles.pos : styles.neg]}>
-              {ipo.gmp >= 0 ? '+' : ''}{ipo.gmp}{ipo.gmpPct != null ? `  (${ipo.gmpPct}%)` : ''}
-            </Text>
-          </View>
-        ) : <Text style={styles.muted}>{t('detail.noGmp')}</Text>}
-        <Text style={styles.disclaimer}>{t('detail.disclaimer')}</Text>
-      </View>
-
-      {ipo.type === 'sme' && ipo.smeCompliance ? (
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <Text style={styles.label}>{t('detail.smeNorms')}</Text>
-            {ipo.smeCompliance.meetsNorms ? <Text style={styles.badgeOk}>{t('detail.meetsNorms')}</Text> : null}
-          </View>
-          <View style={styles.kv}><Text style={styles.kvK}>₹1cr EBITDA test</Text><Text style={styles.kvV}>{ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'}</Text></View>
-          <View style={styles.kv}><Text style={styles.kvK}>OFS %</Text><Text style={styles.kvV}>{ipo.smeCompliance.ofsPct ?? '—'}%</Text></View>
-          <View style={styles.kv}><Text style={styles.kvK}>GCP %</Text><Text style={styles.kvV}>{ipo.smeCompliance.gcpPct ?? '—'}%</Text></View>
-        </View>
-      ) : null}
-
-      {ipo.about ? <Text style={[styles.muted, { marginTop: 14 }]}>{ipo.about}</Text> : null}
-
-      <Pressable style={styles.btn} onPress={() => router.push(`/apply/${ipo.symbol}`)}><Text style={styles.btnText}>{t('detail.apply')}</Text></Pressable>
-    </ScrollView>
+function KV({ k, v, last }: { k: string; v: string; last?: boolean }) {
+  return (
+    <View style={[styles.kv, last && { borderBottomWidth: 0 }]}>
+      <Text style={styles.kvK}>{k}</Text>
+      <Text style={styles.kvV}>{v}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bgSubtle },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bgSubtle },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  h1: { fontSize: 26, fontWeight: '700', letterSpacing: -0.4, color: colors.text, flex: 1, paddingRight: 12 },
-  card: { backgroundColor: colors.surface, marginTop: 14, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
-  label: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, color: colors.textMuted, marginBottom: 8 },
-  muted: { color: colors.textMuted, fontSize: 14, marginTop: 4 },
-  disclaimer: { color: colors.textMuted, fontSize: 12, marginTop: 8 },
-  chip: { fontSize: 12, fontWeight: '500', color: colors.textMuted, backgroundColor: colors.bgSubtle, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 980, overflow: 'hidden' },
-  chipOpen: { color: colors.state.success, backgroundColor: '#eaf5ee' },
-  kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
-  kvK: { color: colors.textMuted, fontSize: 15 },
-  kvV: { color: colors.text, fontSize: 15, fontWeight: '500' },
-  subrow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 7 },
-  subcat: { width: 56, fontSize: 12, color: colors.textMuted, letterSpacing: 0.3 },
-  subbar: { flex: 1, height: 8, backgroundColor: colors.bgSubtle, borderRadius: 980, overflow: 'hidden' },
-  subfill: { height: '100%', backgroundColor: colors.brand.primary, borderRadius: 980 },
-  subx: { width: 52, textAlign: 'right', fontWeight: '600', fontSize: 14, color: colors.text },
-  gmpVal: { fontSize: 18 },
-  pos: { color: colors.state.success, fontWeight: '600' },
-  neg: { color: colors.state.danger, fontWeight: '600' },
-  badgeOk: { fontSize: 12, fontWeight: '600', color: colors.state.success, backgroundColor: '#eaf5ee', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 980, overflow: 'hidden' },
-  btn: { backgroundColor: colors.brand.primary, padding: 15, borderRadius: 980, alignItems: 'center', marginTop: 24 },
-  btnText: { color: colors.brand.primaryInk, fontWeight: '600', fontSize: 16 },
+  screen: { flex: 1, backgroundColor: ui.canvas },
+  hero: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
+  h1: { fontSize: 21, fontWeight: '800', letterSpacing: -0.5, color: ui.title, lineHeight: 26 },
+  heroMeta: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  heroDates: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
+  heroDatesTxt: { fontSize: 12.5, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
+  para: { fontSize: 14, color: ui.body, lineHeight: 21 },
+  kv: {
+    flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: ui.divider,
+  },
+  kvK: { fontSize: 14, color: ui.muted },
+  kvV: { fontSize: 14, fontWeight: '700', color: ui.title, flexShrink: 1, textAlign: 'right' },
+  applyBar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingTop: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1, borderTopColor: ui.divider,
+    ...shadowCard,
+  },
+  applyK: { ...microLabel, fontSize: 10.5 },
+  applyV: { fontSize: 18, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
+  applyCloses: { fontSize: 11.5, color: ui.amber, fontWeight: '700', marginTop: 2 },
 });

@@ -32,6 +32,6 @@ export function LangToggle() {
 }
 
 const styles = StyleSheet.create({
-  toggle: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 980, backgroundColor: colors.brand.primarySoft },
-  toggleText: { color: colors.brand.primary, fontWeight: '600', fontSize: 13 },
+  toggle: { paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: '#EEEBFA', alignItems: 'center', justifyContent: 'center' },
+  toggleText: { color: colors.brand.primary, fontWeight: '700', fontSize: 12.5 },
 });

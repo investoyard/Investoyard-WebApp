@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { IpoListItem, IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView, ProfileView, Depository } from '@investoyard/shared-types';
+import type { IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView, ProfileView, Depository } from '@investoyard/shared-types';
+import { enrich, type IpoFull } from './ipoCalc';
 
 /**
  * Resolve the API base URL.
@@ -49,23 +50,26 @@ const MOCK: IpoDetail[] = [
   },
 ];
 
-export async function getIpos(): Promise<IpoListItem[]> {
+// The API's list endpoint returns full detail rows (same serializer as by-symbol),
+// so cards can show subscription/reservation/lot expanders without a second fetch.
+export async function getIpos(): Promise<IpoFull[]> {
   try {
     const res = await fetch(`${API_BASE}/ipos`);
-    if (!res.ok) return MOCK;
-    return (await res.json()) as IpoListItem[];
+    if (!res.ok) return MOCK.map(enrich);
+    return ((await res.json()) as IpoDetail[]).map(enrich);
   } catch {
-    return MOCK;
+    return MOCK.map(enrich);
   }
 }
 
-export async function getIpo(symbol: string): Promise<IpoDetail | undefined> {
+export async function getIpo(symbol: string): Promise<IpoFull | undefined> {
   try {
     const res = await fetch(`${API_BASE}/ipos/by-symbol/${encodeURIComponent(symbol)}`);
-    if (res.ok) return (await res.json()) as IpoDetail;
+    if (res.ok) return enrich((await res.json()) as IpoDetail);
   } catch {}
   // offline/dev fallback
-  return MOCK.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
+  const m = MOCK.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
+  return m ? enrich(m) : undefined;
 }
 
 export async function getConsentNotices(): Promise<ConsentNotice[]> {

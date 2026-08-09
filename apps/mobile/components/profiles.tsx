@@ -29,6 +29,8 @@ export interface ProfileRecord {
   dpId: string;
   clientId: string;
   upiId?: string;             // display flag only ('set' when a UPI is on file)
+  hasBank?: boolean;          // display flag — bank account on file
+  kycStatus?: 'unverified' | 'verified' | 'failed';
 }
 
 type Ctx = {
@@ -58,6 +60,8 @@ function fromView(v: ProfileView): ProfileRecord {
     dpId: v.dpId,
     clientId: v.clientId,
     upiId: v.hasUpi ? 'set' : undefined,
+    hasBank: v.hasBank,
+    kycStatus: v.kycStatus,
   };
 }
 
