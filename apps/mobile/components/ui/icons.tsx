@@ -27,6 +27,16 @@ function stroke(p: IconProps) {
   };
 }
 
+export function ShareIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M12 14.5V4.2" {...stroke(p)} />
+      <Path d="M8.4 7.6 12 4l3.6 3.6" {...stroke(p)} />
+      <Path d="M6.5 11.5H5.2v8.8h13.6v-8.8h-1.3" {...stroke(p)} />
+    </Svg>
+  );
+}
+
 export function HomeIcon(p: IconProps) {
   return (
     <Svg {...base(p)}>

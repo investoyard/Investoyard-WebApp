@@ -5,7 +5,8 @@
  */
 import { Platform, LayoutAnimation, UIManager, TextStyle, ViewStyle } from 'react-native';
 
-export const ui = {
+/** Light palette — the shipped look. */
+const light = {
   canvas: '#F6F7FB',
   card: '#FFFFFF',
   divider: '#EEF0F5',
@@ -29,6 +30,38 @@ export const ui = {
   slateTint: '#EEF0F5',
   skeleton: '#E9EBF2',
 } as const;
+
+/**
+ * Dark palette — GROUNDWORK ONLY. Token-for-token counterpart of `light`;
+ * ships DISABLED (DARK_ENABLED=false) until every screen passes a dark audit.
+ * When enabling for real, StyleSheets that bake `ui.*` at module load must be
+ * revisited (theme context or restart-on-toggle).
+ */
+const dark: { [K in keyof typeof light]: string } = {
+  canvas: '#0F1117',
+  card: '#181B24',
+  divider: '#262A36',
+  title: '#F2F3F7',
+  body: '#C4C8D4',
+  muted: '#8A90A0',
+  indigo: '#8B7AD9',
+  indigoTint: '#2A2542',
+  gradTop: '#46368F',
+  gradBottom: '#1C1440',
+  green: '#4CC38A',
+  greenTint: '#12291C',
+  amber: '#E3A63C',
+  amberTint: '#2E2410',
+  red: '#F2726A',
+  redTint: '#331311',
+  slate: '#9BA1B0',
+  slateTint: '#242835',
+  skeleton: '#232734',
+};
+
+export const DARK_ENABLED = false; // flip only after a full dark-mode audit
+export const palettes = { light, dark } as const;
+export const ui = DARK_ENABLED ? dark : light;
 
 /** Inter typeface (loaded in app/_layout.tsx via @expo-google-fonts/inter). */
 export const fonts = {
