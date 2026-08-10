@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { enableLayoutAnimation, ui } from '../lib/theme';
 import { Logo } from '../components/Logo';
 import { LanguageProvider, LangToggle, useT } from '../components/i18n';
@@ -43,6 +44,9 @@ export default function RootLayout() {
     <AuthProvider>
       <ProfilesProvider>
         <LanguageProvider>
+          {/* translucent so the Home/Login gradients render under the status bar;
+              gradient screens flip to 'light' via useFocusEffect */}
+          <StatusBar style="dark" translucent backgroundColor="transparent" />
           <RootStack />
         </LanguageProvider>
       </ProfilesProvider>

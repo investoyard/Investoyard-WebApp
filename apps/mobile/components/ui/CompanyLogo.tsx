@@ -14,7 +14,9 @@ export function CompanyLogo({ uri, name, size = 44 }: { uri?: string; name: stri
     return (
       <View style={[styles.ring, { width: size, height: size, borderRadius: radius }]}>
         <Image
-          source={{ uri }}
+          // Browser User-Agent: the logo host sits behind Cloudflare bot protection,
+          // which rejects the native image loader's default UA (okhttp) → blank box.
+          source={{ uri, headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36' } }}
           onError={() => setFailed(true)}
           style={{ width: size - 10, height: size - 10 }}
           resizeMode="contain"

@@ -20,6 +20,7 @@ import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
+import { BrandGradient } from '../../components/ui/Gradient';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -85,26 +86,34 @@ export default function IpoDetailScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: canApply ? 130 : 32 }}
+        contentContainerStyle={{ paddingBottom: canApply ? 130 : 32 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
         }
       >
-        {/* hero */}
-        <View style={styles.hero}>
-          <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={54} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.h1}>{ipo.name}</Text>
-            <View style={styles.heroMeta}>
-              <Chip label={ipo.type === 'sme' ? 'SME' : 'Mainboard'} tone={ipo.type === 'sme' ? 'brand' : 'neutral'} dot={false} />
-              <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
-            </View>
-            <View style={styles.heroDates}>
-              <CalendarIcon size={13} color={ui.muted} strokeWidth={1.8} />
-              <Text style={styles.heroDatesTxt}>{fmtRange(ipo.openDate, ipo.closeDate)}</Text>
+        {/* slim gradient band — visual continuity with the Home hero */}
+        <View style={styles.band}>
+          <BrandGradient />
+        </View>
+
+        <View style={styles.content}>
+        {/* hero card overlapping the band's bottom edge */}
+        <Card style={styles.heroCard}>
+          <View style={styles.hero}>
+            <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={54} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.h1}>{ipo.name}</Text>
+              <View style={styles.heroMeta}>
+                <Chip label={ipo.type === 'sme' ? 'SME' : 'Mainboard'} tone={ipo.type === 'sme' ? 'brand' : 'neutral'} dot={false} />
+                <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
+              </View>
+              <View style={styles.heroDates}>
+                <CalendarIcon size={13} color={ui.muted} strokeWidth={1.8} />
+                <Text style={styles.heroDatesTxt}>{fmtRange(ipo.openDate, ipo.closeDate)}</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* key stats */}
         <View style={styles.stats}>
@@ -194,6 +203,7 @@ export default function IpoDetailScreen() {
           <KV k="Registrar" v={ipo.registrar ?? '—'} />
           <KV k="Listing on" v={exchanges} last />
         </Card>
+        </View>
       </ScrollView>
 
       {/* sticky bottom apply bar */}
@@ -222,6 +232,14 @@ function KV({ k, v, last }: { k: string; v: string; last?: boolean }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
+  band: {
+    height: 120,
+    overflow: 'hidden',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  content: { paddingHorizontal: 16, marginTop: -48 },
+  heroCard: { marginBottom: 2 },
   hero: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
   h1: { fontSize: 21, fontWeight: '800', letterSpacing: -0.5, color: ui.title, lineHeight: 26 },
   heroMeta: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },

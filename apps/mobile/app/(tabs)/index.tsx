@@ -1,17 +1,20 @@
 /**
  * Home — IPO dashboard:
- *   gradient hero (logo chip + bell) → overlapping 3-col summary card
- *   → filter chips → "Open now" rich cards · "Upcoming" & "Recently listed"
- *   compact rows. Skeletons while loading; pull-to-refresh.
+ *   gradient hero (decorative geometry + gold accent + personal greeting)
+ *   → overlapping 3-col summary card (count-up figures) → filter chips →
+ *   "Open now" rich cards · "Upcoming" & "Recently listed" compact rows.
+ *   Staggered entrance motion; layout-mirroring skeletons; pull-to-refresh.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { setStatusBarStyle } from 'expo-status-bar';
 import { animateNext, microLabel, shadowCard, ui } from '../../lib/theme';
 import type { IpoFull } from '../../lib/ipoCalc';
 import { getIpos, listApplications } from '../../lib/api';
 import { useAuth } from '../../components/auth';
+import { useProfiles } from '../../components/profiles';
 import { useT } from '../../components/i18n';
 import { fmtDate } from '../../lib/format';
 import { IpoListCard } from '../../components/IpoListCard';
@@ -21,6 +24,7 @@ import { SectionTitle } from '../../components/ui/SectionTitle';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
+import { CountUp, FadeInUp } from '../../components/ui/motion';
 import { BellIcon, ChevronRightIcon, DocsIcon } from '../../components/ui/icons';
 
 type Filter = 'all' | 'open' | 'upcoming' | 'listed' | 'sme';
@@ -44,10 +48,21 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
+  const { profiles } = useProfiles();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
   const [appliedN, setAppliedN] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+
+  // gradient hero → light status bar while this tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle('light');
+      return () => setStatusBarStyle('dark');
+    }, []),
+  );
 
   const load = useCallback(async () => {
     const [rows, apps] = await Promise.all([
@@ -59,12 +74,21 @@ export default function HomeScreen() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try { await load(); } finally { setRefreshing(false); }
+    try {
+      await load();
+      setJustRefreshed(true);
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => setJustRefreshed(false), 2500);
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
+  const firstName = profiles.find((p) => p.relationship === 'self')?.fullName.trim().split(/\s+/)[0] ?? 'Investor';
   const openIpos = (ipos ?? []).filter((i) => i.status === 'open');
   const upcoming = (ipos ?? []).filter((i) => i.status === 'upcoming');
   const listed = (ipos ?? []).filter((i) => i.status === 'listed' || i.status === 'closed');
@@ -79,12 +103,16 @@ export default function HomeScreen() {
       style={styles.screen}
       contentContainerStyle={{ paddingBottom: 28 }}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" colors={[ui.indigo]} />
       }
     >
-      {/* ── gradient hero ── */}
+      {/* ── gradient hero (full-bleed under the status bar) ── */}
       <View style={[styles.hero, { paddingTop: insets.top + 12, minHeight: 170 + insets.top }]}>
         <BrandGradient />
+        {/* decorative geometry — plain Views (svg %-coordinate circles render
+            with jagged clipped edges on Android → "broken ellipse") */}
+        <View pointerEvents="none" style={[styles.orb, { width: 240, height: 240, borderRadius: 120, top: -140, right: -60, backgroundColor: 'rgba(255,255,255,0.05)' }]} />
+        <View pointerEvents="none" style={[styles.orb, { width: 190, height: 190, borderRadius: 95, bottom: -110, left: -70, backgroundColor: 'rgba(255,255,255,0.04)' }]} />
         <View style={styles.heroRow}>
           <View style={styles.logoChip}><Logo height={18} /></View>
           <Pressable
@@ -97,18 +125,20 @@ export default function HomeScreen() {
             <BellIcon size={21} color="#ffffff" strokeWidth={1.8} />
           </Pressable>
         </View>
-        <Text style={styles.greet}>{greeting()}</Text>
+        <Text style={styles.greet}>{greeting()}, {firstName}</Text>
+        {/* the one gold hero accent */}
+        <View style={styles.goldUnderline} />
         <Text style={styles.heroTitle}>IPO Dashboard</Text>
       </View>
 
-      {/* ── overlapping summary card ── */}
-      <View style={styles.summary}>
-        <SummaryCol k="LIVE" v={ipos ? String(openIpos.length) : undefined} />
+      {/* ── overlapping summary card (figures count up on first load) ── */}
+      <FadeInUp index={0} style={styles.summary}>
+        <SummaryCol k="LIVE" v={ipos ? openIpos.length : undefined} />
         <View style={styles.sumDiv} />
-        <SummaryCol k="UPCOMING" v={ipos ? String(upcoming.length) : undefined} />
+        <SummaryCol k="UPCOMING" v={ipos ? upcoming.length : undefined} />
         <View style={styles.sumDiv} />
-        <SummaryCol k="APPLIED" v={ipos ? String(appliedN) : undefined} />
-      </View>
+        <SummaryCol k="APPLIED" v={ipos ? appliedN : undefined} />
+      </FadeInUp>
 
       {/* ── filter chips ── */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
@@ -125,9 +155,10 @@ export default function HomeScreen() {
           );
         })}
       </ScrollView>
+      {justRefreshed ? <Text style={styles.refreshed}>Up to date ✓</Text> : null}
 
       {ipos === null ? (
-        /* skeleton loading — never "Loading…" text */
+        /* skeletons mirroring the real card anatomy */
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <SkeletonCard lines={3} />
           <SkeletonCard lines={2} />
@@ -137,25 +168,33 @@ export default function HomeScreen() {
         filtered.length === 0 ? (
           <EmptyState
             icon={<DocsIcon size={26} color={ui.indigo} />}
-            title={`No ${filter === 'sme' ? 'SME' : filter} IPOs right now`}
-            body="Pull down to refresh."
+            title={filter === 'open' ? 'No live IPOs right now' : `No ${filter === 'sme' ? 'SME' : filter} IPOs right now`}
+            body="The next one is loading… pull down to check."
           />
         ) : (
-          filtered.map((i) => <IpoListCard key={i.id} ipo={i} />)
+          filtered.map((i, idx) => (
+            <FadeInUp key={i.id} index={idx}>
+              <IpoListCard ipo={i} />
+            </FadeInUp>
+          ))
         )
       ) : (
         <>
-          {/* Open now — rich cards */}
+          {/* Open now — rich cards (the one gold section tick) */}
           {openIpos.length > 0 ? (
             <>
-              <SectionTitle label="Open now" style={styles.section} />
-              {openIpos.map((i) => <IpoListCard key={i.id} ipo={i} />)}
+              <SectionTitle label="Open now" tick style={styles.section} />
+              {openIpos.map((i, idx) => (
+                <FadeInUp key={i.id} index={idx + 1}>
+                  <IpoListCard ipo={i} />
+                </FadeInUp>
+              ))}
             </>
           ) : null}
 
           {/* Upcoming — compact rows */}
           {upcoming.length > 0 ? (
-            <>
+            <FadeInUp index={openIpos.length + 1}>
               <SectionTitle label="Upcoming" style={styles.section} />
               <View style={styles.compactCard}>
                 {upcoming.map((i, idx) => (
@@ -168,12 +207,12 @@ export default function HomeScreen() {
                   />
                 ))}
               </View>
-            </>
+            </FadeInUp>
           ) : null}
 
           {/* Recently listed — compact rows with gain */}
           {listed.length > 0 ? (
-            <>
+            <FadeInUp index={openIpos.length + 2}>
               <SectionTitle label="Recently listed" style={styles.section} />
               <View style={styles.compactCard}>
                 {listed.map((i, idx) => (
@@ -192,14 +231,14 @@ export default function HomeScreen() {
                   />
                 ))}
               </View>
-            </>
+            </FadeInUp>
           ) : null}
 
           {openIpos.length === 0 && upcoming.length === 0 && listed.length === 0 ? (
             <EmptyState
               icon={<DocsIcon size={26} color={ui.indigo} />}
-              title="No IPOs in the catalog yet"
-              body="Pull down to refresh."
+              title="No live IPOs right now"
+              body="The next one is loading… pull down to check."
             />
           ) : null}
         </>
@@ -208,13 +247,13 @@ export default function HomeScreen() {
   );
 }
 
-function SummaryCol({ k, v }: { k: string; v?: string }) {
+function SummaryCol({ k, v }: { k: string; v?: number }) {
   return (
     <View style={styles.sumCol}>
       <Text style={styles.sumK}>{k}</Text>
       {v == null
         ? <Skeleton w={28} h={22} r={6} style={{ marginTop: 4 }} />
-        : <Text style={styles.sumV}>{v}</Text>}
+        : <CountUp value={v} style={styles.sumV} />}
     </View>
   );
 }
@@ -243,6 +282,7 @@ function CompactRow({ ipo, right, divider, onPress }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
+  orb: { position: 'absolute' },
   hero: {
     overflow: 'hidden',
     borderBottomLeftRadius: 24,
@@ -257,7 +297,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   greet: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', marginTop: 18 },
-  heroTitle: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 3 },
+  goldUnderline: { width: 34, height: 3, borderRadius: 2, backgroundColor: '#FFCB32', marginTop: 6 },
+  heroTitle: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 8 },
   summary: {
     flexDirection: 'row', alignItems: 'center',
     marginTop: -40, marginHorizontal: 16, marginBottom: 4,
@@ -277,6 +318,7 @@ const styles = StyleSheet.create({
   fchipOn: { backgroundColor: ui.indigo },
   fchipTxt: { fontSize: 13, fontWeight: '700', color: ui.slate },
   fchipTxtOn: { color: '#ffffff' },
+  refreshed: { fontSize: 11.5, fontWeight: '700', color: ui.green, textAlign: 'center', marginBottom: 8 },
   section: { marginTop: 14, marginHorizontal: 16 },
   compactCard: {
     marginHorizontal: 16, marginBottom: 12, backgroundColor: '#ffffff', borderRadius: 20,

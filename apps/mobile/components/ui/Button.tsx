@@ -35,7 +35,7 @@ export function Button({ label, onPress, variant = 'primary', disabled, busy, sm
 const styles = StyleSheet.create({
   base: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, flexDirection: 'row' },
   small: { height: 40, borderRadius: 12, paddingHorizontal: 14 },
-  pressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
+  pressed: { transform: [{ scale: 0.985 }], opacity: 0.9 },
   disabled: { opacity: 0.45 },
   primary: { backgroundColor: ui.indigo },
   secondary: { backgroundColor: ui.indigoTint },

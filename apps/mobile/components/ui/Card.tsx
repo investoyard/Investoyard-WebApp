@@ -1,7 +1,9 @@
-import { Pressable, StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
+import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
 import { shadowCard, ui } from '../../lib/theme';
+import { PressableScale } from './motion';
 
-/** Elevated surface card: radius 20, no border, soft shadow. Pressable when onPress given. */
+/** Elevated surface card: radius 20, no border, soft shadow.
+ *  Pressable cards get the unified spring press physics (scale 0.985). */
 export function Card({ children, style, onPress }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -9,12 +11,9 @@ export function Card({ children, style, onPress }: {
 }) {
   if (onPress) {
     return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.card, style, pressed && styles.pressed]}
-      >
+      <PressableScale onPress={onPress} style={[styles.card, style]}>
         {children}
-      </Pressable>
+      </PressableScale>
     );
   }
   return <View style={[styles.card, style]}>{children}</View>;
@@ -27,5 +26,4 @@ const styles = StyleSheet.create({
     padding: 16,
     ...shadowCard,
   },
-  pressed: { opacity: 0.92, transform: [{ scale: 0.98 }] },
 });

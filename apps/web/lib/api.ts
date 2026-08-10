@@ -237,11 +237,31 @@ function issueCr(s?: string): number {
 }
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
+/**
+ * The operator sets status manually and often forgets to advance it — never show
+ * an EARLIER lifecycle stage than the dates prove (an IPO whose close date passed
+ * can't still be "upcoming"). Explicit 'withdrawn' is always respected.
+ */
+const STATUS_ORDER = ['upcoming', 'open', 'closed', 'listed'];
+function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate' | 'listingDate'>): IpoDetail['status'] {
+  if (ipo.status === 'withdrawn') return ipo.status;
+  const now = new Date();
+  const day = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local YYYY-MM-DD
+  let derived = 'upcoming';
+  if (ipo.listingDate && day >= ipo.listingDate) derived = 'listed';
+  else if (ipo.closeDate && day > ipo.closeDate) derived = 'closed';
+  else if (ipo.openDate && day >= ipo.openDate) derived = 'open';
+  const a = STATUS_ORDER.indexOf(ipo.status);
+  const d = STATUS_ORDER.indexOf(derived);
+  return (d > a ? derived : ipo.status) as IpoDetail['status'];
+}
+
 function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
   const ex: any = (ipo as any).extra ?? {};
   const f: IpoFull = {
     ...ipo,
+    status: effectiveStatus(ipo),
     logo: (ipo as any).logoUrl ?? (ipo as any).logo, // API sends logoUrl; cards/hero read `logo`
     subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
     leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),

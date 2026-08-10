@@ -24,6 +24,8 @@ function TabIcon({ focused, color, Line, Fill }: {
   const I = focused ? Fill : Line;
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapOn]}>
+      {/* Zomato-style 2px active indicator at the very top of the tab slot */}
+      {focused ? <View style={styles.activeLine} /> : null}
       <I size={24} color={color} strokeWidth={1.8} />
     </View>
   );
@@ -87,4 +89,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   iconWrapOn: { backgroundColor: ui.indigoTint },
+  // sits flush with the tab bar's top edge (icon wrapper starts at paddingTop 6)
+  activeLine: {
+    position: 'absolute', top: -6, width: 34, height: 2, borderRadius: 1,
+    backgroundColor: ui.indigo, alignSelf: 'center',
+  },
 });

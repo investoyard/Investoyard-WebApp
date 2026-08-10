@@ -14,13 +14,15 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard } from '../../components/ui/Skeleton';
+import { CountUp, FadeInUp } from '../../components/ui/motion';
 import { DocsIcon } from '../../components/ui/icons';
 
 /* Status → pill tone (parity with the web Portfolio STATUS_CLASS map). */
 const TONE: Record<string, ChipTone> = {
   draft: 'warn', submitted: 'info', dp_verified: 'info', dp_failed: 'danger',
   mandate_pending: 'warn', upi_blocked: 'info', confirmed: 'info',
-  allotted: 'success', not_allotted: 'danger', released: 'info', rejected: 'danger', failed: 'danger',
+  // allotted = the celebration state → the app's one gold pill
+  allotted: 'gold', not_allotted: 'danger', released: 'info', rejected: 'danger', failed: 'danger',
 };
 
 /* 4-step lifecycle: Applied → Bid → Allotment → Refund/Credit */
@@ -120,21 +122,21 @@ export default function ApplicationsScreen() {
         <EmptyState
           icon={<DocsIcon size={26} color={ui.indigo} />}
           title={t('apps.empty')}
-          body="Apply to an open IPO — your applications and allotment results will appear here."
+          body="Your first application will show up here — pick an open IPO and go for it."
           cta={<Button label="Explore IPOs" variant="ghost" onPress={() => router.push('/')} />}
         />
       ) : (
         <>
-          {/* summary strip */}
-          <View style={styles.summary}>
-            <SummaryCol k="APPLIED" v={String(apps.length)} />
+          {/* summary strip (figures count up on first load) */}
+          <FadeInUp index={0} style={styles.summary}>
+            <SummaryCol k="APPLIED" v={apps.length} />
             <View style={styles.sumDiv} />
-            <SummaryCol k="ALLOTTED" v={String(allottedN)} tone={allottedN > 0 ? ui.green : undefined} />
+            <SummaryCol k="ALLOTTED" v={allottedN} tone={allottedN > 0 ? ui.green : undefined} />
             <View style={styles.sumDiv} />
-            <SummaryCol k="IN PROGRESS" v={String(progressN)} />
-          </View>
+            <SummaryCol k="IN PROGRESS" v={progressN} />
+          </FadeInUp>
 
-          {apps.map((a) => {
+          {apps.map((a, cardIdx) => {
             const step = stepOf(a);
             const line = resultLine(a);
             const profileName = (a as any).profileName as string | undefined;
@@ -142,7 +144,8 @@ export default function ApplicationsScreen() {
             // read it defensively so the mobile app typechecks against either build.
             const missing = ((a as any).missingDetails ?? []) as string[];
             return (
-              <Card style={{ marginTop: 12 }} key={a.id}>
+              <FadeInUp key={a.id} index={cardIdx + 1}>
+              <Card style={{ marginTop: 12 }}>
                 <View style={styles.row}>
                   <View style={styles.title}>
                     <CompanyLogo name={a.ipoName ?? a.ipoSymbol ?? '?'} size={40} />
@@ -229,6 +232,7 @@ export default function ApplicationsScreen() {
                   />
                 ) : null}
               </Card>
+              </FadeInUp>
             );
           })}
         </>
@@ -237,11 +241,11 @@ export default function ApplicationsScreen() {
   );
 }
 
-function SummaryCol({ k, v, tone }: { k: string; v: string; tone?: string }) {
+function SummaryCol({ k, v, tone }: { k: string; v: number; tone?: string }) {
   return (
     <View style={styles.sumCol}>
       <Text style={styles.sumK}>{k}</Text>
-      <Text style={[styles.sumV, tone ? { color: tone } : null]}>{v}</Text>
+      <CountUp value={v} style={[styles.sumV, tone ? { color: tone } : null] as any} />
     </View>
   );
 }

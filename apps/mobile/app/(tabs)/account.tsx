@@ -22,15 +22,32 @@ export default function AccountScreen() {
   const t = useT();
   const router = useRouter();
   const { lang, setLang } = useLang();
-  const { token, signOut } = useAuth();
+  const { token, mobile, signOut } = useAuth();
   const { profiles } = useProfiles();
   const [langOpen, setLangOpen] = useState(false);
 
   const currentLang = LANGS.find((l) => l.code === lang)?.label ?? 'English';
+  const selfName = profiles.find((p) => p.relationship === 'self')?.fullName;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
       <Text style={styles.h1}>Account</Text>
+
+      {token ? (
+        <Card style={{ marginTop: 16 }}>
+          <View style={styles.signinRow}>
+            <View style={styles.idAvatar}>
+              <Text style={styles.idAvatarTxt}>{(selfName ?? 'I').trim().charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.signinTitle}>{selfName ?? 'Investor'}</Text>
+              <Text style={styles.signinSub}>
+                {mobile ? `Signed in · +91 ${mobile}` : 'Signed in'}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
 
       {!token ? (
         <Card style={{ marginTop: 16 }}>
@@ -162,6 +179,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   h1: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
   signinRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  idAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
+  idAvatarTxt: { fontSize: 17, fontWeight: '800', color: ui.indigo },
   signinTitle: { fontSize: 15, fontWeight: '700', color: ui.title },
   signinSub: { fontSize: 12.5, color: ui.muted, marginTop: 2 },
   groupLbl: { ...microLabel, marginTop: 24, marginBottom: 8, paddingHorizontal: 4 },

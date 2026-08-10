@@ -77,36 +77,52 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
         <MiniStat k="Min invest" v={inr(ipo.minAmount)} />
       </View>
 
-      {/* Row 3 — GMP + subscription progress */}
-      {ipo.gmp != null || ipo.listingGainPct != null || subX != null ? (
-        <View style={styles.signals}>
-          {ipo.gmp != null ? (
-            <View style={styles.gmpBlock}>
-              <View style={[styles.gmpChip, { backgroundColor: ipo.gmp >= 0 ? ui.greenTint : ui.redTint }]}>
-                <Text style={[styles.gmpChipTxt, { color: ipo.gmp >= 0 ? ui.green : ui.red }]}>
-                  {ipo.gmp >= 0 ? '▲' : '▼'} GMP {ipo.gmp >= 0 ? '+' : ''}₹{ipo.gmp}{ipo.gmpPct != null ? ` (${ipo.gmpPct}%)` : ''}
+      {/* Row 3 — market signal + subscription progress. Listed issues swap the
+          (now historical) GMP for the actual LISTING PRICE + gain; everything
+          else on the card stays identical to a live issue. */}
+      {(() => {
+        const isListed = ipo.status === 'listed';
+        const ex: any = (ipo as any).extra ?? {};
+        const listedPrice =
+          Number(String(ex.nseListingPrice || ex.bseListingPrice || '').replace(/[^\d.]/g, '')) ||
+          (ipo.listingGainPct != null && ipo.priceBandMax ? Math.round(ipo.priceBandMax * (1 + ipo.listingGainPct / 100)) : 0);
+        const gain = ipo.listingGainPct;
+        if (isListed && (listedPrice || gain != null)) {
+          const pos = (gain ?? 0) >= 0;
+          return (
+            <View style={styles.signals}>
+              <View style={[styles.gmpChip, { backgroundColor: pos ? ui.greenTint : ui.redTint }]}>
+                <Text style={[styles.gmpChipTxt, { color: pos ? ui.green : ui.red }]}>
+                  {pos ? '▲' : '▼'} Listed{listedPrice ? ` at ₹${listedPrice}` : ''}{gain != null ? ` (${pos ? '+' : ''}${gain}%)` : ''}
                 </Text>
               </View>
-              <Text style={styles.gmpNote}>GMP is unofficial · not investment advice</Text>
             </View>
-          ) : null}
-          {ipo.listingGainPct != null ? (
-            <View style={[styles.gmpChip, { backgroundColor: ipo.listingGainPct >= 0 ? ui.greenTint : ui.redTint }]}>
-              <Text style={[styles.gmpChipTxt, { color: ipo.listingGainPct >= 0 ? ui.green : ui.red }]}>
-                {ipo.listingGainPct >= 0 ? '▲' : '▼'} Listed {ipo.listingGainPct >= 0 ? '+' : ''}{ipo.listingGainPct}%
-              </Text>
-            </View>
-          ) : null}
-          {isOpen && subX != null ? (
-            <View style={styles.subWrap}>
-              <View style={styles.subTrack}>
-                <View style={[styles.subFill, { width: `${Math.max(6, demandPct)}%` }]} />
+          );
+        }
+        if (isListed || (ipo.gmp == null && subX == null)) return null;
+        return (
+          <View style={styles.signals}>
+            {ipo.gmp != null ? (
+              <View style={styles.gmpBlock}>
+                <View style={[styles.gmpChip, { backgroundColor: ipo.gmp >= 0 ? ui.greenTint : ui.redTint }]}>
+                  <Text style={[styles.gmpChipTxt, { color: ipo.gmp >= 0 ? ui.green : ui.red }]}>
+                    {ipo.gmp >= 0 ? '▲' : '▼'} GMP {ipo.gmp >= 0 ? '+' : ''}₹{ipo.gmp}{ipo.gmpPct != null ? ` (${ipo.gmpPct}%)` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.gmpNote}>GMP is unofficial · not investment advice</Text>
               </View>
-              <Text style={styles.subTxt}>{subX}× subscribed</Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+            ) : null}
+            {isOpen && subX != null ? (
+              <View style={styles.subWrap}>
+                <View style={styles.subTrack}>
+                  <View style={[styles.subFill, { width: `${Math.max(6, demandPct)}%` }]} />
+                </View>
+                <Text style={styles.subTxt}>{subX}× subscribed</Text>
+              </View>
+            ) : null}
+          </View>
+        );
+      })()}
 
       {/* Topic chips + single animated panel */}
       <View style={styles.topics}>
@@ -165,8 +181,9 @@ const styles = StyleSheet.create({
   },
   stat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
   statDiv: { width: 1, height: 26, backgroundColor: ui.divider },
-  statK: { ...microLabel, fontSize: 10.5 },
-  statV: { fontSize: 14.5, fontWeight: '800', color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
+  // money is the hero — 16/800, shared baseline across the 3 columns
+  statK: { ...microLabel, fontSize: 10.5, lineHeight: 13 },
+  statV: { fontSize: 16, fontWeight: '800', color: ui.title, marginTop: 4, lineHeight: 20, fontVariant: ['tabular-nums'] },
   signals: { marginTop: 12, gap: 8 },
   gmpBlock: { gap: 4 },
   gmpChip: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
@@ -175,7 +192,7 @@ const styles = StyleSheet.create({
   subWrap: { marginTop: 2 },
   subTrack: { height: 6, borderRadius: 999, backgroundColor: ui.slateTint, overflow: 'hidden' },
   subFill: { height: '100%', borderRadius: 999, backgroundColor: ui.indigo },
-  subTxt: { fontSize: 12, fontWeight: '600', color: ui.slate, marginTop: 5, fontVariant: ['tabular-nums'] },
+  subTxt: { fontSize: 13, fontWeight: '800', color: ui.indigo, marginTop: 5, fontVariant: ['tabular-nums'] },
   topics: { flexDirection: 'row', gap: 6, marginTop: 14, flexWrap: 'wrap' },
   topic: {
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: ui.canvas,

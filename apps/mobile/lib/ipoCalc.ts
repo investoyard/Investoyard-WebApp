@@ -18,11 +18,32 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
 const RESERVED: Record<string, number> = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
 const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
 
+/**
+ * The operator sets status manually and often forgets to advance it — derive the
+ * real lifecycle stage from the dates and never show an EARLIER stage than the
+ * dates prove (an IPO whose close date passed can't still be "upcoming").
+ * Explicit 'withdrawn' is always respected.
+ */
+const STATUS_ORDER = ['upcoming', 'open', 'closed', 'listed'];
+export function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate' | 'listingDate'>): IpoDetail['status'] {
+  if (ipo.status === 'withdrawn') return ipo.status;
+  const now = new Date();
+  const day = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local YYYY-MM-DD
+  let derived = 'upcoming';
+  if (ipo.listingDate && day >= ipo.listingDate) derived = 'listed';
+  else if (ipo.closeDate && day > ipo.closeDate) derived = 'closed';
+  else if (ipo.openDate && day >= ipo.openDate) derived = 'open';
+  const a = STATUS_ORDER.indexOf(ipo.status);
+  const d = STATUS_ORDER.indexOf(derived);
+  return (d > a ? derived : ipo.status) as IpoDetail['status'];
+}
+
 /** Attach reservedPct to subscription rows so reservation()/subscriptionTable() work. */
 export function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
   return {
     ...ipo,
+    status: effectiveStatus(ipo),
     logoUrl: (ipo as any).logoUrl ?? undefined,
     extra: (ipo as any).extra ?? undefined,
     subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),

@@ -12,12 +12,13 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
+import { FadeInUp } from '../../components/ui/motion';
 import { ShieldIcon, UsersIcon } from '../../components/ui/icons';
 
 export default function ProfilesScreen() {
   const t = useT();
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, mobile } = useAuth();
   const { profiles, loading, refresh, removeProfile } = useProfiles();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -56,7 +57,7 @@ export default function ProfilesScreen() {
     >
       <Text style={styles.h1}>{t('profiles.title')}</Text>
       <Text style={styles.count}>
-        {profiles.length} profile{profiles.length !== 1 ? 's' : ''} · {verifiedN} PAN-verified
+        {mobile ? `+91 ${mobile} · ` : ''}{profiles.length} profile{profiles.length !== 1 ? 's' : ''} · {verifiedN} PAN-verified
       </Text>
 
       {/* self-PAN privacy note */}
@@ -78,10 +79,11 @@ export default function ProfilesScreen() {
         />
       ) : (
         <>
-          {profiles.map((p) => {
+          {profiles.map((p, cardIdx) => {
             const verified = p.kycStatus === 'verified';
             return (
-              <Card style={{ marginTop: 12 }} key={p.id}>
+              <FadeInUp key={p.id} index={cardIdx}>
+              <Card style={{ marginTop: 12 }}>
                 <View style={styles.row}>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarTxt}>{initials(p.fullName)}</Text>
@@ -111,6 +113,7 @@ export default function ProfilesScreen() {
                   {p.hasBank ? <Badge label="Bank" tone="ok" check /> : null}
                 </View>
               </Card>
+              </FadeInUp>
             );
           })}
 

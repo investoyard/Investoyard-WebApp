@@ -3,12 +3,13 @@
  * bottom white sheet (radius 24) with the mobile → OTP flow. Auth logic is
  * unchanged (requestOtp → verifyOtp → signIn → back).
  */
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { setStatusBarStyle } from 'expo-status-bar';
 import { microLabel, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
@@ -32,6 +33,14 @@ export default function LoginScreen() {
   const [otpFocused, setOtpFocused] = useState(false);
   const otpRef = useRef<TextInput>(null);
 
+  // full-screen gradient → light status bar while this modal is up
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle('light');
+      return () => setStatusBarStyle('dark');
+    }, []),
+  );
+
   const onGetOtp = async () => {
     if (!/^\d{10}$/.test(mobile)) { setError('Enter a valid 10-digit mobile'); return; }
     setBusy(true); setError(null);
@@ -45,7 +54,7 @@ export default function LoginScreen() {
     setBusy(true); setError(null);
     const res = await verifyOtp(requestId, otp);
     setBusy(false);
-    if (res?.accessToken) { signIn(res.accessToken); router.back(); }
+    if (res?.accessToken) { signIn(res.accessToken, mobile); router.back(); }
     else setError('Invalid code');
   };
 
