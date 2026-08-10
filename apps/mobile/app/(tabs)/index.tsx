@@ -22,6 +22,7 @@ import { Logo } from '../../components/Logo';
 import { BrandGradient } from '../../components/ui/Gradient';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { IllusDocs } from '../../components/ui/illustrations';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { CountUp, FadeInUp } from '../../components/ui/motion';
@@ -124,7 +125,7 @@ export default function HomeScreen() {
         <View pointerEvents="none" style={[styles.orb, { width: 240, height: 240, borderRadius: 120, top: -140, right: -60, backgroundColor: 'rgba(255,255,255,0.05)' }]} />
         <View pointerEvents="none" style={[styles.orb, { width: 190, height: 190, borderRadius: 95, bottom: -110, left: -70, backgroundColor: 'rgba(255,255,255,0.04)' }]} />
         <View style={styles.heroRow}>
-          <View style={styles.logoChip}><Logo height={18} /></View>
+          <Logo height={21} variant="light" />
           <Pressable
             onPress={() => router.push('/notifications')}
             hitSlop={8}
@@ -207,7 +208,7 @@ export default function HomeScreen() {
         /* filtered flat list */
         filtered.length === 0 ? (
           <EmptyState
-            icon={<DocsIcon size={26} color={ui.indigo} />}
+            art={<IllusDocs />}
             title={filter === 'open' ? 'No live IPOs right now' : `No ${board === 'sme' ? 'SME ' : board === 'mainboard' ? 'Mainboard ' : ''}${filter} IPOs right now`}
             body="The next one is loading… pull down to check."
           />
@@ -284,7 +285,7 @@ export default function HomeScreen() {
 
           {openIpos.length === 0 && upcoming.length === 0 && listed.length === 0 ? (
             <EmptyState
-              icon={<DocsIcon size={26} color={ui.indigo} />}
+              art={<IllusDocs />}
               title="No live IPOs right now"
               body="The next one is loading… pull down to check."
             />

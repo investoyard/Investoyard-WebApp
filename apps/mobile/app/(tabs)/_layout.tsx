@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, ui } from '../../lib/theme';
+import { tapLight } from '../../lib/haptics';
 import { AppHeader } from '../../components/ui/AppHeader';
 import {
   DocsIcon, DocsIconFill, GearIcon, GearIconFill,
@@ -35,6 +36,7 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
     <Tabs
+      screenListeners={{ tabPress: () => tapLight() }}
       screenOptions={{
         header: () => <AppHeader />,
         tabBarActiveTintColor: ui.indigo,

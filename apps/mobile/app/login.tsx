@@ -14,6 +14,7 @@ import { fonts, microLabel, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { requestOtp, verifyOtp } from '../lib/api';
+import { tapSuccess } from '../lib/haptics';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/ui/Button';
 import { BrandGradient } from '../components/ui/Gradient';
@@ -54,7 +55,7 @@ export default function LoginScreen() {
     setBusy(true); setError(null);
     const res = await verifyOtp(requestId, otp);
     setBusy(false);
-    if (res?.accessToken) { signIn(res.accessToken, mobile); router.back(); }
+    if (res?.accessToken) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); }
     else setError('Invalid code');
   };
 
@@ -82,7 +83,7 @@ export default function LoginScreen() {
 
       {/* brand block */}
       <View style={[styles.brand, { paddingTop: insets.top + 64 }]}>
-        <View style={styles.logoChip}><Logo height={22} /></View>
+        <Logo height={26} variant="light" />
         <Text style={styles.brandName}>Investoyard</Text>
         <Text style={styles.tagline}>Investing in IPOs, has never been this easy.</Text>
       </View>

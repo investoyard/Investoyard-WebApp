@@ -85,14 +85,16 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   const topics: { key: Topic; label: React.ReactNode }[] = [
     { key: 'reservation', label: 'Reserve' },
     { key: 'lot', label: 'Lots' },
-    { key: 'timeline', label: 'Timeline' },
+    // Listed cards drop Timeline (historical by then) so the chip row stays on
+    // ONE line and card heights match across the grid.
+    ...(!isListed ? [{ key: 'timeline' as Topic, label: 'Timeline' }] : []),
     { key: 'sub', label: 'Subs' },
     // GMP is a per-tenant feature flag (off for regulated / white-label tenants).
     ...(tenant.flags.gmpEnabled || isListed
       ? [{
           key: 'gmp' as Topic,
           label: isListed
-            ? <>Listed{listedGain != null ? <> <span className={listedGain >= 0 ? 'gp' : 'gn'}>{listedGain >= 0 ? '+' : ''}{listedGain}%</span></> : null}</>
+            ? <>Listed{listedGain != null ? <> <span className={listedGain >= 0 ? 'gp' : 'gn'}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
             : ipo.gmp != null ? <>GMP <span className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
         }]
       : []),

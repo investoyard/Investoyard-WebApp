@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { fonts, ui } from '../../lib/theme';
+import { animateNext, fonts, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { useProfiles, maskPan } from '../../components/profiles';
@@ -10,10 +10,20 @@ import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { IllusUsers } from '../../components/ui/illustrations';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { FadeInUp } from '../../components/ui/motion';
-import { ShieldIcon, UsersIcon } from '../../components/ui/icons';
+import { ChevronDownIcon, ShieldIcon, UsersIcon } from '../../components/ui/icons';
+
+function DetailRow({ k, v }: { k: string; v: string }) {
+  return (
+    <View style={styles.dRow}>
+      <Text style={styles.dK}>{k}</Text>
+      <Text style={styles.dV} numberOfLines={2}>{v}</Text>
+    </View>
+  );
+}
 
 export default function ProfilesScreen() {
   const t = useT();
@@ -21,6 +31,7 @@ export default function ProfilesScreen() {
   const { token, mobile } = useAuth();
   const { profiles, loading, refresh, removeProfile } = useProfiles();
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null); // tap a card → view details
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -73,7 +84,7 @@ export default function ProfilesScreen() {
         </View>
       ) : profiles.length === 0 ? (
         <EmptyState
-          icon={<UsersIcon size={26} color={ui.indigo} />}
+          art={<IllusUsers />}
           title={t('profiles.empty')}
           cta={<Button label={`+ ${t('profiles.add')}`} onPress={() => router.push('/profiles/new')} />}
         />
@@ -81,9 +92,13 @@ export default function ProfilesScreen() {
         <>
           {profiles.map((p, cardIdx) => {
             const verified = p.kycStatus === 'verified';
+            const open = expandedId === p.id;
             return (
               <FadeInUp key={p.id} index={cardIdx}>
-              <Card style={{ marginTop: 12 }}>
+              <Card
+                style={{ marginTop: 12 }}
+                onPress={() => { animateNext(); setExpandedId(open ? null : p.id); }}
+              >
                 <View style={styles.row}>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarTxt}>{initials(p.fullName)}</Text>
@@ -94,15 +109,9 @@ export default function ProfilesScreen() {
                       {relLabel(p.relationship)} · {maskPan(p.pan)}
                     </Text>
                   </View>
-                  {p.relationship !== 'self' ? (
-                    <Pressable
-                      onPress={() => confirmDelete(p.id, p.fullName)}
-                      hitSlop={8}
-                      style={({ pressed }) => [styles.remove, pressed && { opacity: 0.6, transform: [{ scale: 0.97 }] }]}
-                    >
-                      <Text style={styles.removeTxt}>Remove</Text>
-                    </Pressable>
-                  ) : null}
+                  <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
+                    <ChevronDownIcon size={16} color={ui.muted} strokeWidth={2} />
+                  </View>
                 </View>
                 <View style={styles.badges}>
                   {verified
@@ -112,6 +121,30 @@ export default function ProfilesScreen() {
                   {p.upiId ? <Badge label="UPI" tone="ok" check /> : <Badge label={t('profiles.needUpi')} tone="wait" />}
                   {p.hasBank ? <Badge label="Bank" tone="ok" check /> : null}
                 </View>
+
+                {/* expanded view — full saved details + actions */}
+                {open ? (
+                  <View style={styles.detail}>
+                    <DetailRow k="Demat" v={`${p.depository} · ${p.dpId ? `${p.dpId} / ` : ''}${p.clientId}`} />
+                    {p.mobile ? <DetailRow k="Mobile" v={`+91 ${p.mobile}`} /> : null}
+                    {p.email ? <DetailRow k="Email" v={p.email} /> : null}
+                    {p.bankName ? <DetailRow k="Bank" v={`${p.bankName}${p.branchName ? ` · ${p.branchName}` : ''}`} /> : null}
+                    {p.ifsc ? <DetailRow k="IFSC" v={p.ifsc} /> : null}
+                    {p.address || p.city ? <DetailRow k="Address" v={[p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ')} /> : null}
+                    {p.hasApplications ? <DetailRow k="Applications" v="Yes — PAN is locked" /> : null}
+                    <View style={styles.actions}>
+                      <Button label="Edit" variant="ghost" onPress={() => router.push(`/profiles/new?id=${p.id}`)} style={{ flex: 1 }} />
+                      {p.relationship !== 'self' ? (
+                        <Pressable
+                          onPress={() => confirmDelete(p.id, p.fullName)}
+                          style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }]}
+                        >
+                          <Text style={styles.deleteTxt}>{p.hasApplications ? 'Deactivate' : 'Delete'}</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
               </Card>
               </FadeInUp>
             );
@@ -145,7 +178,15 @@ const styles = StyleSheet.create({
   avatarTxt: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo },
   name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   meta: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
-  remove: { paddingHorizontal: 10, paddingVertical: 8 },
-  removeTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.red },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  detail: { marginTop: 14, paddingTop: 6, borderTopWidth: 1, borderTopColor: ui.divider },
+  dRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 7 },
+  dK: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  dV: { flex: 1, textAlign: 'right', fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
+  deleteBtn: {
+    flex: 1, height: 48, borderRadius: 14, backgroundColor: ui.redTint,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  deleteTxt: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.red },
 });

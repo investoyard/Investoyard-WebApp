@@ -21,8 +21,11 @@ const nativeLogoXml = logoXml
     return attrs.trim();
   });
 
+/** Light variant for gradient/dark surfaces: indigo strokes → white, gold stays. */
+const lightLogoXml = nativeLogoXml.replace(/fill="#3c2e7e"/g, 'fill="#ffffff"');
+
 /** Investoyard wordmark (221×39 native ratio ≈ 5.67:1). */
-export function Logo({ height = 24 }: { height?: number }) {
+export function Logo({ height = 24, variant = 'dark' }: { height?: number; variant?: 'dark' | 'light' }) {
   const width = Math.round((221 / 39) * height);
-  return <SvgXml xml={nativeLogoXml} width={width} height={height} />;
+  return <SvgXml xml={variant === 'light' ? lightLogoXml : nativeLogoXml} width={width} height={height} />;
 }

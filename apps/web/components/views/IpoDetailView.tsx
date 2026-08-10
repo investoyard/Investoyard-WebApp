@@ -105,6 +105,28 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
               <div className="metric"><div className="k">Issue size</div><div className="v mono">{ipo.issueSize ?? '—'}</div></div>
             </div>
 
+            {/* Listing performance — only once the issue is listed */}
+            {ipo.status === 'listed' && (() => {
+              const ex: any = (ipo as any).extra ?? {};
+              const issueP = ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
+              const price = Number(String(ex.nseListingPrice || ex.bseListingPrice || '').replace(/[^\d.]/g, '')) ||
+                (ipo.listingGainPct != null && issueP ? Math.round(issueP * (1 + ipo.listingGainPct / 100)) : 0);
+              const gain = ipo.listingGainPct ?? (price && issueP ? Math.round(((price - issueP) / issueP) * 1000) / 10 : undefined);
+              if (!price && gain == null) return null;
+              return (
+                <div className="panel" style={{ marginTop: 18 }}>
+                  <h3>Listing performance</h3>
+                  <div className="metrics" style={{ marginTop: 12 }}>
+                    <div className="metric"><div className="k">Issue price</div><div className="v mono">₹{issueP || '—'}</div></div>
+                    <div className="metric hl"><div className="k">Listing price</div><div className="v mono">{price ? `₹${price}` : '—'}</div></div>
+                    {gain != null && (
+                      <div className="metric"><div className="k">Listing gain</div><div className="v mono" style={{ color: gain >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{gain >= 0 ? '+' : ''}{gain}%</div></div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="panel" style={{ marginTop: 18 }}>
               <h3>{tr('detail.keyDates')}</h3>
               <div className="hstepper" style={{ marginTop: 16 }}>

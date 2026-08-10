@@ -11,6 +11,7 @@ import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { IllusDocs } from '../../components/ui/illustrations';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard } from '../../components/ui/Skeleton';
@@ -120,7 +121,7 @@ export default function ApplicationsScreen() {
         </View>
       ) : apps.length === 0 ? (
         <EmptyState
-          icon={<DocsIcon size={26} color={ui.indigo} />}
+          art={<IllusDocs />}
           title={t('apps.empty')}
           body="Your first application will show up here — pick an open IPO and go for it."
           cta={<Button label="Explore IPOs" variant="ghost" onPress={() => router.push('/')} />}

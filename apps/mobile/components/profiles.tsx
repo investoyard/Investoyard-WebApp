@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './auth';
-import { listProfiles, createProfile, deleteProfile } from '../lib/api';
+import { listProfiles, createProfile, updateProfile, deleteProfile, type CreateProfileInput } from '../lib/api';
 import type { ProfileView } from '@investoyard/shared-types';
 
 /** Admin-managed via Masters → Relationships; stored/compared lowercase. */
@@ -20,7 +20,7 @@ export interface AsbaContact {
   mobile?: string;
 }
 
-export interface ProfileRecord {
+export interface ProfileRecord extends AsbaContact {
   id: string;                 // server UUID — sent to the rail as investorProfileId
   relationship: Relationship;
   fullName: string;
@@ -31,6 +31,8 @@ export interface ProfileRecord {
   upiId?: string;             // display flag only ('set' when a UPI is on file)
   hasBank?: boolean;          // display flag — bank account on file
   kycStatus?: 'unverified' | 'verified' | 'failed';
+  /** true once any IPO application exists — PAN edits are then locked */
+  hasApplications?: boolean;
 }
 
 type Ctx = {
@@ -38,6 +40,8 @@ type Ctx = {
   loading: boolean;
   /** POST /profiles → PII vault. Throws on failure (e.g. duplicate PAN) so the form can show why. */
   addProfile: (rec: Omit<ProfileRecord, 'id'> & AsbaContact) => Promise<void>;
+  /** PATCH /profiles/:id — omitted fields keep their values; secrets replace only when typed. */
+  editProfile: (id: string, patch: Partial<CreateProfileInput>) => Promise<void>;
   removeProfile: (id: string) => Promise<void>;
   refresh: () => void;
 };
@@ -46,11 +50,13 @@ const ProfilesContext = createContext<Ctx>({
   profiles: [],
   loading: false,
   addProfile: async () => {},
+  editProfile: async () => {},
   removeProfile: async () => {},
   refresh: () => {},
 });
 
 function fromView(v: ProfileView): ProfileRecord {
+  const x = v as any; // contact/bank prefill fields + hasApplications (newer API than shared-types dist)
   return {
     id: v.id,
     relationship: v.relationship,
@@ -62,6 +68,16 @@ function fromView(v: ProfileView): ProfileRecord {
     upiId: v.hasUpi ? 'set' : undefined,
     hasBank: v.hasBank,
     kycStatus: v.kycStatus,
+    ifsc: x.ifsc ?? undefined,
+    bankName: x.bankName ?? undefined,
+    branchName: x.branchName ?? undefined,
+    address: x.address ?? undefined,
+    city: x.city ?? undefined,
+    state: x.state ?? undefined,
+    pincode: x.pincode ?? undefined,
+    email: x.email ?? undefined,
+    mobile: x.mobile ?? undefined,
+    hasApplications: !!x.hasApplications,
   };
 }
 
@@ -112,6 +128,11 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
           email: rec.email,
           mobile: rec.mobile,
         });
+        refresh();
+      },
+      editProfile: async (id, patch) => {
+        if (!token) throw new Error('Please sign in first');
+        await updateProfile(token, id, patch);
         refresh();
       },
       removeProfile: async (id) => {

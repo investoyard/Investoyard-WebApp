@@ -6,6 +6,7 @@ import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { getNotifications, markNotificationRead } from '../lib/api';
 import { EmptyState } from '../components/ui/EmptyState';
+import { IllusBell } from '../components/ui/illustrations';
 import { LoginGate } from '../components/ui/LoginGate';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { BellIcon } from '../components/ui/icons';
@@ -44,7 +45,7 @@ export default function NotificationsScreen() {
         </View>
       ) : items.length === 0 ? (
         <EmptyState
-          icon={<BellIcon size={26} color={ui.indigo} />}
+          art={<IllusBell />}
           title={t('notif.empty')}
         />
       ) : (

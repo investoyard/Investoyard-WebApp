@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, UsersIcon } from '../../components/ui/icons';
+import { SuccessMoment } from '../../components/ui/Celebration';
 
 type ApplicantType = 'individual' | 'shareholder' | 'employee';
 
@@ -199,8 +200,10 @@ export default function ApplyScreen() {
 
         {placed ? (
           <View style={styles.placedBox}>
-            <CheckIcon size={18} color={ui.green} strokeWidth={2.6} />
-            <Text style={styles.placed}>{t('apply.placed')}</Text>
+            <SuccessMoment
+              title="Application placed"
+              body={t('apply.placed')}
+            />
           </View>
         ) : null}
       </ScrollView>
@@ -284,10 +287,8 @@ const styles = StyleSheet.create({
   consentTitle: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   consentText: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted, marginTop: 3, lineHeight: 18 },
   placedBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20,
-    backgroundColor: ui.greenTint, borderRadius: 14, padding: 14,
+    marginTop: 20, backgroundColor: '#ffffff', borderRadius: 20, padding: 6, ...shadowCard,
   },
-  placed: { flex: 1, color: ui.green, fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', lineHeight: 19 },
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', alignItems: 'center', gap: 12,

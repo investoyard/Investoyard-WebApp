@@ -9,7 +9,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
-import type { IpoFull } from '../../lib/ipoCalc';
+import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
 import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
 import { fmtRange, inr, priceBand, stripHtml, closesInLabel } from '../../lib/format';
@@ -123,6 +123,35 @@ export default function IpoDetailScreen() {
           <StatTile label="Issue size" value={ipo.issueSize ?? '—'} />
         </View>
 
+        {/* listing performance — only once the issue is listed */}
+        {(() => {
+          const li = listingInfo(ipo);
+          if (!li) return null;
+          const pos = (li.gainPct ?? 0) >= 0;
+          const issueP = ipo.priceBandMax ?? ipo.priceBandMin;
+          return (
+            <>
+              <SectionTitle label="Listing performance" style={{ marginTop: 24 }} />
+              <Card>
+                <View style={styles.liRow}>
+                  <Text style={styles.liK}>Issue price</Text>
+                  <Text style={styles.liV}>{issueP != null ? `₹${issueP}` : '—'}</Text>
+                </View>
+                <View style={[styles.liRow, styles.liDiv]}>
+                  <Text style={styles.liK}>Listing price</Text>
+                  <Text style={styles.liV}>{li.price ? `₹${li.price}` : '—'}</Text>
+                </View>
+                {li.gainPct != null ? (
+                  <View style={[styles.liRow, styles.liDiv]}>
+                    <Text style={styles.liK}>Listing gain</Text>
+                    <Text style={[styles.liV, { color: pos ? ui.green : ui.red }]}>{pos ? '▲ +' : '▼ '}{li.gainPct}%</Text>
+                  </View>
+                ) : null}
+              </Card>
+            </>
+          );
+        })()}
+
         {/* timeline */}
         <SectionTitle label={t('detail.keyDates')} style={{ marginTop: 24 }} />
         <Card><TimelinePanel ipo={ipo} /></Card>
@@ -232,6 +261,10 @@ function KV({ k, v, last }: { k: string; v: string; last?: boolean }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
+  liRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 9 },
+  liDiv: { borderTopWidth: 1, borderTopColor: ui.divider },
+  liK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  liV: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   band: {
     height: 120,
     overflow: 'hidden',

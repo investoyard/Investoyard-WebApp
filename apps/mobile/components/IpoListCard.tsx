@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, ui } from '../lib/theme';
 import { listingInfo, type IpoFull } from '../lib/ipoCalc';
 import { fmtDate, inr, priceBand } from '../lib/format';
+import { tapSelect } from '../lib/haptics';
 import { useT } from './i18n';
 import { Card } from './ui/Card';
 import { Chip, ChipTone } from './ui/Chip';
@@ -45,6 +46,7 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
   const demandPct = subX != null ? Math.min(100, (subX / 15) * 100) : 0;
 
   const toggle = (k: Topic) => {
+    tapSelect();
     animateNext();
     setOpen((cur) => (cur === k ? null : k)); // single-open accordion
   };

@@ -255,6 +255,24 @@ export async function createProfile(token: string, input: CreateProfileInput): P
   return (await res.json()) as ProfileView;
 }
 
+/** Partial edit — omitted fields keep their values; PAN/bank/UPI replaced only when non-empty. */
+export async function updateProfile(token: string, id: string, input: Partial<CreateProfileInput>): Promise<ProfileView> {
+  const res = await fetch(`${API_BASE}/profiles/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    let msg = `Could not save (HTTP ${res.status})`;
+    try {
+      const b = await res.json();
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
+    } catch {}
+    throw new Error(msg);
+  }
+  return (await res.json()) as ProfileView;
+}
+
 export async function deleteProfile(token: string, id: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/profiles/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });

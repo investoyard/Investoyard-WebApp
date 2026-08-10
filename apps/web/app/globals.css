@@ -209,7 +209,7 @@ img, svg { vertical-align: middle; }
 .ic-specs > div.hi .v { color: var(--brand); }
 .ic-specs > div.hi .k { color: var(--brand-700); }
 
-.ic-topics { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; margin: 13px 0 0; scrollbar-width: none; -ms-overflow-style: none; }
+.ic-topics { display: flex; gap: 6px; flex-wrap: wrap; margin: 13px 0 0; }
 .ic-topics::-webkit-scrollbar { display: none; }
 .ic-topic { flex: 0 0 auto; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: var(--pill); padding: 6px 10px; cursor: pointer; white-space: nowrap; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s; }
 .ic-topic:hover { color: var(--text); }
