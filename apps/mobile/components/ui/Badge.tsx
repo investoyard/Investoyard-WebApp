@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 import { CheckIcon } from './icons';
 
 export type BadgeTone = 'ok' | 'wait' | 'info' | 'neutral';
@@ -24,5 +24,5 @@ export function Badge({ label, tone = 'neutral', check }: { label: string; tone?
 
 const styles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
-  txt: { fontSize: 11.5, fontWeight: '700' },
+  txt: { fontSize: 11.5, fontFamily: fonts.bold, fontWeight: '700' },
 });

@@ -30,6 +30,15 @@ export const ui = {
   skeleton: '#E9EBF2',
 } as const;
 
+/** Inter typeface (loaded in app/_layout.tsx via @expo-google-fonts/inter). */
+export const fonts = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  extrabold: 'Inter_800ExtraBold',
+} as const;
+
 /** Soft card elevation — iOS shadow + Android elevation (no visible borders). */
 export const shadowCard: ViewStyle = Platform.select<ViewStyle>({
   ios: { shadowColor: '#1A1440', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
@@ -39,6 +48,7 @@ export const shadowCard: ViewStyle = Platform.select<ViewStyle>({
 /** 11-12/700 UPPERCASE micro-label. */
 export const microLabel: TextStyle = {
   fontSize: 11.5,
+  fontFamily: fonts.bold,
   fontWeight: '700',
   letterSpacing: 0.6,
   textTransform: 'uppercase',

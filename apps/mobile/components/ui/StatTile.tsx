@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { microLabel, ui } from '../../lib/theme';
+import { fonts, microLabel, ui } from '../../lib/theme';
 
 /** Key-figure tile: UPPERCASE micro-label over a bold tabular-numeral value. */
 export function StatTile({ label, value, hilite }: { label: string; value: string; hilite?: boolean }) {
@@ -22,5 +22,5 @@ const styles = StyleSheet.create({
   },
   hilite: { backgroundColor: ui.indigoTint },
   k: { ...microLabel, fontSize: 11 },
-  v: { fontSize: 17, fontWeight: '800', color: ui.title, marginTop: 4, fontVariant: ['tabular-nums'] },
+  v: { fontSize: 17, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 4, fontVariant: ['tabular-nums'] },
 });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { animateNext, ui } from '../../lib/theme';
+import { fonts, animateNext, ui } from '../../lib/theme';
 import { ChevronDownIcon } from './icons';
 
 /**
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
   wrap: { borderTopWidth: 1, borderTopColor: ui.divider },
   head: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   pressed: { opacity: 0.7 },
-  title: { fontSize: 14.5, fontWeight: '700', color: ui.title },
+  title: { fontSize: 14.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   right: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  value: { fontSize: 13, color: ui.muted, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  value: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
   body: { paddingBottom: 14 },
 });

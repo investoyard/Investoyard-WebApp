@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle, StyleProp } from 'react-native';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: ui.indigoTint },
   ghost: { backgroundColor: ui.indigoTint },
   danger: { backgroundColor: ui.redTint },
-  txtBase: { fontSize: 15, fontWeight: '700' },
+  txtBase: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700' },
   txtSmall: { fontSize: 13.5 },
 });
 

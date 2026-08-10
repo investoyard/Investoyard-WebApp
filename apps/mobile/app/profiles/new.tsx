@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { microLabel, shadowCard, ui } from '../../lib/theme';
+import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useProfiles, Relationship } from '../../components/profiles';
 import { getRelationships, RelationshipOption } from '../../lib/api';
@@ -206,12 +206,12 @@ function Field(props: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  note: { color: ui.muted, fontSize: 13, lineHeight: 18 },
-  hint: { color: ui.muted, fontSize: 12.5, marginBottom: 4 },
+  note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, lineHeight: 18 },
+  hint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12.5, marginBottom: 4 },
   label: { ...microLabel, fontSize: 11, marginTop: 16, marginBottom: 7 },
   input: {
     height: 48, borderRadius: 12, paddingHorizontal: 14,
-    fontSize: 15.5, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
+    fontSize: 15.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
     borderWidth: 1.5, borderColor: 'transparent',
   },
   inputOn: { borderColor: ui.indigo, backgroundColor: '#ffffff' },
@@ -222,12 +222,12 @@ const styles = StyleSheet.create({
   },
   segWide: { flexGrow: 1, alignItems: 'center' },
   segOn: { backgroundColor: ui.indigo },
-  segTxt: { color: ui.slate, fontSize: 13.5, fontWeight: '600' },
-  segTxtOn: { color: '#ffffff', fontWeight: '700' },
+  segTxt: { color: ui.slate, fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600' },
+  segTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },
   consentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24, paddingHorizontal: 2 },
-  consentTxt: { flex: 1, color: ui.body, fontSize: 13, lineHeight: 18 },
+  consentTxt: { fontFamily: fonts.regular, flex: 1, color: ui.body, fontSize: 13, lineHeight: 18 },
   errorBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 14 },
-  error: { color: ui.red, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  error: { color: ui.red, fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12,

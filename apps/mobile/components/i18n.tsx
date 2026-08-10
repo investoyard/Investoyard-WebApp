@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react';
+import { fonts } from '../lib/theme';
 import { Pressable, Text, StyleSheet } from 'react-native';
 import { DEFAULT_LANG, Lang, LANGS, makeT } from '@investoyard/i18n';
 import { colors } from '@investoyard/design-tokens';
@@ -33,5 +34,5 @@ export function LangToggle() {
 
 const styles = StyleSheet.create({
   toggle: { paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: '#EEEBFA', alignItems: 'center', justifyContent: 'center' },
-  toggleText: { color: colors.brand.primary, fontWeight: '700', fontSize: 12.5 },
+  toggleText: { color: colors.brand.primary, fontFamily: fonts.bold, fontWeight: '700', fontSize: 12.5 },
 });

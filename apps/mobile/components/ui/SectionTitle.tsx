@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 
 /** 16/700 section header with optional right-side meta text.
  *  `tick` renders the small brand-gold block before the label — used exactly
@@ -25,6 +25,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, paddingHorizontal: 2 },
   left: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tick: { width: 4, height: 16, borderRadius: 2, backgroundColor: '#FFCB32' },
-  label: { fontSize: 16, fontWeight: '700', color: ui.title, letterSpacing: -0.2 },
-  meta: { fontSize: 12, color: ui.muted, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  label: { fontSize: 16, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, letterSpacing: -0.2 },
+  meta: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });

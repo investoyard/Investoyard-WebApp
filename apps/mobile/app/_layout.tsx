@@ -1,10 +1,18 @@
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { enableLayoutAnimation, ui } from '../lib/theme';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
+} from '@expo-google-fonts/inter';
+import { fonts, enableLayoutAnimation, ui } from '../lib/theme';
 import { Logo } from '../components/Logo';
 import { LanguageProvider, LangToggle, useT } from '../components/i18n';
 import { AuthProvider } from '../components/auth';
 import { ProfilesProvider } from '../components/profiles';
+
+// Hold the splash until the Inter faces are ready (no unstyled-text flash).
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Accordion / section animations (Android needs the experimental flag; once, at startup).
 enableLayoutAnimation();
@@ -18,7 +26,7 @@ function RootStack() {
         headerStyle: { backgroundColor: '#ffffff' },
         headerShadowVisible: false,
         headerTintColor: ui.indigo,
-        headerTitleStyle: { color: ui.title, fontSize: 16, fontWeight: '700' },
+        headerTitleStyle: { color: ui.title, fontSize: 16, fontFamily: fonts.bold, fontWeight: '700' },
         headerBackTitleVisible: false,
         contentStyle: { backgroundColor: ui.canvas },
       }}
@@ -40,6 +48,20 @@ function RootStack() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
+  });
+  // Never block the app on fonts: after 3s (or on a load error) render with
+  // system fonts — Android silently falls back per-style, which is acceptable.
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setTimedOut(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+  const ready = fontsLoaded || !!fontError || timedOut;
+  useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
+  if (!ready) return null; // splash stays visible
+
   return (
     <AuthProvider>
       <ProfilesProvider>

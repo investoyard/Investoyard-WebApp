@@ -38,6 +38,24 @@ export function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'cl
   return (d > a ? derived : ipo.status) as IpoDetail['status'];
 }
 
+/**
+ * Listing price + gain for a LISTED issue. Price comes from the admin-entered
+ * NSE/BSE listing price (extra.nse/bseListingPrice, GMP & Listing page) and the
+ * gain from the listingGainPct column — each derives the other from the band
+ * ceiling when only one is entered. null until any listing data exists.
+ */
+export function listingInfo(ipo: IpoFull): { price?: number; gainPct?: number } | null {
+  if (ipo.status !== 'listed') return null;
+  const ex: any = ipo.extra ?? {};
+  const issue = ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
+  let price = Number(String(ex.nseListingPrice || ex.bseListingPrice || '').replace(/[^\d.]/g, '')) || 0;
+  let gainPct = ipo.listingGainPct ?? undefined;
+  if (!price && gainPct != null && issue) price = Math.round(issue * (1 + gainPct / 100));
+  if (gainPct == null && price && issue) gainPct = Math.round(((price - issue) / issue) * 1000) / 10;
+  if (!price && gainPct == null) return null;
+  return { price: price || undefined, gainPct };
+}
+
 /** Attach reservedPct to subscription rows so reservation()/subscriptionTable() work. */
 export function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;

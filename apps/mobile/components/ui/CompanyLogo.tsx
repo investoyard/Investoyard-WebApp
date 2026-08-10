@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 import { initials } from '../../lib/format';
 
 /**
@@ -45,5 +45,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  txt: { fontWeight: '800', color: ui.indigo, letterSpacing: 0.5 },
+  txt: { fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo, letterSpacing: 0.5 },
 });

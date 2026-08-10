@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { ApplicationView } from '@investoyard/shared-types';
-import { microLabel, shadowCard, ui } from '../../lib/theme';
+import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { listApplications, withdrawApplication } from '../../lib/api';
@@ -106,7 +106,7 @@ export default function ApplicationsScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 110 /* clear the floating tab bar */ }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
       }
@@ -252,7 +252,7 @@ function SummaryCol({ k, v, tone }: { k: string; v: number; tone?: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  h1: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
+  h1: { fontSize: 24, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
   summary: {
     flexDirection: 'row', alignItems: 'center', marginTop: 16,
     backgroundColor: '#ffffff', borderRadius: 20, paddingVertical: 16,
@@ -261,11 +261,11 @@ const styles = StyleSheet.create({
   sumCol: { flex: 1, alignItems: 'center', gap: 3 },
   sumDiv: { width: 1, height: 30, backgroundColor: ui.divider },
   sumK: { ...microLabel, fontSize: 10.5 },
-  sumV: { fontSize: 20, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  sumV: { fontSize: 20, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   title: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  name: { fontSize: 15, fontWeight: '700', color: ui.title },
-  meta: { fontSize: 11.5, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
   steps: { flexDirection: 'row', marginTop: 16 },
   stepCol: { flex: 1, alignItems: 'center' },
   stepDotRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
@@ -273,19 +273,19 @@ const styles = StyleSheet.create({
   stepLineOn: { backgroundColor: ui.indigo },
   stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: ui.divider, marginHorizontal: 2 },
   stepDotOn: { backgroundColor: ui.indigo },
-  stepLbl: { fontSize: 10, fontWeight: '600', color: ui.muted, marginTop: 6 },
+  stepLbl: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 6 },
   stepLblOn: { color: ui.indigo },
   amountRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider, gap: 10,
   },
-  amountK: { fontSize: 13, fontWeight: '600', color: ui.muted, flex: 1 },
-  amountV: { fontSize: 18, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  result: { fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
+  amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, flex: 1 },
+  amountV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  result: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
   missingBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 10, gap: 4 },
-  missingTxt: { fontSize: 12.5, color: ui.red, fontWeight: '600', lineHeight: 18 },
+  missingTxt: { fontSize: 12.5, color: ui.red, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },
-  oddsK: { fontSize: 13, color: ui.muted, flexShrink: 1 },
-  oddsV: { fontSize: 13.5, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
-  gainTxt: { fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  oddsK: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, flexShrink: 1 },
+  oddsV: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
+  gainTxt: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });

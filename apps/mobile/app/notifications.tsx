@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NotificationView } from '@investoyard/shared-types';
-import { shadowCard, ui } from '../lib/theme';
+import { fonts, shadowCard, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { getNotifications, markNotificationRead } from '../lib/api';
@@ -55,7 +55,7 @@ export default function NotificationsScreen() {
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]}
           >
             <View style={styles.row}>
-              <Text style={[styles.title, !n.read && { fontWeight: '800' }]} numberOfLines={2}>{n.title}</Text>
+              <Text style={[styles.title, !n.read && { fontFamily: fonts.extrabold, fontWeight: '800' }]} numberOfLines={2}>{n.title}</Text>
               {!n.read ? <View style={styles.dot} /> : null}
             </View>
             <Text style={styles.body}>{n.body}</Text>
@@ -74,8 +74,8 @@ const styles = StyleSheet.create({
     ...shadowCard,
   },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  title: { fontSize: 15, fontWeight: '700', color: ui.title, flex: 1, lineHeight: 20 },
+  title: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flex: 1, lineHeight: 20 },
   dot: { width: 9, height: 9, borderRadius: 999, backgroundColor: ui.indigo, marginTop: 5 },
-  body: { color: ui.body, fontSize: 13.5, marginTop: 5, lineHeight: 19 },
-  date: { color: ui.muted, fontSize: 11.5, fontWeight: '600', marginTop: 9, fontVariant: ['tabular-nums'] },
+  body: { fontFamily: fonts.regular, color: ui.body, fontSize: 13.5, marginTop: 5, lineHeight: 19 },
+  date: { color: ui.muted, fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 9, fontVariant: ['tabular-nums'] },
 });

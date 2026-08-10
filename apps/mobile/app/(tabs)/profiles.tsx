@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { useProfiles, maskPan } from '../../components/profiles';
@@ -50,7 +50,7 @@ export default function ProfilesScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 110 /* clear the floating tab bar */ }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
       }
@@ -130,22 +130,22 @@ export default function ProfilesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  h1: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
-  count: { fontSize: 13, color: ui.muted, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
+  h1: { fontSize: 24, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
+  count: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
   note: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
     backgroundColor: ui.indigoTint, borderRadius: 14, padding: 12,
   },
-  noteTxt: { flex: 1, fontSize: 12.5, color: ui.indigo, fontWeight: '600', lineHeight: 17 },
+  noteTxt: { flex: 1, fontSize: 12.5, color: ui.indigo, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 17 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: ui.indigoTint,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarTxt: { fontSize: 15, fontWeight: '800', color: ui.indigo },
-  name: { fontSize: 15, fontWeight: '700', color: ui.title },
-  meta: { fontSize: 12, color: ui.muted, fontWeight: '600', marginTop: 2 },
+  avatarTxt: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo },
+  name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  meta: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
   remove: { paddingHorizontal: 10, paddingVertical: 8 },
-  removeTxt: { fontSize: 13, fontWeight: '700', color: ui.red },
+  removeTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.red },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
 });

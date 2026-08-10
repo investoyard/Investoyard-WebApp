@@ -4,7 +4,7 @@
  * to the elevated fintech language (micro-labels, tinted fills, soft dividers).
  */
 import { StyleSheet, Text, View } from 'react-native';
-import { microLabel, ui } from '../lib/theme';
+import { fonts, microLabel, ui } from '../lib/theme';
 import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
@@ -168,42 +168,42 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
 }
 
 const s = StyleSheet.create({
-  muted: { fontSize: 13.5, color: ui.muted, lineHeight: 19 },
+  muted: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, lineHeight: 19 },
   /* subscription */
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 7 },
   subCat: { ...microLabel, width: 64, fontSize: 11 },
   subMid: { flex: 1 },
   track: { height: 6, backgroundColor: ui.slateTint, borderRadius: 999, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 999 },
-  subBook: { fontSize: 11, color: ui.muted, marginTop: 4, fontVariant: ['tabular-nums'] },
-  subX: { width: 56, textAlign: 'right', fontSize: 14.5, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  subBook: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, marginTop: 4, fontVariant: ['tabular-nums'] },
+  subX: { width: 56, textAlign: 'right', fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   subUnder: { color: ui.muted },
   subTotal: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider,
   },
-  subTotalK: { fontSize: 13.5, fontWeight: '700', color: ui.title },
-  subTotalV: { fontSize: 16, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  subTotalK: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  subTotalV: { fontSize: 16, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   /* reservation */
   alloc: { flexDirection: 'row', height: 28, borderRadius: 9, overflow: 'hidden', marginBottom: 12 },
   allocSeg: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  allocTxt: { fontSize: 10.5, fontWeight: '700' },
+  allocTxt: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700' },
   legRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
-  legWho: { fontSize: 13.5, fontWeight: '700', color: ui.title },
-  legNum: { fontSize: 12, color: ui.muted, marginTop: 1, fontVariant: ['tabular-nums'] },
-  legPct: { fontSize: 14, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  legWho: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  legNum: { fontFamily: fonts.regular, fontSize: 12, color: ui.muted, marginTop: 1, fontVariant: ['tabular-nums'] },
+  legPct: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   /* lots */
   lotCard: { backgroundColor: ui.canvas, borderRadius: 14, padding: 13, borderLeftWidth: 3 },
   lotHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  lotWho: { fontSize: 13.5, fontWeight: '700', color: ui.title },
-  lotBand: { fontSize: 12, fontWeight: '500', color: ui.muted },
-  lotTag: { fontSize: 12, fontWeight: '700', color: ui.slate, fontVariant: ['tabular-nums'] },
+  lotWho: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  lotBand: { fontSize: 12, fontFamily: fonts.medium, fontWeight: '500', color: ui.muted },
+  lotTag: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, fontVariant: ['tabular-nums'] },
   lotGrid: { flexDirection: 'row', gap: 12, marginTop: 10 },
   lotCell: { flex: 1 },
   lotK: { ...microLabel, fontSize: 10.5 },
-  lotV: { fontSize: 14.5, fontWeight: '800', color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
-  lotSm: { fontSize: 11.5, fontWeight: '500', color: ui.muted },
+  lotV: { fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
+  lotSm: { fontSize: 11.5, fontFamily: fonts.medium, fontWeight: '500', color: ui.muted },
   /* timeline */
   tlRow: { flexDirection: 'row', gap: 12 },
   tlCol: { width: 20, alignItems: 'center' },
@@ -216,17 +216,17 @@ const s = StyleSheet.create({
   tlNodeDone: { backgroundColor: ui.indigo, borderColor: ui.indigo },
   tlNodeNow: { borderColor: ui.indigo },
   tlBody: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingBottom: 14, marginTop: 8 },
-  tlLbl: { fontSize: 13.5, fontWeight: '700', color: ui.title },
-  tlRel: { fontSize: 11.5, color: ui.muted, marginTop: 1 },
-  tlDate: { fontSize: 12.5, color: ui.slate, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
+  tlLbl: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  tlRel: { fontFamily: fonts.regular, fontSize: 11.5, color: ui.muted, marginTop: 1 },
+  tlDate: { fontSize: 12.5, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
   /* gmp */
   kv: {
     flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9,
     borderBottomWidth: 1, borderBottomColor: ui.divider,
   },
-  kvK: { fontSize: 14, color: ui.body },
-  kvV: { fontSize: 15, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.body },
+  kvV: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   pos: { color: ui.green },
   neg: { color: ui.red },
-  disclaimer: { fontSize: 10, color: ui.muted, marginTop: 10 },
+  disclaimer: { fontFamily: fonts.regular, fontSize: 10, color: ui.muted, marginTop: 10 },
 });

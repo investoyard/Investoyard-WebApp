@@ -75,7 +75,13 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   const heat = subX == null ? '' : subX < 1 ? 'cool' : subX < 3 ? 'ok' : subX < 10 ? 'warm' : 'hot';
 
   // Listed issues carry the ACTUAL listing price instead of the (now historical) GMP.
+  // Price comes from the admin-entered NSE/BSE listing price; gain from the
+  // listingGainPct column — each derives the other from the band ceiling.
   const isListed = ipo.status === 'listed';
+  const exL: any = (ipo as any).extra ?? {};
+  const issueP = ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
+  const listedP = Number(String(exL.nseListingPrice || exL.bseListingPrice || '').replace(/[^\d.]/g, '')) || 0;
+  const listedGain = ipo.listingGainPct ?? (isListed && listedP && issueP ? Math.round(((listedP - issueP) / issueP) * 1000) / 10 : undefined);
   const topics: { key: Topic; label: React.ReactNode }[] = [
     { key: 'reservation', label: 'Reserve' },
     { key: 'lot', label: 'Lots' },
@@ -86,7 +92,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       ? [{
           key: 'gmp' as Topic,
           label: isListed
-            ? <>Listed{ipo.listingGainPct != null ? <> <span className={ipo.listingGainPct >= 0 ? 'gp' : 'gn'}>{ipo.listingGainPct >= 0 ? '+' : ''}{ipo.listingGainPct}%</span></> : null}</>
+            ? <>Listed{listedGain != null ? <> <span className={listedGain >= 0 ? 'gp' : 'gn'}>{listedGain >= 0 ? '+' : ''}{listedGain}%</span></> : null}</>
             : ipo.gmp != null ? <>GMP <span className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
         }]
       : []),
@@ -158,14 +164,16 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
     const listingPrice =
       Number(String(ex.nseListingPrice || ex.bseListingPrice || '').replace(/[^\d.]/g, '')) ||
       (ipo.listingGainPct != null && issuePrice ? Math.round(issuePrice * (1 + ipo.listingGainPct / 100)) : 0);
+    const gain = ipo.listingGainPct ?? (listingPrice && issuePrice ? Math.round(((listingPrice - issuePrice) / issuePrice) * 1000) / 10 : undefined);
     return (
       <div className="ic-panel">
         <h4>Listing performance</h4>
         <div className="ic-kv"><span>Issue price</span><b className="mono">₹{issuePrice || '—'}</b></div>
         <div className="ic-kv"><span>Listing price</span><b className="mono">{listingPrice ? `₹${listingPrice}` : '—'}</b></div>
-        {ipo.listingGainPct != null && (
-          <div className="ic-kv"><span>Listing gain</span><b className={ipo.listingGainPct >= 0 ? 'gp' : 'gn'}>{ipo.listingGainPct >= 0 ? '+' : ''}{ipo.listingGainPct}%</b></div>
+        {gain != null && (
+          <div className="ic-kv"><span>Listing gain</span><b className={gain >= 0 ? 'gp' : 'gn'}>{gain >= 0 ? '+' : ''}{gain}%</b></div>
         )}
+        {!listingPrice && gain == null && <p className="muted" style={{ fontSize: 13 }}>Listing price not entered yet — add it in Admin → GMP &amp; Listing.</p>}
       </div>
     );
   }

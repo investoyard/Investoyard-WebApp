@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LANGS } from '@investoyard/i18n';
-import { animateNext, microLabel, ui } from '../../lib/theme';
+import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
 import { useLang, useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { useProfiles } from '../../components/profiles';
@@ -30,7 +30,7 @@ export default function AccountScreen() {
   const selfName = profiles.find((p) => p.relationship === 'self')?.fullName;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16, paddingBottom: 110 /* clear the floating tab bar */ }}>
       <Text style={styles.h1}>Account</Text>
 
       {token ? (
@@ -177,19 +177,19 @@ function Row({ icon, iconBg, label, value, onPress, divider, chevron = true, lab
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  h1: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
+  h1: { fontSize: 24, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
   signinRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   idAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
-  idAvatarTxt: { fontSize: 17, fontWeight: '800', color: ui.indigo },
-  signinTitle: { fontSize: 15, fontWeight: '700', color: ui.title },
-  signinSub: { fontSize: 12.5, color: ui.muted, marginTop: 2 },
+  idAvatarTxt: { fontSize: 17, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo },
+  signinTitle: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  signinSub: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted, marginTop: 2 },
   groupLbl: { ...microLabel, marginTop: 24, marginBottom: 8, paddingHorizontal: 4 },
   group: { paddingVertical: 4 },
   rowItem: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingVertical: 6 },
   rowDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
   iconChip: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rowLbl: { flex: 1, fontSize: 15, fontWeight: '500', color: ui.title },
-  rowVal: { fontSize: 13, color: ui.muted, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  rowLbl: { flex: 1, fontSize: 15, fontFamily: fonts.medium, fontWeight: '500', color: ui.title },
+  rowVal: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
   langs: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,
     paddingTop: 4, paddingBottom: 12, paddingLeft: 48,
@@ -199,8 +199,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   langOn: { backgroundColor: ui.indigo },
-  langTxt: { fontSize: 13, fontWeight: '600', color: ui.slate },
+  langTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   langTxtOn: { color: '#ffffff' },
-  version: { fontSize: 12, color: ui.muted, textAlign: 'center', marginTop: 28, fontWeight: '600' },
-  foot: { fontSize: 11, color: ui.muted, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
+  version: { fontSize: 12, color: ui.muted, textAlign: 'center', marginTop: 28, fontFamily: fonts.semibold, fontWeight: '600' },
+  foot: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
 });

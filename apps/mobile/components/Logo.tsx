@@ -8,6 +8,9 @@ import { logoXml } from './logo-xml';
  * Classes in the source: B = fill-rule:evenodd · C = #3c2e7e · D = #ffcb32.
  */
 const nativeLogoXml = logoXml
+  // The source svg has width/height but NO viewBox — react-native-svg then
+  // CROPS instead of scaling when rendered smaller. Add the natural viewBox.
+  .replace('<svg ', '<svg viewBox="0 0 221 39" ')
   .replace(/<style>[\s\S]*?<\/style>/, '')
   .replace(/class="([^"]*)"/g, (_m, cls: string) => {
     const parts = cls.split(/\s+/);

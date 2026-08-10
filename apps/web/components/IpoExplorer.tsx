@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
 
 type TypeFilter = 'all' | 'mainboard' | 'sme';
-type StatusFilter = 'all' | 'open' | 'upcoming' | 'listed';
+type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed'; // 'closed' = post-close phase (closed + listed)
 
 export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
   const tr = makeT(lang);
@@ -28,14 +28,15 @@ export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[
     { key: 'all', label: 'All' },
     { key: 'open', label: 'Open' },
     { key: 'upcoming', label: 'Upcoming' },
-    { key: 'listed', label: 'Listed' },
+    { key: 'closed', label: 'Closed' },
   ];
 
   const filtered = useMemo(() => {
     const ql = query.trim().toLowerCase();
     return (ipos as any[]).filter((i) => {
       if (type !== 'all' && i.type !== type) return false;
-      if (status !== 'all' && i.status !== status) return false;
+      if (status === 'closed' ? !(i.status === 'closed' || i.status === 'listed')
+        : status !== 'all' && i.status !== status) return false;
       if (ql && !(`${i.name} ${i.symbol}`.toLowerCase().includes(ql))) return false;
       return true;
     });

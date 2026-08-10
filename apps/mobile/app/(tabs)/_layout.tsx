@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 import { AppHeader } from '../../components/ui/AppHeader';
 import {
   DocsIcon, DocsIconFill, GearIcon, GearIconFill,
@@ -39,15 +39,25 @@ export default function TabsLayout() {
         header: () => <AppHeader />,
         tabBarActiveTintColor: ui.indigo,
         tabBarInactiveTintColor: ui.muted,
+        // Floating pill tab bar — detached from the bottom edge with a soft shadow.
         tabBarStyle: {
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          bottom: Math.max(insets.bottom, 10) + 4,
           backgroundColor: '#ffffff',
-          borderTopWidth: 1,
-          borderTopColor: ui.divider,
-          height: 64 + insets.bottom,
+          borderTopWidth: 0,
+          borderRadius: 24,
+          height: 64,
           paddingTop: 6,
-          paddingBottom: Math.max(insets.bottom, 8),
+          paddingBottom: 8,
+          elevation: 12,
+          shadowColor: '#1A1440',
+          shadowOpacity: 0.14,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
         },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+        tabBarLabelStyle: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
       }}
     >
       <Tabs.Screen

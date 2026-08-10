@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { microLabel, shadowCard, ui } from '../../lib/theme';
+import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import type { IpoFull } from '../../lib/ipoCalc';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
@@ -237,8 +237,8 @@ function Choice({ active, label, onPress }: { active: boolean; label: string; on
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  h1: { fontSize: 21, fontWeight: '800', letterSpacing: -0.4, color: ui.title },
-  note: { color: ui.muted, fontSize: 13, marginTop: 5, lineHeight: 18 },
+  h1: { fontSize: 21, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.4, color: ui.title },
+  note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, marginTop: 5, lineHeight: 18 },
   applicants: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   appChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     backgroundColor: ui.canvas, maxWidth: '100%',
   },
   appChipOn: { backgroundColor: ui.indigo },
-  appTxt: { color: ui.slate, fontSize: 13.5, fontWeight: '600', flexShrink: 1 },
+  appTxt: { color: ui.slate, fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', flexShrink: 1 },
   appTxtOn: { color: '#ffffff' },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   step: {
@@ -254,23 +254,23 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stepPressed: { backgroundColor: ui.indigoTint, transform: [{ scale: 0.95 }] },
-  stepTxt: { fontSize: 24, color: ui.indigo, fontWeight: '600', lineHeight: 28 },
-  lotVal: { fontSize: 18, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  lotSub: { fontSize: 12.5, color: ui.muted, fontWeight: '600', marginTop: 2, fontVariant: ['tabular-nums'] },
+  stepTxt: { fontSize: 24, color: ui.indigo, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 28 },
+  lotVal: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  lotSub: { fontSize: 12.5, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2, fontVariant: ['tabular-nums'] },
   kv: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: ui.divider,
   },
-  kvK: { color: ui.muted, fontSize: 14, fontWeight: '600' },
-  kvV: { color: ui.title, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  kvK: { color: ui.muted, fontSize: 14, fontFamily: fonts.semibold, fontWeight: '600' },
+  kvV: { color: ui.title, fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   choice: {
     flexGrow: 1, flexBasis: '40%', minHeight: 48, paddingHorizontal: 10, paddingVertical: 10,
     borderRadius: 14, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center',
   },
   choiceOn: { backgroundColor: ui.indigo },
-  choiceTxt: { color: ui.slate, fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  choiceTxtOn: { color: '#ffffff', fontWeight: '700' },
+  choiceTxt: { color: ui.slate, fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', textAlign: 'center' },
+  choiceTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },
   consent: {
     flexDirection: 'row', gap: 12, marginTop: 22, padding: 16,
     backgroundColor: '#ffffff', borderRadius: 20,
@@ -281,13 +281,13 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginTop: 1, backgroundColor: ui.canvas,
   },
   checkOn: { backgroundColor: ui.indigo, borderColor: ui.indigo },
-  consentTitle: { fontSize: 14, fontWeight: '700', color: ui.title },
-  consentText: { fontSize: 12.5, color: ui.muted, marginTop: 3, lineHeight: 18 },
+  consentTitle: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  consentText: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted, marginTop: 3, lineHeight: 18 },
   placedBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20,
     backgroundColor: ui.greenTint, borderRadius: 14, padding: 14,
   },
-  placed: { flex: 1, color: ui.green, fontSize: 14, fontWeight: '700', lineHeight: 19 },
+  placed: { flex: 1, color: ui.green, fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', lineHeight: 19 },
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -297,6 +297,6 @@ const styles = StyleSheet.create({
     ...shadowCard,
   },
   barK: { ...microLabel, fontSize: 10.5 },
-  barV: { fontSize: 18, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
-  barHint: { color: ui.muted, fontSize: 10.5, marginTop: 2 },
+  barV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
+  barHint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 10.5, marginTop: 2 },
 });

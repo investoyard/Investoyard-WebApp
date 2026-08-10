@@ -10,8 +10,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { animateNext, microLabel, shadowCard, ui } from '../../lib/theme';
-import type { IpoFull } from '../../lib/ipoCalc';
+import { fonts, animateNext, microLabel, shadowCard, ui } from '../../lib/theme';
+import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
 import { getIpos, listApplications } from '../../lib/api';
 import { useAuth } from '../../components/auth';
 import { useProfiles } from '../../components/profiles';
@@ -25,14 +25,21 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { CountUp, FadeInUp } from '../../components/ui/motion';
-import { BellIcon, ChevronRightIcon, DocsIcon } from '../../components/ui/icons';
+import { BellIcon, CheckIcon, ChevronRightIcon, DocsIcon, UsersIcon } from '../../components/ui/icons';
 
-type Filter = 'all' | 'open' | 'upcoming' | 'listed' | 'sme';
+type Filter = 'all' | 'open' | 'upcoming' | 'closed';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'open', label: 'Open' },
   { key: 'upcoming', label: 'Upcoming' },
-  { key: 'listed', label: 'Listed' },
+  { key: 'closed', label: 'Closed' }, // post-close phase: both closed AND listed issues
+];
+
+// Board is a SEPARATE dimension (mirrors the web explorer): status × board combine.
+type Board = 'all' | 'mainboard' | 'sme';
+const BOARDS: { key: Board; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'mainboard', label: 'Mainboard' },
   { key: 'sme', label: 'SME' },
 ];
 
@@ -55,6 +62,7 @@ export default function HomeScreen() {
   const [justRefreshed, setJustRefreshed] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [board, setBoard] = useState<Board>('all');
 
   // gradient hero → light status bar while this tab is focused
   useFocusEffect(
@@ -89,19 +97,21 @@ export default function HomeScreen() {
   }, [load]);
 
   const firstName = profiles.find((p) => p.relationship === 'self')?.fullName.trim().split(/\s+/)[0] ?? 'Investor';
-  const openIpos = (ipos ?? []).filter((i) => i.status === 'open');
-  const upcoming = (ipos ?? []).filter((i) => i.status === 'upcoming');
-  const listed = (ipos ?? []).filter((i) => i.status === 'listed' || i.status === 'closed');
-  const filtered = filter === 'all' ? (ipos ?? [])
-    : filter === 'sme' ? (ipos ?? []).filter((i) => i.type === 'sme')
-    : (ipos ?? []).filter((i) => i.status === filter);
+  // Board filter applies FIRST — sections and status filtering both respect it.
+  const base = (ipos ?? []).filter((i) => board === 'all' || i.type === board);
+  const openIpos = base.filter((i) => i.status === 'open');
+  const upcoming = base.filter((i) => i.status === 'upcoming');
+  const listed = base.filter((i) => i.status === 'listed' || i.status === 'closed');
+  const filtered = filter === 'all' ? base
+    : filter === 'closed' ? base.filter((i) => i.status === 'closed' || i.status === 'listed')
+    : base.filter((i) => i.status === filter);
 
   const shortDate = (s?: string) => { const f = fmtDate(s); return f === '—' ? 'TBA' : f.slice(0, 6); };
 
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: 28 }}
+      contentContainerStyle={{ paddingBottom: 110 /* clear the floating tab bar */ }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" colors={[ui.indigo]} />
       }
@@ -140,6 +150,21 @@ export default function HomeScreen() {
         <SummaryCol k="APPLIED" v={ipos ? appliedN : undefined} />
       </FadeInUp>
 
+      {/* ── quick actions — the two most common jobs one tap away ── */}
+      <FadeInUp index={1} style={styles.quick}>
+        <QuickAction
+          icon={<CheckIcon size={20} color={ui.indigo} strokeWidth={1.8} />}
+          label="Apply"
+          onPress={() => {
+            if (openIpos.length === 1) router.push(`/apply/${openIpos[0].symbol}`);
+            else { animateNext(); setFilter('open'); }
+          }}
+        />
+        <QuickAction icon={<DocsIcon size={20} color={ui.indigo} strokeWidth={1.8} />} label="Allotment" onPress={() => router.push('/applications')} />
+        <QuickAction icon={<UsersIcon size={20} color={ui.indigo} strokeWidth={1.8} />} label="Applicants" onPress={() => router.push('/profiles')} />
+        <QuickAction icon={<BellIcon size={20} color={ui.indigo} strokeWidth={1.8} />} label="Alerts" onPress={() => router.push('/notifications')} />
+      </FadeInUp>
+
       {/* ── filter chips ── */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {FILTERS.map(({ key, label }) => {
@@ -155,6 +180,21 @@ export default function HomeScreen() {
           );
         })}
       </ScrollView>
+      {/* board segmented control — Mainboard vs SME, independent of status */}
+      <View style={styles.seg}>
+        {BOARDS.map(({ key, label }) => {
+          const on = board === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => { animateNext(); setBoard(key); }}
+              style={({ pressed }) => [styles.segBtn, on && styles.segBtnOn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={[styles.segTxt, on && styles.segTxtOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       {justRefreshed ? <Text style={styles.refreshed}>Up to date ✓</Text> : null}
 
       {ipos === null ? (
@@ -168,7 +208,7 @@ export default function HomeScreen() {
         filtered.length === 0 ? (
           <EmptyState
             icon={<DocsIcon size={26} color={ui.indigo} />}
-            title={filter === 'open' ? 'No live IPOs right now' : `No ${filter === 'sme' ? 'SME' : filter} IPOs right now`}
+            title={filter === 'open' ? 'No live IPOs right now' : `No ${board === 'sme' ? 'SME ' : board === 'mainboard' ? 'Mainboard ' : ''}${filter} IPOs right now`}
             body="The next one is loading… pull down to check."
           />
         ) : (
@@ -210,26 +250,34 @@ export default function HomeScreen() {
             </FadeInUp>
           ) : null}
 
-          {/* Recently listed — compact rows with gain */}
+          {/* Recently closed — closed (allotment phase) + listed issues, with gain when listed */}
           {listed.length > 0 ? (
             <FadeInUp index={openIpos.length + 2}>
-              <SectionTitle label="Recently listed" style={styles.section} />
+              <SectionTitle label="Recently closed" style={styles.section} />
               <View style={styles.compactCard}>
-                {listed.map((i, idx) => (
-                  <CompactRow
-                    key={i.id}
-                    ipo={i}
-                    right={i.listingGainPct != null ? (
-                      <Text style={[styles.gain, { color: i.listingGainPct >= 0 ? ui.green : ui.red }]}>
-                        {i.listingGainPct >= 0 ? '▲ +' : '▼ '}{i.listingGainPct}%
-                      </Text>
-                    ) : (
-                      <Text style={styles.compactMeta}>{t(`status.${i.status}`)}</Text>
-                    )}
-                    divider={idx > 0}
-                    onPress={() => router.push(`/ipo/${i.symbol}`)}
-                  />
-                ))}
+                {listed.map((i, idx) => {
+                  const li = listingInfo(i);
+                  return (
+                    <CompactRow
+                      key={i.id}
+                      ipo={i}
+                      right={li ? (
+                        <View style={{ alignItems: 'flex-end' }}>
+                          {li.price ? <Text style={styles.compactPrice}>₹{li.price}</Text> : null}
+                          {li.gainPct != null ? (
+                            <Text style={[styles.gain, { color: li.gainPct >= 0 ? ui.green : ui.red }]}>
+                              {li.gainPct >= 0 ? '▲ +' : '▼ '}{li.gainPct}%
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : (
+                        <Text style={styles.compactMeta}>{t(`status.${i.status}`)}</Text>
+                      )}
+                      divider={idx > 0}
+                      onPress={() => router.push(`/ipo/${i.symbol}`)}
+                    />
+                  );
+                })}
               </View>
             </FadeInUp>
           ) : null}
@@ -255,6 +303,19 @@ function SummaryCol({ k, v }: { k: string; v?: number }) {
         ? <Skeleton w={28} h={22} r={6} style={{ marginTop: 4 }} />
         : <CountUp value={v} style={styles.sumV} />}
     </View>
+  );
+}
+
+function QuickAction({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.qa, pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] }]}
+    >
+      <View style={styles.qaIcon}>{icon}</View>
+      <Text style={styles.qaTxt}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -296,9 +357,9 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  greet: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', marginTop: 18 },
+  greet: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 18 },
   goldUnderline: { width: 34, height: 3, borderRadius: 2, backgroundColor: '#FFCB32', marginTop: 6 },
-  heroTitle: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 8 },
+  heroTitle: { color: '#ffffff', fontSize: 22, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, marginTop: 8 },
   summary: {
     flexDirection: 'row', alignItems: 'center',
     marginTop: -40, marginHorizontal: 16, marginBottom: 4,
@@ -308,17 +369,35 @@ const styles = StyleSheet.create({
   sumCol: { flex: 1, alignItems: 'center', gap: 2 },
   sumDiv: { width: 1, height: 30, backgroundColor: ui.divider },
   sumK: { ...microLabel, fontSize: 10.5 },
-  sumV: { fontSize: 20, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  filters: { paddingHorizontal: 16, paddingVertical: 14, gap: 8, flexDirection: 'row' },
+  sumV: { fontSize: 20, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  quick: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginTop: 12 },
+  qa: {
+    flex: 1, alignItems: 'center', gap: 6, backgroundColor: '#ffffff',
+    borderRadius: 16, paddingVertical: 12, ...shadowCard,
+  },
+  qaIcon: {
+    width: 38, height: 38, borderRadius: 12, backgroundColor: ui.indigoTint,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qaTxt: { fontSize: 11.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  filters: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 8, flexDirection: 'row' },
+  seg: {
+    flexDirection: 'row', marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: '#ffffff', borderRadius: 999, padding: 3, ...shadowCard,
+  },
+  segBtn: { flex: 1, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: ui.indigoTint },
+  segTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  segTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   fchip: {
     paddingHorizontal: 16, height: 36, borderRadius: 999, backgroundColor: '#ffffff',
     alignItems: 'center', justifyContent: 'center',
     ...shadowCard,
   },
   fchipOn: { backgroundColor: ui.indigo },
-  fchipTxt: { fontSize: 13, fontWeight: '700', color: ui.slate },
+  fchipTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   fchipTxtOn: { color: '#ffffff' },
-  refreshed: { fontSize: 11.5, fontWeight: '700', color: ui.green, textAlign: 'center', marginBottom: 8 },
+  refreshed: { fontSize: 11.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.green, textAlign: 'center', marginBottom: 8 },
   section: { marginTop: 14, marginHorizontal: 16 },
   compactCard: {
     marginHorizontal: 16, marginBottom: 12, backgroundColor: '#ffffff', borderRadius: 20,
@@ -327,8 +406,9 @@ const styles = StyleSheet.create({
   },
   compactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   compactDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
-  compactName: { fontSize: 14, fontWeight: '700', color: ui.title },
-  compactSym: { fontSize: 11.5, fontWeight: '600', color: ui.muted, marginTop: 2, letterSpacing: 0.2 },
-  compactMeta: { fontSize: 12, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
-  gain: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  compactName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
+  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, letterSpacing: 0.2 },
+  compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
+  compactPrice: { fontSize: 13, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  gain: { fontSize: 13, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });

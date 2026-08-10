@@ -7,9 +7,20 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "plugins": ["expo-router"],
-    "splash": { "resizeMode": "contain", "backgroundColor": "#3c2e7e" },
-    "ios": { "supportsTablet": true, "bundleIdentifier": "co.finwave.investoyard" },
-    "android": { "package": "co.finwave.investoyard" }
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#3c2e7e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "co.finwave.investoyard"
+    },
+    "android": {
+      "package": "co.finwave.investoyard"
+    }
   }
 }

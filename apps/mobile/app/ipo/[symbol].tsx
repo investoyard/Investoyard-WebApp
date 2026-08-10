@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { microLabel, shadowCard, ui } from '../../lib/theme';
+import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import type { IpoFull } from '../../lib/ipoCalc';
 import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
@@ -241,18 +241,18 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, marginTop: -48 },
   heroCard: { marginBottom: 2 },
   hero: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
-  h1: { fontSize: 21, fontWeight: '800', letterSpacing: -0.5, color: ui.title, lineHeight: 26 },
+  h1: { fontSize: 21, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title, lineHeight: 26 },
   heroMeta: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   heroDates: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
-  heroDatesTxt: { fontSize: 12.5, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  heroDatesTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
-  para: { fontSize: 14, color: ui.body, lineHeight: 21 },
+  para: { fontFamily: fonts.regular, fontSize: 14, color: ui.body, lineHeight: 21 },
   kv: {
     flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: ui.divider,
   },
-  kvK: { fontSize: 14, color: ui.muted },
-  kvV: { fontSize: 14, fontWeight: '700', color: ui.title, flexShrink: 1, textAlign: 'right' },
+  kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.muted },
+  kvV: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flexShrink: 1, textAlign: 'right' },
   applyBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -262,6 +262,6 @@ const styles = StyleSheet.create({
     ...shadowCard,
   },
   applyK: { ...microLabel, fontSize: 10.5 },
-  applyV: { fontSize: 18, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
-  applyCloses: { fontSize: 11.5, color: ui.amber, fontWeight: '700', marginTop: 2 },
+  applyV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
+  applyCloses: { fontSize: 11.5, color: ui.amber, fontFamily: fonts.bold, fontWeight: '700', marginTop: 2 },
 });

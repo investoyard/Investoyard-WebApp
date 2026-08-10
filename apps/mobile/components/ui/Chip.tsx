@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 
 export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold';
 
@@ -34,5 +34,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, alignSelf: 'flex-start',
   },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  txt: { fontSize: 11, fontWeight: '700' },
+  txt: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700' },
 });

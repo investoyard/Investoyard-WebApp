@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { ui } from '../../lib/theme';
+import { fonts, ui } from '../../lib/theme';
 
 /** Centered empty/locked state: soft svg circle behind the icon, title, body + CTA. */
 export function EmptyState({ icon, title, body, cta }: {
@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
   wrap: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 28 },
   iconWrap: { width: 84, height: 84, marginBottom: 16, alignItems: 'center', justifyContent: 'center' },
   icon: { alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 16.5, fontWeight: '700', color: ui.title, textAlign: 'center' },
-  body: { fontSize: 13.5, color: ui.muted, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  title: { fontSize: 16.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, textAlign: 'center' },
+  body: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, textAlign: 'center', marginTop: 6, lineHeight: 20 },
   cta: { marginTop: 18, alignSelf: 'stretch' },
 });

@@ -10,7 +10,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { microLabel, ui } from '../lib/theme';
+import { fonts, microLabel, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { requestOtp, verifyOtp } from '../lib/api';
@@ -160,28 +160,28 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  closeTxt: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  closeTxt: { color: '#ffffff', fontSize: 15, fontFamily: fonts.bold, fontWeight: '700' },
   brand: { alignItems: 'center', paddingHorizontal: 24 },
   logoChip: { backgroundColor: '#ffffff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
-  brandName: { color: '#ffffff', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginTop: 16 },
-  tagline: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '500', marginTop: 6, textAlign: 'center' },
+  brandName: { color: '#ffffff', fontSize: 26, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, marginTop: 16 },
+  tagline: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fonts.medium, fontWeight: '500', marginTop: 6, textAlign: 'center' },
   sheet: {
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 20, paddingTop: 24,
   },
-  sheetTitle: { fontSize: 19, fontWeight: '800', letterSpacing: -0.4, color: ui.title },
-  sheetSub: { fontSize: 13.5, color: ui.muted, marginTop: 4, lineHeight: 19 },
+  sheetTitle: { fontSize: 19, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.4, color: ui.title },
+  sheetSub: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, marginTop: 4, lineHeight: 19 },
   micro: { ...microLabel, marginTop: 22, marginBottom: 8 },
   mobileRow: { flexDirection: 'row', gap: 8 },
   prefix: {
     height: 52, borderRadius: 12, backgroundColor: ui.canvas,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14,
   },
-  prefixTxt: { fontSize: 16, fontWeight: '700', color: ui.slate },
+  prefixTxt: { fontSize: 16, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   input: {
     flex: 1, height: 52, borderRadius: 12, paddingHorizontal: 14,
-    fontSize: 17, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
+    fontSize: 17, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
     fontVariant: ['tabular-nums'],
   },
   cta: { marginTop: 20, height: 52, borderRadius: 14 },
@@ -192,9 +192,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: 'transparent',
   },
   otpBoxOn: { borderColor: ui.indigo, backgroundColor: '#ffffff' },
-  otpChar: { fontSize: 20, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  otpChar: { fontSize: 20, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   hiddenInput: { position: 'absolute', opacity: 0, height: 1, width: 1 },
   resend: { alignSelf: 'center', marginTop: 16, padding: 6 },
-  resendTxt: { color: ui.indigo, fontSize: 13.5, fontWeight: '700' },
-  error: { color: ui.red, marginTop: 12, fontSize: 13.5, fontWeight: '600', textAlign: 'center' },
+  resendTxt: { color: ui.indigo, fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700' },
+  error: { color: ui.red, marginTop: 12, fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', textAlign: 'center' },
 });

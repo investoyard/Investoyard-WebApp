@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ConsentView } from '@investoyard/shared-types';
-import { ui } from '../lib/theme';
+import { fonts, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
 import { listConsents, withdrawConsent } from '../lib/api';
@@ -91,8 +91,8 @@ export default function ConsentsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  note: { color: ui.muted, fontSize: 13, lineHeight: 18 },
+  note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, lineHeight: 18 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  name: { fontSize: 15, fontWeight: '700', color: ui.title, flex: 1 },
-  muted: { color: ui.muted, fontSize: 12.5, fontWeight: '600', marginTop: 7, fontVariant: ['tabular-nums'] },
+  name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flex: 1 },
+  muted: { color: ui.muted, fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 7, fontVariant: ['tabular-nums'] },
 });
