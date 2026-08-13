@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,8 +20,8 @@ import {
 function TabIcon({ focused, color, Line, Fill }: {
   focused: boolean;
   color: string;
-  Line: (p: IconProps) => JSX.Element;
-  Fill: (p: IconProps) => JSX.Element;
+  Line: ComponentType<IconProps>;
+  Fill: ComponentType<IconProps>;
 }) {
   const I = focused ? Fill : Line;
   return (

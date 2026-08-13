@@ -28,7 +28,7 @@ function RootStack() {
         headerShadowVisible: false,
         headerTintColor: ui.indigo,
         headerTitleStyle: { color: ui.title, fontSize: 16, fontFamily: fonts.bold, fontWeight: '700' },
-        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         contentStyle: { backgroundColor: ui.canvas },
       }}
     >

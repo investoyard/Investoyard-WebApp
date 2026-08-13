@@ -5,7 +5,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -87,8 +87,9 @@ export default function LoginScreen() {
         <Text style={styles.tagline}>Investing in IPOs, has never been this easy.</Text>
       </View>
 
-      {/* bottom sheet */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+      {/* bottom sheet — 'padding' on BOTH platforms: SDK 54 Android is edge-to-edge,
+          so the OS no longer resizes the window for the keyboard (sheet was hidden) */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'flex-end' }}>
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
           <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
             {!requestId ? (

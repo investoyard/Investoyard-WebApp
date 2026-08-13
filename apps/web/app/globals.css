@@ -898,6 +898,35 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- PHONE POLISH (≤480px) */
+@media (max-width: 480px) {
+  /* IPO detail — tighter hero: smaller logo + dial so the NAME gets the room */
+  .detail-hero { padding: 14px; gap: 12px; margin-top: 10px; }
+  .detail-hero .ipologo { width: 44px; height: 44px; }
+  .detail-hero h1 { font-size: 18.5px; line-height: 1.25; }
+  .detail-hero .h-meta { gap: 6px; margin-top: 6px; }
+  .detail-hero .ic-dates { font-size: 12px; }
+  .detail-hero .ic-ring { transform: scale(.86); transform-origin: top right; }
+  /* sticky section tabs — compact; identity capsule shorter so tabs keep room */
+  .tabs.sticky-tabs { padding-top: 8px; }
+  .st-name { max-width: 96px; font-size: 13px; }
+  .sticky-tabs.condensed .st-ident { margin-right: 8px; }
+  .tab { font-size: 13px; padding: 10px 2px; }
+  /* metrics + panels: less padding, values stay readable */
+  .metric { padding: 12px 13px; }
+  .metric .v { font-size: 16px; }
+  .panel { padding: 16px 14px; }
+  .hstep { flex: 1 0 86px; }
+  .ic-kv { font-size: 13px; }
+  /* IPO cards: footer wraps, Apply becomes full-width */
+  .ipocard { padding: 13px; }
+  .ic-foot { flex-wrap: wrap; row-gap: 8px; }
+  .ic-foot .ic-apply { flex: 1 1 100%; justify-content: center; }
+  /* sticky apply bar hugs the phone edge */
+  .applybar { bottom: 10px; gap: 10px; padding: 10px 10px 10px 16px; }
+  .applybar .info .t { font-size: 14px; }
+}
+
 @media (max-width: 380px) {
   .otp input { width: 38px; height: 48px; font-size: 18px; }
   .btn { padding: 11px 16px; }
