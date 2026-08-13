@@ -72,6 +72,20 @@ export async function getIpo(symbol: string): Promise<IpoFull | undefined> {
   return m ? enrich(m) : undefined;
 }
 
+/** Record a standalone consent (e.g. the GMP disclaimer) for the signed-in user. */
+export async function grantConsent(token: string, type: string, noticeVersion: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/consents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ type, noticeVersion }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function getConsentNotices(): Promise<ConsentNotice[]> {
   try {
     const res = await fetch(`${API_BASE}/consent-notices`);

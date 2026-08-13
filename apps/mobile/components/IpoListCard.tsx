@@ -28,6 +28,31 @@ const STATUS_TONE: Record<string, ChipTone> = {
   open: 'success', upcoming: 'warn', closed: 'neutral', listed: 'neutral', withdrawn: 'danger',
 };
 
+function localDay(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/**
+ * Lifecycle tag (product spec): Upcoming · Pre Apply · Open Today · Live ·
+ * Closing Today. "Pre Apply" = an upcoming issue whose operator has switched
+ * Start Bid ON (applications accepted before the open date).
+ */
+export function cardTag(ipo: IpoFull, t: (k: string) => string): { label: string; tone: ChipTone } {
+  const today = localDay();
+  if (ipo.status === 'open') {
+    if (ipo.closeDate === today) return { label: 'Closing Today', tone: 'danger' };
+    if (ipo.openDate === today) return { label: 'Open Today', tone: 'success' };
+    return { label: 'Live', tone: 'success' };
+  }
+  if (ipo.status === 'upcoming') {
+    return (ipo.extra as any)?.startBid === true
+      ? { label: 'Pre Apply', tone: 'brand' }
+      : { label: 'Upcoming', tone: 'warn' };
+  }
+  return { label: t(`status.${ipo.status}`), tone: STATUS_TONE[ipo.status] ?? 'neutral' };
+}
+
 const TOPICS: { key: Topic; label: string }[] = [
   { key: 'sub', label: 'Subscription' },
   { key: 'reservation', label: 'Reservation' },
@@ -41,7 +66,9 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
   const [open, setOpen] = useState<Topic | null>(null);
 
   const isOpen = ipo.status === 'open';
-  const canApply = isOpen || ipo.status === 'upcoming';
+  // Apply shows only when the operator's "Start Bid" gate is ON for this issue.
+  const canApply = (isOpen || ipo.status === 'upcoming') && (ipo.extra as any)?.startBid === true;
+  const tag = cardTag(ipo, t);
   const subX = ipo.subscriptionTimes;
   const demandPct = subX != null ? Math.min(100, (subX / 15) * 100) : 0;
 
@@ -58,16 +85,16 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
 
   return (
     <Card style={styles.card} onPress={() => router.push(`/ipo/${ipo.symbol}`)}>
-      {/* Row 1 — identity */}
+      {/* Row 1 — identity (bigger logo + stronger name = the card's brand moment) */}
       <View style={styles.top}>
-        <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={44} />
+        <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={48} />
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={2}>{ipo.name}</Text>
           <Text style={styles.metaLine} numberOfLines={1}>
             {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}
           </Text>
         </View>
-        <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
+        <Chip label={tag.label} tone={tag.tone} />
       </View>
 
       {/* Row 2 — ONE hero figure (min investment) + compact secondary strip */}
@@ -195,7 +222,7 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
 const styles = StyleSheet.create({
   card: { marginHorizontal: 16, marginBottom: 12 },
   top: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  name: { fontSize: 15.5, fontFamily: fonts.bold, fontWeight: '700', letterSpacing: -0.2, color: ui.title, lineHeight: 20 },
+  name: { fontSize: 16, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.3, color: ui.title, lineHeight: 21 },
   metaLine: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 3, letterSpacing: 0.2 },
   // money is the hero — one big figure per card
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 },

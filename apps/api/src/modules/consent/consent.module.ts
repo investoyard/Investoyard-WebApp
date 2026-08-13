@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { tenantContext } from '../../common/tenant-context';
 import { consentNoticeList } from '../../common/consent-notices';
 
-enum ConsentType { service = 'service', marketing = 'marketing', data_sharing_rail = 'data_sharing_rail', analytics = 'analytics' }
+enum ConsentType { service = 'service', marketing = 'marketing', data_sharing_rail = 'data_sharing_rail', analytics = 'analytics', gmp_disclaimer = 'gmp_disclaimer' }
 
 class GrantConsentDto {
   @IsEnum(ConsentType) type!: ConsentType;

@@ -227,6 +227,7 @@ export interface AdminIpo {
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   registrar?: string; gmp?: number; reservations?: string[];
   logoUrl?: string;
+  autoPollSubscription?: boolean;
   extra?: Record<string, any>; // operator-extended fields (categoryName, issueType, …)
 }
 export interface IpoDoc { type: string; url: string; summary?: string }
@@ -441,3 +442,8 @@ export const createIpo = (body: IpoWrite) =>
   authed<AdminIpo>(`${API}/ipos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateIpo = (id: string, body: IpoWrite) =>
   authed<AdminIpo>(`${API}/ipos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+/** IPO Operations quick controls — server merges into `extra`, nothing else touched. */
+export interface IpoOps { startBid?: boolean; startPrint?: boolean; autoPollSubscription?: boolean; bidMember?: string }
+export const updateIpoOps = (id: string, body: IpoOps) =>
+  authed<{ id: string; startBid: boolean; startPrint: boolean; autoPollSubscription: boolean; bidMember: string | null }>(
+    `${API}/ipos/${id}/ops`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

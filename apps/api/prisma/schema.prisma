@@ -37,6 +37,7 @@ enum ConsentType {
   marketing
   data_sharing_rail
   analytics
+  gmp_disclaimer
 }
 
 enum IpoType {

@@ -150,6 +150,37 @@ export class IpoService {
   }
 
   /**
+   * IPO Operations quick controls: Start Bid / Start Printing / subscription
+   * auto-poll / active bid member. Flags merge into the existing `extra` JSON
+   * server-side so nothing else the operator entered is ever clobbered.
+   */
+  async updateOps(id: string, dto: { startBid?: boolean; startPrint?: boolean; autoPollSubscription?: boolean; bidMember?: string }) {
+    const existing = await this.prisma.ipo.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('IPO not found');
+    const extra: Record<string, any> = { ...((existing.extra as any) ?? {}) };
+    if (dto.startBid !== undefined) extra.startBid = dto.startBid;
+    if (dto.startPrint !== undefined) extra.startPrint = dto.startPrint;
+    if (dto.bidMember !== undefined && Array.isArray(extra.onlineSeries)) {
+      // Route bids under this member: activate its Online Apply series row.
+      extra.onlineSeries = extra.onlineSeries.map((s: any) => ({ ...s, active: s.member === dto.bidMember }));
+    }
+    const updated = await this.prisma.ipo.update({
+      where: { id },
+      data: {
+        extra,
+        ...(dto.autoPollSubscription !== undefined ? { autoPollSubscription: dto.autoPollSubscription } : {}),
+      },
+    });
+    return {
+      id: updated.id,
+      startBid: extra.startBid === true,
+      startPrint: extra.startPrint === true,
+      autoPollSubscription: updated.autoPollSubscription,
+      bidMember: (extra.onlineSeries ?? []).find((s: any) => s.active)?.member ?? null,
+    };
+  }
+
+  /**
    * Delete an IPO — only when it has NO applications (a genuine mistake / test row).
    * Otherwise the operator should set status to `withdrawn` instead of destroying data.
    * Removes the IPO's own children + any watchlist entries (unscoped: watchlist is

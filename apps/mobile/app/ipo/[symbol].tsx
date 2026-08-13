@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
+import { animateNext, fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
 import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
@@ -23,7 +23,6 @@ import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
-import { BrandGradient } from '../../components/ui/Gradient';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -84,7 +83,9 @@ export default function IpoDetailScreen() {
     );
   }
 
-  const canApply = ipo.status === 'open' || ipo.status === 'upcoming';
+  const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
+  // Apply shows only when the operator's "Start Bid" gate is ON for this issue.
+  const canApply = inWindow && (ipo.extra as any)?.startBid === true;
   const closes = ipo.status === 'open' ? closesInLabel(ipo.closeDate) : null;
   const ex: Record<string, any> = ipo.extra ?? {};
   const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
@@ -96,9 +97,7 @@ export default function IpoDetailScreen() {
   const finParas = stripHtml(typeof ex.companyFinancials === 'string' ? ex.companyFinancials : undefined);
   const hasCompany = aboutParas.length > 0 || objectParas.length > 0 || finParas.length > 0 || (ipo.financials?.length ?? 0) > 0;
 
-  /* ---- sticky section nav plumbing ---- */
-  const CONTENT_TOP = 88 - 52; // gradient band minus the hero card overlap
-  const NAV_H = 48;
+  /* ---- pinned section-nav plumbing (identity + chips never scroll away) ---- */
   const sections: { key: string; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'dates', label: 'Dates' },
@@ -112,12 +111,14 @@ export default function IpoDetailScreen() {
   const reg = (k: string) => (e: { nativeEvent: { layout: { y: number } } }) => { secY.current[k] = e.nativeEvent.layout.y; };
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
-    const on = y > 130;
-    if (on !== navOn) setNavOn(on);
+    // Scrolled → the pinned bar COMPACTS: logo hidden, name to one line with …,
+    // and a one-line key-metrics strip (band · lot · min invest) above the chips.
+    const on = y > 64;
+    if (on !== navOn) { animateNext(); setNavOn(on); }
     let cur = sections[0].key;
     for (const s of sections) {
       const sy = secY.current[s.key];
-      if (sy != null && CONTENT_TOP + sy - NAV_H - 24 <= y) cur = s.key;
+      if (sy != null && sy - 24 <= y) cur = s.key;
     }
     if (cur !== active) {
       setActive(cur);
@@ -130,7 +131,7 @@ export default function IpoDetailScreen() {
     const sy = secY.current[k];
     if (sy == null) return;
     tapSelect();
-    scrollRef.current?.scrollTo({ y: Math.max(0, CONTENT_TOP + sy - NAV_H - 8), animated: true });
+    scrollRef.current?.scrollTo({ y: Math.max(0, sy - 8), animated: true });
   };
   const onShare = () => {
     Share.share({
@@ -140,39 +141,19 @@ export default function IpoDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView
-        ref={scrollRef}
-        onScroll={onScroll}
-        scrollEventThrottle={32}
-        contentContainerStyle={{ paddingBottom: canApply ? 130 : 32 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
-        }
-      >
-        {/* slim gradient band — visual continuity with the Home hero */}
-        <View style={styles.band}>
-          <BrandGradient />
-        </View>
-
-        <View style={styles.content}>
-        {/* ── OVERVIEW ── */}
-        <View onLayout={reg('overview')}>
-        {/* hero card overlapping the band's bottom edge */}
-        <Card style={styles.heroCard}>
-          <View style={styles.hero}>
-            <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={54} />
+      {/* ── PINNED bar: full identity at rest → compacts on scroll (logo hidden,
+             one-line name with …, key metrics strip). Name is ALWAYS visible. ── */}
+      <View style={[styles.pin, navOn && styles.pinShadow]}>
+        {!navOn ? (
+          <View style={styles.pinRow}>
+            <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={38} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.h1}>{ipo.name}</Text>
-              <View style={styles.heroMeta}>
-                <Chip label={ipo.type === 'sme' ? 'SME' : 'Mainboard'} tone={ipo.type === 'sme' ? 'brand' : 'neutral'} dot={false} />
-                <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
-                <Chip label={exchanges} tone="neutral" dot={false} />
-              </View>
-              <View style={styles.heroDates}>
-                <CalendarIcon size={13} color={ui.muted} strokeWidth={1.8} />
-                <Text style={styles.heroDatesTxt}>{fmtRange(ipo.openDate, ipo.closeDate)}</Text>
-              </View>
+              <Text style={styles.pinName} numberOfLines={1}>{ipo.name}</Text>
+              <Text style={styles.pinSym} numberOfLines={1}>
+                {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'} · {exchanges}
+              </Text>
             </View>
+            <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
             <Pressable
               onPress={onShare}
               hitSlop={8}
@@ -183,7 +164,46 @@ export default function IpoDetailScreen() {
               <ShareIcon size={17} color={ui.indigo} strokeWidth={1.8} />
             </Pressable>
           </View>
-        </Card>
+        ) : (
+          <View style={styles.pinCompact}>
+            <Text style={styles.pinName} numberOfLines={1} ellipsizeMode="tail">{ipo.name}</Text>
+            <Text style={styles.pinMetrics} numberOfLines={1}>
+              {priceBand(ipo.priceBandMin, ipo.priceBandMax)} · Lot {ipo.lotSize != null ? `${ipo.lotSize} sh` : '—'} · Min {inr(ipo.minAmount)}
+            </Text>
+          </View>
+        )}
+        <ScrollView ref={navRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navRow}>
+          {sections.map((s) => {
+            const on = active === s.key;
+            return (
+              <Pressable
+                key={s.key}
+                onPress={() => jump(s.key)}
+                style={({ pressed }) => [styles.navChip, on && styles.navChipOn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={[styles.navTxt, on && styles.navTxtOn]}>{s.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={32}
+        contentContainerStyle={{ paddingBottom: inWindow ? 130 : 32 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
+        }
+      >
+        <View style={styles.content}>
+        {/* ── OVERVIEW: dates + key metrics ── */}
+        <View onLayout={reg('overview')}>
+        <View style={styles.datesRow}>
+          <CalendarIcon size={13} color={ui.muted} strokeWidth={1.8} />
+          <Text style={styles.heroDatesTxt}>{fmtRange(ipo.openDate, ipo.closeDate)}</Text>
+        </View>
 
         {/* key metrics — one elevated card, 2×2 grid with hairline dividers */}
         <Card style={styles.metricsCard}>
@@ -326,28 +346,9 @@ export default function IpoDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* ── sticky section nav — appears once the hero scrolls away ── */}
-      {navOn ? (
-        <View style={styles.nav}>
-          <ScrollView ref={navRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navRow}>
-            {sections.map((s) => {
-              const on = active === s.key;
-              return (
-                <Pressable
-                  key={s.key}
-                  onPress={() => jump(s.key)}
-                  style={({ pressed }) => [styles.navChip, on && styles.navChipOn, pressed && { opacity: 0.8 }]}
-                >
-                  <Text style={[styles.navTxt, on && styles.navTxtOn]}>{s.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
 
       {/* sticky bottom apply bar */}
-      {canApply ? (
+      {inWindow ? (
         <View style={[styles.applyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.applyK}>MIN INVESTMENT</Text>
@@ -357,7 +358,11 @@ export default function IpoDetailScreen() {
               <Text style={styles.applySub}>{ipo.subscriptionTimes}× subscribed</Text>
             ) : null}
           </View>
-          <Button label="Apply now" onPress={() => router.push(`/apply/${ipo.symbol}`)} style={{ minWidth: 150 }} />
+          {canApply ? (
+            <Button label="Apply now" onPress={() => router.push(`/apply/${ipo.symbol}`)} style={{ minWidth: 150 }} />
+          ) : (
+            <Button label="Bidding opens soon" variant="ghost" disabled onPress={() => {}} style={{ minWidth: 150 }} />
+          )}
         </View>
       ) : null}
     </View>
@@ -402,7 +407,7 @@ function KV({ k, v, last }: { k: string; v: string; last?: boolean }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   // key-metrics card (2×2, hairline dividers)
-  metricsCard: { marginTop: 16, padding: 0 },
+  metricsCard: { marginTop: 10, padding: 0 },
   metricsRow: { flexDirection: 'row' },
   metric: { flex: 1, paddingHorizontal: 16, paddingVertical: 13 },
   metricK: { ...microLabel, fontSize: 10.5 },
@@ -417,19 +422,24 @@ const styles = StyleSheet.create({
   perfPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   perfPillTxt: { color: '#ffffff', fontSize: 12, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
   perfSub: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 7, fontVariant: ['tabular-nums'] },
-  // slim brand ribbon — just enough gradient to peek above the hero card
-  band: {
-    height: 88,
-    overflow: 'hidden',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  // pinned identity + section nav (fixed under the native header)
+  pin: {
+    backgroundColor: '#ffffff',
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: ui.divider,
+    zIndex: 5,
   },
-  content: { paddingHorizontal: 16, marginTop: -52 },
-  heroCard: { marginBottom: 2 },
-  hero: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
-  h1: { fontSize: 21, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title, lineHeight: 26 },
-  heroMeta: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  heroDates: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
+  pinShadow: { ...shadowCard, elevation: 6 },
+  pinRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16 },
+  pinName: { fontSize: 15.5, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.3, color: ui.title },
+  pinSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  // scrolled (compact) mode — no logo, name one line, key metrics strip
+  pinCompact: { paddingHorizontal: 16 },
+  pinMetrics: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, marginTop: 3, fontVariant: ['tabular-nums'] },
+  content: { paddingHorizontal: 16, paddingTop: 12 },
+  datesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, marginBottom: 2 },
   heroDatesTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
   para: { fontFamily: fonts.regular, fontSize: 14, color: ui.body, lineHeight: 21 },
   kv: {
@@ -453,11 +463,6 @@ const styles = StyleSheet.create({
   shareBtn: {
     width: 36, height: 36, borderRadius: 12, backgroundColor: ui.indigoTint,
     alignItems: 'center', justifyContent: 'center',
-  },
-  nav: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 48,
-    backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: ui.divider,
-    justifyContent: 'center', ...shadowCard,
   },
   navRow: { paddingHorizontal: 12, gap: 6, alignItems: 'center' },
   navChip: { paddingHorizontal: 14, height: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },

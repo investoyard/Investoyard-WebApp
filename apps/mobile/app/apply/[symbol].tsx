@@ -50,6 +50,22 @@ export default function ApplyScreen() {
     );
   }
 
+  // Operator "Start Bid" gate — no applications until it's switched on.
+  const bidOpen = (ipo.extra as any)?.startBid === true;
+  const printOpen = (ipo.extra as any)?.startPrint === true;
+  if ((ipo.status === 'open' || ipo.status === 'upcoming') && !bidOpen) {
+    return (
+      <View style={[styles.screen, { justifyContent: 'center' }]}>
+        <EmptyState
+          icon={<UsersIcon size={26} color={ui.indigo} />}
+          title="Bidding hasn't started yet"
+          body={`Applications for ${ipo.name} will open shortly — check back soon.`}
+          cta={<Button label="View IPO details" variant="ghost" onPress={() => router.push(`/ipo/${ipo.symbol}`)} />}
+        />
+      </View>
+    );
+  }
+
   if (profiles.length === 0) {
     return (
       <View style={[styles.screen, { justifyContent: 'center' }]}>
@@ -180,7 +196,10 @@ export default function ApplyScreen() {
         <Card>
           <View style={styles.row}>
             <Choice active={method === 'upi'} label={t('apply.method.upi')} onPress={() => setMethod('upi')} />
-            <Choice active={method === 'pdf'} label={t('apply.method.pdf')} onPress={() => setMethod('pdf')} />
+            {/* ASBA form printing appears only when the operator's Start Printing gate is ON */}
+            {printOpen ? (
+              <Choice active={method === 'pdf'} label={t('apply.method.pdf')} onPress={() => setMethod('pdf')} />
+            ) : null}
           </View>
         </Card>
 

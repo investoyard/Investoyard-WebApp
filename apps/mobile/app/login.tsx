@@ -83,8 +83,7 @@ export default function LoginScreen() {
 
       {/* brand block */}
       <View style={[styles.brand, { paddingTop: insets.top + 64 }]}>
-        <Logo height={26} variant="light" />
-        <Text style={styles.brandName}>Investoyard</Text>
+        <Logo height={34} variant="light" />
         <Text style={styles.tagline}>Investing in IPOs, has never been this easy.</Text>
       </View>
 
@@ -164,8 +163,7 @@ const styles = StyleSheet.create({
   closeTxt: { color: '#ffffff', fontSize: 15, fontFamily: fonts.bold, fontWeight: '700' },
   brand: { alignItems: 'center', paddingHorizontal: 24 },
   logoChip: { backgroundColor: '#ffffff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 },
-  brandName: { color: '#ffffff', fontSize: 26, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, marginTop: 16 },
-  tagline: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fonts.medium, fontWeight: '500', marginTop: 6, textAlign: 'center' },
+  tagline: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fonts.medium, fontWeight: '500', marginTop: 14, textAlign: 'center' },
   sheet: {
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,

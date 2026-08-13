@@ -5,17 +5,17 @@
  */
 import { Platform, LayoutAnimation, UIManager, TextStyle, ViewStyle } from 'react-native';
 
-/** Light palette — the shipped look. */
+/** Light palette — indigo-tinted "soothing" neutrals (not flat grey). */
 const light = {
-  canvas: '#F6F7FB',
+  canvas: '#F5F5FA',
   card: '#FFFFFF',
-  divider: '#EEF0F5',
-  /** near-black display/title ink */
-  title: '#171A23',
+  divider: '#ECEDF6',
+  /** near-black display/title ink (slight indigo cast) */
+  title: '#181A2E',
   /** body text */
-  body: '#3A3F4B',
-  /** micro-labels / secondary */
-  muted: '#8A90A0',
+  body: '#3D4060',
+  /** micro-labels / secondary — indigo-grey, higher legibility than flat grey */
+  muted: '#767CA3',
   indigo: '#3C2E7E',
   indigoTint: '#EEEBFA',
   gradTop: '#46368F',
@@ -26,9 +26,9 @@ const light = {
   amberTint: '#FFF4DC',
   red: '#B3261E',
   redTint: '#FDECEC',
-  slate: '#5A6070',
-  slateTint: '#EEF0F5',
-  skeleton: '#E9EBF2',
+  slate: '#5C6187',
+  slateTint: '#EDEEF7',
+  skeleton: '#E8E9F4',
 } as const;
 
 /**

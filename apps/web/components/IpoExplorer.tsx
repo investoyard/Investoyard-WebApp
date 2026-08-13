@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoListItem } from '@/lib/api';
 import { IpoCard } from '@/components/IpoCard';
+import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
 
@@ -44,6 +45,8 @@ export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[
 
   return (
     <section id="ipos">
+      {/* one-time GMP awareness consent (compliance) */}
+      <GmpNotice />
       {/* status filter tabs */}
       <div className="tabs" role="tablist" aria-label="IPO status">
         {statusTabs.map((s) => (

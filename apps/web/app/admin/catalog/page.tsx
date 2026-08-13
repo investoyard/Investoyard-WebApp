@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
-import { PageHead, SearchBox } from '@/components/ui/Form';
+import { PageHead, SearchBox, Field, FormActions } from '@/components/ui/Form';
+import { Modal } from '@/components/ui/Modal';
 import { usePagination } from '@/components/ui/Pagination';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { RowMenu } from '@/components/ui/RowMenu';
@@ -39,6 +40,41 @@ export default function AdminCatalog() {
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
+  // GMP & Listing — quick-entry POPUP (was a separate page). Values load from
+  // the full detail so the extra JSON merges safely on save.
+  const [gmpFor, setGmpFor] = useState<api.AdminIpo | null>(null);
+  const [gmpDetail, setGmpDetail] = useState<api.AdminIpoDetail | null>(null);
+  const [gmpForm, setGmpForm] = useState({ gmp: '', gainPct: '', bse: '', nse: '' });
+  const [gmpBusy, setGmpBusy] = useState(false);
+  const [gmpErr, setGmpErr] = useState<string | null>(null);
+  const openGmp = (i: api.AdminIpo) => {
+    setGmpFor(i); setGmpDetail(null); setGmpErr(null);
+    api.fetchIpo(i.id).then((d) => {
+      setGmpDetail(d);
+      const ex: any = d.extra ?? {};
+      setGmpForm({
+        gmp: d.gmp != null ? String(d.gmp) : '',
+        gainPct: d.listingGainPct != null ? String(d.listingGainPct) : '',
+        bse: ex.bseListingPrice != null ? String(ex.bseListingPrice) : '',
+        nse: ex.nseListingPrice != null ? String(ex.nseListingPrice) : '',
+      });
+    }).catch((e) => setGmpErr(String(e?.message ?? e)));
+  };
+  const saveGmp = async () => {
+    if (!gmpFor || !gmpDetail) return;
+    setGmpBusy(true); setGmpErr(null);
+    try {
+      const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
+      await api.updateIpo(gmpFor.id, {
+        gmp: num(gmpForm.gmp), listingGainPct: num(gmpForm.gainPct),
+        extra: { ...(gmpDetail.extra ?? {}), bseListingPrice: gmpForm.bse, nseListingPrice: gmpForm.nse },
+      });
+      setGmpFor(null);
+      await load();
+    } catch (e: any) { setGmpErr(String(e?.message ?? e)); }
+    finally { setGmpBusy(false); }
+  };
+
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const askDelete = (i: api.AdminIpo) => setConfirm({
     title: `Delete ${i.symbol}?`, danger: true, confirmLabel: 'Delete IPO',
@@ -124,7 +160,7 @@ export default function AdminCatalog() {
                 <th></th>
                 <SortTh k="symbol" label="Symbol" /><SortTh k="name" label="Name" /><SortTh k="type" label="Category" />
                 <SortTh k="band" label="Band" /><SortTh k="lot" label="Lot" /><SortTh k="open" label="Open" />
-                <SortTh k="close" label="Close" /><SortTh k="gmp" label="GMP" /><SortTh k="status" label="Status" />
+                <SortTh k="close" label="Close" /><th title="Operator gates: Bid / Print (set in Edit or IPO Operations)">Ops</th><SortTh k="status" label="Status" />
                 {canManage && <th style={{ textAlign: 'right' }}>Action</th>}
               </tr></thead>
               <tbody>
@@ -138,14 +174,20 @@ export default function AdminCatalog() {
                     <td className="mono">{i.lotSize ?? '—'}</td>
                     <td className="mono" style={{ fontSize: 12.5 }}>{i.openDate ?? '—'}</td>
                     <td className="mono" style={{ fontSize: 12.5 }}>{i.closeDate ?? '—'}</td>
-                    <td className="mono" style={{ color: i.gmp != null ? 'var(--pos)' : undefined }}>{i.gmp != null ? `+${i.gmp}` : '—'}</td>
+                    {/* read-only operator-gate indicators (toggles live in IPO Operations) */}
+                    <td>
+                      <span style={{ display: 'inline-flex', gap: 4 }}>
+                        <span title={`Start Bid ${i.extra?.startBid === true ? 'ON' : 'OFF'}`} style={{ width: 20, height: 20, borderRadius: 6, fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: i.extra?.startBid === true ? 'var(--pos-50, #eaf5ee)' : 'var(--bg-2)', color: i.extra?.startBid === true ? 'var(--pos)' : 'var(--text-muted)' }}>B</span>
+                        <span title={`Start Printing ${i.extra?.startPrint === true ? 'ON' : 'OFF'}`} style={{ width: 20, height: 20, borderRadius: 6, fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: i.extra?.startPrint === true ? 'var(--pos-50, #eaf5ee)' : 'var(--bg-2)', color: i.extra?.startPrint === true ? 'var(--pos)' : 'var(--text-muted)' }}>P</span>
+                      </span>
+                    </td>
                     <td><span className={`ph ${ph.phase}`}>{ph.label}</span></td>
                     {canManage && (
                       <td>
                         <span className="row-actions">
                           <a className="icon-btn" href={`/admin/catalog/view?id=${i.id}`} title="View details"><Icon name="eye" size={15} /></a>
                           <a className="icon-btn" href={`/admin/catalog/edit?id=${i.id}`} title="Edit"><Icon name="edit" size={15} /></a>
-                          <a className="icon-btn" href={`/admin/catalog/gmp?id=${i.id}`} title="GMP & Listing"><Icon name="trending" size={15} /></a>
+                          <button className="icon-btn" onClick={() => openGmp(i)} title="GMP & Listing"><Icon name="trending" size={15} /></button>
                           <RowMenu>
                             <button className="danger" disabled={busy} onClick={() => askDelete(i)}><Icon name="trash" size={15} /> Delete IPO</button>
                           </RowMenu>
@@ -161,6 +203,30 @@ export default function AdminCatalog() {
         {!loading && pager}
       </div>
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
+
+      {gmpFor && (
+        <Modal
+          title={`GMP & Listing — ${gmpFor.symbol}`}
+          sub={`${gmpFor.name} · GMP is unofficial and always shown with the disclaimer.`}
+          onClose={() => setGmpFor(null)}
+        >
+          {gmpErr && <div className="banner warn" style={{ marginBottom: 14 }}>{gmpErr}</div>}
+          {!gmpDetail ? <Loader /> : (
+            <>
+              <div className="form-grid">
+                <Field label="GMP (₹)" hint="grey-market premium per share"><input className="input mono" value={gmpForm.gmp} onChange={(e) => setGmpForm({ ...gmpForm, gmp: e.target.value })} /></Field>
+                <Field label="Listing gain (%)"><input className="input mono" value={gmpForm.gainPct} onChange={(e) => setGmpForm({ ...gmpForm, gainPct: e.target.value })} /></Field>
+                <Field label="NSE Listing Price (₹)"><input className="input mono" value={gmpForm.nse} onChange={(e) => setGmpForm({ ...gmpForm, nse: e.target.value })} placeholder="0.00" /></Field>
+                <Field label="BSE Listing Price (₹)"><input className="input mono" value={gmpForm.bse} onChange={(e) => setGmpForm({ ...gmpForm, bse: e.target.value })} placeholder="0.00" /></Field>
+              </div>
+              <FormActions>
+                <button className="btn" disabled={gmpBusy} onClick={saveGmp}>{gmpBusy ? 'Saving…' : 'Save'}</button>
+                <button className="btn btn-secondary" onClick={() => setGmpFor(null)}>Cancel</button>
+              </FormActions>
+            </>
+          )}
+        </Modal>
+      )}
     </>
   );
 }

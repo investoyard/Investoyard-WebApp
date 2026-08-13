@@ -26,13 +26,17 @@ const catShort = (amt: number) => (amt <= RETAIL_MAX ? 'Retail' : amt <= SNII_MA
 
 /** Sticky sidebar apply card with a live lot/amount calculator (desktop). */
 export function ApplyPanel({
-  symbol, status, priceLabel, minAmount, closesLabel, lotSize, priceMax, subscribedX, lang = 'en', langQuery = '',
+  symbol, status, priceLabel, minAmount, closesLabel, lotSize, priceMax, subscribedX, bidOpen, lang = 'en', langQuery = '',
 }: {
   symbol: string; status: string; priceLabel: string; minAmount?: number; closesLabel?: string | null;
-  lotSize?: number; priceMax?: number; subscribedX?: number; lang?: Lang; langQuery?: string;
+  lotSize?: number; priceMax?: number; subscribedX?: number;
+  /** operator "Start Bid" gate — Apply shows only when explicitly enabled */
+  bidOpen?: boolean;
+  lang?: Lang; langQuery?: string;
 }) {
   const tr = makeT(lang);
-  const canApply = status === 'open' || status === 'upcoming';
+  const inWindow = status === 'open' || status === 'upcoming';
+  const canApply = inWindow && bidOpen === true;
   const [lots, setLots] = useState(1);
 
   const lot = lotSize ?? 0;
@@ -76,7 +80,9 @@ export function ApplyPanel({
         <>
           <div className="kv"><span className="k">{tr('label.min')} investment</span><span className="v mono">{inr(minAmount)}</span></div>
           {closesLabel && <div className="kv"><span className="k">Status</span><span className="v" style={{ color: 'var(--brand)' }}>{closesLabel}</span></div>}
-          <button className="btn btn-block btn-lg" disabled style={{ marginTop: 16 }}>{tr('detail.apply')}</button>
+          <button className="btn btn-block btn-lg" disabled style={{ marginTop: 16 }}>
+            {inWindow && !canApply ? 'Bidding opens soon' : tr('detail.apply')}
+          </button>
         </>
       )}
       <p className="disclaimer" style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
@@ -88,15 +94,16 @@ export function ApplyPanel({
 
 /** Sticky bottom apply bar (mobile). */
 export function ApplyBar({
-  symbol, status, priceLabel, lang = 'en', langQuery = '',
-}: { symbol: string; status: string; priceLabel: string; lang?: Lang; langQuery?: string }) {
+  symbol, status, priceLabel, bidOpen, lang = 'en', langQuery = '',
+}: { symbol: string; status: string; priceLabel: string; bidOpen?: boolean; lang?: Lang; langQuery?: string }) {
   const tr = makeT(lang);
-  const canApply = status === 'open' || status === 'upcoming';
+  const inWindow = status === 'open' || status === 'upcoming';
+  const canApply = inWindow && bidOpen === true;
   return (
     <div className="applybar mobile-only">
       <div className="info">
         <div className="t mono">{priceLabel}</div>
-        <div className="s">{canApply ? tr('apply.selfPan') : 'Applications are closed.'}</div>
+        <div className="s">{canApply ? tr('apply.selfPan') : inWindow ? 'Bidding opens soon.' : 'Applications are closed.'}</div>
       </div>
       <div className="spacer" />
       <WatchButton symbol={symbol} />

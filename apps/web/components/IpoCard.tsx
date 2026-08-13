@@ -66,7 +66,9 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
   const detailHref = lang === 'en' ? `/ipos/${ipo.symbol}` : `/${lang}/ipos/${ipo.symbol}`;
   const [open, setOpen] = useState<Topic | null>(null);
-  const canApply = ipo.status === 'open' || ipo.status === 'upcoming';
+  // Apply shows only when the operator's "Start Bid" gate is ON for this issue.
+  const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
+  const canApply = inWindow && (ipo as any).extra?.startBid === true;
   const watched = useStore((s) => s.watchlist.includes(ipo.symbol));
 
   const tenant = useTenant();
@@ -143,7 +145,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-foot">
         {canApply
           ? <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={16} /></a>
-          : <span className="ic-closed">Applications closed</span>}
+          : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>}
         {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" aria-label="Share this IPO" onClick={() => shareIpo(ipo)}>

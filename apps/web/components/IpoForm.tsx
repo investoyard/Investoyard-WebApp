@@ -47,6 +47,7 @@ interface FormState {
   symbol: string; name: string; type: string; issueType: string; status: string; faceValue: string; lotSize: string; isin: string;
   autoPollSubscription: boolean;
   allowShareholder: boolean; allowEmployee: boolean; // reserved quotas this issue offers
+  startBid: boolean; startPrint: boolean; // operator gates: apply/pre-apply + ASBA form printing
   categoryName: string; // IPO Category master name (drives type via its platform mapping)
   priceBandMin: string; priceBandMax: string;
   retailDiscount: string; retailCutOff: string; ncdMaxSeries: string; maxAmtRetail: string; noOfApp: string;
@@ -66,6 +67,7 @@ const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
   autoPollSubscription: true,
   allowShareholder: false, allowEmployee: false,
+  startBid: false, startPrint: false, // OFF until the operator explicitly opens bidding/printing
   categoryName: '',
   priceBandMin: '', priceBandMax: '',
   retailDiscount: '', retailCutOff: '', ncdMaxSeries: '', maxAmtRetail: '', noOfApp: '',
@@ -112,6 +114,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           autoPollSubscription: d.autoPollSubscription !== false,
           allowShareholder: (d.reservations ?? []).includes('shareholder'),
           allowEmployee: (d.reservations ?? []).includes('employee'),
+          startBid: ex.startBid === true, startPrint: ex.startPrint === true,
           priceBandMin: str(d.priceBandMin), priceBandMax: str(d.priceBandMax), lotSize: str(d.lotSize),
           registrar: str(d.registrar), logoUrl: str(d.logoUrl), objectsOfIssue: str(d.objectsOfIssue),
           openDate: str(ex.openDate) || toDT(d.openDate), closeDate: str(ex.closeDate) || toDT(d.closeDate), allotmentDate: str(d.allotmentDate), listingDate: str(d.listingDate),
@@ -216,6 +219,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       faqs: form.faqs, leads: form.leads, partners: form.partners,
       pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
       asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName },
+      startBid: form.startBid, startPrint: form.startPrint,
       sharesSize: form.sharesSize, shareResv: form.shareResv, resvRemarks: form.resvRemarks, resvRemarks2: form.resvRemarks2,
     },
   });
@@ -372,15 +376,21 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <Field label="Shareholder Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowShareholder} onChange={(v) => set({ allowShareholder: v })} /></div></Field>
                   <Field label="Employee Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowEmployee} onChange={(v) => set({ allowEmployee: v })} /></div></Field>
                 </div>
-                {editing && (
-                  <Field label="Live subscription" span={2}>
-                    <div style={{ paddingTop: 3, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} />
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub}><Icon name="refresh" size={13} /> Refresh now</button>
-                      {subMsg && <span className="muted" style={{ fontSize: 12 }}>{subMsg}</span>}
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+                  <Field label="Start Bid" hint="ON → investors can apply / pre-apply. OFF → Apply hidden on site & app."><div style={{ paddingTop: 3 }}><Toggle on={form.startBid} onChange={(v) => set({ startBid: v })} /></div></Field>
+                  <Field label="Start Printing" hint="ON → prefilled ASBA form printing available. OFF → print hidden."><div style={{ paddingTop: 3 }}><Toggle on={form.startPrint} onChange={(v) => set({ startPrint: v })} /></div></Field>
+                  {editing && (
+                    <div style={{ gridColumn: 'span 3' }}>
+                      <Field label="Live subscription">
+                        <div style={{ paddingTop: 3, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                          <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub}><Icon name="refresh" size={13} /> Refresh now</button>
+                          {subMsg && <span className="muted" style={{ fontSize: 12 }}>{subMsg}</span>}
+                        </div>
+                      </Field>
                     </div>
-                  </Field>
-                )}
+                  )}
+                </div>
               </div>
             </Panel>
 

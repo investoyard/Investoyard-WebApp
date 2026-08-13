@@ -62,3 +62,12 @@ export class UpdateIpoDto {
   @IsOptional() @IsBoolean() autoPollSubscription?: boolean;
   @IsOptional() @IsObject() extra?: Record<string, any>;
 }
+
+/** IPO Operations quick controls — merged server-side so nothing else in `extra` is touched. */
+export class UpdateIpoOpsDto {
+  @IsOptional() @IsBoolean() startBid?: boolean;
+  @IsOptional() @IsBoolean() startPrint?: boolean;
+  @IsOptional() @IsBoolean() autoPollSubscription?: boolean;
+  /** Online Apply member to route bids under — activates that onlineSeries row. */
+  @IsOptional() @IsString() bidMember?: string;
+}

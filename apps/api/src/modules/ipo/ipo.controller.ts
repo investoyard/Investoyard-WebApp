@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { IpoService } from './ipo.service';
-import { CreateIpoDto, UpdateIpoDto } from './ipo.dto';
+import { CreateIpoDto, UpdateIpoDto, UpdateIpoOpsDto } from './ipo.dto';
 
 /** Public reads (Tier 0) power anonymous browse + SEO; writes are operator-gated. */
 @Controller('ipos')
@@ -21,6 +21,14 @@ export class IpoController {
   @RequirePermissions('ipos.manage')
   create(@Body() dto: CreateIpoDto) {
     return this.ipo.create(dto);
+  }
+
+  /** IPO Operations quick controls — safe partial merge (never clobbers `extra`). */
+  @Patch(':id/ops')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('ipos.manage')
+  updateOps(@Param('id') id: string, @Body() dto: UpdateIpoOpsDto) {
+    return this.ipo.updateOps(id, dto);
   }
 
   @Patch(':id')

@@ -22,6 +22,7 @@ const NAV: NavNode[] = [
   { key: 'ipo', label: 'IPO Management', icon: 'box', perm: 'ipos.view', children: [
     { href: '/admin/catalog', label: 'IPO List' },
     { href: '/admin/catalog/new', label: 'Add New IPO', perm: 'ipos.manage' },
+    { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.manage' },
     { href: '/admin/masters/ipo-category', label: 'IPO Category' },
     { href: '/admin/masters/price-band', label: 'Price Band Master' },
   ] },

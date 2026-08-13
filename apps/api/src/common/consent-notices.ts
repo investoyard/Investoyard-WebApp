@@ -10,6 +10,13 @@ export const CONSENT_NOTICES = {
     summary:
       'Share your PAN, demat and bank/UPI details with the merchant banker and exchange rail to place and process this IPO application.',
   },
+  // GMP awareness (shown once on first GMP view; full dialog text lives client-side).
+  gmp_disclaimer: {
+    type: 'gmp_disclaimer',
+    version: 'gmp-v2',
+    summary:
+      'GMP is an informal, unofficial grey-market number — not endorsed by SEBI, the exchanges or Investoyard; shown for information only, unverified and volatile; not a prediction or investment advice; no one is liable for GMP-based losses.',
+  },
 } as const;
 
 export type ConsentNoticeType = keyof typeof CONSENT_NOTICES;

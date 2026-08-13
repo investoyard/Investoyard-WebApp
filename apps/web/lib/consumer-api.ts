@@ -42,6 +42,14 @@ export function authedConsumer<T>(path: string, init: RequestInit = {}): Promise
   return req<T>(path, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` } });
 }
 
+// ---- consents ----
+/** Record a standalone consent (e.g. the GMP disclaimer) against the signed-in user. */
+export const grantConsent = (type: string, noticeVersion: string) =>
+  authedConsumer<{ id: string }>('/consents', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, noticeVersion }),
+  });
+
 // ---- auth (OTP) ----
 export const requestOtp = (mobile: string) => post<{ requestId: string }>('/auth/otp/request', { mobile });
 export const verifyOtp = (requestId: string, otp: string) =>

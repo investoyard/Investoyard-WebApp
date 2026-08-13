@@ -66,13 +66,23 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const [placing, setPlacing] = useState(false);
   const [placeErr, setPlaceErr] = useState<string | null>(null);
   const hasToken = typeof window !== 'undefined' && !!getConsumerToken();
+  // Operator gates (IPO form → Start Bid / Start Printing) — from the LIVE detail.
+  const [gates, setGates] = useState<{ bid: boolean; print: boolean } | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (getConsumerToken()) listProfiles().then((rows) => setApiProfiles(rows.map(mapApiProfile))).catch(() => setApiProfiles([]));
     // Fetch the live catalog detail client-side to get the real server id (the baked prop may be MOCK).
-    getIpoDetail(ipo.symbol).then((d) => { if (d?.live && d.id) setLiveId(d.id); }).catch(() => { /* stays demo */ });
+    getIpoDetail(ipo.symbol).then((d) => {
+      if (d?.live && d.id) setLiveId(d.id);
+      const ex: any = (d as any)?.extra ?? (ipo as any).extra ?? {};
+      setGates({ bid: ex.startBid === true, print: ex.startPrint === true });
+    }).catch(() => {
+      const ex: any = (ipo as any).extra ?? {};
+      setGates({ bid: ex.startBid === true, print: ex.startPrint === true });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const canPrint = gates?.print === true;
   const liveMode = !!liveId && hasToken;
   const profiles = liveMode ? (apiProfiles ?? []) : storeProfiles;
 
@@ -136,6 +146,18 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
         <a className="btn" href={`/login?next=${encodeURIComponent(`/apply/${ipo.symbol}${q}`)}`} style={{ marginTop: 14 }}>
           {tr('login.title')}
         </a>
+      </div>
+    );
+  }
+
+  /* ----- operator "Start Bid" gate ----- */
+  if ((ipo.status === 'open' || ipo.status === 'upcoming') && gates && !gates.bid) {
+    return (
+      <div className="empty fade-up">
+        <div className="emoji">⏳</div>
+        <h3>Bidding hasn&apos;t started yet</h3>
+        <p className="muted">Applications for {ipo.name} will open shortly — check back soon.</p>
+        <a className="btn" href={`/ipos/${ipo.symbol}${q}`} style={{ marginTop: 14 }}>View IPO details</a>
       </div>
     );
   }
@@ -282,7 +304,12 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
             ? 'Approve the UPI mandate in each applicant’s UPI app to block the amounts above.'
             : 'Download each applicant’s prefilled ASBA form below, print it, and submit it to the bank — the bank bids & blocks the amount.'}
         </div>
-        {placed[0].method === 'pdf' && (
+        {placed[0].method === 'pdf' && !canPrint && (
+          <div className="banner info" style={{ marginTop: 14, textAlign: 'left' }}>
+            Form printing for this IPO will be enabled shortly — your application is recorded; come back to download the prefilled ASBA form.
+          </div>
+        )}
+        {placed[0].method === 'pdf' && canPrint && (
           <div className="stack" style={{ marginTop: 14 }}>
             {placedLive && placed.length > 1 && (
               <button className="btn" onClick={openAllAsbaForms} disabled={formBusy != null}>
@@ -557,7 +584,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                 <label className={`choice-card ${effMethod === 'pdf' ? 'on' : ''}`}>
                   <span className="radio" />
                   <input type="radio" hidden checked={effMethod === 'pdf'} onChange={() => setMethod('pdf')} />
-                  <span className="grow"><span className="t">{tr('apply.method.pdf')}</span><span className="s">Prefilled ASBA form for your bank · no UPI limit</span></span>
+                  <span className="grow"><span className="t">{tr('apply.method.pdf')}</span><span className="s">{canPrint ? 'Prefilled ASBA form for your bank · no UPI limit' : 'Form printing opens shortly — application is still recorded'}</span></span>
                 </label>
               </div>
               {!upiAllowed && (

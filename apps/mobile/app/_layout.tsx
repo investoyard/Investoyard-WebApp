@@ -7,7 +7,8 @@ import {
 } from '@expo-google-fonts/inter';
 import { fonts, enableLayoutAnimation, ui } from '../lib/theme';
 import { Logo } from '../components/Logo';
-import { LanguageProvider, LangToggle, useT } from '../components/i18n';
+import { HeaderIcons } from '../components/ui/HeaderIcons';
+import { LanguageProvider, useT } from '../components/i18n';
 import { AuthProvider } from '../components/auth';
 import { ProfilesProvider } from '../components/profiles';
 
@@ -36,12 +37,13 @@ function RootStack() {
       {/* detail/flow screens keep native back-navigation headers */}
       <Stack.Screen
         name="ipo/[symbol]"
-        options={{ headerTitle: () => <Logo height={20} />, headerTitleAlign: 'center', headerRight: () => <LangToggle /> }}
+        options={{ headerTitle: () => <Logo height={20} />, headerTitleAlign: 'center', headerRight: () => <HeaderIcons boxed={false} /> }}
       />
-      <Stack.Screen name="apply/[symbol]" options={{ title: t('apply.title') }} />
+      <Stack.Screen name="apply/[symbol]" options={{ title: t('apply.title'), headerRight: () => <HeaderIcons boxed={false} /> }} />
       <Stack.Screen name="login" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="profiles/new" options={{ title: t('profile.new') }} />
       <Stack.Screen name="notifications" options={{ title: t('notif.title') }} />
+      <Stack.Screen name="calendar" options={{ title: 'IPO Calendar' }} />
       <Stack.Screen name="consents" options={{ title: t('consents.title') }} />
     </Stack>
   );
