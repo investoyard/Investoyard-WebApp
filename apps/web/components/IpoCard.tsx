@@ -107,7 +107,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-top">
         <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
         <div className="grow">
-          <a className="ic-name" href={detailHref}>{ipo.name}</a>
+          <a className="ic-name" href={detailHref} title={ipo.name}>{ipo.name}</a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
