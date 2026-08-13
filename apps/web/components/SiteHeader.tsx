@@ -27,6 +27,7 @@ export function SiteHeader() {
 
   const links = [
     { href: '/', label: 'IPOs' },
+    { href: '/calendar', label: 'Calendar' },
     { href: '/portfolio', label: 'Portfolio' },
     { href: '/account', label: 'Account' },
   ];

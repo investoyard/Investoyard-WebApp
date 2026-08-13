@@ -898,6 +898,58 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- IPO CALENDAR (/calendar) */
+.cal-page { padding-top: 28px; padding-bottom: 48px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.cal-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
+.cal-seg { display: inline-flex; background: var(--bg-2); border-radius: var(--pill); padding: 3px; }
+.cal-seg-btn { font: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted); background: none; border: 0; border-radius: var(--pill); padding: 6px 16px; cursor: pointer; transition: color .15s var(--ease), background .15s var(--ease); }
+.cal-seg-btn.on { background: var(--surface); color: var(--brand); box-shadow: var(--sh-sm); }
+.cal-wrap { display: grid; gap: 22px; align-items: start; }
+@media (min-width: 960px) { .cal-wrap { grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); } }
+.cal-card { padding: 16px 14px 14px; }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 2px; }
+.cal-nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 0; border-radius: 10px; background: var(--brand-50); color: var(--brand); cursor: pointer; transition: background .15s var(--ease); }
+.cal-nav-btn:hover { background: var(--brand-100, var(--brand-50)); }
+.cal-nav-label { font-family: var(--font-display); font-size: 15.5px; font-weight: 650; letter-spacing: -.01em; }
+.cal-row { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-wds { margin-bottom: 2px; }
+.cal-wd { text-align: center; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 6px 0; }
+.cal-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 48px; padding: 4px 0; background: none; border: 0; font: inherit; cursor: pointer; border-radius: 10px; }
+.cal-cell:hover .cal-daynum:not(.sel) { background: var(--bg-2); }
+.cal-cell-wd { font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.cal-daynum { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; border: 1.5px solid transparent; }
+.cal-daynum.sel { background: var(--brand); color: #fff; font-weight: 700; }
+.cal-daynum.today { border-color: var(--brand); color: var(--brand); }
+.cal-dots { display: flex; gap: 3px; height: 5px; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.d-open { background: var(--pos); }
+.d-close { background: var(--gold-600); }
+.d-allot { background: var(--brand); }
+.d-list { background: var(--text-faint); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+.cal-dayhead { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 0 2px 8px; }
+.cal-detail > div + .cal-dayhead, .cal-detail > div:not(:first-child) .cal-dayhead { margin-top: 18px; }
+.cal-dayhead.today { color: var(--brand); }
+.cal-empty { padding: 22px; text-align: center; color: var(--text-muted); font-size: 13.5px; }
+.cal-list { padding: 4px 14px; }
+.cal-evrow { display: flex; align-items: center; gap: 12px; padding: 11px 0; color: inherit; }
+.cal-evrow + .cal-evrow { border-top: 1px solid var(--border); }
+.cal-evrow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cal-ev-name { font-family: var(--font-display); font-weight: 600; font-size: 14.5px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-evrow:hover .cal-ev-name { color: var(--brand); }
+.cal-ev-sym { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+.cal-ev-tag { flex: 0 0 auto; font-size: 11px; font-weight: 700; border-radius: var(--pill); padding: 4px 10px; }
+.t-open { color: var(--pos); background: var(--pos-soft); }
+.t-close { color: var(--gold-700, #8a6d1f); background: var(--gold-50, #fdf6e3); }
+.t-allot { color: var(--brand); background: var(--brand-50); }
+.t-list { color: var(--text-muted); background: var(--bg-2); }
+@media (max-width: 480px) {
+  .cal-head h1 { font-size: 20px; }
+  .cal-seg-btn { padding: 5px 13px; font-size: 12.5px; }
+}
+
 /* ------------------------------------------------- PHONE POLISH (≤480px) */
 @media (max-width: 480px) {
   /* IPO detail — tighter hero: smaller logo + dial so the NAME gets the room */

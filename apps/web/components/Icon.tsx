@@ -4,7 +4,7 @@ type IconName =
   | 'search' | 'arrow-right' | 'external' | 'check' | 'star' | 'star-fill'
   | 'shield' | 'bolt' | 'calendar' | 'trending' | 'users' | 'doc' | 'lock'
   | 'globe' | 'sparkle' | 'wallet' | 'chart' | 'clock' | 'share' | 'refresh'
-  | 'eye' | 'eye-off' | 'moon' | 'sun' | 'chevron-down' | 'bell' | 'logout'
+  | 'eye' | 'eye-off' | 'moon' | 'sun' | 'chevron-down' | 'chevron-left' | 'chevron-right' | 'bell' | 'logout'
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
@@ -36,6 +36,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4" /></>,
   'chevron-down': <path d="m6 9 6 6 6-6" />,
+  'chevron-left': <path d="m15 18-6-6 6-6" />,
+  'chevron-right': <path d="m9 18 6-6-6-6" />,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
   edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
