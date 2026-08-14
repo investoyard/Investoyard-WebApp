@@ -177,6 +177,7 @@ function IpoDetail() {
     asba_form_resident: `ASBA Print Form — Resident (≤₹5L)${ex.asbaNames?.resident ? ` · ${ex.asbaNames.resident}` : ''}`,
     asba_form_syndicate: `ASBA Print Form — Syndicate (>₹5L)${ex.asbaNames?.syndicate ? ` · ${ex.asbaNames.syndicate}` : ''}`,
     asba_form_single: `ASBA Print Form${ex.asbaNames?.single ? ` · ${ex.asbaNames.single}` : ''}`,
+    asba_form_shareholder: `ASBA Print Form — Shareholder (≤₹2L)${ex.asbaNames?.shareholder ? ` · ${ex.asbaNames.shareholder}` : ''}`,
   };
   const documents = (ipo.documents && ipo.documents.length) ? (
     <div className="doc-grid">

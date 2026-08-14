@@ -134,6 +134,10 @@ export class ApplicationsService {
     if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
       throw new BadRequestException('Cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.');
     }
+    // Shareholder reserved category is capped at ₹2,00,000.
+    if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+      throw new BadRequestException('Shareholder category applications are capped at ₹2,00,000.');
+    }
     // UPI mandate is capped at ₹5,00,000; above that the bid must go via bank ASBA (pdf).
     if (dto.applyMethod !== ApplyMethod.pdf && amount > 500000) {
       throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
@@ -226,7 +230,7 @@ export class ApplicationsService {
 
   /** Fill one application onto its ASBA form (overlay the uploaded blank, else placeholder). */
   private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
-    const template = this.pickAsbaTemplate(app.ipo, Number(app.amount));
+    const template = this.pickAsbaTemplate(app.ipo, Number(app.amount), app.applicantType);
     if (template) {
       const formNo = await this.allocateAsbaFormNo(app.ipo, app.id, app.asbaFormNo);
       const data: AsbaOverlayData = {
@@ -292,25 +296,33 @@ export class ApplicationsService {
 
   /**
    * Pick the on-disk blank ASBA form to overlay, per the operator's uploads.
+   * Shareholder category → the dedicated shareholder form when uploaded.
    * Mainboard: ≤₹5L → Resident, above → Syndicate. SME/NCD → single form for any amount.
    * Returns the absolute file path, or null to fall back to the generated placeholder.
    */
-  private pickAsbaTemplate(ipo: any, amount: number): string | null {
+  private pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
     const docs: Array<{ type: string; url: string }> = ipo.documents ?? [];
+    const toPath = (doc?: { type: string; url: string }): string | null => {
+      if (!doc?.url) return null;
+      const filename = doc.url.split('/uploads/')[1]?.split('?')[0];
+      if (!filename) return null;
+      const path = join(UPLOAD_DIR, decodeURIComponent(filename));
+      return existsSync(path) ? path : null;
+    };
+    if (applicantType === 'shareholder') {
+      const sha = toPath(docs.find((d) => d.type === 'asba_form_shareholder'));
+      if (sha) return sha; // no shareholder blank uploaded → fall through to the regular pick
+    }
     const isNcd = /ncd|debt/i.test(String(ipo.extra?.issueType ?? ''));
     const isMainboard = ipo.type === 'mainboard' && !isNcd;
     const wanted = isMainboard
       ? amount > ASBA_RETAIL_LIMIT ? 'asba_form_syndicate' : 'asba_form_resident'
       : 'asba_form_single';
-    const doc =
+    return toPath(
       docs.find((d) => d.type === wanted) ||
       docs.find((d) => d.type === 'asba_form_single') ||       // SME/NCD single, or mainboard fallback
-      docs.find((d) => d.type?.startsWith('asba_form'));       // any ASBA form as last resort
-    if (!doc?.url) return null;
-    const filename = doc.url.split('/uploads/')[1]?.split('?')[0];
-    if (!filename) return null;
-    const path = join(UPLOAD_DIR, decodeURIComponent(filename));
-    return existsSync(path) ? path : null;
+      docs.find((d) => d.type?.startsWith('asba_form')),       // any ASBA form as last resort
+    );
   }
 
   /**
@@ -422,6 +434,10 @@ export class ApplicationsService {
       }
       if (amount > 500000) {
         throw new BadRequestException(`${who}: amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).`);
+      }
+      // Shareholder reserved category is capped at ₹2,00,000.
+      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+        throw new BadRequestException(`${who}: shareholder category applications are capped at ₹2,00,000.`);
       }
 
       rows.push({

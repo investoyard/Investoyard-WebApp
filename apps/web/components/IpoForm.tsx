@@ -60,8 +60,8 @@ interface FormState {
   openDate: string; closeDate: string; qibCloseDate: string; allotmentDate: string; dematDate: string; listingDate: string;
   documents: Doc[]; leads: string[]; partners: Partner[]; pdfSeries: Series[]; onlineSeries: Series[];
   sharesSize: Record<string, SzCell>; shareResv: Record<string, Resv>; resvRemarks: string; resvRemarks2: string;
-  asbaResident: string; asbaSyndicate: string; asbaSingle: string; // blank ASBA form PDFs (URLs) for prefill printing
-  asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; // original file names (display)
+  asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
+  asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
 }
 const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
@@ -80,10 +80,10 @@ const blankForm = (): FormState => ({
   openDate: '', closeDate: '', qibCloseDate: '', allotmentDate: '', dematDate: '', listingDate: '',
   documents: [], leads: [], partners: [], pdfSeries: [], onlineSeries: [],
   sharesSize: blankShares(), shareResv: blankShareResv(), resvRemarks: '', resvRemarks2: '',
-  asbaResident: '', asbaSyndicate: '', asbaSingle: '',
-  asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '',
+  asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
+  asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
 });
-const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single'];
+const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
 const toDT = (v: any) => { const s = v == null ? '' : String(v); return s.length === 10 ? s + 'T00:00' : s; };
 
@@ -122,7 +122,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           asbaResident: str((d.documents ?? []).find((x) => x.type === 'asba_form_resident')?.url),
           asbaSyndicate: str((d.documents ?? []).find((x) => x.type === 'asba_form_syndicate')?.url),
           asbaSingle: str((d.documents ?? []).find((x) => x.type === 'asba_form_single')?.url),
-          asbaResidentName: str(ex.asbaNames?.resident), asbaSyndicateName: str(ex.asbaNames?.syndicate), asbaSingleName: str(ex.asbaNames?.single),
+          asbaShareholder: str((d.documents ?? []).find((x) => x.type === 'asba_form_shareholder')?.url),
+          asbaResidentName: str(ex.asbaNames?.resident), asbaSyndicateName: str(ex.asbaNames?.syndicate), asbaSingleName: str(ex.asbaNames?.single), asbaShareholderName: str(ex.asbaNames?.shareholder),
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
           retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail), noOfApp: str(ex.noOfApp),
@@ -183,7 +184,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
 
   const [asbaBusy, setAsbaBusy] = useState<string | null>(null);
-  const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle', file?: File | null) => {
+  const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', file?: File | null) => {
     if (!file) return;
     setAsbaBusy(slot); setErr(null);
     try { const r = await api.uploadPdf(file); set({ [slot]: r.url, [slot + 'Name']: r.name } as Partial<FormState>); }
@@ -205,6 +206,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       ...(form.asbaResident ? [{ type: 'asba_form_resident', url: form.asbaResident }] : []),
       ...(form.asbaSyndicate ? [{ type: 'asba_form_syndicate', url: form.asbaSyndicate }] : []),
       ...(form.asbaSingle ? [{ type: 'asba_form_single', url: form.asbaSingle }] : []),
+      ...(form.asbaShareholder ? [{ type: 'asba_form_shareholder', url: form.asbaShareholder }] : []),
     ],
     autoPollSubscription: form.autoPollSubscription,
     extra: {
@@ -218,7 +220,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       companyDescription: form.companyDescription, companyStrength: form.companyStrength, companyFinancials: form.companyFinancials, contactInfo: form.contactInfo,
       faqs: form.faqs, leads: form.leads, partners: form.partners,
       pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
-      asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName },
+      asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName, shareholder: form.asbaShareholderName },
       startBid: form.startBid, startPrint: form.startPrint,
       sharesSize: form.sharesSize, shareResv: form.shareResv, resvRemarks: form.resvRemarks, resvRemarks2: form.resvRemarks2,
     },
@@ -570,7 +572,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         )}
         {tab === 'docs' && (() => {
           const isMainboard = form.type === 'mainboard' && !/ncd|debt/i.test(form.issueType);
-          const slot = (key: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle', label: string, hint: string) => (
+          const slot = (key: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', label: string, hint: string) => (
             <div className="doc-up">
               <span style={{ width: 210, fontSize: 13 }}>{label}<div className="muted" style={{ fontSize: 11 }}>{hint}</div></span>
               <div className="doc-file">{form[key] ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{(form[(key + 'Name') as keyof FormState] as string) || 'form.pdf'}</span></> : <span className="muted" style={{ fontSize: 13 }}>Not uploaded</span>}</div>
@@ -585,9 +587,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             <Panel title="ASBA Print Forms" desc="Blank bid-cum-application PDFs — the system overlays applicant data for the 'apply through bank' print feature.">
               <div className="lead-list">
                 {isMainboard ? <>
-                  {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000')}
-                  {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000')}
+                  {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
+                  {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
                 </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME / NCD)')}
+                {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
               </div>
             </Panel>
           );
