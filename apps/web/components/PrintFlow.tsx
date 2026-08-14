@@ -58,6 +58,7 @@ function QuantityPicker({ engine, choice, onChange, allowShareholder, compact }:
   allowShareholder: boolean;
   compact?: boolean;
 }) {
+  const [customOn, setCustomOn] = useState(false); // "Custom" tile → shows the by-amount / by-lots controls
   const [mode, setMode] = useState<'amount' | 'lots'>('amount');
   const [crText, setCrText] = useState('');
   const [lotsText, setLotsText] = useState('');
@@ -94,61 +95,72 @@ function QuantityPicker({ engine, choice, onChange, allowShareholder, compact }:
         {chips.filter((c) => !c.hidden && c.q).map((c) => (
           <button
             key={c.key} type="button"
-            className={`qp-chip ${choice.q.lots === c.q!.lots ? 'on' : ''}`}
-            onClick={() => setQuote(c.q)}
+            className={`qp-chip ${!customOn && choice.q.lots === c.q!.lots ? 'on' : ''}`}
+            onClick={() => { setCustomOn(false); setQuote(c.q); }}
           >
             <b>{c.label}</b>
             <span>{c.q!.lots} {c.q!.lots === 1 ? 'lot' : 'lots'} · {inr(c.q!.amount)}</span>
           </button>
         ))}
+        {/* Custom is a tile like the presets — its controls open below when selected */}
+        <button type="button" className={`qp-chip ${customOn ? 'on' : ''}`} onClick={() => setCustomOn(true)}>
+          <b>Custom</b>
+          <span>by amount / lots</span>
+        </button>
       </div>
 
-      <div className="qp-custom">
-        <div className="qp-modes">
-          <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Custom:</span>
-          <button type="button" className={`qp-mode ${mode === 'amount' ? 'on' : ''}`} onClick={() => setMode('amount')}>By amount (₹ Cr)</button>
-          <button type="button" className={`qp-mode ${mode === 'lots' ? 'on' : ''}`} onClick={() => setMode('lots')}>By lots</button>
-        </div>
-        {mode === 'amount' ? (
-          <>
-            <input
-              className="input" inputMode="decimal" placeholder="e.g. 0.50 = ₹50,00,000"
-              value={crText} onChange={(e) => setCrText(e.target.value.replace(/[^\d.]/g, ''))}
-              style={{ maxWidth: 220 }}
-            />
-            {sugRows.length > 0 && (
-              <div className="qp-suggest">
-                {sugRows.map(([tag, q]) => (
-                  <button
-                    key={tag} type="button" disabled={!pickable(q!)}
-                    className={`qp-sug ${choice.q.lots === q!.lots ? 'on' : ''}`}
-                    onClick={() => setQuote(q!)}
-                  >
-                    <span className="tag">{tag}</span>
-                    <span className="mono">{q!.lots.toLocaleString('en-IN')} lots · {q!.shares.toLocaleString('en-IN')} sh</span>
-                    <b className="mono">{inr(q!.amount)}</b>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              className="input" inputMode="numeric" placeholder="Lots"
-              value={lotsText} onChange={(e) => setLotsText(e.target.value.replace(/\D/g, ''))}
-              style={{ maxWidth: 110 }}
-            />
-            {lotsQuote && (
-              <button type="button" className="qp-sug on-row" disabled={!pickable(lotsQuote)} onClick={() => setQuote(lotsQuote)}>
-                <span className="mono">{lotsQuote.shares.toLocaleString('en-IN')} sh</span>
-                <b className="mono">{inr(lotsQuote.amount)}</b>
-                <span className="tag">Use</span>
-              </button>
-            )}
+      {customOn && (
+        <div className="qp-custom">
+          <div className="qp-modes">
+            <button type="button" className={`qp-mode ${mode === 'amount' ? 'on' : ''}`} onClick={() => setMode('amount')}>By amount (₹ Cr)</button>
+            <button type="button" className={`qp-mode ${mode === 'lots' ? 'on' : ''}`} onClick={() => setMode('lots')}>By lots</button>
           </div>
-        )}
-      </div>
+          {mode === 'amount' ? (
+            <div className="qp-customrow" style={{ alignItems: 'flex-start' }}>
+              <input
+                className="input" inputMode="decimal" placeholder="e.g. 0.50 Cr"
+                value={crText} onChange={(e) => setCrText(e.target.value.replace(/[^\d.]/g, ''))}
+                style={{ maxWidth: 130 }}
+              />
+              {/* Below / Exact / Above stack vertically BESIDE the box — each row one line */}
+              {sugRows.length > 0 && (
+                <div className="qp-suggest" style={{ marginTop: 0, flex: 1, minWidth: 230 }}>
+                  {sugRows.map(([tag, q]) => (
+                    <button
+                      key={tag} type="button" disabled={!pickable(q!)}
+                      className={`qp-sug ${choice.q.lots === q!.lots ? 'on' : ''}`}
+                      onClick={() => setQuote(q!)}
+                    >
+                      <span className="tag">{tag}</span>
+                      <span className="mono">{q!.lots.toLocaleString('en-IN')} lots · {q!.shares.toLocaleString('en-IN')} sh</span>
+                      <b className="mono">{inr(q!.amount)}</b>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="qp-customrow">
+              <input
+                className="input" inputMode="numeric" placeholder="Lots"
+                value={lotsText} onChange={(e) => setLotsText(e.target.value.replace(/\D/g, ''))}
+                style={{ maxWidth: 110 }}
+              />
+              {/* one single-line strip — click to apply (no "Use" word) */}
+              {lotsQuote && (
+                <button
+                  type="button" disabled={!pickable(lotsQuote)}
+                  className={`qp-sug ${choice.q.lots === lotsQuote.lots ? 'on' : ''}`}
+                  onClick={() => setQuote(lotsQuote)}
+                >
+                  <span className="mono">{lotsQuote.lots.toLocaleString('en-IN')} lots · {lotsQuote.shares.toLocaleString('en-IN')} sh</span>
+                  <b className="mono">{inr(lotsQuote.amount)}</b>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {allowShareholder && (
         <label className="qp-sha">
@@ -196,7 +208,8 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   const [master, setMaster] = useState<Choice | null>(null);
   const [overrides, setOverrides] = useState<Record<string, Choice>>({});
   const [editing, setEditing] = useState<string | null>(null); // profileId with an open per-member picker
-  const [consent, setConsent] = useState({ share: false, selfpan: false });
+  // ONE checkbox covers both consents (itemized in its label).
+  const [consentAll, setConsentAll] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placeErr, setPlaceErr] = useState<string | null>(null);
   const [placed, setPlaced] = useState<{ id: string; profile: Profile; choice: Choice }[] | null>(null);
@@ -263,9 +276,24 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
 
   /* ---------------- gates & shells ---------------- */
 
+  // No own .container/padding — the site chrome already provides it (matches the Apply page).
   const shell = (children: React.ReactNode) => (
-    <div className="container pf" style={{ paddingTop: 28, paddingBottom: 48, maxWidth: 760 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+    <div className="fade-up pf" style={{ maxWidth: 760, margin: '0 auto' }}>
+      {/* back = wherever the user came from (home card, detail, calendar…);
+          direct/shared links (no same-origin history) fall back to the IPO page */}
+      <a
+        href={`/ipos/${ipo.symbol}`}
+        className="back-link"
+        onClick={(e) => {
+          if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) {
+            e.preventDefault();
+            window.history.back();
+          }
+        }}
+      >
+        ← Back
+      </a>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '10px 0 18px' }}>
         <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={48} />
         <div style={{ minWidth: 0 }}>
           <h1 style={{ fontSize: 22, letterSpacing: '-.02em' }}>Print ASBA forms</h1>
@@ -416,8 +444,10 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
                       <span className="s mono">{c.q.lots} {c.q.lots === 1 ? 'lot' : 'lots'} · {c.q.shares.toLocaleString('en-IN')} sh · {inr(c.q.amount)} · {catLabel(c)}</span>
                     </span>
                     <span className={`pf-badge ${badge.tone}`}>{badge.label}</span>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(editing === p.id ? null : p.id)}>
-                      {editing === p.id ? 'Close' : 'Change'}
+                    <button type="button" className="icon-btn pf-editbtn" title={editing === p.id ? 'Close' : 'Change bid'}
+                      aria-label={editing === p.id ? 'Close' : `Change bid for ${p.fullName}`}
+                      onClick={() => setEditing(editing === p.id ? null : p.id)}>
+                      <Icon name={editing === p.id ? 'x' : 'edit'} size={14} />
                     </button>
                   </div>
                   {editing === p.id && (
@@ -425,9 +455,9 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
                       <QuantityPicker engine={engine} compact choice={c} allowShareholder={allowShareholder}
                         onChange={(nc) => setOverrides((o) => ({ ...o, [p.id]: nc }))} />
                       {overridden && (
-                        <button type="button" className="linklike" style={{ fontSize: 12.5, marginTop: 8 }}
+                        <button type="button" className="btn btn-sm pf-reset"
                           onClick={() => { setOverrides((o) => { const { [p.id]: _, ...rest } = o; return rest; }); setEditing(null); }}>
-                          Reset to main selection
+                          Reset to main selection <Icon name="refresh" size={13} />
                         </button>
                       )}
                     </div>
@@ -444,16 +474,16 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
       <div className="panel" style={{ padding: 20, opacity: selected.length ? 1 : .55 }}>
         <div className="pf-sec"><span className="pf-n">3</span> Confirm &amp; print</div>
         <label className="pf-consent">
-          <input type="checkbox" checked={consent.share} onChange={(e) => setConsent({ ...consent, share: e.target.checked })} />
-          <span>I consent to sharing each applicant&apos;s details with the exchange / partner for this application (DPDP).</span>
-        </label>
-        <label className="pf-consent">
-          <input type="checkbox" checked={consent.selfpan} onChange={(e) => setConsent({ ...consent, selfpan: e.target.checked })} />
-          <span>Each application uses that person&apos;s own PAN, demat and bank account.</span>
+          <input type="checkbox" checked={consentAll} onChange={(e) => setConsentAll(e.target.checked)} />
+          <span>
+            I agree to all of the following:
+            <span style={{ display: 'block', marginTop: 5, color: 'var(--text-muted)' }}>• I consent to sharing each applicant&apos;s details with the exchange / partner for this application (DPDP).</span>
+            <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>• Each application uses that person&apos;s own PAN, demat and bank account.</span>
+          </span>
         </label>
         {placeErr && <p className="form-err" style={{ marginTop: 10 }}>{placeErr}</p>}
         <button className="btn btn-block btn-lg" style={{ marginTop: 14 }}
-          disabled={!selected.length || !consent.share || !consent.selfpan || placing}
+          disabled={!selected.length || !consentAll || placing}
           onClick={placeAndPrint}>
           {placing ? 'Creating applications…' : <><Icon name="doc" size={17} /> Create {selected.length || ''} {selected.length === 1 ? 'application & print form' : 'applications & print forms'}</>}
         </button>

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 
 type IconName =
   | 'search' | 'arrow-right' | 'external' | 'check' | 'star' | 'star-fill'
-  | 'shield' | 'bolt' | 'calendar' | 'trending' | 'users' | 'doc' | 'lock'
+  | 'shield' | 'bolt' | 'calendar' | 'trending' | 'users' | 'doc' | 'file-pdf' | 'lock'
   | 'globe' | 'sparkle' | 'wallet' | 'chart' | 'clock' | 'share' | 'refresh'
   | 'eye' | 'eye-off' | 'moon' | 'sun' | 'chevron-down' | 'chevron-left' | 'chevron-right' | 'bell' | 'logout'
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
@@ -23,6 +23,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   trending: <><path d="M3 17l6-6 4 4 8-8" /><path d="M21 7v5h-5" /></>,
   users: <><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 6M17.5 20a5.5 5.5 0 0 0-3-4.9" /></>,
   doc: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v4h4" /></>,
+  'file-pdf': <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><text x="12" y="17.5" textAnchor="middle" fontSize="6.2" fontWeight="700" fontFamily="Arial, sans-serif" fill="currentColor" stroke="none">PDF</text></>,
   lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18" /></>,
   sparkle: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" />,

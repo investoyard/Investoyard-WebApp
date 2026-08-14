@@ -3,8 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { IpoDetail } from '@/lib/api';
 import { getIpoDetail } from '@/lib/api';
-import { inr } from '@/lib/format';
-import { CompanyMark } from '@/components/CompanyMark';
+import { inr, priceBand } from '@/lib/format';
+import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
 import { useStore, store, Application, InvestorCategory, Profile } from '@/lib/store';
@@ -119,7 +119,8 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const [master, setMaster] = useState<Choice | null>(null);
   const [overrides, setOverrides] = useState<Record<string, Choice>>({});
   const [editing, setEditing] = useState<string | null>(null);
-  const [consent, setConsent] = useState({ share: false, selfpan: false, gmp: false });
+  // ONE checkbox covers all three consents (itemized in its label); OTP-verified on tick.
+  const [consentAll, setConsentAll] = useState(false);
   const [placed, setPlaced] = useState<Application[] | null>(null);
 
   // OTP verification on the partner-share consent
@@ -150,11 +151,10 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     return c && m && c.q.lots === m.q.lots && c.tab === m.tab;
   });
 
-  const allConsent = consent.share && consent.selfpan && consent.gmp;
   const consentVerified = otpStage === 'verified';
   const otpFull = otp.every((d) => d !== '');
 
-  const stepLabels = [tr('apply.applicant'), 'Bid', 'Consent', 'UPI mandate', 'Done'];
+  const stepLabels = ['Applicants & Bid', 'Consent & Confirm', 'Done'];
 
   /* ----- auth gate ----- */
   if (!mobile) {
@@ -232,7 +232,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
           results.push(toLocalApp(res, p, c));
         }
         setPlaced(results);
-        setStep(5);
+        setStep(3);
       } catch (e: any) {
         setPlaceErr(String(e?.message ?? e));
       } finally {
@@ -252,12 +252,12 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
       });
     });
     setPlaced(apps);
-    setStep(5);
+    setStep(3);
   }
 
-  // Ticking the partner-share consent sends an OTP to the registered mobile.
+  // Ticking the combined consent sends an OTP to the registered mobile.
   function toggleShare(checked: boolean) {
-    setConsent((c) => ({ ...c, share: checked }));
+    setConsentAll(checked);
     setOtp(['', '', '', '', '', '']);
     setOtpStage(checked ? 'sent' : 'idle');
   }
@@ -334,27 +334,42 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     ];
     return (
       <div className={compact ? 'bp compact' : 'bp'}>
-        <div className="bp-tabs" role="tablist">
-          {tabs.filter((t) => !t.hidden).map((t) => (
-            <button key={t.key} type="button" role="tab" aria-selected={choice.tab === t.key}
-              className={`bp-tab ${choice.tab === t.key ? 'on' : ''}`} onClick={() => switchTab(t.key)}>
-              {t.label}
-            </button>
-          ))}
+        {/* tabs + quick chips share ONE row (chips: label only, ₹ in tooltip) */}
+        <div className="bp-top">
+          <div className="bp-tabs" role="tablist">
+            {tabs.filter((t) => !t.hidden).map((t) => (
+              <button key={t.key} type="button" role="tab" aria-selected={choice.tab === t.key}
+                className={`bp-tab ${choice.tab === t.key ? 'on' : ''}`} onClick={() => switchTab(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="bp-chips">
+            {chips.filter((c) => !c.hidden && c.q).map((c) => (
+              <button key={c.label} type="button" title={inr(c.q!.amount)}
+                className={`bp-chip ${choice.q.lots === c.q!.lots && ((c.tab === 'hni') === (choice.tab === 'hni')) ? 'on' : ''}`}
+                onClick={() => onChange({ tab: c.tab, q: c.q! })}>
+                {c.label}
+              </button>
+            ))}
+          </div>
         </div>
         {options.length === 0 ? (
           <div className="banner warn" style={{ marginTop: 12 }}>
             {choice.tab === 'hni'
-              ? <>No HNI sizes fit under the {inr(engine.rules.upiCap)} UPI-mandate cap for this lot size — use <a href={`/print/${ipo.symbol}${q}`}>Print PDF</a> (bank ASBA) instead.</>
+              ? <>No HNI sizes fit under the {inr(engine.rules.upiCap)} UPI-mandate cap for this lot size — use <a href={`/print/${ipo.symbol}${q}`}>Print Forms</a> (bank ASBA) instead.</>
               : 'One lot already exceeds the ₹2,00,000 retail cap for this issue.'}
           </div>
         ) : (
           <>
-            <div className="field" style={{ marginTop: 12, marginBottom: 0 }}>
-              <label>
-                Bid size
-                <span className="hint"> · {choice.tab === 'hni' ? `${inr(engine.rules.retailCap)}–${inr(engine.rules.upiCap)}` : `up to ${inr(engine.rules.retailCap)}`} · shares × {inr(bandMax)} = total</span>
-              </label>
+            <div className="field" style={{ marginTop: compact ? 10 : 12, marginBottom: 0 }}>
+              {/* per-member editor: no label/hints — the main picker above carries them */}
+              {!compact && (
+                <label>
+                  Bid size
+                  <span className="hint"> · {choice.tab === 'hni' ? `${inr(engine.rules.retailCap)}–${inr(engine.rules.upiCap)}` : `up to ${inr(engine.rules.retailCap)}`} · shares × {inr(bandMax)} = total</span>
+                </label>
+              )}
               <select
                 className="input mono"
                 value={options.some((o) => o.lots === choice.q.lots) ? choice.q.lots : ''}
@@ -368,23 +383,14 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                 ))}
               </select>
             </div>
-            <div className="bp-chips">
-              {chips.filter((c) => !c.hidden && c.q).map((c) => (
-                <button key={c.label} type="button"
-                  className={`bp-chip ${choice.q.lots === c.q!.lots && ((c.tab === 'hni') === (choice.tab === 'hni')) ? 'on' : ''}`}
-                  onClick={() => onChange({ tab: c.tab, q: c.q! })}>
-                  {c.label} · {inr(c.q!.amount)}
-                </button>
-              ))}
-            </div>
           </>
         )}
-        {choice.tab === 'sha' && (
+        {!compact && choice.tab === 'sha' && (
           <p className="hint" style={{ marginTop: 8 }}>Shareholder reserved quota — for existing shareholders of the parent/promoter company · max {inr(engine.rules.retailCap)}.</p>
         )}
-        {choice.tab === 'hni' && (
+        {!compact && choice.tab === 'hni' && (
           <p className="hint" style={{ marginTop: 8 }}>
-            HNI bids carry no cut-off — priced at the band ceiling. Above {inr(engine.rules.upiCap)} (UPI-mandate cap)? <a href={`/print/${ipo.symbol}${q}`}>Print PDF</a> for bank ASBA.
+            HNI bids carry no cut-off — priced at the band ceiling. Above {inr(engine.rules.upiCap)} (UPI-mandate cap)? <a href={`/print/${ipo.symbol}${q}`}>Print Forms</a> for bank ASBA.
           </p>
         )}
       </div>
@@ -446,8 +452,8 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                     const reason = !applyReady(p)
                       ? `Missing ${missingBits(p)} to apply`
                       : p.relationship === 'child'
-                        ? 'Minor — no UPI mandate; use Print PDF (bank ASBA)'
-                        : 'No UPI ID saved — add it, or use Print PDF (bank ASBA)';
+                        ? 'Minor — no UPI mandate; use Print Forms (bank ASBA)'
+                        : 'No UPI ID saved — add it, or use Print Forms (bank ASBA)';
                     return (
                       <div key={p.id} className="choice-card" style={{ cursor: 'default', opacity: .8 }}>
                         <span className="grow">
@@ -459,7 +465,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                             ? <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
                             : <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>Use sample details</button>
                         ) : (
-                          <a className="btn btn-secondary btn-sm" href={`/print/${ipo.symbol}${q}`}>Print PDF</a>
+                          <a className="btn btn-secondary btn-sm" href={`/print/${ipo.symbol}${q}`}>Print Forms</a>
                         )}
                       </div>
                     );
@@ -472,14 +478,14 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                   {selected.length} applicant{selected.length > 1 ? 's' : ''} selected · {selected.map((p) => p.fullName.split(' ')[0]).join(', ')}
                 </p>
               )}
-              <Nav onNext={() => setStep(2)} nextDisabled={selected.length === 0} tr={tr} />
-            </Section>
-          )}
-
-          {/* STEP 2 — bid: category tabs + fixed dropdown + quick chips + per-member overrides */}
-          {step === 2 && engine && master && (
-            <Section title="Category & bid size" hint={`Sets every selected applicant — fine-tune anyone below. Prices at the band ceiling (${inr(bandMax)}/share); retail bids at cut-off.`}>
-              <BidPicker choice={master} onChange={(c) => { setMaster(c); setOverrides({}); setEditing(null); }} />
+              {/* ── bid section (merged into step 1) ── */}
+              {selected.length > 0 && engine && master && (
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <div className="pf-sec" style={{ marginBottom: 2 }}>Category &amp; bid size</div>
+                  <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 12px' }}>
+                    Sets every selected applicant — fine-tune anyone below. Prices at the band ceiling ({inr(bandMax)}/share); retail bids at cut-off.
+                  </p>
+                  <BidPicker choice={master} onChange={(c) => { setMaster(c); setOverrides({}); setEditing(null); }} />
 
               {/* per-member overrides */}
               <div style={{ marginTop: 18 }}>
@@ -494,17 +500,19 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                           <span className="s mono">{c.q.lots} {c.q.lots === 1 ? 'lot' : 'lots'} · {c.q.shares.toLocaleString('en-IN')} sh · {inr(c.q.amount)}</span>
                         </span>
                         <span className="pf-badge neutral">{tabLabel(c)}</span>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(editing === p.id ? null : p.id)}>
-                          {editing === p.id ? 'Close' : 'Change'}
+                        <button type="button" className="icon-btn pf-editbtn" title={editing === p.id ? 'Close' : 'Change bid'}
+                          aria-label={editing === p.id ? 'Close' : `Change bid for ${p.fullName}`}
+                          onClick={() => setEditing(editing === p.id ? null : p.id)}>
+                          <Icon name={editing === p.id ? 'x' : 'edit'} size={14} />
                         </button>
                       </div>
                       {editing === p.id && (
                         <div className="pf-edit">
                           <BidPicker compact choice={c} onChange={(nc) => setOverrides((o) => ({ ...o, [p.id]: nc }))} />
                           {overridden && (
-                            <button type="button" className="linklike" style={{ fontSize: 12.5, marginTop: 8 }}
+                            <button type="button" className="btn btn-sm pf-reset"
                               onClick={() => { setOverrides((o) => { const { [p.id]: _, ...rest } = o; return rest; }); setEditing(null); }}>
-                              Reset to main selection
+                              Reset to main selection <Icon name="refresh" size={13} />
                             </button>
                           )}
                         </div>
@@ -517,34 +525,27 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                   <span className="v mono">{inr(totalAmount)}</span>
                 </div>
               </div>
-
-              <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} nextDisabled={selected.some((p) => !choiceFor(p))} tr={tr} />
-            </Section>
-          )}
-          {step === 2 && !engine && (
-            <Section title="Category & bid size">
-              <div className="banner warn">Price band / lot size not announced yet — bidding opens once the issue is priced.</div>
-              <Nav onBack={() => setStep(1)} onNext={() => {}} nextDisabled tr={tr} />
+                </div>
+              )}
+              {selected.length > 0 && !engine && (
+                <div className="banner warn" style={{ marginTop: 16 }}>Price band / lot size not announced yet — bidding opens once the issue is priced.</div>
+              )}
+              <Nav onNext={() => setStep(2)} nextDisabled={selected.length === 0 || !engine || selected.some((p) => !choiceFor(p))} tr={tr} />
             </Section>
           )}
 
-          {/* STEP 3 — consent (DPDP itemized) + OTP verification on partner-share consent */}
-          {step === 3 && (
-            <Section title="Consent" hint="Explicit, itemized — per DPDP. Collected just-in-time at apply.">
-              <div className="stack">
-                <label className="consent">
-                  <input type="checkbox" checked={consent.share} onChange={(e) => toggleShare(e.target.checked)} />
-                  <span>{tr('profile.consent')}</span>
-                </label>
-                <label className="consent">
-                  <input type="checkbox" checked={consent.selfpan} onChange={(e) => setConsent({ ...consent, selfpan: e.target.checked })} />
-                  <span>{tr('apply.selfPan')}</span>
-                </label>
-                <label className="consent">
-                  <input type="checkbox" checked={consent.gmp} onChange={(e) => setConsent({ ...consent, gmp: e.target.checked })} />
-                  <span>{tr('detail.disclaimer')}</span>
-                </label>
-              </div>
+          {/* STEP 2 — consent & confirm (ONE tick covers all three, itemized in the label; OTP-verified) */}
+          {step === 2 && (
+            <Section title="Consent & Confirm" hint="Explicit consent — per DPDP. Collected just-in-time at apply.">
+              <label className="consent">
+                <input type="checkbox" checked={consentAll} onChange={(e) => toggleShare(e.target.checked)} />
+                <span>
+                  I agree to all of the following:
+                  <span style={{ display: 'block', marginTop: 6, fontSize: 13, color: 'var(--text-muted)' }}>• {tr('profile.consent')}</span>
+                  <span style={{ display: 'block', marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>• {tr('apply.selfPan')}</span>
+                  <span style={{ display: 'block', marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>• {tr('detail.disclaimer')}</span>
+                </span>
+              </label>
 
               {/* OTP verification — triggered by ticking the partner-share consent */}
               {otpStage !== 'idle' && (
@@ -583,28 +584,8 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                 </div>
               )}
 
-              {/* footer — Continue appears only after OTP is verified and all consents are ticked */}
-              <div className="row" style={{ justifyContent: 'space-between', marginTop: 22 }}>
-                <button className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
-                {allConsent && consentVerified ? (
-                  <button className="btn" onClick={() => setStep(4)}>{tr('apply.cta')}</button>
-                ) : (
-                  <span className="muted" style={{ fontSize: 13 }}>
-                    {!consent.share
-                      ? 'Tick the consent to receive an OTP'
-                      : !consentVerified
-                        ? 'Verify the OTP to continue'
-                        : 'Tick all consents to proceed'}
-                  </span>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {/* STEP 4 — UPI mandate review (the print/bank path lives at /print) */}
-          {step === 4 && (
-            <Section title="UPI mandate" hint="Each applicant approves their own UPI mandate — their own bank blocks the amount (ASBA).">
-              <div className="panel-sub">
+              {/* per-member total — merged review (each approves their own UPI mandate) */}
+              <div className="panel-sub" style={{ marginTop: 16 }}>
                 {selected.map((p) => {
                   const c = choiceFor(p)!;
                   return (
@@ -626,23 +607,35 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
               </div>
               {canPrint && (
                 <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                  Prefer a printed bank form instead? <a className="linklike" href={`/print/${ipo.symbol}${q}`}>Print PDF (bank ASBA)</a>
+                  Prefer a printed bank form instead? <a className="linklike" href={`/print/${ipo.symbol}${q}`}>Print Forms (bank ASBA)</a>
                 </p>
               )}
               {liveMode && <div className="banner ok" style={{ marginTop: 14 }}><Icon name="check" size={15} /> Live — this application will be placed on the exchange rail.</div>}
               {placeErr && <div className="banner warn" style={{ marginTop: 14 }}>{placeErr}</div>}
-              <Nav onBack={() => setStep(3)} onNext={place} nextLabel={placing ? 'Placing…' : `${tr('apply.cta')} · ${inr(totalAmount)}`} nextDisabled={placing} tr={tr} />
+              {/* footer — Place appears only after the OTP is verified */}
+              <div className="row" style={{ justifyContent: 'space-between', marginTop: 22 }}>
+                <button className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
+                {consentAll && consentVerified ? (
+                  <button className="btn" onClick={place} disabled={placing}>{placing ? 'Placing…' : `${tr('apply.cta')} · ${inr(totalAmount)}`}</button>
+                ) : (
+                  <span className="muted" style={{ fontSize: 13 }}>
+                    {!consentAll ? 'Tick the consent to receive an OTP' : 'Verify the OTP to continue'}
+                  </span>
+                )}
+              </div>
             </Section>
           )}
         </div>
 
         {/* sticky summary */}
         <aside className="panel summary">
-          <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
-            <CompanyMark name={ipo.name} symbol={ipo.symbol} size="md" />
-            <div>
-              <div className="eyebrow">{ipo.type === 'sme' ? 'SME' : 'Mainboard'} IPO</div>
-              <h3 style={{ marginTop: 3 }}>{ipo.name}</h3>
+          <div className="row" style={{ gap: 12, flexWrap: 'nowrap', alignItems: 'center' }}>
+            <IpoLogo logo={(eff as any).logo} name={ipo.name} size={44} />
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={ipo.name}>{ipo.name}</h3>
+              <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+                {ipo.type === 'sme' ? 'SME' : 'Mainboard'} · {priceBand(eff.priceBandMin, eff.priceBandMax)}{eff.lotSize ? ` · lot ${eff.lotSize}` : ''}
+              </div>
             </div>
           </div>
           <hr className="rule" style={{ margin: '16px 0' }} />
@@ -650,7 +643,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
           <div className="line"><span className="muted">Category</span><span>{selected.length && master ? (uniform ? tabLabel(choiceFor(selected[0])!) : 'Mixed') : master ? tabLabel(master) : '—'}</span></div>
           <div className="line"><span className="muted">{tr('apply.lots')}</span><span className="mono">{selected.length && uniform ? `${choiceFor(selected[0])!.q.lots} · ${choiceFor(selected[0])!.q.shares} ${tr('apply.shares')}` : selected.length ? 'per member' : master ? `${master.q.lots} · ${master.q.shares} ${tr('apply.shares')}` : '—'}</span></div>
           <div className="line"><span className="muted">Price</span><span className="mono">{inr(bandMax)}</span></div>
-          <div className="line"><span className="muted">Method</span><span>UPI mandate</span></div>
+          <div className="line"><span className="muted">Dates</span><span className="mono">{fmtShortRange(eff.openDate, eff.closeDate)}</span></div>
           <div className="line total"><span>Total{selected.length > 1 ? ` (${selected.length})` : ''}</span><span className="mono">{inr(totalAmount || master?.q.amount || 0)}</span></div>
         </aside>
       </div>
@@ -689,6 +682,16 @@ function Prompt({ tr, q }: { tr: (k: string) => string; q: string }) {
 
 export function catLabel(c: InvestorCategory): string {
   return c === 'Retail' ? 'Retail (RII)' : c === 'sNII' ? 'Small-NII (sHNI)' : 'Big-NII (bHNI)';
+}
+
+/** "13 Aug – 15 Aug" open–close range for the summary card. */
+function fmtShortRange(open?: string, close?: string): string {
+  const f = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? new Date(`${s}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+    : null);
+  const a = f(open), b = f(close);
+  if (a && b) return `${a} – ${b}`;
+  return a ?? b ?? '—';
 }
 
 /** Applied PAN · Demat · UPI for cross-check on the confirmation. */

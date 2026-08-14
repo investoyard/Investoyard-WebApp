@@ -76,12 +76,12 @@ export function ApplyPanel({
           </div>
           <div className="kv" style={{ marginTop: 12 }}><span className="k">Amount</span><span className="v mono">{inr(amount)}</span></div>
           <div className="kv"><span className="k">Category</span><span className="v">{catShort(amount)}{amount > UPI_MAX ? ' · ASBA' : ''}</span></div>
-          <a className="btn btn-block btn-lg" href={applyHref} style={{ marginTop: 14 }}>
-            {tr('detail.apply')} <Icon name="arrow-right" size={18} />
+          <a className="btn btn-block" href={applyHref} style={{ marginTop: 14 }}>
+            {tr('detail.apply')} <Icon name="arrow-right" size={16} />
           </a>
           {canPrint && (
-            <a className="btn btn-secondary btn-block" href={printHref} style={{ marginTop: 8 }}>
-              <Icon name="doc" size={16} /> Print PDF form
+            <a className="btn btn-pdf btn-block" href={printHref} style={{ marginTop: 8 }}>
+              Print Forms <Icon name="file-pdf" size={16} />
             </a>
           )}
         </>
@@ -90,11 +90,11 @@ export function ApplyPanel({
           <div className="kv"><span className="k">{tr('label.min')} investment</span><span className="v mono">{inr(minAmount)}</span></div>
           {closesLabel && <div className="kv"><span className="k">Status</span><span className="v" style={{ color: 'var(--brand)' }}>{closesLabel}</span></div>}
           {canPrint ? (
-            <a className="btn btn-block btn-lg" href={printHref} style={{ marginTop: 16 }}>
-              <Icon name="doc" size={17} /> Print PDF form
+            <a className="btn btn-pdf btn-block" href={printHref} style={{ marginTop: 16 }}>
+              Print Forms <Icon name="file-pdf" size={16} />
             </a>
           ) : (
-            <button className="btn btn-block btn-lg" disabled style={{ marginTop: 16 }}>
+            <button className="btn btn-block" disabled style={{ marginTop: 16 }}>
               {inWindow && !canApply ? 'Bidding opens soon' : tr('detail.apply')}
             </button>
           )}
@@ -124,8 +124,8 @@ export function ApplyBar({
       <div className="spacer" />
       <WatchButton symbol={symbol} />
       {canPrint && (
-        <a className={`btn${canApply ? ' btn-secondary' : ''}`} href={`/print/${symbol}${langQuery}`} aria-label="Print PDF form">
-          <Icon name="doc" size={16} />{!canApply && <> Print PDF</>}
+        <a className="btn btn-pdf" href={`/print/${symbol}${langQuery}`} aria-label="Print Forms" title="Print Forms">
+          {!canApply && <>Print Forms </>}<Icon name="file-pdf" size={16} />
         </a>
       )}
       {canApply

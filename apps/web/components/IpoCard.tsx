@@ -119,6 +119,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
 
       <div className="ic-keys">
         <span className="ic-dates"><Icon name="calendar" size={13} />{fmtRange(ipo.openDate, ipo.closeDate)}</span>
+        {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         {subX != null
           ? <span className="ic-subx mono">{subX}× <small>subscribed</small></span>
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}
@@ -146,12 +147,12 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-foot">
         {canApply && <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={16} /></a>}
         {canPrint && (
-          <a className={`btn ic-apply${canApply ? ' btn-secondary' : ''}`} href={`/print/${ipo.symbol}${q}`}>
-            <Icon name="doc" size={15} /> Print PDF
+          // soft light-red CTA — distinct from Apply's indigo
+          <a className="btn ic-apply btn-pdf" href={`/print/${ipo.symbol}${q}`}>
+            Print Forms <Icon name="file-pdf" size={15} />
           </a>
         )}
         {!canApply && !canPrint && <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>}
-        {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" aria-label="Share this IPO" onClick={() => shareIpo(ipo)}>
           <Icon name="share" size={16} />

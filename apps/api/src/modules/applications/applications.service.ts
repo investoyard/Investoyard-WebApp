@@ -119,12 +119,20 @@ export class ApplicationsService {
       throw new BadRequestException(`This IPO does not offer a ${applicantType} reservation.`);
     }
 
-    // Self-PAN rule (SEBI): a PAN may hold only ONE live application per IPO. panHash
-    // is unique per tenant, so this also blocks a second application via any profile.
+    // Self-PAN rule (SEBI), per BUCKET: a PAN may hold ONE public (retail/HNI —
+    // either, not both) application per IPO, PLUS one in each reserved quota the
+    // issue offers (shareholder / employee) — reserved-category bids are not
+    // counted as multiple applications. panHash is unique per tenant, so this
+    // also blocks a second application via any profile.
     const dup = await this.prisma.application.findFirst({
-      where: { ipoId: ipo.id, profile: { panHash: profile.panHash }, status: { notIn: ['draft', 'failed', 'rejected'] } },
+      where: {
+        ipoId: ipo.id,
+        profile: { panHash: profile.panHash },
+        status: { notIn: ['draft', 'failed', 'rejected'] },
+        ...this.panBucketWhere(applicantType),
+      },
     });
-    if (dup) throw new ConflictException('This PAN already has an application for this IPO.');
+    if (dup) throw new ConflictException(this.panBucketConflict(applicantType));
 
     const qty = dto.lots * ipo.lotSize;
     const unit = dto.atCutoff ? Number(ipo.priceBandMax ?? 0) : (dto.bidPrice as number);
@@ -295,6 +303,32 @@ export class ApplicationsService {
   }
 
   /**
+   * PAN-duplication buckets: reserved quotas (shareholder / employee) count
+   * separately from the public retail/HNI bid — one application per PAN per
+   * bucket per IPO. Retail vs HNI stays either/or (same public bucket).
+   */
+  private panBucket(applicantType: string): string {
+    return applicantType === ApplicantCategory.shareholder || applicantType === ApplicantCategory.employee
+      ? applicantType
+      : 'public';
+  }
+
+  /** Prisma filter matching applications in the same PAN bucket. */
+  private panBucketWhere(applicantType: string) {
+    const bucket = this.panBucket(applicantType);
+    return bucket === 'public'
+      ? { applicantType: { notIn: [ApplicantCategory.shareholder, ApplicantCategory.employee] } }
+      : { applicantType: applicantType as ApplicantCategory };
+  }
+
+  private panBucketConflict(applicantType: string): string {
+    const bucket = this.panBucket(applicantType);
+    return bucket === 'public'
+      ? 'This PAN already has a retail/HNI application for this IPO — one public application per PAN (a shareholder/employee quota bid, where offered, is separate).'
+      : `This PAN already has a ${bucket} application for this IPO.`;
+  }
+
+  /**
    * Pick the on-disk blank ASBA form to overlay, per the operator's uploads.
    * Shareholder category → the dedicated shareholder form when uploaded.
    * Mainboard: ≤₹5L → Resident, above → Syndicate. SME/NCD → single form for any amount.
@@ -418,13 +452,20 @@ export class ApplicationsService {
         throw new BadRequestException(`${who}: this IPO does not offer a ${applicantType} reservation.`);
       }
 
-      // Self-PAN: once per IPO — against the DB and within this batch.
-      if (seenPans.has(profile.panHash)) throw new ConflictException(`${who}: duplicate PAN within this family batch.`);
-      seenPans.add(profile.panHash);
+      // Self-PAN, per bucket (public vs shareholder vs employee) — against the
+      // DB and within this batch. See create() for the bucket rule.
+      const bucketKey = `${profile.panHash}|${this.panBucket(applicantType)}`;
+      if (seenPans.has(bucketKey)) throw new ConflictException(`${who}: duplicate PAN within this family batch.`);
+      seenPans.add(bucketKey);
       const dup = await this.prisma.application.findFirst({
-        where: { ipoId: ipo.id, profile: { panHash: profile.panHash }, status: { notIn: ['draft', 'failed', 'rejected'] } },
+        where: {
+          ipoId: ipo.id,
+          profile: { panHash: profile.panHash },
+          status: { notIn: ['draft', 'failed', 'rejected'] },
+          ...this.panBucketWhere(applicantType),
+        },
       });
-      if (dup) throw new ConflictException(`${who}: this PAN already has an application for this IPO.`);
+      if (dup) throw new ConflictException(`${who}: ${this.panBucketConflict(applicantType)}`);
 
       const qty = a.lots * ipo.lotSize;
       const unit = atCutoff ? Number(ipo.priceBandMax ?? 0) : (a.bidPrice as number);
