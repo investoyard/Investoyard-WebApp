@@ -42,6 +42,7 @@ const KINDS = {
   'ipo-categories': 'ipoCategoryMaster',
   'issue-types': 'issueTypeMaster',
   relationships: 'relationshipMaster',
+  'upi-handles': 'upiHandleMaster',
 } as const;
 type Kind = keyof typeof KINDS;
 
@@ -76,6 +77,10 @@ export class MastersController {
       data.baseType = /\bsme\b|sme/i.test(data.name) ? 'sme' : 'mainboard';
     }
     if (data.categoryId === '') data.categoryId = null;
+    // UPI handles are the part AFTER '@' — store lowercase, without the '@'.
+    if (kind === 'upi-handles' && typeof data.name === 'string') {
+      data.name = data.name.replace(/^@/, '').toLowerCase();
+    }
     return data;
   }
 

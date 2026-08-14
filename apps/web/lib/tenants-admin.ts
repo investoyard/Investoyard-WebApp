@@ -370,7 +370,7 @@ export interface MasterRow {
   allowMultiple?: boolean;      // relationships: repeatable per account
   active: boolean;
 }
-export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships';
+export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles';
 export const fetchMaster = (kind: MasterKind) => authed<MasterRow[]>(`${API}/admin/masters/${kind}`, { method: 'GET' });
 export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

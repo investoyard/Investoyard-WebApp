@@ -61,6 +61,8 @@ export type Relationship = string;
 export interface RelationshipOption { name: string; allowMultiple: boolean }
 /** Public list of relationship options (no auth needed). */
 export const fetchRelationships = () => req<RelationshipOption[]>('/profiles/relationships', { method: 'GET' });
+/** Public list of allowed UPI handles — the part after '@' (no auth needed). */
+export const fetchUpiHandles = () => req<string[]>('/profiles/upi-handles', { method: 'GET' });
 export type Depository = 'NSDL' | 'CDSL';
 
 /** Masked view returned by the API — never carries raw PAN/UPI/bank. */

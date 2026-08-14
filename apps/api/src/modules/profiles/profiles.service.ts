@@ -4,6 +4,12 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { CreateProfileDto, UpdateProfileDto } from './profiles.dto';
 
+/** Seeded on first use; the admin manages the list afterwards (Masters → UPI Handles). */
+const DEFAULT_UPI_HANDLES = [
+  'okaxis', 'oksbi', 'okhdfcbank', 'okicici', 'ybl', 'ibl', 'axl', 'apl', 'yapl',
+  'paytm', 'ptyes', 'ptaxis', 'pthdfc', 'ptsbi', 'upi', 'axisb', 'idfcbank', 'kotak',
+].map((name, i) => ({ name, sortOrder: i + 1 }));
+
 /** Seeded on first use; the admin manages the list afterwards (Masters → Relationships). */
 const DEFAULT_RELATIONSHIPS = [
   { name: 'Self', allowMultiple: false, sortOrder: 1 },
@@ -34,6 +40,31 @@ export class ProfilesService {
   async relationships() {
     const rows = await this.relationshipRows();
     return rows.filter((r) => r.active).map((r) => ({ name: r.name, allowMultiple: r.allowMultiple }));
+  }
+
+  /** All UPI-handle master rows, seeding the common defaults if the table is empty. */
+  private async upiHandleRows() {
+    let rows = await this.prisma.upiHandleMaster.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    if (!rows.length) {
+      await this.prisma.upiHandleMaster.createMany({ data: DEFAULT_UPI_HANDLES, skipDuplicates: true });
+      rows = await this.prisma.upiHandleMaster.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    }
+    return rows;
+  }
+
+  /** Public: active UPI handles (the part after '@') for UPI-ID entry validation. */
+  async upiHandles() {
+    return (await this.upiHandleRows()).filter((r) => r.active).map((r) => r.name);
+  }
+
+  /** A UPI ID is accepted only when its handle is on the admin-managed master. */
+  private async assertUpiAllowed(upiId: string) {
+    const m = /^[a-zA-Z0-9.\-_]{2,}@([a-zA-Z0-9]{2,})$/.exec(upiId.trim());
+    if (!m) throw new BadRequestException('Enter the UPI ID as name@handle (e.g. name@okaxis).');
+    const allowed = await this.upiHandles();
+    if (allowed.length && !allowed.includes(m[1].toLowerCase())) {
+      throw new BadRequestException(`'@${m[1]}' is not a supported UPI handle.`);
+    }
   }
 
   async list(userId: string) {
@@ -68,6 +99,7 @@ export class ProfilesService {
     } else {
       if (!/^\d{16}$/.test(clientId)) throw new BadRequestException('CDSL demat number must be exactly 16 digits.');
     }
+    if (dto.upiId) await this.assertUpiAllowed(dto.upiId);
     try {
       // Envelope-encrypt PII up front (vault ops are async — KMS in prod).
       const [panTokenRef, bankTokenRef, upiTokenRef] = await Promise.all([
@@ -161,7 +193,10 @@ export class ProfilesService {
       }
     }
     if (dto.bankAccount) data.bankTokenRef = await this.vault.tokenize(dto.bankAccount);
-    if (dto.upiId) data.upiTokenRef = await this.vault.tokenize(dto.upiId);
+    if (dto.upiId) {
+      await this.assertUpiAllowed(dto.upiId);
+      data.upiTokenRef = await this.vault.tokenize(dto.upiId);
+    }
 
     if (dto.fullName !== undefined && dto.fullName.trim()) data.fullName = dto.fullName.trim();
     if (dto.dateOfBirth !== undefined) data.dateOfBirth = dto.dateOfBirth ? new Date(dto.dateOfBirth) : null;

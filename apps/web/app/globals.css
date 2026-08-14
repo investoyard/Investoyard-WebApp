@@ -998,6 +998,16 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .pf-badge { order: 3; }
 }
 
+/* ------------------------------------------------- APPLY BID PICKER (category tabs + chips) */
+.bp-tabs { display: inline-flex; background: var(--bg-2); border-radius: var(--pill); padding: 3px; gap: 2px; }
+.bp-tab { font: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted); background: none; border: 0; border-radius: var(--pill); padding: 7px 16px; cursor: pointer; transition: color .15s var(--ease), background .15s var(--ease); }
+.bp-tab.on { background: var(--surface); color: var(--brand); box-shadow: var(--sh-sm); }
+.bp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.bp-chip { font: inherit; font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--pill); padding: 6px 12px; cursor: pointer; font-variant-numeric: tabular-nums; transition: border-color .15s var(--ease); }
+.bp-chip:hover { border-color: var(--brand-200); }
+.bp-chip.on { border-color: var(--brand); background: var(--brand-50); color: var(--brand); }
+.bp.compact .bp-tab { padding: 6px 13px; font-size: 12.5px; }
+
 /* ------------------------------------------------- PHONE POLISH (≤480px) */
 @media (max-width: 480px) {
   /* IPO detail — tighter hero: smaller logo + dial so the NAME gets the room */

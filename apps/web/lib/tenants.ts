@@ -24,13 +24,13 @@ export interface Tenant {
   goldColor?: string;          // optional accent override
   logo?: string;               // logo URL; undefined ⇒ text wordmark (or default logo for platform)
   isDefault?: boolean;
-  flags: { gmpEnabled: boolean };
+  flags: { gmpEnabled: boolean; upiCap: number };
 }
 
 export const TENANTS: Tenant[] = [
-  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, flags: { gmpEnabled: true } },
-  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', flags: { gmpEnabled: true } },
-  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', flags: { gmpEnabled: false } },
+  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, flags: { gmpEnabled: true, upiCap: 500000 } },
+  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', flags: { gmpEnabled: true, upiCap: 500000 } },
+  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', flags: { gmpEnabled: false, upiCap: 500000 } },
 ];
 
 export const DEFAULT_TENANT: Tenant = TENANTS.find((t) => t.isDefault)!;
@@ -58,7 +58,8 @@ function mapApi(a: any): Tenant {
   return {
     id: a.id, slug: a.slug, type: a.type, name: a.name, customDomain: a.customDomain,
     brandColor: a.brandColor, goldColor: a.goldColor, logo: a.logoUrl,
-    isDefault: a.type === 'direct', flags: { gmpEnabled: a.flags?.gmpEnabled ?? true },
+    isDefault: a.type === 'direct',
+    flags: { gmpEnabled: a.flags?.gmpEnabled ?? true, upiCap: Number(a.flags?.upiCap) || 500000 },
   };
 }
 

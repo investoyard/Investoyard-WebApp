@@ -53,6 +53,7 @@ const NAV: NavNode[] = [
     { href: '/admin/masters/registrars', label: 'Registrars' },
     { href: '/admin/masters/lead-managers', label: 'Lead Managers' },
     { href: '/admin/masters/relationships', label: 'Relationships' },
+    { href: '/admin/masters/upi-handles', label: 'UPI Handles' },
     { href: '/admin/masters/exchanges', label: 'Exchanges' },
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [

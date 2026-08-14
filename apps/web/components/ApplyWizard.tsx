@@ -6,23 +6,39 @@ import { getIpoDetail } from '@/lib/api';
 import { inr } from '@/lib/format';
 import { CompanyMark } from '@/components/CompanyMark';
 import { Icon } from '@/components/Icon';
+import { useTenant } from '@/components/TenantProvider';
 import { useStore, store, Application, InvestorCategory, Profile } from '@/lib/store';
-import { getConsumerToken, listProfiles, createApplication, downloadAsbaForm, downloadAsbaForms, type ApiProfile } from '@/lib/consumer-api';
+import { getConsumerToken, listProfiles, createApplication, type ApiProfile } from '@/lib/consumer-api';
+import { makeBidEngine, type BidQuote } from '@investoyard/shared-types';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
 
 /**
- * Can this applicant be selected to apply? PAN + demat are required; the demat
- * check is depository-aware (CDSL has NO DP ID — one 16-digit number). UPI is
- * NOT required here — applicants without UPI simply route to bank ASBA.
+ * Apply flow — UPI-mandate applications ONLY (the print/bank-ASBA path lives at
+ * /print/<symbol>). Category-first bidding per sir's spec: Retail | HNI |
+ * Shareholder tabs → fixed dropdown of lot multiples priced at the band ceiling
+ * (Retail/Shareholder ≤ ₹2L · HNI ₹2L→UPI cap) + Min/Max-Retail & sHNI quick
+ * chips + per-family-member overrides, all driven by the shared bid engine.
+ */
+
+type Tab = 'retail' | 'hni' | 'sha';
+interface Choice { tab: Tab; q: BidQuote }
+
+const tabCat = (c: Choice): InvestorCategory => (c.tab === 'hni' ? (c.q.category === 'bhni' ? 'bNII' : 'sNII') : 'Retail');
+const tabLabel = (c: Choice) => (c.tab === 'sha' ? 'Shareholder' : c.tab === 'hni' ? 'HNI (sNII)' : 'Retail');
+
+/**
+ * Can this applicant be selected for the UPI flow? PAN + demat + their OWN UPI
+ * are required; minors have no UPI mandate — both route to the Print-PDF flow.
  */
 function applyReady(p: Profile): boolean {
   const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
   return Boolean(p.fullName && p.pan && dematOk && p.consent);
 }
-
-/** What's still missing, for the not-ready card's message. */
+function upiReady(p: Profile): boolean {
+  return applyReady(p) && !!p.upiId && p.relationship !== 'child';
+}
 function missingBits(p: Profile): string {
   const bits: string[] = [];
   if (!p.pan) bits.push('PAN');
@@ -54,15 +70,16 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const tr = makeT(L);
   const q = L !== 'en' ? `?lang=${L}` : '';
 
+  const tenant = useTenant();
   const mobile = useStore((s) => s.mobile);
   const storeProfiles = useStore((s) => s.profiles);
   const applications = useStore((s) => s.applications);
-  // Relationship labels come from the admin master now — translate when known, else capitalize.
   const relL = (r: string) => { const k = `rel.${r}`; const v = tr(k); return v === k ? String(r).charAt(0).toUpperCase() + String(r).slice(1) : v; };
 
   // Live mode: a real logged-in session + a real catalog IPO (server UUID id) → submit to the API.
   const [apiProfiles, setApiProfiles] = useState<Profile[] | null>(null);
   const [liveId, setLiveId] = useState<string | null>(null);
+  const [liveDetail, setLiveDetail] = useState<IpoDetail | null>(null);
   const [placing, setPlacing] = useState(false);
   const [placeErr, setPlaceErr] = useState<string | null>(null);
   const hasToken = typeof window !== 'undefined' && !!getConsumerToken();
@@ -73,7 +90,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     if (getConsumerToken()) listProfiles().then((rows) => setApiProfiles(rows.map(mapApiProfile))).catch(() => setApiProfiles([]));
     // Fetch the live catalog detail client-side to get the real server id (the baked prop may be MOCK).
     getIpoDetail(ipo.symbol).then((d) => {
-      if (d?.live && d.id) setLiveId(d.id);
+      if (d?.live && d.id) { setLiveId(d.id); setLiveDetail(d); }
       const ex: any = (d as any)?.extra ?? (ipo as any).extra ?? {};
       setGates({ bid: ex.startBid === true, print: ex.startPrint === true });
     }).catch(() => {
@@ -85,57 +102,59 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const canPrint = gates?.print === true;
   const liveMode = !!liveId && hasToken;
   const profiles = liveMode ? (apiProfiles ?? []) : storeProfiles;
+  const eff = liveDetail ?? ipo;
 
-  // SEBI category & payment thresholds
-  const RETAIL_MAX = 200000;    // ≤ ₹2L → Retail (RII)
-  const SNII_MAX = 1000000;     // ₹2L–₹10L → Small-NII (sHNI); above → Big-NII (bHNI)
-  const UPI_MAX = 500000;       // UPI mandate ≤ ₹5L; above → bank ASBA (prefilled form) only
-  const DEMO_MAX = 5000000;     // demo ceiling so the lot stepper stays bounded (₹50L)
+  // The shared bid engine, with the operator's UPI cap (admin setting via tenant flags).
+  const upiCap = tenant.flags.upiCap;
+  const engine = useMemo(
+    () => makeBidEngine({ lotSize: eff.lotSize, priceBandMax: eff.priceBandMax ?? eff.priceBandMin }, { upiCap }),
+    [eff.lotSize, eff.priceBandMax, eff.priceBandMin, upiCap],
+  );
+  const allowShareholder = ((eff as any).reservations ?? []).includes('shareholder');
+  const bandMax = eff.priceBandMax ?? eff.priceBandMin ?? 0;
 
   const lotsParam = parseInt(sp.get('lots') ?? '', 10);
   const [step, setStep] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [lots, setLots] = useState(Number.isFinite(lotsParam) && lotsParam >= 1 ? lotsParam : 1);
-  const [atCutoff, setAtCutoff] = useState(true);
-  const [bidPrice, setBidPrice] = useState<number>(ipo.priceBandMax ?? ipo.priceBandMin ?? 0);
-  const [method, setMethod] = useState<'upi' | 'pdf'>('upi');
+  const [master, setMaster] = useState<Choice | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, Choice>>({});
+  const [editing, setEditing] = useState<string | null>(null);
   const [consent, setConsent] = useState({ share: false, selfpan: false, gmp: false });
   const [placed, setPlaced] = useState<Application[] | null>(null);
-  const [placedLive, setPlacedLive] = useState(false); // placed against the live API (real server ids → real ASBA PDF)
-  const [formBusy, setFormBusy] = useState<string | null>(null); // applicationId | 'all' while a form downloads
 
   // OTP verification on the partner-share consent
   const [otpStage, setOtpStage] = useState<'idle' | 'sent' | 'verified'>('idle');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const lotSize = ipo.lotSize ?? 1;
-  const bandMin = ipo.priceBandMin ?? 0;
-  const bandMax = ipo.priceBandMax ?? bandMin;
-
-  // Cut-off (final issue price) is permitted for Retail only — value at the ceiling must be ≤ ₹2L.
-  const canUseCutoff = lots * lotSize * bandMax <= RETAIL_MAX;
-  const effectiveCutoff = atCutoff && canUseCutoff;
-  const pricePerShare = effectiveCutoff ? bandMax : bidPrice;
-  const shares = lots * lotSize;
-  const amount = shares * pricePerShare;
-  const category: InvestorCategory = amount <= RETAIL_MAX ? 'Retail' : amount <= SNII_MAX ? 'sNII' : 'bNII';
-  const canIncrease = (lots + 1) * lotSize * pricePerShare <= DEMO_MAX; // allow > ₹5L (ASBA), bounded for demo
+  // default master = ?lots= (from the detail-page calculator) if valid & UPI-payable, else min retail
+  useEffect(() => {
+    if (!engine || master) return;
+    const fromParam = Number.isFinite(lotsParam) && lotsParam >= 1 ? engine.quote(lotsParam) : null;
+    if (fromParam && fromParam.amount <= engine.rules.upiCap) {
+      setMaster({ tab: fromParam.category === 'retail' ? 'retail' : 'hni', q: fromParam });
+    } else if (engine.presets.minRetail) {
+      setMaster({ tab: 'retail', q: engine.presets.minRetail });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, master]);
 
   const selected = useMemo(
-    () => profiles.filter((p) => selectedIds.includes(p.id) && applyReady(p)),
+    () => profiles.filter((p) => selectedIds.includes(p.id) && upiReady(p)),
     [profiles, selectedIds],
   );
-  const hasMinor = selected.some((p) => p.relationship === 'child');     // minors → ASBA (no UPI mandate)
-  const noUpi = selected.some((p) => !p.upiId);                           // applicants without UPI → bank ASBA
-  const upiAllowed = amount <= UPI_MAX && !hasMinor && !noUpi;            // UPI ≤ ₹5L, no minor, everyone has UPI
-  const effMethod: 'upi' | 'pdf' = upiAllowed ? method : 'pdf';
-  const totalAmount = amount * Math.max(1, selected.length);
+  const choiceFor = (p: Profile): Choice | null => overrides[p.id] ?? master;
+  const totalAmount = selected.reduce((s, p) => s + (choiceFor(p)?.q.amount ?? 0), 0);
+  const uniform = selected.length > 0 && selected.every((p) => {
+    const c = choiceFor(p); const m = choiceFor(selected[0]);
+    return c && m && c.q.lots === m.q.lots && c.tab === m.tab;
+  });
+
   const allConsent = consent.share && consent.selfpan && consent.gmp;
   const consentVerified = otpStage === 'verified';
   const otpFull = otp.every((d) => d !== '');
 
-  const stepLabels = [tr('apply.applicant'), 'Bid', 'Consent', tr('apply.method'), 'Done'];
+  const stepLabels = [tr('apply.applicant'), 'Bid', 'Consent', 'UPI mandate', 'Done'];
 
   /* ----- auth gate ----- */
   if (!mobile) {
@@ -172,40 +191,16 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     });
   }
 
-  // Prefilled, printable ASBA form for the bank. Live apply → the real server-filled
-  // PDF (operator's uploaded blank); demo mode → the client-side sample form.
-  async function openAsbaForm(a: Application) {
-    if (placedLive && a.id) {
-      setFormBusy(a.id); setPlaceErr(null);
-      try { await downloadAsbaForm(a.id); }
-      catch (e: any) { setPlaceErr(String(e?.message ?? e)); }
-      finally { setFormBusy(null); }
-      return;
-    }
-    const p = profiles.find((x) => x.id === a.profileId);
-    const html = asbaFormHtml(a, p, ipo);
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    window.open(url, '_blank');
-  }
-
-  // Family: all applicants' forms merged into one PDF (live apply only).
-  async function openAllAsbaForms() {
-    if (!placed) return;
-    setFormBusy('all'); setPlaceErr(null);
-    try { await downloadAsbaForms(placed.map((a) => a.id)); }
-    catch (e: any) { setPlaceErr(String(e?.message ?? e)); }
-    finally { setFormBusy(null); }
-  }
-
   /** Build a local Application (for the confirmation screen) from a server response. */
-  function toLocalApp(res: any, p: Profile): Application {
+  function toLocalApp(res: any, p: Profile, c: Choice): Application {
     const app = res?.application ?? {};
     const idStr = String(app.id ?? '');
     return {
       id: idStr || Math.random().toString(36).slice(2),
       ipoSymbol: ipo.symbol, ipoName: ipo.name, profileId: p.id, profileName: p.fullName || tr('rel.self'),
       pan: p.pan, depository: p.depository, dpId: p.dpId, clientId: p.clientId, upiId: p.upiId,
-      lots, shares, pricePerShare, atCutoff: effectiveCutoff, category, amount, method: effMethod,
+      lots: c.q.lots, shares: c.q.shares, pricePerShare: bandMax, atCutoff: c.tab !== 'hni',
+      category: tabCat(c), amount: c.q.amount, method: 'upi',
       status: 'mandate_pending',
       applicationNumber: idStr ? `IY${idStr.replace(/-/g, '').slice(0, 9).toUpperCase()}` : 'IY' + Math.floor(1e8 + Math.random() * 9e8),
       createdAt: app.createdAt ?? new Date().toISOString(),
@@ -213,27 +208,30 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   }
 
   async function place() {
-    if (!selected.length || placing) return;
+    if (!selected.length || placing || !master) return;
 
     // LIVE: real logged-in user + real catalog IPO → create real applications in the DB.
     if (liveMode && liveId) {
       setPlacing(true); setPlaceErr(null);
       try {
-        const results = await Promise.all(selected.map((p) =>
-          createApplication({
+        const results: Application[] = [];
+        for (const p of selected) {
+          const c = choiceFor(p)!;
+          const res = await createApplication({
             investorProfileId: p.id,
             ipoId: liveId,
-            category,
-            lots,
-            atCutoff: effectiveCutoff,
-            bidPrice: effectiveCutoff ? undefined : bidPrice,
-            applyMethod: effMethod === 'upi' ? 'native' : 'pdf',
+            category: tabCat(c),
+            lots: c.q.lots,
+            atCutoff: c.tab !== 'hni',                 // cut-off is Retail/Shareholder-only
+            bidPrice: c.tab !== 'hni' ? undefined : bandMax,
+            applyMethod: 'native',
+            applicantType: c.tab === 'sha' ? 'shareholder' : 'individual',
             dataSharingConsent: true,
             consentNoticeVersion: 'ds-rail-v1',
-          }),
-        ));
-        setPlaced(results.map((r, i) => toLocalApp(r, selected[i])));
-        setPlacedLive(true);
+          });
+          results.push(toLocalApp(res, p, c));
+        }
+        setPlaced(results);
         setStep(5);
       } catch (e: any) {
         setPlaceErr(String(e?.message ?? e));
@@ -244,15 +242,16 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
     }
 
     // DEMO: no live IPO / not signed in against the API → walk the flow on the local store.
-    const apps = selected.map((p) =>
-      store.placeApplication({
+    const apps = selected.map((p) => {
+      const c = choiceFor(p)!;
+      return store.placeApplication({
         ipoSymbol: ipo.symbol, ipoName: ipo.name, profileId: p.id, profileName: p.fullName || tr('rel.self'),
         pan: p.pan, depository: p.depository, dpId: p.dpId, clientId: p.clientId, upiId: p.upiId,
-        lots, shares, pricePerShare, atCutoff: effectiveCutoff, category, amount, method: effMethod,
-      }),
-    );
+        lots: c.q.lots, shares: c.q.shares, pricePerShare: bandMax, atCutoff: c.tab !== 'hni',
+        category: tabCat(c), amount: c.q.amount, method: 'upi',
+      });
+    });
     setPlaced(apps);
-    setPlacedLive(false);
     setStep(5);
   }
 
@@ -280,49 +279,26 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
         </div>
         <h1 style={{ marginTop: 16 }}>{placed.length > 1 ? `${placed.length} applications placed` : 'Application placed'}</h1>
         <p className="lead" style={{ margin: '0 auto' }}>
-          Each applicant approves their own {placed[0].method === 'upi' ? 'UPI mandate' : 'ASBA form'} with their own PAN, demat &amp; bank.
+          Each applicant approves their own UPI mandate with their own PAN, demat &amp; bank.
         </p>
         <div className="panel" style={{ marginTop: 22, textAlign: 'left' }}>
-          <div className="kv"><span className="k">{ipo.name}</span><span className="v mono">{placed[0].lots} {tr('apply.lots')} · {placed[0].shares} {tr('apply.shares')}</span></div>
-          <div className="kv"><span className="k">Category</span><span className="v">{catLabel(placed[0].category)}</span></div>
-          <div className="kv"><span className="k">Bid price</span><span className="v mono">{placed[0].atCutoff ? 'Cut-off ' : ''}{inr(placed[0].pricePerShare)}</span></div>
-          <div className="kv"><span className="k">Method</span><span className="v">{placed[0].method === 'upi' ? 'UPI / ASBA' : 'Bank ASBA'}</span></div>
-          <hr className="rule" style={{ margin: '12px 0' }} />
           {placed.map((a) => (
             <div key={a.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
               <div className="between">
                 <span style={{ fontWeight: 600 }}>{a.profileName} <span className="faint mono" style={{ fontWeight: 400 }}>· {a.applicationNumber}</span></span>
                 <span className="mono" style={{ fontWeight: 700 }}>{inr(a.amount)}</span>
               </div>
-              <div className="faint mono" style={{ fontSize: 12, marginTop: 4 }}>{applicantDetail(a)}</div>
+              <div className="faint mono" style={{ fontSize: 12, marginTop: 4 }}>
+                {a.lots} {tr('apply.lots')} · {a.shares} {tr('apply.shares')} · {catLabel(a.category)}{a.atCutoff ? ' · cut-off' : ` · @ ${inr(a.pricePerShare)}`}
+              </div>
+              <div className="faint mono" style={{ fontSize: 12, marginTop: 2 }}>{applicantDetail(a)}</div>
             </div>
           ))}
           <div className="kv"><span className="k"><b>Total to block</b></span><span className="v mono"><b>{inr(placed.reduce((s, a) => s + a.amount, 0))}</b></span></div>
         </div>
         <div className="banner warn" style={{ marginTop: 14, textAlign: 'left' }}>
-          {placed[0].method === 'upi'
-            ? 'Approve the UPI mandate in each applicant’s UPI app to block the amounts above.'
-            : 'Download each applicant’s prefilled ASBA form below, print it, and submit it to the bank — the bank bids & blocks the amount.'}
+          Approve the UPI mandate in each applicant&apos;s UPI app to block the amounts above. No money moves until shares are allotted.
         </div>
-        {placed[0].method === 'pdf' && !canPrint && (
-          <div className="banner info" style={{ marginTop: 14, textAlign: 'left' }}>
-            Form printing for this IPO will be enabled shortly — your application is recorded; come back to download the prefilled ASBA form.
-          </div>
-        )}
-        {placed[0].method === 'pdf' && canPrint && (
-          <div className="stack" style={{ marginTop: 14 }}>
-            {placedLive && placed.length > 1 && (
-              <button className="btn" onClick={openAllAsbaForms} disabled={formBusy != null}>
-                <Icon name="doc" size={16} /> {formBusy === 'all' ? 'Preparing…' : `Download all ${placed.length} forms (single PDF)`}
-              </button>
-            )}
-            {placed.map((a) => (
-              <button key={a.id} className="btn btn-secondary" onClick={() => openAsbaForm(a)} disabled={formBusy != null}>
-                <Icon name="doc" size={16} /> {formBusy === a.id ? 'Preparing…' : `Download / print ASBA form — ${a.profileName}`}
-              </button>
-            ))}
-          </div>
-        )}
         {placeErr && <div className="banner warn" style={{ marginTop: 10, textAlign: 'left' }}>{placeErr}</div>}
         <p className="disclaimer" style={{ marginTop: 14 }}>
           Bid{placed.length > 1 ? 's' : ''} routed via <b>NSE e-IPO / BSE iBBS</b> · DP &amp; UPI status update automatically via the exchange webhook. Track in your Portfolio.
@@ -331,6 +307,86 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
           <a className="btn btn-secondary" href={`/${q}`}>Explore more</a>
           <a className="btn" href={`/portfolio${q}`}>{tr('apps.title')}</a>
         </div>
+      </div>
+    );
+  }
+
+  /* ----- the quantity picker (master + per-member overrides use the same control) ----- */
+  function BidPicker({ choice, onChange, compact }: { choice: Choice; onChange: (c: Choice) => void; compact?: boolean }) {
+    if (!engine) return null;
+    const options = choice.tab === 'hni' ? engine.hniUpiOptions() : engine.retailOptions();
+    const tabs: { key: Tab; label: string; hidden?: boolean }[] = [
+      { key: 'retail', label: 'Retail' },
+      { key: 'hni', label: 'HNI' },
+      { key: 'sha', label: 'Shareholder', hidden: !allowShareholder },
+    ];
+    const switchTab = (t: Tab) => {
+      if (t === choice.tab) return;
+      const opts = t === 'hni' ? engine.hniUpiOptions() : engine.retailOptions();
+      const q0 = t === 'hni' ? opts[0] : (engine.presets.minRetail ?? opts[0]);
+      if (q0) onChange({ tab: t, q: q0 });
+      else onChange({ ...choice, tab: t });
+    };
+    const chips: { label: string; q: BidQuote | null; tab: Tab; hidden?: boolean }[] = [
+      { label: 'Min Retail', q: engine.presets.minRetail, tab: choice.tab === 'sha' ? 'sha' : 'retail' },
+      { label: 'Max Retail', q: engine.presets.maxRetail, tab: choice.tab === 'sha' ? 'sha' : 'retail' },
+      { label: 'sHNI', q: engine.presets.sHni, tab: 'hni', hidden: choice.tab === 'sha' || engine.presets.sHni.amount > engine.rules.upiCap },
+    ];
+    return (
+      <div className={compact ? 'bp compact' : 'bp'}>
+        <div className="bp-tabs" role="tablist">
+          {tabs.filter((t) => !t.hidden).map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={choice.tab === t.key}
+              className={`bp-tab ${choice.tab === t.key ? 'on' : ''}`} onClick={() => switchTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {options.length === 0 ? (
+          <div className="banner warn" style={{ marginTop: 12 }}>
+            {choice.tab === 'hni'
+              ? <>No HNI sizes fit under the {inr(engine.rules.upiCap)} UPI-mandate cap for this lot size — use <a href={`/print/${ipo.symbol}${q}`}>Print PDF</a> (bank ASBA) instead.</>
+              : 'One lot already exceeds the ₹2,00,000 retail cap for this issue.'}
+          </div>
+        ) : (
+          <>
+            <div className="field" style={{ marginTop: 12, marginBottom: 0 }}>
+              <label>
+                Bid size
+                <span className="hint"> · {choice.tab === 'hni' ? `${inr(engine.rules.retailCap)}–${inr(engine.rules.upiCap)}` : `up to ${inr(engine.rules.retailCap)}`} · shares × {inr(bandMax)} = total</span>
+              </label>
+              <select
+                className="input mono"
+                value={options.some((o) => o.lots === choice.q.lots) ? choice.q.lots : ''}
+                onChange={(e) => { const o = options.find((x) => x.lots === Number(e.target.value)); if (o) onChange({ ...choice, q: o }); }}
+              >
+                {!options.some((o) => o.lots === choice.q.lots) && <option value="" disabled>Select…</option>}
+                {options.map((o) => (
+                  <option key={o.lots} value={o.lots}>
+                    {o.lots} {o.lots === 1 ? 'lot' : 'lots'} — {o.shares.toLocaleString('en-IN')} sh × ₹{bandMax} = {inr(o.amount)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="bp-chips">
+              {chips.filter((c) => !c.hidden && c.q).map((c) => (
+                <button key={c.label} type="button"
+                  className={`bp-chip ${choice.q.lots === c.q!.lots && ((c.tab === 'hni') === (choice.tab === 'hni')) ? 'on' : ''}`}
+                  onClick={() => onChange({ tab: c.tab, q: c.q! })}>
+                  {c.label} · {inr(c.q!.amount)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {choice.tab === 'sha' && (
+          <p className="hint" style={{ marginTop: 8 }}>Shareholder reserved quota — for existing shareholders of the parent/promoter company · max {inr(engine.rules.retailCap)}.</p>
+        )}
+        {choice.tab === 'hni' && (
+          <p className="hint" style={{ marginTop: 8 }}>
+            HNI bids carry no cut-off — priced at the band ceiling. Above {inr(engine.rules.upiCap)} (UPI-mandate cap)? <a href={`/print/${ipo.symbol}${q}`}>Print PDF</a> for bank ASBA.
+          </p>
+        )}
       </div>
     );
   }
@@ -364,8 +420,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
               ) : (
                 <div className="choice">
                   {profiles.map((p) => {
-                    const ready = applyReady(p);
-                    if (ready) {
+                    if (upiReady(p)) {
                       const isSel = selectedIds.includes(p.id);
                       const alreadyApplied = applications.some((a) => a.ipoSymbol === ipo.symbol && a.profileId === p.id);
                       const panClash = !isSel && selected.some((s) => s.pan && s.pan === p.pan);
@@ -377,7 +432,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                             checked={isSel} onChange={() => toggleApplicant(p.id)} />
                           <span className="grow">
                             <span className="t">{p.fullName || tr('profile.new')}</span>
-                            <span className="s">{relL(p.relationship)}{p.pan ? ` · ${p.pan}` : ''}{p.upiId ? '' : ' · no UPI → bank ASBA'}</span>
+                            <span className="s">{relL(p.relationship)}{p.pan ? ` · ${p.pan}` : ''}</span>
                           </span>
                           {alreadyApplied
                             ? <span className="appstatus info">Already applied</span>
@@ -387,18 +442,24 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                         </label>
                       );
                     }
+                    // Not eligible for the UPI flow — minors & no-UPI route to Print PDF.
+                    const reason = !applyReady(p)
+                      ? `Missing ${missingBits(p)} to apply`
+                      : p.relationship === 'child'
+                        ? 'Minor — no UPI mandate; use Print PDF (bank ASBA)'
+                        : 'No UPI ID saved — add it, or use Print PDF (bank ASBA)';
                     return (
-                      <div key={p.id} className="choice-card" style={{ cursor: 'default' }}>
+                      <div key={p.id} className="choice-card" style={{ cursor: 'default', opacity: .8 }}>
                         <span className="grow">
                           <span className="t">{p.fullName || relL(p.relationship)}</span>
-                          <span className="s">Missing {missingBits(p)} to apply</span>
+                          <span className="s">{reason}</span>
                         </span>
-                        {liveMode ? (
-                          <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
+                        {!applyReady(p) ? (
+                          liveMode
+                            ? <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
+                            : <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>Use sample details</button>
                         ) : (
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>
-                            Use sample details
-                          </button>
+                          <a className="btn btn-secondary btn-sm" href={`/print/${ipo.symbol}${q}`}>Print PDF</a>
                         )}
                       </div>
                     );
@@ -409,90 +470,61 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
               {selected.length > 0 && (
                 <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
                   {selected.length} applicant{selected.length > 1 ? 's' : ''} selected · {selected.map((p) => p.fullName.split(' ')[0]).join(', ')}
-                  {hasMinor ? ' · includes a minor → bank ASBA' : ''}
                 </p>
               )}
               <Nav onNext={() => setStep(2)} nextDisabled={selected.length === 0} tr={tr} />
             </Section>
           )}
 
-          {/* STEP 2 — bid (lots, price-in-band, category & ₹5L cap) */}
-          {step === 2 && (
-            <Section title="Quantity & price">
-              <div className="field">
-                <label>{tr('apply.lots')} <span className="hint">· 1 {tr('apply.lots')} = {lotSize} {tr('apply.shares')}</span></label>
-                <div className="row">
-                  <div className="stepper">
-                    <button onClick={() => setLots(Math.max(1, lots - 1))} disabled={lots <= 1}>−</button>
-                    <span className="val mono">{lots}</span>
-                    <button onClick={() => setLots(lots + 1)} disabled={!canIncrease}>+</button>
-                  </div>
-                  <span className="muted mono">{shares} {tr('apply.shares')}</span>
-                </div>
-                {!canIncrease && (
-                  <p className="hint" style={{ color: 'var(--warn)' }}>
-                    Demo limit {inr(DEMO_MAX)} reached.
-                  </p>
-                )}
-                {amount > UPI_MAX && (
-                  <p className="hint" style={{ color: 'var(--warn)' }}>
-                    Above {inr(UPI_MAX)} — UPI not allowed; this will apply via <b>bank ASBA</b> (prefilled form).
-                  </p>
-                )}
-              </div>
+          {/* STEP 2 — bid: category tabs + fixed dropdown + quick chips + per-member overrides */}
+          {step === 2 && engine && master && (
+            <Section title="Category & bid size" hint={`Sets every selected applicant — fine-tune anyone below. Prices at the band ceiling (${inr(bandMax)}/share); retail bids at cut-off.`}>
+              <BidPicker choice={master} onChange={(c) => { setMaster(c); setOverrides({}); setEditing(null); }} />
 
-              <div className="field">
-                <label>Bid price <span className="hint">· band {inr(bandMin)}–{inr(bandMax)}</span></label>
-                <div className="choice">
-                  <label className={`choice-card ${effectiveCutoff ? 'on' : ''}`} style={!canUseCutoff ? { opacity: .55, cursor: 'not-allowed' } : undefined}>
-                    <span className="radio" />
-                    <input type="radio" hidden disabled={!canUseCutoff} checked={effectiveCutoff} onChange={() => setAtCutoff(true)} />
-                    <span className="grow">
-                      <span className="t">Cut-off price</span>
-                      <span className="s">{canUseCutoff ? 'Apply at the final issue price · Retail only' : `Not available for HNI (> ${inr(RETAIL_MAX)})`}</span>
-                    </span>
-                    <span className="mono" style={{ fontWeight: 650 }}>{inr(bandMax)}</span>
-                  </label>
-                  <label className={`choice-card ${!effectiveCutoff ? 'on' : ''}`}>
-                    <span className="radio" />
-                    <input type="radio" hidden checked={!effectiveCutoff} onChange={() => setAtCutoff(false)} />
-                    <span className="grow"><span className="t">Specific price</span><span className="s">Bid your own price within the band</span></span>
-                  </label>
-                </div>
-                {!effectiveCutoff && (
-                  <div className="row" style={{ marginTop: 12 }}>
-                    <div className="stepper">
-                      <button onClick={() => setBidPrice(Math.max(bandMin, bidPrice - 1))} disabled={bidPrice <= bandMin}>−</button>
-                      <span className="val mono">{inr(bidPrice)}</span>
-                      <button onClick={() => setBidPrice(Math.min(bandMax, bidPrice + 1))} disabled={bidPrice >= bandMax}>+</button>
+              {/* per-member overrides */}
+              <div style={{ marginTop: 18 }}>
+                {selected.map((p) => {
+                  const c = choiceFor(p)!;
+                  const overridden = !!overrides[p.id];
+                  return (
+                    <div key={p.id}>
+                      <div className="pf-row">
+                        <span className="grow" style={{ minWidth: 0 }}>
+                          <span className="t">{p.fullName}{overridden && <em className="pf-own">custom</em>}</span>
+                          <span className="s mono">{c.q.lots} {c.q.lots === 1 ? 'lot' : 'lots'} · {c.q.shares.toLocaleString('en-IN')} sh · {inr(c.q.amount)}</span>
+                        </span>
+                        <span className="pf-badge neutral">{tabLabel(c)}</span>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(editing === p.id ? null : p.id)}>
+                          {editing === p.id ? 'Close' : 'Change'}
+                        </button>
+                      </div>
+                      {editing === p.id && (
+                        <div className="pf-edit">
+                          <BidPicker compact choice={c} onChange={(nc) => setOverrides((o) => ({ ...o, [p.id]: nc }))} />
+                          {overridden && (
+                            <button type="button" className="linklike" style={{ fontSize: 12.5, marginTop: 8 }}
+                              onClick={() => { setOverrides((o) => { const { [p.id]: _, ...rest } = o; return rest; }); setEditing(null); }}>
+                              Reset to main selection
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <span className="muted">per share</span>
-                  </div>
-                )}
+                  );
+                })}
+                <div className="kv" style={{ marginTop: 12 }}>
+                  <span className="k">Total to block ({selected.length} {selected.length === 1 ? 'applicant' : 'applicants'})</span>
+                  <span className="v mono">{inr(totalAmount)}</span>
+                </div>
               </div>
 
-              {/* live category + amount */}
-              <div className="panel-sub">
-                <div className="between">
-                  <span className="muted">Investor category</span>
-                  <span className={`appstatus ${category === 'Retail' ? 'info' : 'wait'}`}>
-                    {catLabel(category)}
-                  </span>
-                </div>
-                <div className="between" style={{ marginTop: 10 }}>
-                  <span className="muted">Bid amount ({shares} × {inr(pricePerShare)})</span>
-                  <span className="mono" style={{ fontWeight: 700, fontSize: 18, fontFamily: 'var(--font-display)' }}>{inr(amount)}</span>
-                </div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
-                  {category === 'Retail'
-                    ? `≤ ${inr(RETAIL_MAX)} = Retail (RII). UPI allowed up to ${inr(UPI_MAX)}.`
-                    : amount <= UPI_MAX
-                      ? `${inr(RETAIL_MAX)}–${inr(SNII_MAX)} = Small-NII. UPI allowed up to ${inr(UPI_MAX)}.`
-                      : `Above ${inr(UPI_MAX)} — UPI not permitted; apply via bank ASBA (prefilled form).`}
-                </p>
-              </div>
-
-              <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} tr={tr} />
+              <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} nextDisabled={selected.some((p) => !choiceFor(p))} tr={tr} />
+            </Section>
+          )}
+          {step === 2 && !engine && (
+            <Section title="Category & bid size">
+              <div className="banner warn">Price band / lot size not announced yet — bidding opens once the issue is priced.</div>
+              <Nav onBack={() => setStep(1)} onNext={() => {}} nextDisabled tr={tr} />
             </Section>
           )}
 
@@ -569,40 +601,34 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
             </Section>
           )}
 
-          {/* STEP 4 — method / UPI mandate (UPI ≤ ₹5L, else ASBA) */}
+          {/* STEP 4 — UPI mandate review (the print/bank path lives at /print) */}
           {step === 4 && (
-            <Section title={tr('apply.method')}>
-              <div className="choice">
-                <label className={`choice-card ${effMethod === 'upi' ? 'on' : ''}`} style={!upiAllowed ? { opacity: .55, cursor: 'not-allowed' } : undefined}>
-                  <span className="radio" />
-                  <input type="radio" hidden disabled={!upiAllowed} checked={effMethod === 'upi'} onChange={() => setMethod('upi')} />
-                  <span className="grow">
-                    <span className="t">{tr('apply.method.upi')}</span>
-                    <span className="s">{upiAllowed ? `Each applicant approves their own UPI mandate · up to ${inr(UPI_MAX)}` : noUpi ? 'An applicant has no UPI ID saved' : `Not available above ${inr(UPI_MAX)}`}</span>
-                  </span>
-                </label>
-                <label className={`choice-card ${effMethod === 'pdf' ? 'on' : ''}`}>
-                  <span className="radio" />
-                  <input type="radio" hidden checked={effMethod === 'pdf'} onChange={() => setMethod('pdf')} />
-                  <span className="grow"><span className="t">{tr('apply.method.pdf')}</span><span className="s">{canPrint ? 'Prefilled ASBA form for your bank · no UPI limit' : 'Form printing opens shortly — application is still recorded'}</span></span>
-                </label>
-              </div>
-              {!upiAllowed && (
-                <div className="banner warn" style={{ marginTop: 14 }}>
-                  {hasMinor
-                    ? <>A <b>minor</b> applicant is selected — minors apply via <b>bank ASBA</b> (UPI mandate isn’t available). Download the prefilled form and submit it to the bank (guardian-operated).</>
-                    : noUpi
-                      ? <>An applicant has <b>no UPI ID</b> saved — apply via <b>bank ASBA</b>, or add their UPI on the <a href={`/account${q}`}>account page</a> to enable UPI mandate.</>
-                      : <>Above {inr(UPI_MAX)}, UPI isn’t permitted. Apply via <b>bank ASBA</b> — download the prefilled form, submit it to your bank, and the bank bids &amp; blocks the amount.</>}
+            <Section title="UPI mandate" hint="Each applicant approves their own UPI mandate — their own bank blocks the amount (ASBA).">
+              <div className="panel-sub">
+                {selected.map((p) => {
+                  const c = choiceFor(p)!;
+                  return (
+                    <div className="between" key={p.id} style={{ padding: '7px 0' }}>
+                      <span className="muted">{p.fullName} <span className="faint">· {tabLabel(c)}</span></span>
+                      <span className="mono" style={{ fontWeight: 650 }}>{inr(c.q.amount)}</span>
+                    </div>
+                  );
+                })}
+                <div className="between" style={{ marginTop: 8, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontWeight: 600 }}>Total to block</span>
+                  <span className="mono" style={{ fontWeight: 700, fontSize: 18, fontFamily: 'var(--font-display)' }}>{inr(totalAmount)}</span>
                 </div>
-              )}
+              </div>
               <div className="banner info" style={{ marginTop: 14 }}>
                 {selected.length > 1
-                  ? `${selected.length} applicants · ${inr(amount)} each · ${inr(totalAmount)} total. Each approves their own ${effMethod === 'upi' ? 'UPI mandate' : 'ASBA form'}.`
-                  : effMethod === 'upi'
-                    ? `You'll receive a UPI mandate to block ${inr(amount)}. No money moves until shares are allotted.`
-                    : `Submit the prefilled ASBA form at your bank to block ${inr(amount)} in your account.`}
+                  ? `Each of the ${selected.length} applicants receives a UPI mandate request in their own UPI app. No money moves until allotment.`
+                  : `You'll receive a UPI mandate to block ${inr(totalAmount)}. No money moves until shares are allotted.`}
               </div>
+              {canPrint && (
+                <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                  Prefer a printed bank form instead? <a className="linklike" href={`/print/${ipo.symbol}${q}`}>Print PDF (bank ASBA)</a>
+                </p>
+              )}
               {liveMode && <div className="banner ok" style={{ marginTop: 14 }}><Icon name="check" size={15} /> Live — this application will be placed on the exchange rail.</div>}
               {placeErr && <div className="banner warn" style={{ marginTop: 14 }}>{placeErr}</div>}
               <Nav onBack={() => setStep(3)} onNext={place} nextLabel={placing ? 'Placing…' : `${tr('apply.cta')} · ${inr(totalAmount)}`} nextDisabled={placing} tr={tr} />
@@ -621,12 +647,11 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
           </div>
           <hr className="rule" style={{ margin: '16px 0' }} />
           <div className="line"><span className="muted">Applicants</span><span>{selected.length || '—'}</span></div>
-          <div className="line"><span className="muted">Category</span><span>{catLabel(category)}</span></div>
-          <div className="line"><span className="muted">{tr('apply.lots')}</span><span className="mono">{lots} · {shares} {tr('apply.shares')}</span></div>
-          <div className="line"><span className="muted">Price</span><span className="mono">{effectiveCutoff ? 'Cut-off ' : ''}{inr(pricePerShare)}</span></div>
-          <div className="line"><span className="muted">Method</span><span>{effMethod === 'upi' ? 'UPI / ASBA' : 'Bank ASBA'}</span></div>
-          <div className="line"><span className="muted">Per applicant</span><span className="mono">{inr(amount)}</span></div>
-          <div className="line total"><span>Total{selected.length > 1 ? ` (${selected.length})` : ''}</span><span className="mono">{inr(totalAmount)}</span></div>
+          <div className="line"><span className="muted">Category</span><span>{selected.length && master ? (uniform ? tabLabel(choiceFor(selected[0])!) : 'Mixed') : master ? tabLabel(master) : '—'}</span></div>
+          <div className="line"><span className="muted">{tr('apply.lots')}</span><span className="mono">{selected.length && uniform ? `${choiceFor(selected[0])!.q.lots} · ${choiceFor(selected[0])!.q.shares} ${tr('apply.shares')}` : selected.length ? 'per member' : master ? `${master.q.lots} · ${master.q.shares} ${tr('apply.shares')}` : '—'}</span></div>
+          <div className="line"><span className="muted">Price</span><span className="mono">{inr(bandMax)}</span></div>
+          <div className="line"><span className="muted">Method</span><span>UPI mandate</span></div>
+          <div className="line total"><span>Total{selected.length > 1 ? ` (${selected.length})` : ''}</span><span className="mono">{inr(totalAmount || master?.q.amount || 0)}</span></div>
         </aside>
       </div>
     </div>
@@ -673,37 +698,4 @@ function applicantDetail(a: Application): string {
   if (a.depository && a.dpId) parts.push(`${a.depository} ${a.dpId}${a.clientId ? `/${a.clientId}` : ''}`);
   if (a.method === 'upi' && a.upiId) parts.push(a.upiId);
   return parts.join('  ·  ');
-}
-
-/** Prefilled, printable ASBA form (demo) — for bids above ₹5L that must go via the bank. */
-function asbaFormHtml(a: Application, p: Profile | undefined, ipo: IpoDetail): string {
-  const row = (k: string, v?: string | number) => `<tr><td class="k">${k}</td><td class="v">${v ?? '—'}</td></tr>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>ASBA Form · ${a.applicationNumber}</title>
-<style>
-  body{font-family:Arial,Helvetica,sans-serif;color:#1d1d1f;max-width:720px;margin:28px auto;padding:0 22px;}
-  h1{font-size:20px;margin:0;} .brand{color:#3c2e7e;} .sub{color:#666;font-size:13px;margin-top:4px;}
-  .box{border:1px solid #d2d2d7;border-radius:10px;padding:6px 16px;margin-top:18px;}
-  table{width:100%;border-collapse:collapse;} td{padding:9px 4px;border-bottom:1px solid #ececef;font-size:14px;}
-  td.k{color:#666;width:46%;} td.v{font-weight:600;} tr:last-child td{border-bottom:0;}
-  .note{font-size:12px;color:#555;line-height:1.55;margin-top:16px;}
-  button{margin-top:22px;padding:11px 20px;border:0;background:#3c2e7e;color:#fff;border-radius:8px;font-size:14px;cursor:pointer;}
-  @media print{button{display:none;}}
-</style></head><body>
-  <h1><span class="brand">Investoyard</span> · ASBA Application Form</h1>
-  <div class="sub">Application No. ${a.applicationNumber} · ${ipo.name} (${ipo.type === 'sme' ? 'SME' : 'Mainboard'}) · for bids above ₹5,00,000 (UPI not permitted)</div>
-  <div class="box"><table>
-    ${row('Applicant name', p?.fullName)}
-    ${row('PAN', p?.pan)}
-    ${row('Depository', p?.depository)}
-    ${row('DP ID', p?.dpId)}
-    ${row('Client ID', p?.clientId)}
-    ${row('Bank / UPI', p?.upiId)}
-    ${row('Investor category', catLabel(a.category))}
-    ${row('Bid price', (a.atCutoff ? 'Cut-off ' : '') + inr(a.pricePerShare))}
-    ${row('Lots / Shares', a.lots + ' / ' + a.shares)}
-    ${row('Amount to block (ASBA)', inr(a.amount))}
-  </table></div>
-  <p class="note">${p?.relationship === 'child' ? '<b>Minor applicant</b> — demat/bank account operated by the natural guardian. ' : ''}I/We authorise the Self-Certified Syndicate Bank (SCSB) to block the above amount in my/our own bank account under ASBA for this public issue. The application uses my/our own PAN, demat and bank account (no third party). Submit this form at your bank branch or net-banking ASBA facility; the bank uploads the bid and blocks the funds. Funds remain blocked (not debited) until basis of allotment.</p>
-  <button onclick="window.print()">Print this form</button>
-</body></html>`;
 }

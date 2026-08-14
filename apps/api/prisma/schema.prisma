@@ -170,6 +170,16 @@ model RelationshipMaster {
   createdAt     DateTime @default(now())
 }
 
+/// Allowed UPI handles (the part after '@' in a UPI ID, e.g. "okaxis", "ybl").
+/// Profile UPI IDs are accepted only when their handle is an active row here.
+model UpiHandleMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
 model IpoCategoryMaster {
   id        String   @id @default(uuid())
   name      String   @unique // e.g. "Main Board IPO", "SME IPO"

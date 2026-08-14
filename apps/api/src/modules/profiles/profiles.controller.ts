@@ -12,6 +12,12 @@ export class ProfilesPublicController {
   relationships() {
     return this.profiles.relationships();
   }
+
+  /** Public: allowed UPI handles (after '@') — drives UPI-ID entry validation. */
+  @Get('upi-handles')
+  upiHandles() {
+    return this.profiles.upiHandles();
+  }
 }
 
 @Controller('profiles')

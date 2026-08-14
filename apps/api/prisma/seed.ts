@@ -53,6 +53,7 @@ async function main() {
     ['familyApply', 'Family / multi-profile apply', 'boolean', true, true],
     ['watchlistEnabled', 'Watchlist', 'boolean', true, true],
     ['maxFamilyMembers', 'Max family profiles', 'number', 8, true],
+    ['upiCap', 'UPI mandate cap (₹)', 'number', 500000, true],
   ];
   for (const [key, label, valueType, defaultValue, isPublic] of features) {
     await prisma.featureDefinition.create({ data: { key, label, valueType, defaultValue, isPublic } });

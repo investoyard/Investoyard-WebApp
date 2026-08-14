@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 import { Modal } from '@/components/ui/Modal';
 import { makeT, Lang } from '@investoyard/i18n';
 import {
-  listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships,
+  listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles,
   type ApiProfile, type ProfileInput, type Relationship, type Depository, type RelationshipOption,
 } from '@/lib/consumer-api';
 
@@ -236,9 +236,16 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   // a plain {...f, ...patch} merge would clobber all but the last field.
   const upd = (patch: Partial<ProfileInput>) => setF((prev) => ({ ...prev, ...patch }));
 
+  // Allowed UPI handles (admin master) — a UPI ID is accepted only on a listed handle.
+  const [upiHandles, setUpiHandles] = useState<string[]>([]);
+  useEffect(() => { fetchUpiHandles().then(setUpiHandles).catch(() => {}); }, []);
+
   const panOk = editing ? (!f.pan || PAN_RE.test(f.pan)) : PAN_RE.test(f.pan);
   const ifscOk = !f.ifsc || IFSC_RE.test(f.ifsc);
-  const upiOk = !f.upiId || UPI_RE.test(f.upiId);
+  const upiFormatOk = !f.upiId || UPI_RE.test(f.upiId);
+  const upiHandleOk = !f.upiId || !upiHandles.length ||
+    upiHandles.includes((f.upiId.split('@')[1] ?? '').toLowerCase());
+  const upiOk = upiFormatOk && upiHandleOk;
   const mobOk = !f.mobile || /^\d{10}$/.test(f.mobile);
   const isCdsl = f.depository === 'CDSL';
 
@@ -344,9 +351,20 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
       <div className="field">
         <label>{tr('profile.upi')}</label>
         <input className="input mono" value={f.upiId ?? ''} onChange={(e) => upd({ upiId: e.target.value })}
+          list="upi-handle-suggestions"
           placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'name@bank'} />
+        {/* suggest name@<allowed handle> once the local part is typed */}
+        <datalist id="upi-handle-suggestions">
+          {(f.upiId ?? '').replace(/@.*$/, '') &&
+            upiHandles.map((h) => <option key={h} value={`${(f.upiId ?? '').replace(/@.*$/, '')}@${h}`} />)}
+        </datalist>
         <span className="hint">{tr('apply.selfPan')}</span>
-        {f.upiId && !upiOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid UPI id</span>}
+        {f.upiId && !upiFormatOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid UPI id</span>}
+        {f.upiId && upiFormatOk && !upiHandleOk && (
+          <span className="hint" style={{ color: 'var(--neg)' }}>
+            @{f.upiId.split('@')[1]} is not a supported UPI handle
+          </span>
+        )}
       </div>
 
       <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact <span className="hint">(optional — used to pre-fill the printed ASBA form)</span></div>
