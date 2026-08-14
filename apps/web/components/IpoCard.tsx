@@ -66,9 +66,10 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
   const detailHref = lang === 'en' ? `/ipos/${ipo.symbol}` : `/${lang}/ipos/${ipo.symbol}`;
   const [open, setOpen] = useState<Topic | null>(null);
-  // Apply shows only when the operator's "Start Bid" gate is ON for this issue.
+  // Operator gates: "Start Bid" → Apply (UPI flow) · "Start Printing" → Print PDF (ASBA forms).
   const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
   const canApply = inWindow && (ipo as any).extra?.startBid === true;
+  const canPrint = inWindow && (ipo as any).extra?.startPrint === true;
   const watched = useStore((s) => s.watchlist.includes(ipo.symbol));
 
   const tenant = useTenant();
@@ -143,9 +144,13 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       {open && <TopicPanel k={open} ipo={ipo} tr={tr} />}
 
       <div className="ic-foot">
-        {canApply
-          ? <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={16} /></a>
-          : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>}
+        {canApply && <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={16} /></a>}
+        {canPrint && (
+          <a className={`btn ic-apply${canApply ? ' btn-secondary' : ''}`} href={`/print/${ipo.symbol}${q}`}>
+            <Icon name="doc" size={15} /> Print PDF
+          </a>
+        )}
+        {!canApply && !canPrint && <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>}
         {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" aria-label="Share this IPO" onClick={() => shareIpo(ipo)}>

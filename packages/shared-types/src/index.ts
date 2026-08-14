@@ -1,7 +1,11 @@
 /**
  * @investoyard/shared-types — one contract for api, web, and mobile.
- * View/DTO types only (no server internals). Keep in sync with the API responses.
+ * View/DTO types only (no server internals), plus the pure bid engine
+ * (packages/shared-types/src/bidEngine.ts) shared by every apply surface.
+ * Keep in sync with the API responses.
  */
+
+export * from './bidEngine';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';

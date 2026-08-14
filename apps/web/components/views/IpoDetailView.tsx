@@ -414,6 +414,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
             lotSize={ipo.lotSize} priceMax={ipo.priceBandMax ?? ipo.priceBandMin}
             subscribedX={ipo.status === 'open' ? ipo.subscriptionTimes : undefined}
             bidOpen={(ipo as any).extra?.startBid === true}
+            printOpen={(ipo as any).extra?.startPrint === true}
             lang={lang} langQuery={q}
           />
         </aside>
@@ -424,6 +425,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
         symbol={ipo.symbol} status={ipo.status}
         priceLabel={priceBand(ipo.priceBandMin, ipo.priceBandMax)}
         bidOpen={(ipo as any).extra?.startBid === true}
+        printOpen={(ipo as any).extra?.startPrint === true}
         lang={lang} langQuery={q}
       />
     </article>

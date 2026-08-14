@@ -26,17 +26,21 @@ const catShort = (amt: number) => (amt <= RETAIL_MAX ? 'Retail' : amt <= SNII_MA
 
 /** Sticky sidebar apply card with a live lot/amount calculator (desktop). */
 export function ApplyPanel({
-  symbol, status, priceLabel, minAmount, closesLabel, lotSize, priceMax, subscribedX, bidOpen, lang = 'en', langQuery = '',
+  symbol, status, priceLabel, minAmount, closesLabel, lotSize, priceMax, subscribedX, bidOpen, printOpen, lang = 'en', langQuery = '',
 }: {
   symbol: string; status: string; priceLabel: string; minAmount?: number; closesLabel?: string | null;
   lotSize?: number; priceMax?: number; subscribedX?: number;
   /** operator "Start Bid" gate — Apply shows only when explicitly enabled */
   bidOpen?: boolean;
+  /** operator "Start Printing" gate — Print PDF shows only when explicitly enabled */
+  printOpen?: boolean;
   lang?: Lang; langQuery?: string;
 }) {
   const tr = makeT(lang);
   const inWindow = status === 'open' || status === 'upcoming';
   const canApply = inWindow && bidOpen === true;
+  const canPrint = inWindow && printOpen === true;
+  const printHref = `/print/${symbol}${langQuery}`;
   const [lots, setLots] = useState(1);
 
   const lot = lotSize ?? 0;
@@ -75,14 +79,25 @@ export function ApplyPanel({
           <a className="btn btn-block btn-lg" href={applyHref} style={{ marginTop: 14 }}>
             {tr('detail.apply')} <Icon name="arrow-right" size={18} />
           </a>
+          {canPrint && (
+            <a className="btn btn-secondary btn-block" href={printHref} style={{ marginTop: 8 }}>
+              <Icon name="doc" size={16} /> Print PDF form
+            </a>
+          )}
         </>
       ) : (
         <>
           <div className="kv"><span className="k">{tr('label.min')} investment</span><span className="v mono">{inr(minAmount)}</span></div>
           {closesLabel && <div className="kv"><span className="k">Status</span><span className="v" style={{ color: 'var(--brand)' }}>{closesLabel}</span></div>}
-          <button className="btn btn-block btn-lg" disabled style={{ marginTop: 16 }}>
-            {inWindow && !canApply ? 'Bidding opens soon' : tr('detail.apply')}
-          </button>
+          {canPrint ? (
+            <a className="btn btn-block btn-lg" href={printHref} style={{ marginTop: 16 }}>
+              <Icon name="doc" size={17} /> Print PDF form
+            </a>
+          ) : (
+            <button className="btn btn-block btn-lg" disabled style={{ marginTop: 16 }}>
+              {inWindow && !canApply ? 'Bidding opens soon' : tr('detail.apply')}
+            </button>
+          )}
         </>
       )}
       <p className="disclaimer" style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
@@ -94,22 +109,28 @@ export function ApplyPanel({
 
 /** Sticky bottom apply bar (mobile). */
 export function ApplyBar({
-  symbol, status, priceLabel, bidOpen, lang = 'en', langQuery = '',
-}: { symbol: string; status: string; priceLabel: string; bidOpen?: boolean; lang?: Lang; langQuery?: string }) {
+  symbol, status, priceLabel, bidOpen, printOpen, lang = 'en', langQuery = '',
+}: { symbol: string; status: string; priceLabel: string; bidOpen?: boolean; printOpen?: boolean; lang?: Lang; langQuery?: string }) {
   const tr = makeT(lang);
   const inWindow = status === 'open' || status === 'upcoming';
   const canApply = inWindow && bidOpen === true;
+  const canPrint = inWindow && printOpen === true;
   return (
     <div className="applybar mobile-only">
       <div className="info">
         <div className="t mono">{priceLabel}</div>
-        <div className="s">{canApply ? tr('apply.selfPan') : inWindow ? 'Bidding opens soon.' : 'Applications are closed.'}</div>
+        <div className="s">{canApply || canPrint ? tr('apply.selfPan') : inWindow ? 'Bidding opens soon.' : 'Applications are closed.'}</div>
       </div>
       <div className="spacer" />
       <WatchButton symbol={symbol} />
+      {canPrint && (
+        <a className={`btn${canApply ? ' btn-secondary' : ''}`} href={`/print/${symbol}${langQuery}`} aria-label="Print PDF form">
+          <Icon name="doc" size={16} />{!canApply && <> Print PDF</>}
+        </a>
+      )}
       {canApply
         ? <a className="btn" href={`/apply/${symbol}${langQuery}`}>{tr('detail.apply')}</a>
-        : <button className="btn" disabled>{tr('detail.apply')}</button>}
+        : !canPrint && <button className="btn" disabled>{tr('detail.apply')}</button>}
     </div>
   );
 }
