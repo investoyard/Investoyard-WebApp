@@ -22,10 +22,12 @@ const root = path.resolve(__dirname, '..');
 function log(msg) { console.log(`[link-expo-router] ${msg}`); }
 
 function ensureRootResolvable(name) {
-  // the package may sit in the app's tree OR nested inside expo's own node_modules
+  // the package may sit in the app's tree OR nested inside expo's own
+  // node_modules — and `expo` itself may be hoisted to the ROOT or app-local
   const candidates = [
     path.join(root, 'apps', 'mobile', 'node_modules', name),
     path.join(root, 'apps', 'mobile', 'node_modules', 'expo', 'node_modules', name),
+    path.join(root, 'node_modules', 'expo', 'node_modules', name),
   ];
   const source = candidates.find((c) => fs.existsSync(c));
   const target = path.join(root, 'node_modules', name);

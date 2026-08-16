@@ -37,6 +37,42 @@ export function ShareIcon(p: IconProps) {
   );
 }
 
+export function PencilIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M12 20h9" {...stroke(p)} />
+      <Path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function XIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M6 6l12 12M18 6 6 18" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function RefreshIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M21 12a9 9 0 1 1-2.64-6.36" {...stroke(p)} />
+      <Path d="M21 3v5h-5" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function FilePdfIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M6 3h8l4 4v14H6z" {...stroke(p)} />
+      <Path d="M14 3v4h4" {...stroke(p)} />
+      <Path d="M9 13h6M9 16.5h4" {...stroke(p)} />
+    </Svg>
+  );
+}
+
 export function HomeIcon(p: IconProps) {
   return (
     <Svg {...base(p)}>

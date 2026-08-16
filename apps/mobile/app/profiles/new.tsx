@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useProfiles, Relationship } from '../../components/profiles';
-import { getRelationships, RelationshipOption } from '../../lib/api';
+import { getRelationships, getUpiHandles, RelationshipOption } from '../../lib/api';
 import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
@@ -61,6 +61,9 @@ export default function NewProfileScreen() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Allowed UPI handles (admin master) — a UPI ID saves only on a listed handle.
+  const [upiHandles, setUpiHandles] = useState<string[]>([]);
+  useEffect(() => { getUpiHandles().then(setUpiHandles); }, []);
 
   // Prefill once when the record to edit is available (secrets stay blank).
   useEffect(() => {
@@ -90,12 +93,17 @@ export default function NewProfileScreen() {
   const dematOk = isCdsl ? /^\d{16}$/.test(clientId) : /^\d{6}$/.test(dpId) && /^\d{8}$/.test(clientId);
   // Edit mode: PAN optional (blank = keep saved) and no consent re-tick needed.
   const panOk = editing ? (!pan || /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase())) : /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase());
-  const valid = fullName.trim() && panOk && dematOk && (editing ? true : consent);
+  const upiFormatOk = !upiId || /^[\w.\-]{2,}@[a-zA-Z0-9]{2,}$/.test(upiId);
+  const upiHandleOk = !upiId || !upiHandles.length || upiHandles.includes((upiId.split('@')[1] ?? '').toLowerCase());
+  const upiOk = upiFormatOk && upiHandleOk;
+  const valid = fullName.trim() && panOk && dematOk && upiOk && (editing ? true : consent);
 
   const onSave = async () => {
     if (!valid) {
       setError(!editing && !consent ? 'Please give consent to continue'
         : !dematOk ? (isCdsl ? 'CDSL demat number must be 16 digits' : 'NSDL: DP ID is IN + 6 digits, Client ID is 8 digits')
+        : !upiFormatOk ? 'Enter the UPI ID as name@handle (e.g. name@okaxis)'
+        : !upiHandleOk ? `@${upiId.split('@')[1] ?? ''} is not a supported UPI handle`
         : 'Please complete all fields with a valid PAN');
       return;
     }
@@ -131,7 +139,8 @@ export default function NewProfileScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // 'padding' on BOTH platforms — SDK 54 Android is edge-to-edge (same fix as login)
+    <KeyboardAvoidingView style={styles.screen} behavior="padding">
       <Stack.Screen options={{ title: editing ? `Edit — ${editing.fullName}` : t('profile.new') }} />
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
@@ -188,6 +197,9 @@ export default function NewProfileScreen() {
             placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} mono keyboard="number-pad" />
           <Field label={t('profile.upi')} value={upiId} onChange={setUpiId}
             placeholder={editing?.upiId ? 'saved ✓ — type to replace' : 'name@bank'} autoCapitalize="none" mono />
+          {upiId && upiFormatOk && !upiHandleOk ? (
+            <Text style={styles.upiWarn}>@{upiId.split('@')[1]} is not a supported UPI handle — allowed: {upiHandles.slice(0, 6).map((h) => `@${h}`).join(', ')}…</Text>
+          ) : null}
         </Card>
 
         <SectionTitle label="Bank & contact" meta="optional" style={{ marginTop: 24 }} />
@@ -264,6 +276,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, lineHeight: 18 },
   hint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12.5, marginBottom: 4 },
+  upiWarn: { fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, fontSize: 12, marginTop: 2, lineHeight: 17 },
   label: { ...microLabel, fontSize: 11, marginTop: 16, marginBottom: 7 },
   input: {
     height: 48, borderRadius: 12, paddingHorizontal: 14,

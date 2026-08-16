@@ -40,6 +40,7 @@ function RootStack() {
         options={{ headerTitle: () => <Logo height={20} />, headerTitleAlign: 'center', headerRight: () => <HeaderIcons boxed={false} /> }}
       />
       <Stack.Screen name="apply/[symbol]" options={{ title: t('apply.title'), headerRight: () => <HeaderIcons boxed={false} /> }} />
+      <Stack.Screen name="print/[symbol]" options={{ title: 'Print Forms', headerRight: () => <HeaderIcons boxed={false} /> }} />
       <Stack.Screen name="login" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="profiles/new" options={{ title: t('profile.new') }} />
       <Stack.Screen name="notifications" options={{ title: t('notif.title') }} />

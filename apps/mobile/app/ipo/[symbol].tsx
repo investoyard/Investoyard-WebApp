@@ -84,8 +84,9 @@ export default function IpoDetailScreen() {
   }
 
   const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
-  // Apply shows only when the operator's "Start Bid" gate is ON for this issue.
+  // Operator gates: "Start Bid" → Apply (UPI) · "Start Printing" → Print Forms (bank ASBA).
   const canApply = inWindow && (ipo.extra as any)?.startBid === true;
+  const canPrint = inWindow && (ipo.extra as any)?.startPrint === true;
   const closes = ipo.status === 'open' ? closesInLabel(ipo.closeDate) : null;
   const ex: Record<string, any> = ipo.extra ?? {};
   const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
@@ -358,8 +359,11 @@ export default function IpoDetailScreen() {
               <Text style={styles.applySub}>{ipo.subscriptionTimes}× subscribed</Text>
             ) : null}
           </View>
-          {canApply ? (
-            <Button label="Apply now" onPress={() => router.push(`/apply/${ipo.symbol}`)} style={{ minWidth: 150 }} />
+          {canApply || canPrint ? (
+            <View style={{ gap: 8, minWidth: 150 }}>
+              {canApply ? <Button label="Apply now" small onPress={() => router.push(`/apply/${ipo.symbol}`)} /> : null}
+              {canPrint ? <Button label="Print Forms" small variant="danger" onPress={() => router.push(`/print/${ipo.symbol}`)} /> : null}
+            </View>
           ) : (
             <Button label="Bidding opens soon" variant="ghost" disabled onPress={() => {}} style={{ minWidth: 150 }} />
           )}

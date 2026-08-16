@@ -232,6 +232,51 @@ export interface CreateProfileInput {
   mobile?: string;
 }
 
+/** Allowed UPI handles (the part after '@') — admin-managed master; empty on failure. */
+export async function getUpiHandles(): Promise<string[]> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles/upi-handles`);
+    if (res.ok) return await res.json();
+  } catch {}
+  return [];
+}
+
+/** Operator's UPI-mandate cap (tenant feature setting) — ₹5,00,000 default. */
+export async function getUpiCap(): Promise<number> {
+  try {
+    const res = await fetch(`${API_BASE}/tenants`);
+    if (res.ok) {
+      const list = await res.json();
+      const cap = Number(list?.[0]?.flags?.upiCap);
+      if (Number.isFinite(cap) && cap > 0) return cap;
+    }
+  } catch {}
+  return 500000;
+}
+
+/** Prefilled ASBA form PDF (one application, or a merged family set) as base64. */
+export async function fetchAsbaFormsBase64(token: string, ids: string[]): Promise<string | null> {
+  try {
+    const res = ids.length === 1
+      ? await fetch(`${API_BASE}/applications/${ids[0]}/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+      : await fetch(`${API_BASE}/applications/forms/pdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ids }),
+        });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => { const s = String(r.result ?? ''); resolve(s.includes(',') ? s.split(',')[1] : null); };
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export interface RelationshipOption { name: string; allowMultiple: boolean }
 /** Public list of applicant relationship options (admin-managed master). */
 export async function getRelationships(): Promise<RelationshipOption[]> {
