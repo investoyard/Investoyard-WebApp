@@ -27,6 +27,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { MastersModule } from './modules/masters/masters.module';
+import { PartnerModule } from './modules/partner/partner.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { MastersModule } from './modules/masters/masters.module';
     WhatsappModule,
     SubscriptionModule,
     MastersModule,
+    PartnerModule,
   ],
   providers: [
     PrismaService,

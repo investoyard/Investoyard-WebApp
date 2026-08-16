@@ -116,6 +116,52 @@ export interface PartnerDetail {
   createdAt: string;
 }
 export const fetchTenant = (slug: string) => authed<PartnerDetail>(`${API}/admin/tenants/${slug}`, { method: 'GET' });
+
+/* ---- partner API keys (white-label Print-PDF API) ---- */
+export interface PartnerApiKeyRow {
+  id: string; keyId: string; label?: string | null; active: boolean;
+  createdAt: string; revokedAt?: string | null; lastUsedAt?: string | null;
+}
+export const listPartnerKeys = (tenantId: string) =>
+  authed<PartnerApiKeyRow[]>(`${API}/admin/partner-keys/${tenantId}`, { method: 'GET' });
+/** Returns { keyId, secret, apiKey } — the secret is shown ONCE, never retrievable again. */
+export const createPartnerKey = (tenantId: string, label?: string) =>
+  authed<{ keyId: string; secret: string; apiKey: string }>(`${API}/admin/partner-keys/${tenantId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
+  });
+export const revokePartnerKey = (id: string) =>
+  authed<{ revoked: boolean }>(`${API}/admin/partner-keys/${id}`, { method: 'DELETE' });
+
+/* ---- partner API reports (platform: all partners · partner login: own data) ---- */
+export interface PartnerApiCallRow {
+  at: string; partner: string; partnerSlug: string; keyId: string; endpoint: string;
+  ipoSymbol?: string | null; applicants?: number | null; status: 'ok' | 'error';
+  httpStatus: number; error?: string | null; durationMs?: number | null;
+}
+export interface PartnerPrintRow {
+  at: string; partner: string; partnerSlug: string; ipoSymbol: string; applicant: string;
+  pan: string; category: string; lots: number; amount: number;
+  formNo?: string | null; batchId?: string | null; applicationRef: string;
+}
+export interface PartnerReport<T> { total: number; page: number; per: number; scoped: boolean; rows: T[] }
+const qstr = (q: Record<string, any>) =>
+  Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+export const fetchPartnerApiCalls = (q: { tenantId?: string; days?: number; page?: number }) =>
+  authed<PartnerReport<PartnerApiCallRow>>(`${API}/admin/partner-api/calls?${qstr(q)}`, { method: 'GET' });
+export const fetchPartnerApiPrints = (q: { tenantId?: string; days?: number; page?: number }) =>
+  authed<PartnerReport<PartnerPrintRow>>(`${API}/admin/partner-api/prints?${qstr(q)}`, { method: 'GET' });
+/** Download the prints report as CSV (browser save dialog). */
+export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: number }) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/partner-api/prints/export?${qstr(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `partner-prints-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 export const updateTenant = (slug: string, body: Partial<{ name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; customDomain: string; profile: Record<string, any>; commissionRate: number | null }>) =>
   authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 

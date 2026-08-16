@@ -49,6 +49,11 @@ const NAV: NavNode[] = [
     { href: '/admin/refund/refunds', label: 'Refunds' },
     { href: '/admin/refund/demat', label: 'Demat Credit' },
   ] },
+  { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
+    { href: '/admin/partner-api/docs', label: 'API Docs' },
+    { href: '/admin/partner-api/calls', label: 'API Calls' },
+    { href: '/admin/partner-api/prints', label: 'Print Report' },
+  ] },
   { key: 'masters', label: 'Masters', icon: 'layers', children: [
     { href: '/admin/masters/registrars', label: 'Registrars' },
     { href: '/admin/masters/lead-managers', label: 'Lead Managers' },

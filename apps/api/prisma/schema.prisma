@@ -136,9 +136,46 @@ model Tenant {
   devices           DeviceToken[]
   memberCredentials MemberCredential[]
   settings          TenantSetting[]
+  partnerApiKeys    PartnerApiKey[]
 
   @@index([parentId])
   @@index([type])
+}
+
+/// One row per partner-API call, success OR failure — drives the API Call Report.
+/// A log table like AuditLog: no FKs, never mutated.
+model PartnerApiCall {
+  id         String   @id @default(uuid())
+  tenantId   String
+  keyId      String
+  endpoint   String
+  ipoSymbol  String?
+  applicants Int?
+  status     String // ok | error
+  httpStatus Int
+  error      String?
+  durationMs Int?
+  at         DateTime @default(now())
+
+  @@index([tenantId, at])
+  @@index([at])
+}
+
+/// Per-partner API access keys (white-label Print-PDF API). The secret is stored
+/// as a sha256 hash and shown ONLY once at creation. Auth: `X-Api-Key: keyId.secret`.
+model PartnerApiKey {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  keyId      String    @unique // public identifier, e.g. pk_a1b2c3d4e5f6
+  secretHash String // sha256(secret)
+  label      String?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@index([tenantId])
 }
 
 /// Catalog of settable features/flags (platform-global). The defaultValue is the

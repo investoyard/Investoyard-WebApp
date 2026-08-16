@@ -45,6 +45,72 @@ function ProfileView({ profile }: { profile: Record<string, any> }) {
   );
 }
 
+/** API access — issue/revoke keys for the white-label Print-PDF API. */
+function ApiKeysPanel({ tenantId }: { tenantId: string }) {
+  const [rows, setRows] = useState<api.PartnerApiKeyRow[] | null>(null);
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState<{ keyId: string; apiKey: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => api.listPartnerKeys(tenantId).then(setRows).catch((e) => { setErr(String(e?.message ?? e)); setRows([]); });
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [tenantId]);
+
+  const generate = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await api.createPartnerKey(tenantId, label || undefined); setFresh(r); setLabel(''); load(); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+  const revoke = async (id: string) => {
+    setBusy(true); setErr(null);
+    try { await api.revokePartnerKey(id); load(); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+      <div className="fs-head" style={{ marginBottom: 6 }}>
+        <div className="t">API access — Print-PDF</div>
+        <div className="d">Partner calls <span className="mono">POST /partner/v1/print-forms</span> with header <span className="mono">X-Api-Key: keyId.secret</span>. Forms number from each IPO&apos;s own PDF series.</div>
+      </div>
+      {err && <div className="banner warn" style={{ margin: '10px 0' }}>{err}</div>}
+      {fresh && (
+        <div className="banner ok" style={{ margin: '10px 0', wordBreak: 'break-all' }}>
+          Key created — copy it NOW, the secret is never shown again:&nbsp;
+          <b className="mono">{fresh.apiKey}</b>
+        </div>
+      )}
+      <div className="row" style={{ gap: 8, margin: '10px 0 14px' }}>
+        <input className="input" style={{ maxWidth: 260 }} placeholder="Label (e.g. Production)" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <button className="btn btn-sm" disabled={busy} onClick={generate}>{busy ? 'Working…' : 'Generate key'}</button>
+      </div>
+      {rows === null ? <Loader /> : rows.length === 0 ? (
+        <div className="muted" style={{ fontSize: 13.5 }}>No API keys yet.</div>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Key ID</th><th>Label</th><th>Status</th><th>Created</th><th>Last used</th><th /></tr></thead>
+          <tbody>
+            {rows.map((k) => (
+              <tr key={k.id}>
+                <td className="mono">{k.keyId}</td>
+                <td>{k.label ?? '—'}</td>
+                <td>{k.active ? <span className="pill" style={{ background: 'var(--pos-soft)', color: 'var(--pos)' }}>active</span> : <span className="pill">revoked</span>}</td>
+                <td>{new Date(k.createdAt).toLocaleDateString('en-IN')}</td>
+                <td>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-IN') : '—'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {k.active && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => revoke(k.id)}>Revoke</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div></div>
+  );
+}
+
 function PartnerProfilePage() {
   const me = useOperator();
   const slug = useSearchParams().get('slug') ?? '';
@@ -110,6 +176,8 @@ function PartnerProfilePage() {
           </Field>
         </div>
       </div></div>
+
+      <ApiKeysPanel tenantId={data.id} />
 
       <div>
         {edit ? (
