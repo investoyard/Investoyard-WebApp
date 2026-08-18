@@ -900,6 +900,32 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- CARD SIGNALS (status chip · demand · value pills) */
+/* ONE time-aware status chip per card; pulse only while something is live. */
+.ic-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border-radius: var(--pill); padding: 3.5px 10px; white-space: nowrap; }
+.ic-status .pd { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: ic-pulse 1.7s var(--ease) infinite; }
+@keyframes ic-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+.ic-status.live { background: var(--pos-soft); color: var(--pos); }
+.ic-status.opentoday { background: var(--pos); color: #fff; }
+.ic-status.closing { background: var(--gold); color: #4a3600; }
+.ic-status.preapply { background: var(--brand-50); color: var(--brand); }
+.ic-status.soon { background: var(--brand-50); color: var(--brand-700, var(--brand)); }
+.ic-status.upcoming { background: var(--bg-2); color: var(--text-muted); }
+.ic-status.allot { background: var(--ink-grad); color: var(--gold); }
+.ic-status.closed, .ic-status.listed { background: var(--bg-2); color: var(--text-muted); }
+/* demand: bold × + plain-words label, calibrated per board */
+.ic-subx2 { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.ic-subx2 b { font-family: var(--font-display); font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.ic-subx2.d0 b { color: var(--text-muted); }
+.ic-subx2.d1 b { color: var(--text); }
+.ic-subx2.d2 b, .ic-subx2.d3 b { color: var(--pos); }
+.ic-subx2.d3 { color: var(--pos); }
+/* GMP / listing-gain values as soft-tinted semantic pills */
+.gmp-pill { border-radius: var(--pill); padding: 2px 8px; font-weight: 700; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.gmp-pill.gp { background: var(--pos-soft); color: var(--pos); }
+.gmp-pill.gn { background: var(--neg-soft); color: var(--neg); }
+.ic-topic .gmp-pill { margin-left: 2px; }
+
 /* ------------------------------------------------- HERO BANNER (compact dynamic carousel) */
 .hb { position: relative; overflow: hidden; border-radius: var(--r-2xl); margin: 18px 0 26px; box-shadow: var(--sh-md); }
 .hb-track { display: flex; transition: transform .45s var(--ease); }

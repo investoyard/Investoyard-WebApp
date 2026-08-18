@@ -43,7 +43,8 @@ function OpensIn({ ipo }: { ipo: IpoFull }) {
   return <span className="ic-opens">Opens in <b>{d}d</b></span>;
 }
 
-/** Urgency cue next to the CTA — client-only so it never mismatches on hydration. */
+/** Urgency cue next to the CTA — client-only so it never mismatches on hydration.
+ *  Silent on the last day: the "Closing today" status chip already carries it. */
 function CloseHint({ ipo }: { ipo: IpoFull }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => { setNow(Date.now()); }, []);
@@ -51,13 +52,55 @@ function CloseHint({ ipo }: { ipo: IpoFull }) {
   const diff = new Date(ipo.closeDate + 'T17:00:00').getTime() - now;
   if (diff <= 0) return null;
   const d = Math.ceil(diff / 86400000);
-  const soon = d <= 2;
+  if (d <= 1) return null;
   return (
-    <span className={`ic-urg ${soon ? 'soon' : ''}`}>
+    <span className={`ic-urg ${d <= 2 ? 'soon' : ''}`}>
       <Icon name="clock" size={13} strokeWidth={2} />
-      {d <= 1 ? 'Closes today' : `Closes in ${d}d`}
+      Closes in {d}d
     </span>
   );
+}
+
+const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const daysFromToday = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  ? Math.round((new Date(`${s}T00:00:00`).getTime() - new Date(`${dayIso()}T00:00:00`).getTime()) / 86400000)
+  : null);
+
+/**
+ * ONE time-aware status chip per card (calm & data-clear: a single precise
+ * signal, never a badge pile). Live states carry a soft pulse dot.
+ */
+function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean } {
+  const today = dayIso();
+  if (ipo.status === 'listed') return { label: 'Listed', cls: 'listed' };
+  if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: 'closed' };
+  if (ipo.status === 'closed') {
+    const ad = daysFromToday(ipo.allotmentDate);
+    if (ad != null && ad <= 0) return { label: 'Allotment out', cls: 'allot' };
+    return { label: 'Closed', cls: 'closed' };
+  }
+  if (ipo.status === 'open') {
+    if (ipo.closeDate === today) return { label: 'Closing today', cls: 'closing', pulse: true };
+    if (ipo.openDate === today) return { label: 'Open today', cls: 'opentoday', pulse: true };
+    return { label: 'Live', cls: 'live', pulse: true };
+  }
+  if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: 'preapply' };
+  const od = daysFromToday(ipo.openDate);
+  if (od === 1) return { label: 'Opens tomorrow', cls: 'soon' };
+  if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: 'soon' };
+  return { label: 'Upcoming', cls: 'upcoming' };
+}
+
+/**
+ * Demand in plain words, calibrated per board (SME oversubscription runs an
+ * order of magnitude hotter than Mainboard — same × means different things).
+ */
+function demandLabel(subX: number, sme: boolean): { label: string; cls: string } {
+  const t = sme ? [1, 10, 50] : [1, 3, 10];
+  if (subX < t[0]) return { label: 'building up', cls: 'd0' };
+  if (subX < t[1]) return { label: 'steady demand', cls: 'd1' };
+  if (subX < t[2]) return { label: 'strong demand', cls: 'd2' };
+  return { label: 'exceptional demand', cls: 'd3' };
 }
 
 export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
@@ -97,8 +140,8 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       ? [{
           key: 'gmp' as Topic,
           label: isListed
-            ? <>Listed{listedGain != null ? <> <span className={listedGain >= 0 ? 'gp' : 'gn'}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
-            : ipo.gmp != null ? <>GMP <span className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
+            ? <>Listed{listedGain != null ? <> <span className={`gmp-pill ${listedGain >= 0 ? 'gp' : 'gn'}`}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
+            : ipo.gmp != null ? <>GMP <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
         }]
       : []),
   ];
@@ -111,7 +154,9 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
           <a className="ic-name" href={detailHref} title={ipo.name}>{ipo.name}</a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
-            <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
+            {(() => { const c = statusChip(ipo); return (
+              <span className={`ic-status ${c.cls}`}>{c.pulse && <span className="pd" />}{c.label}</span>
+            ); })()}
           </div>
         </div>
         <CountdownDial ipo={ipo} />
@@ -121,7 +166,9 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
         <span className="ic-dates"><Icon name="calendar" size={13} />{fmtRange(ipo.openDate, ipo.closeDate)}</span>
         {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         {subX != null
-          ? <span className="ic-subx mono">{subX}× <small>subscribed</small></span>
+          ? (() => { const dm = demandLabel(subX, ipo.type === 'sme'); return (
+              <span className={`ic-subx2 ${dm.cls}`}><b className="mono">{subX}×</b> {dm.label}</span>
+            ); })()
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}
       </div>
       {subX != null && (
@@ -152,7 +199,12 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
             Print Forms <Icon name="file-pdf" size={15} />
           </a>
         )}
-        {!canApply && !canPrint && <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>}
+        {!canApply && !canPrint && (
+          statusChip(ipo).cls === 'allot'
+            // allotment is out → the card's job changes: help the user check it
+            ? <a className="btn ic-apply btn-secondary" href={`/portfolio${q}`}>Check allotment <Icon name="arrow-right" size={15} /></a>
+            : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>
+        )}
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" aria-label="Share this IPO" onClick={() => shareIpo(ipo)}>
           <Icon name="share" size={16} />
