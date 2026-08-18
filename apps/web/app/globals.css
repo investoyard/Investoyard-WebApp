@@ -1012,9 +1012,9 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 /* theme-matched terminal states: Allotment out = gold tint (act now: check it),
    Listed = solid brand indigo (on the board) — both distinct from grey Closed */
 .ic-status.allot { background: var(--gold-50); color: #8a6d1f; border: 1px solid #f0dfae; }
-/* Listed — solid deep teal: its own hue in the set, unmistakable next to the
-   indigo Mainboard tag and the gold/green time states */
-.ic-status.listed { background: var(--listed); color: #fff; }
+/* Listed — light purple with near-black text (operator's pick): lavender is
+   brand-adjacent but clearly lighter than the solid indigo Mainboard tag */
+.ic-status.listed { background: #e2d9f6; color: var(--text); }
 .ic-status.closed { background: var(--bg-2); color: var(--text-muted); }
 /* demand: bold × + plain-words label, calibrated per board */
 .ic-subx2 { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
