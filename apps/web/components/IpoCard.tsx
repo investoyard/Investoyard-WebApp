@@ -95,7 +95,7 @@ function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean
  * Demand in plain words, calibrated per board (SME oversubscription runs an
  * order of magnitude hotter than Mainboard — same × means different things).
  */
-function demandLabel(subX: number, sme: boolean): { label: string; cls: string } {
+export function demandLabel(subX: number, sme: boolean): { label: string; cls: string } {
   const t = sme ? [1, 10, 50] : [1, 3, 10];
   if (subX < t[0]) return { label: 'building up', cls: 'd0' };
   if (subX < t[1]) return { label: 'steady demand', cls: 'd1' };

@@ -44,6 +44,7 @@
   /* financial semantics — ONLY for money/market values */
   --pos: #12925a;  --pos-soft: #e6f4ec;
   --neg: #d8412a;  --neg-soft: #fcebe8;
+  --listed: #0e7c8a; --listed-soft: #e3f2f5; /* deep teal — the "on the board" accent, distinct from brand indigo */
   --warn: #b07d00; --warn-soft: #fbf3df;
   --info: var(--brand);
 
@@ -900,6 +901,28 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- SUBSCRIPTION HUB (/subscription) */
+.sh { padding-top: 28px; padding-bottom: 48px; }
+.sh-card { padding: 18px 20px; margin-top: 16px; }
+.sh-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.sh-ipo { display: flex; align-items: center; gap: 12px; min-width: 0; color: inherit; flex: 1; }
+.sh-total b { font-size: 22px; }
+.sh-rows { margin-top: 14px; display: flex; flex-direction: column; gap: 9px; }
+.sh-catrow { display: grid; grid-template-columns: 84px minmax(0, 1fr) 62px 150px; align-items: center; gap: 12px; }
+.sh-cat { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.sh-track { height: 7px; border-radius: 4px; background: var(--bg-2); overflow: hidden; }
+.sh-track i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--brand-500, var(--brand)), var(--brand)); }
+.sh-x { text-align: right; font-weight: 700; font-size: 13.5px; }
+.sh-sh { text-align: right; font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.sh-asof { font-size: 11.5px; color: var(--text-faint); margin-top: 12px; }
+.sh-closedrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); color: inherit; }
+.sh-closedrow:first-child { border-top: 0; }
+@media (max-width: 640px) {
+  .sh-catrow { grid-template-columns: 64px minmax(0, 1fr) 52px; }
+  .sh-catrow .sh-sh { display: none; }
+  .sh-total b { font-size: 19px; }
+}
+
 /* ------------------------------------------------- GMP HUB (/gmp) */
 .gh { padding-top: 28px; padding-bottom: 48px; }
 .gh-head h1 { font-family: var(--font-display); font-size: 26px; font-weight: 650; letter-spacing: -.02em; }
@@ -989,7 +1012,9 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 /* theme-matched terminal states: Allotment out = gold tint (act now: check it),
    Listed = solid brand indigo (on the board) — both distinct from grey Closed */
 .ic-status.allot { background: var(--gold-50); color: #8a6d1f; border: 1px solid #f0dfae; }
-.ic-status.listed { background: var(--ink-grad); color: var(--gold); } /* deep-ink + gold: distinct from the flat indigo Mainboard tag */
+/* Listed — solid deep teal: its own hue in the set, unmistakable next to the
+   indigo Mainboard tag and the gold/green time states */
+.ic-status.listed { background: var(--listed); color: #fff; }
 .ic-status.closed { background: var(--bg-2); color: var(--text-muted); }
 /* demand: bold × + plain-words label, calibrated per board */
 .ic-subx2 { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
