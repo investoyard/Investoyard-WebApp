@@ -202,7 +202,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
         {!canApply && !canPrint && (
           statusChip(ipo).cls === 'allot'
             // allotment is out → the card's job changes: help the user check it
-            ? <a className="btn ic-apply btn-secondary" href={`/portfolio${q}`}>Check allotment <Icon name="arrow-right" size={15} /></a>
+            ? <a className="btn ic-apply btn-allot" href={`/portfolio${q}`}>Check allotment <Icon name="arrow-right" size={15} /></a>
             : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>
         )}
         <span style={{ flex: 1 }} />
