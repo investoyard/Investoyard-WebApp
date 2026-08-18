@@ -900,6 +900,29 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- TODAY STRIP (market pulse) */
+.today-strip { display: flex; align-items: center; gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-sm); padding: 10px 18px; margin-bottom: 26px; overflow-x: auto; }
+.ts-head { flex: 0 0 auto; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-right: 18px; white-space: nowrap; }
+.ts-head b { display: block; font-size: 12.5px; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 2px; }
+.ts-item { flex: 1 1 0; min-width: 118px; display: flex; align-items: center; gap: 10px; padding: 2px 18px; border-left: 1px solid var(--border); color: inherit; transition: opacity .15s var(--ease); }
+.ts-item b { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.ts-item .ts-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.ts-item:hover .ts-lbl { color: var(--text); }
+.ts-item.dim { opacity: .42; }
+.ts-item.dim:hover { opacity: .7; }
+.ts-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ts-dot.pos { background: var(--pos); }
+.ts-dot.gold { background: var(--gold-600); }
+.ts-dot.brand { background: var(--brand); }
+.ts-dot.faint { background: var(--text-faint); }
+@media (max-width: 700px) {
+  .today-strip { flex-wrap: wrap; row-gap: 12px; padding: 14px 16px; overflow: visible; }
+  .ts-head { flex: 1 1 100%; margin-right: 0; display: flex; gap: 8px; align-items: baseline; }
+  .ts-head b { margin-top: 0; }
+  .ts-item { flex: 1 1 40%; min-width: 0; padding: 0 0 0 12px; }
+  .ts-item:nth-child(2), .ts-item:nth-child(4) { border-left: 0; padding-left: 0; } /* row starters in the 2×2 wrap */
+}
+
 /* ------------------------------------------------- CARD SIGNALS (status chip · demand · value pills) */
 /* ONE time-aware status chip per card; pulse only while something is live. */
 .ic-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border-radius: var(--pill); padding: 3.5px 10px; white-space: nowrap; }

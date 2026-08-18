@@ -1,6 +1,7 @@
 import { getIpos } from '@/lib/api';
 import { IpoExplorer } from '@/components/IpoExplorer';
 import { HeroBanner } from '@/components/HeroBanner';
+import { TodayStrip } from '@/components/TodayStrip';
 import { Icon } from '@/components/Icon';
 import { Lang } from '@investoyard/i18n';
 
@@ -13,6 +14,9 @@ export async function HomeView({ lang }: { lang: Lang }) {
     <>
       {/* ---------- compact dynamic banner (auto IPO slides + brand slide) ---------- */}
       <HeroBanner ipos={ipos as any} lang={lang} />
+
+      {/* ---------- today strip: the market's pulse in one line ---------- */}
+      <TodayStrip ipos={ipos as any} langQuery={q} />
 
       {/* ---------- IPO EXPLORER ---------- */}
       <IpoExplorer ipos={ipos} lang={lang} />
