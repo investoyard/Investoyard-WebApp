@@ -142,6 +142,23 @@ model Tenant {
   @@index([type])
 }
 
+/// Admin-managed homepage banner slides — mixed into the auto-generated IPO
+/// carousel on the front site (announcements, promos). Operator-global.
+model Banner {
+  id        String    @id @default(uuid())
+  title     String
+  subtitle  String?
+  imageUrl  String? // full-bleed image slide when set; else a branded text slide
+  linkUrl   String?
+  ctaLabel  String?
+  active    Boolean   @default(true)
+  sortOrder Int       @default(100)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 /// One row per partner-API call, success OR failure — drives the API Call Report.
 /// A log table like AuditLog: no FKs, never mutated.
 model PartnerApiCall {
@@ -559,6 +576,10 @@ model Application {
   applicantType      ApplicantCategory @default(individual)
   batchId            String?           // set when created via family/bulk apply — groups the batch
   lots               Int
+  /// exact share quantity as submitted (partner API sends FINAL figures); null → lots × lotSize
+  shareQty           Int?
+  /// print grouping label on the ASBA form (partner-supplied, or the account holder)
+  familyGroup        String?
   atCutoff           Boolean     @default(true)
   bidPrice           Decimal?
   amount             Decimal

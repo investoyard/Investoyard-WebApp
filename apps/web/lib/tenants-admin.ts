@@ -132,6 +132,20 @@ export const createPartnerKey = (tenantId: string, label?: string) =>
 export const revokePartnerKey = (id: string) =>
   authed<{ revoked: boolean }>(`${API}/admin/partner-keys/${id}`, { method: 'DELETE' });
 
+/* ---- homepage banners (admin-managed carousel slides) ---- */
+export interface BannerRow {
+  id: string; title: string; subtitle?: string | null; imageUrl?: string | null;
+  linkUrl?: string | null; ctaLabel?: string | null; active: boolean; sortOrder: number;
+  startsAt?: string | null; endsAt?: string | null; createdAt: string;
+}
+export const fetchBanners = () => authed<BannerRow[]>(`${API}/admin/banners`, { method: 'GET' });
+export const createBanner = (body: Partial<BannerRow>) =>
+  authed<BannerRow>(`${API}/admin/banners`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updateBanner = (id: string, body: Partial<BannerRow>) =>
+  authed<BannerRow>(`${API}/admin/banners/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteBanner = (id: string) =>
+  authed<{ deleted: boolean }>(`${API}/admin/banners/${id}`, { method: 'DELETE' });
+
 /* ---- partner API reports (platform: all partners · partner login: own data) ---- */
 export interface PartnerApiCallRow {
   at: string; partner: string; partnerSlug: string; keyId: string; endpoint: string;

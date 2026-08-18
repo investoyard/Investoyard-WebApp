@@ -45,9 +45,8 @@ export class PartnerService {
       throw new BadRequestException(`Form printing is not enabled for ${ipo.symbol} yet.`);
     }
 
-    // minimal presence checks only — the partner's numbers print verbatim
-    dto.applicants.forEach((a, i) => this.assertPrintable(a, `applicant ${i + 1}`));
-
+    // NO validation (operator policy): printing is a form-filling service —
+    // whatever the partner sends prints verbatim; missing fields print blank.
     const user = await this.serviceUser(tenant);
     const batchId = randomUUID();
     const created: { id: string; applicant: PartnerApplicantDto }[] = [];
@@ -60,13 +59,15 @@ export class PartnerService {
           userId: user.id,
           investorProfileId: profile.id,
           ipoId: ipo.id,
-          category: a.category,
+          category: a.category ?? '',
           applicantType: a.category === 'Shareholder' ? 'shareholder' : a.category === 'Employee' ? 'employee' : 'individual',
           batchId,
-          lots: a.lots,
+          lots: a.lots ?? 0,
+          shareQty: a.shareQty ?? null,     // FINAL figure — printed as-is
+          familyGroup: a.familyGroup ?? null,
           atCutoff: false,
-          bidPrice: a.sharePrice,
-          amount: a.amount, // exactly as the partner computed it
+          bidPrice: a.sharePrice ?? null,
+          amount: a.amount ?? 0, // exactly as the partner computed it
           applyMethod: 'pdf',
           status: 'submitted',
           idempotencyKey: `partner:${keyId}:${batchId}:${profile.id}`,
@@ -112,26 +113,19 @@ export class PartnerService {
     };
   }
 
-  /** Presence-only checks: enough data to fill a bank-acceptable form. */
-  private assertPrintable(a: PartnerApplicantDto, who: string) {
-    if (!a.fullName?.trim()) throw new BadRequestException(`${who}: fullName is required.`);
-    if (!/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/.test(a.pan ?? '')) throw new BadRequestException(`${who}: valid PAN is required.`);
-    if (a.depository === 'NSDL') {
-      if (!a.dpId?.trim() || !a.clientId?.trim()) throw new BadRequestException(`${who}: NSDL needs dpId and clientId.`);
-    } else if (!a.clientId?.trim()) {
-      throw new BadRequestException(`${who}: CDSL needs the 16-digit demat number in clientId.`);
-    }
-  }
-
-  /** Find-or-update the partner's client record by PAN (vaulted), else create it. */
+  /**
+   * Find-or-update the partner's client record by PAN (vaulted), else create it.
+   * NO format validation — a missing PAN gets a unique placeholder hash (the
+   * [tenantId, panHash] uniqueness must not collide across no-PAN clients).
+   */
   private async upsertClientProfile(tenantId: string, userId: string, a: PartnerApplicantDto) {
-    const pan = a.pan.toUpperCase();
-    const panHash = this.vault.hash(pan);
+    const pan = (a.pan ?? '').trim().toUpperCase();
+    const panHash = pan ? this.vault.hash(pan) : this.vault.hash(`nopan:${randomUUID()}`);
     const contact = {
-      fullName: a.fullName.trim(),
-      depository: a.depository,
+      fullName: (a.fullName ?? '').trim(),
+      depository: (a.depository ?? 'CDSL') as 'NSDL' | 'CDSL',
       dpId: a.depository === 'NSDL' ? (a.dpId ?? '').trim().toUpperCase() : '',
-      clientId: a.clientId.trim(),
+      clientId: (a.clientId ?? '').trim(),
       ifsc: a.ifsc?.toUpperCase() || null,
       bankName: a.bankName || null,
       branchName: a.branchName || null,

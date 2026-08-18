@@ -1,75 +1,18 @@
 import { getIpos } from '@/lib/api';
 import { IpoExplorer } from '@/components/IpoExplorer';
-import { CompanyMark } from '@/components/CompanyMark';
+import { HeroBanner } from '@/components/HeroBanner';
 import { Icon } from '@/components/Icon';
-import { priceBand } from '@/lib/format';
-import { makeT, Lang } from '@investoyard/i18n';
+import { Lang } from '@investoyard/i18n';
 
 /** Locale-parameterized home view — rendered at `/` (en) and `/[lang]/` (SEO routes). */
 export async function HomeView({ lang }: { lang: Lang }) {
-  const tr = makeT(lang);
   const ipos = await getIpos();
   const q = lang === 'en' ? '' : `?lang=${lang}`; // app-page links keep the query form
 
-  const open = ipos.filter((i) => i.status === 'open');
-  const upcoming = ipos.filter((i) => i.status === 'upcoming');
-  const feature = open[0] ?? ipos[0];
-
   return (
     <>
-      {/* ---------- HERO ---------- */}
-      <section className="hero fade-up">
-        <div>
-          <span className="eyebrow"><Icon name="sparkle" size={14} /> Mainboard &amp; SME · India</span>
-          <h1 className="display" style={{ marginTop: 16 }}>
-            Investing in IPOs,<br />has never been <span className="gold-word">this easy</span>.
-          </h1>
-          <p className="lead">{tr('home.subtitle')}</p>
-
-          <div className="hero-cta">
-            <a className="btn btn-lg btn-white" href="#ipos">Explore open IPOs <Icon name="arrow-right" size={18} /></a>
-            <a className="btn btn-lg btn-ondark" href={`/login${q}`}>Apply for self &amp; family</a>
-          </div>
-
-          <div className="hero-trust">
-            <div><div className="n mono">{open.length}</div><div className="l">Open now</div></div>
-            <div><div className="n mono">{upcoming.length}</div><div className="l">Upcoming</div></div>
-            <div><div className="n mono">100%</div><div className="l">UPI · ASBA</div></div>
-          </div>
-
-          <div className="hero-rails">
-            <Icon name="shield" size={15} /> <span>Powered by merchant-banker rails — <b>NSE e-IPO</b> &amp; <b>BSE iBBS</b></span>
-          </div>
-        </div>
-
-        {/* product showcase (real DOM, not an image) */}
-        <div className="hero-visual" aria-hidden="true">
-          <div className="showcase">
-            <div className="sc-top">
-              <CompanyMark name={feature?.name ?? 'Investoyard'} symbol={feature?.symbol ?? 'IPO'} size="md" />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{feature?.name ?? 'Your next IPO'}</div>
-                <div className="muted mono" style={{ fontSize: 13 }}>{feature ? `${priceBand(feature.priceBandMin, feature.priceBandMax)} · Lot ${feature.lotSize ?? '—'}` : 'Coming soon'}</div>
-              </div>
-              <span className="status open">open</span>
-            </div>
-            <div className="sc-bars">
-              {[['QIB', 84], ['NII', 62], ['Retail', 48]].map(([c, w]) => (
-                <div className="sc-bar" key={c as string}>
-                  <span>{c}</span><span className="track"><i style={{ width: `${w}%` }} /></span>
-                  <span className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{(Number(w) / 6.5).toFixed(1)}×</span>
-                </div>
-              ))}
-            </div>
-            <div className="sc-foot">
-              <span className="muted" style={{ fontSize: 13 }}>Min ₹14,910</span>
-              <span className="btn btn-sm">Apply</span>
-            </div>
-          </div>
-          <span className="sc-chip a"><span className="gmp-pos mono">+18</span> GMP</span>
-          <span className="sc-chip b"><Icon name="check" size={15} style={{ color: 'var(--pos)' }} /> Allotted</span>
-        </div>
-      </section>
+      {/* ---------- compact dynamic banner (auto IPO slides + brand slide) ---------- */}
+      <HeroBanner ipos={ipos as any} lang={lang} />
 
       {/* ---------- IPO EXPLORER ---------- */}
       <IpoExplorer ipos={ipos} lang={lang} />

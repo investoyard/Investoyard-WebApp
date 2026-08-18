@@ -900,6 +900,44 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- HERO BANNER (compact dynamic carousel) */
+.hb { position: relative; overflow: hidden; border-radius: var(--r-2xl); margin: 18px 0 26px; box-shadow: var(--sh-md); }
+.hb-track { display: flex; transition: transform .45s var(--ease); }
+.hb-slide { flex: 0 0 100%; min-width: 0; min-height: 188px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 64px 34px 30px; background: var(--ink-grad); color: #fff; }
+.hb-slide.ipo.v1 { background: linear-gradient(150deg, #2f2465 0%, #3c2e7e 55%, #4a3a95 100%); }
+.hb-slide.ipo.v2 { background: linear-gradient(150deg, #241c4e 0%, #322768 50%, #3c2e7e 100%); }
+.hb-slide.promo.img { background-size: cover; background-position: center; }
+.hb-main { flex: 1; min-width: 0; }
+.hb-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.75); }
+.hb-slide.brand h1 { font-family: var(--font-display); font-size: clamp(22px, 3.2vw, 32px); font-weight: 700; letter-spacing: -.02em; color: #fff; margin-top: 10px; line-height: 1.2; max-width: 30ch; text-wrap: balance; }
+.hb-trust { display: flex; gap: 22px; margin-top: 14px; font-size: 13px; color: rgba(255,255,255,.75); flex-wrap: wrap; }
+.hb-trust b { color: #fff; margin-right: 5px; font-size: 15px; }
+.hb-iporow { display: flex; align-items: center; gap: 14px; }
+.hb-iporow .ipologo { background: #fff; border-radius: 12px; flex-shrink: 0; }
+.hb-name { font-family: var(--font-display); font-size: clamp(17px, 2.4vw, 23px); font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-meta { font-size: 13px; color: rgba(255,255,255,.78); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.hb-tag { flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: var(--pill); padding: 5px 11px; }
+.hb-tag.live { background: var(--pos); color: #fff; }
+.hb-tag.closing { background: var(--gold); color: #4a3600; }
+.hb-tag.soon { background: rgba(255,255,255,.16); color: #fff; }
+.hb-sub { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: rgba(255,255,255,.8); flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.hb-subx { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--gold); }
+.hb-ctas { display: flex; flex-direction: column; gap: 9px; flex-shrink: 0; }
+.hb-ctas .btn { padding: 9px 18px; font-size: 13.5px; }
+.hb-arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-items: center; background: rgba(255,255,255,.14); color: #fff; transition: background .15s var(--ease); }
+.hb-arrow:hover { background: rgba(255,255,255,.28); }
+.hb-arrow.prev { left: 12px; }
+.hb-arrow.next { right: 12px; }
+.hb-dots { position: absolute; left: 0; right: 0; bottom: 11px; display: flex; justify-content: center; gap: 7px; }
+.hb-dot { width: 7px; height: 7px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: rgba(255,255,255,.35); transition: background .15s var(--ease), transform .15s var(--ease); }
+.hb-dot.on { background: var(--gold); transform: scale(1.25); }
+@media (max-width: 760px) {
+  .hb-slide { flex-direction: column; align-items: stretch; padding: 20px 20px 38px; min-height: 0; }
+  .hb-ctas { flex-direction: row; flex-wrap: wrap; }
+  .hb-arrow { display: none; } /* swipe on touch */
+  .hb-trust { gap: 14px; }
+}
+
 /* ------------------------------------------------- IPO CALENDAR (/calendar) */
 .cal-page { padding-top: 28px; padding-bottom: 48px; }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }

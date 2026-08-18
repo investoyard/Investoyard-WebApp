@@ -28,6 +28,7 @@ X-Api-Key: pk_a1b2c3d4e5f6.<secret>
       "upiId": "rakesh@okaxis",      // optional
       "bankName": "HDFC Bank",       // optional (prefills the form)
       "mobile": "9876543210",        // optional
+      "familyGroup": "KUMAR-HUF",    // optional — prints in the form's group box
 
       "lots": 2,                     // FINAL values — printed exactly as sent
       "shareQty": 530,
@@ -64,18 +65,19 @@ const SAMPLE_CURL = `curl -X POST https://newipoapi.finwave.co/api/partner/v1/pr
 const FIELDS: [string, string, string][] = [
   ['ipoSymbol', 'string · required', 'Investoyard IPO symbol (case-insensitive). Printing must be enabled for the issue.'],
   ['applicants[]', 'array · 1–100', 'One entry per applicant; all forms return merged in one PDF.'],
-  ['fullName / pan', 'required', 'PAN must be a valid format (ABCDE1234F). Values print as sent.'],
-  ['depository / dpId / clientId', 'required', 'NSDL: dpId (IN + 6 digits) + 8-digit clientId · CDSL: 16-digit demat in clientId, no dpId.'],
-  ['bankAccount / ifsc / upiId', 'optional', 'Prefills the bank/UPI blocks on the form. Stored encrypted (PII vault).'],
-  ['lots / shareQty / sharePrice / amount', 'required', 'FINAL figures computed by you — we never derive or correct them.'],
-  ['category', 'required', 'Retail · sHNI · bHNI · Shareholder · Employee. Picks the blank: ≤ ₹5L normal, > ₹5L syndicate, Shareholder form for the shareholder quota.'],
+  ['fullName / pan', 'optional', 'Printed verbatim — NO format validation. Anything omitted prints blank.'],
+  ['depository / dpId / clientId', 'optional', 'NSDL: dpId (IN + 6 digits) + 8-digit clientId · CDSL: 16-digit demat in clientId, no dpId. Omitted depository is treated as CDSL.'],
+  ['bankAccount / ifsc / upiId', 'optional', 'The form’s account boxes print the BANK ACCOUNT number. Stored encrypted (PII vault).'],
+  ['familyGroup', 'optional', 'Grouping label printed in the form’s FamilyGroup box.'],
+  ['lots / shareQty / sharePrice / amount', 'optional', 'FINAL figures computed by you — printed exactly as sent, never derived or corrected.'],
+  ['category', 'optional', 'Retail · sHNI · bHNI · Shareholder · Employee. With amount, picks the blank: ≤ ₹5L normal, > ₹5L syndicate, Shareholder form for the shareholder quota.'],
 ];
 
 const ERRORS: [string, string][] = [
   ['401', 'Missing / invalid / revoked X-Api-Key, or partner account inactive.'],
-  ['400', 'Validation: unknown category, missing demat fields, invalid PAN, printing not enabled for the IPO, > 100 applicants.'],
+  ['400', 'Malformed JSON, unknown category value, > 100 applicants, or printing not enabled for the IPO. (No data validation — values print as sent.)'],
   ['404', 'ipoSymbol not found in the catalog.'],
-  ['500', 'Unexpected failure — the call is logged; retry with the same batch after checking the API Calls report.'],
+  ['500', 'Unexpected failure — the call is logged; retry after checking the API Calls report.'],
 ];
 
 export default function PartnerApiDocsPage() {

@@ -28,6 +28,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { PartnerModule } from './modules/partner/partner.module';
+import { BannersModule } from './modules/banners/banners.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { PartnerModule } from './modules/partner/partner.module';
     SubscriptionModule,
     MastersModule,
     PartnerModule,
+    BannersModule,
   ],
   providers: [
     PrismaService,

@@ -41,6 +41,7 @@ const NAV: NavNode[] = [
   { key: 'clients', label: 'Clients', icon: 'users', href: '/admin/clients', perm: 'clients.view' },
   { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', href: '/admin/tenants', perm: 'tenants.manage' },
   { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
+  { key: 'banners', label: 'Banners', icon: 'sparkle', href: '/admin/banners', perm: 'ipos.view' },
   { key: 'allotment', label: 'Allotment', icon: 'receipt', children: [
     { href: '/admin/allotment/import', label: 'Import Allotment' },
     { href: '/admin/allotment/list', label: 'Allotment List' },

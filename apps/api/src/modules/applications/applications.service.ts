@@ -9,6 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
 import { buildAsbaPdf } from './asba-pdf';
 import { fillAsbaForm, mergePdfs, AsbaOverlayData } from './asba-overlay';
+import { fillAsbaAcroForm } from './asba-acroform';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -21,8 +22,8 @@ const ASBA_RETAIL_LIMIT = 500000;
 const ASBA_INCLUDE = {
   profile: true,
   ipo: { include: { documents: true } },
-  user: { select: { mobile: true } },
-  tenant: { select: { name: true } },
+  user: { select: { mobile: true, name: true } },
+  tenant: { select: { name: true, type: true, code: true } },
 };
 
 @Injectable()
@@ -112,43 +113,52 @@ export class ApplicationsService {
     if (!ipo || !ipo.lotSize) throw new NotFoundException('IPO not found');
     if (!dto.atCutoff && !dto.bidPrice) throw new BadRequestException('bidPrice required when not at cut-off');
 
-    // Applicant category: the general public is always eligible; a reserved quota
-    // (shareholder / employee) is only valid if this issue actually offers it.
-    const applicantType = dto.applicantType ?? ApplicantCategory.individual;
-    if (applicantType !== ApplicantCategory.individual && !ipo.reservations.includes(applicantType)) {
-      throw new BadRequestException(`This IPO does not offer a ${applicantType} reservation.`);
-    }
+    // Print-PDF policy: printing is a form-filling service — the applicant's data
+    // and figures print verbatim with NO business validation (operator decision).
+    // Rail (native/UPI) applications keep every SEBI/exchange check.
+    const isPrint = dto.applyMethod === ApplyMethod.pdf;
 
-    // Self-PAN rule (SEBI), per BUCKET: a PAN may hold ONE public (retail/HNI —
-    // either, not both) application per IPO, PLUS one in each reserved quota the
-    // issue offers (shareholder / employee) — reserved-category bids are not
-    // counted as multiple applications. panHash is unique per tenant, so this
-    // also blocks a second application via any profile.
-    const dup = await this.prisma.application.findFirst({
-      where: {
-        ipoId: ipo.id,
-        profile: { panHash: profile.panHash },
-        status: { notIn: ['draft', 'failed', 'rejected'] },
-        ...this.panBucketWhere(applicantType),
-      },
-    });
-    if (dup) throw new ConflictException(this.panBucketConflict(applicantType));
+    const applicantType = dto.applicantType ?? ApplicantCategory.individual;
+    if (!isPrint) {
+      // Applicant category: the general public is always eligible; a reserved quota
+      // (shareholder / employee) is only valid if this issue actually offers it.
+      if (applicantType !== ApplicantCategory.individual && !ipo.reservations.includes(applicantType)) {
+        throw new BadRequestException(`This IPO does not offer a ${applicantType} reservation.`);
+      }
+
+      // Self-PAN rule (SEBI), per BUCKET: a PAN may hold ONE public (retail/HNI —
+      // either, not both) application per IPO, PLUS one in each reserved quota the
+      // issue offers (shareholder / employee) — reserved-category bids are not
+      // counted as multiple applications. panHash is unique per tenant, so this
+      // also blocks a second application via any profile.
+      const dup = await this.prisma.application.findFirst({
+        where: {
+          ipoId: ipo.id,
+          profile: { panHash: profile.panHash },
+          status: { notIn: ['draft', 'failed', 'rejected'] },
+          ...this.panBucketWhere(applicantType),
+        },
+      });
+      if (dup) throw new ConflictException(this.panBucketConflict(applicantType));
+    }
 
     const qty = dto.lots * ipo.lotSize;
     const unit = dto.atCutoff ? Number(ipo.priceBandMax ?? 0) : (dto.bidPrice as number);
     const amount = qty * unit;
 
-    // SEBI: cut-off price is Retail-only (value at the ceiling must be ≤ ₹2,00,000).
-    if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
-      throw new BadRequestException('Cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.');
-    }
-    // Shareholder reserved category is capped at ₹2,00,000.
-    if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
-      throw new BadRequestException('Shareholder category applications are capped at ₹2,00,000.');
-    }
-    // UPI mandate is capped at ₹5,00,000; above that the bid must go via bank ASBA (pdf).
-    if (dto.applyMethod !== ApplyMethod.pdf && amount > 500000) {
-      throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
+    if (!isPrint) {
+      // SEBI: cut-off price is Retail-only (value at the ceiling must be ≤ ₹2,00,000).
+      if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+        throw new BadRequestException('Cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.');
+      }
+      // Shareholder reserved category is capped at ₹2,00,000.
+      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+        throw new BadRequestException('Shareholder category applications are capped at ₹2,00,000.');
+      }
+      // UPI mandate is capped at ₹5,00,000; above that the bid must go via bank ASBA (pdf).
+      if (amount > 500000) {
+        throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
+      }
     }
 
     // DPDP: capture the applicant's explicit consent to share their financial data
@@ -236,11 +246,38 @@ export class ApplicationsService {
     return { buffer: await mergePdfs(built.map((b) => b.buffer)), filename: `${sym}_family_${built.length}.pdf` };
   }
 
-  /** Fill one application onto its ASBA form (overlay the uploaded blank, else placeholder). */
+  /** Fill one application onto its ASBA form (AcroForm fill → overlay → placeholder). */
   private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
     const template = this.pickAsbaTemplate(app.ipo, Number(app.amount), app.applicantType);
     if (template) {
       const formNo = await this.allocateAsbaFormNo(app.ipo, app.id, app.asbaFormNo);
+      const bytes = readFileSync(template);
+
+      // Fillable blank (AcroForm) → set values by FIELD NAME (pixel-perfect on
+      // every counterfoil); a PDF without form fields falls through to overlay.
+      const tenantIsChannel = app.tenant?.type === 'partner' || app.tenant?.type === 'branch';
+      const acro = await fillAsbaAcroForm(bytes, {
+        formNo,
+        fullName: app.profile.fullName,
+        address: [app.profile.address, app.profile.city, app.profile.state].filter(Boolean).join(', '),
+        pincode: app.profile.pincode,
+        email: app.profile.email,
+        mobile: app.profile.mobile ?? app.user?.mobile ?? null,
+        pan: await this.vault.resolve(app.profile.panTokenRef),
+        depository: app.profile.depository,
+        dpId: app.profile.dpId,
+        clientId: app.profile.clientId,
+        shares: app.shareQty ?? app.lots * (app.ipo.lotSize ?? 0),
+        bidPrice: app.bidPrice != null ? Number(app.bidPrice) : (app.ipo.priceBandMax != null ? Number(app.ipo.priceBandMax) : null),
+        amount: Number(app.amount),
+        bankAccount: app.profile.bankTokenRef ? await this.vault.resolve(app.profile.bankTokenRef) : null,
+        bankName: app.profile.bankName,
+        branchName: app.profile.branchName,
+        familyGroup: app.familyGroup ?? app.user?.name ?? app.user?.mobile ?? null,
+        subBrokerCode: tenantIsChannel ? (app.tenant?.code ?? null) : null,
+      });
+      if (acro) return { buffer: acro, formNo };
+
       const data: AsbaOverlayData = {
         formNo,
         applicant: {
@@ -271,7 +308,7 @@ export class ApplicationsService {
           upi: app.profile.upiTokenRef ? await this.vault.resolve(app.profile.upiTokenRef) : null,
         },
       };
-      return { buffer: await fillAsbaForm(readFileSync(template), data), formNo };
+      return { buffer: await fillAsbaForm(bytes, data), formNo };
     }
 
     // Fallback: no template uploaded → the generated placeholder form.

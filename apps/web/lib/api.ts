@@ -327,6 +327,15 @@ function enrich(ipo: IpoDetail): IpoFull {
 
 const FULL: IpoFull[] = MOCK.map(enrich);
 
+/** Admin-managed homepage banner slides (public; empty on failure). */
+export interface BannerView {
+  id: string; title: string; subtitle?: string | null; imageUrl?: string | null;
+  linkUrl?: string | null; ctaLabel?: string | null;
+}
+export async function getBanners(): Promise<BannerView[]> {
+  return safeGet<BannerView[]>('/banners', []);
+}
+
 export async function getIpos(): Promise<IpoListItem[]> {
   // API returns IpoDetail[] (mapped to the shared contract); enrich each into a full card.
   // On any failure safeGet returns the base MOCK, which is enriched the same way.
