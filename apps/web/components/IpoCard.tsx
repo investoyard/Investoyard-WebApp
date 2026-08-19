@@ -70,7 +70,7 @@ const daysFromToday = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
  * ONE time-aware status chip per card (calm & data-clear: a single precise
  * signal, never a badge pile). Live states carry a soft pulse dot.
  */
-function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean } {
+export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean } {
   const today = dayIso();
   if (ipo.status === 'listed') return { label: 'Listed', cls: 'listed' };
   if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: 'closed' };

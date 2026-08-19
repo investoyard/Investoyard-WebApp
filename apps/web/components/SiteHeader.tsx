@@ -1,6 +1,7 @@
 'use client';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { LangSwitcher } from '@/components/LangSwitcher';
+import { NavLive } from '@/components/NavLive';
 import { useStore } from '@/lib/store';
 import { useTenant } from '@/components/TenantProvider';
 import { makeT, Lang } from '@investoyard/i18n';
@@ -8,7 +9,6 @@ import { makeT, Lang } from '@investoyard/i18n';
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
 
 export function SiteHeader() {
-  const pathname = usePathname();
   const sp = useSearchParams();
   const lang = (CODES.includes(sp.get('lang') ?? '') ? sp.get('lang') : 'en') as Lang;
   const tr = makeT(lang);
@@ -22,16 +22,6 @@ export function SiteHeader() {
     ? self.fullName.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
     : (mobile ? mobile.slice(-2) : '');
 
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
-
-  const links = [
-    { href: '/', label: 'IPOs' },
-    { href: '/calendar', label: 'Calendar' },
-    { href: '/portfolio', label: 'Portfolio' },
-    { href: '/account', label: 'Account' },
-  ];
-
   return (
     <header className="header">
       <div className="header-inner">
@@ -43,13 +33,8 @@ export function SiteHeader() {
               : <span className="brand-word">{tenant.name}</span>}
         </a>
 
-        <nav className="nav" aria-label="Primary">
-          {links.map((l) => (
-            <a key={l.href} href={`${l.href}${q}`} className={`nav-link ${isActive(l.href) ? 'active' : ''}`}>
-              {l.label}
-            </a>
-          ))}
-        </nav>
+        {/* live navigation — signals + the IPOs command panel */}
+        <NavLive langQuery={q} />
 
         <div className="header-actions">
           <span className="lang-wrap"><LangSwitcher /></span>

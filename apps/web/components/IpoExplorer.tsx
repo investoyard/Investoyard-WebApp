@@ -22,6 +22,11 @@ export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[
   const [live, setLive] = useState<IpoListItem[] | null>(null);
   useEffect(() => {
     getIpos().then((r) => { if (Array.isArray(r) && r.length) setLive(r); }).catch(() => { /* keep the baked-in list */ });
+    // deep-linkable filters (?f=open|upcoming|closed & ?board=mainboard|sme) — used by the nav's IPO panel
+    const p = new URLSearchParams(window.location.search);
+    const f = p.get('f'); const b = p.get('board');
+    if (f === 'open' || f === 'upcoming' || f === 'closed') setStatus(f);
+    if (b === 'mainboard' || b === 'sme') setType(b);
   }, []);
   const ipos = live ?? initial;
 

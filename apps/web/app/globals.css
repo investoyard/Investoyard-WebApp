@@ -901,6 +901,46 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- LIVE NAV (signals + IPO command panel) */
+.nv { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
+.nv-ipos { display: inline-flex; align-items: center; gap: 6px; font: inherit; border: 0; background: none; cursor: pointer; }
+.nav-link .nv-sig, .nv-mtrigger .nv-sig, .nv-sheetlink .nv-sig { margin-left: 6px; }
+.nv-sig { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; border-radius: var(--pill); padding: 2px 7px; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.nv-sig.live { background: var(--pos-soft); color: var(--pos); }
+.nv-sig.gp { background: var(--pos-soft); color: var(--pos); }
+.nv-sig.hot { background: var(--gold-50); color: #8a6d1f; }
+.nv-sig.ev { background: var(--brand-50); color: var(--brand); }
+.nv-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: ic-pulse 1.7s var(--ease) infinite; }
+/* the IPOs command panel */
+.nv-panel { position: absolute; top: calc(100% + 14px); left: 0; z-index: 60; display: grid; grid-template-columns: 190px minmax(320px, 1fr); gap: 0; width: min(640px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-lg); box-shadow: var(--sh-lg); overflow: hidden; }
+.nv-qh { display: block; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 8px; }
+.nv-quick { padding: 16px; background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.nv-qlink { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 550; color: var(--text); padding: 7px 9px; border-radius: 9px; }
+.nv-qlink:hover { background: var(--brand-50); color: var(--brand); }
+.nv-qlink b { font-size: 12px; color: var(--text-faint); font-weight: 600; }
+.nv-live { padding: 16px; min-width: 0; }
+.nv-ipo { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); }
+.nv-ipo:nth-of-type(1) { border-top: 0; }
+.nv-ipomain { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: inherit; }
+.nv-iponame { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-ipomain:hover .nv-iponame { color: var(--brand); }
+.nv-ipo .ic-status { font-size: 10px; padding: 2.5px 8px; flex-shrink: 0; }
+.nv-mini { flex-shrink: 0; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--brand); border-radius: var(--pill); padding: 4px 11px; }
+.nv-mini.print { background: #fdebea; color: #b3372e; }
+.nv-all { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--brand); }
+/* phone trigger + bottom sheet */
+.nv-mtrigger { display: none; align-items: center; gap: 6px; border: 1px solid var(--border-2); background: var(--surface); border-radius: var(--pill); padding: 7px 12px; cursor: pointer; color: var(--text); margin-left: auto; }
+.nv-sheetwrap { position: fixed; inset: 0; z-index: 80; background: rgba(20, 14, 50, .4); display: flex; align-items: flex-end; }
+.nv-sheet { width: 100%; background: var(--surface); border-radius: 20px 20px 0 0; padding: 10px 18px calc(env(safe-area-inset-bottom, 0px) + 18px); box-shadow: var(--sh-lg); }
+.nv-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--border-2); margin: 4px auto 10px; }
+.nv-sheetlink { display: flex; align-items: center; font-size: 15.5px; font-weight: 600; color: var(--text); padding: 12px 2px; border-bottom: 1px solid var(--border); }
+.nv-sheetquick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-top: 12px; }
+@media (max-width: 760px) {
+  .nv-desktop { display: none; }
+  .nv-mtrigger { display: inline-flex; }
+  .nv-panel { display: none; }
+}
+
 /* ------------------------------------------------- WHATSAPP CTA (band + footer link) */
 .wa-band { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-sm); padding: 16px 20px; margin-top: 34px; }
 .wa-copy { display: flex; align-items: center; gap: 14px; min-width: 0; }
