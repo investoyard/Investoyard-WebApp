@@ -3,6 +3,7 @@ import { IpoExplorer } from '@/components/IpoExplorer';
 import { HeroBanner } from '@/components/HeroBanner';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
+import { AllotmentChecker } from '@/components/AllotmentChecker';
 import { WhatsAppCta } from '@/components/WhatsAppCta';
 import { Icon } from '@/components/Icon';
 import { Lang } from '@investoyard/i18n';
@@ -22,6 +23,11 @@ export async function HomeView({ lang }: { lang: Lang }) {
 
       {/* ---------- IPO EXPLORER ---------- */}
       <IpoExplorer ipos={ipos} lang={lang} />
+
+      {/* ---------- allotment checker: did you get the shares? ---------- */}
+      <div className="panel ac-band fade-up">
+        <AllotmentChecker ipos={ipos as any} compact />
+      </div>
 
       {/* ---------- GMP accuracy: final GMP vs actual listing gain ---------- */}
       <GmpAccuracy ipos={ipos as any} />

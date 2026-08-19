@@ -63,6 +63,23 @@ export interface RelationshipOption { name: string; allowMultiple: boolean }
 export const fetchRelationships = () => req<RelationshipOption[]>('/profiles/relationships', { method: 'GET' });
 /** Public list of allowed UPI handles — the part after '@' (no auth needed). */
 export const fetchUpiHandles = () => req<string[]>('/profiles/upi-handles', { method: 'GET' });
+
+/* ---- public allotment check (registrar-style PAN lookup) ---- */
+export interface AllotmentResult {
+  applicant: string; category: string; applicantType?: string; lots: number;
+  status: 'allotted' | 'not_allotted' | 'processing' | 'pending';
+  allottedShares: number | null;
+}
+export interface AllotmentCheck {
+  ipo: { symbol: string; name: string; allotmentDate: string | null };
+  allotmentOut: boolean;
+  found: boolean;
+  results: AllotmentResult[];
+}
+export const checkAllotment = (ipoId: string, pan: string) =>
+  req<AllotmentCheck>('/allotment/check', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId, pan }),
+  });
 export type Depository = 'NSDL' | 'CDSL';
 
 /** Masked view returned by the API — never carries raw PAN/UPI/bank. */

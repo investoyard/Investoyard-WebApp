@@ -3,7 +3,22 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from './applications.service';
-import { CreateApplicationDto, CreateBulkApplicationDto, FormsPdfDto, RecordAllotmentDto } from './applications.dto';
+import { AllotmentCheckDto, CreateApplicationDto, CreateBulkApplicationDto, FormsPdfDto, RecordAllotmentDto } from './applications.dto';
+
+/**
+ * Public allotment checker (no auth) — the registrar-style lookup: PAN + IPO
+ * → allotment status for applications placed on this platform. Returns only
+ * first names and share counts, never full PII.
+ */
+@Controller('allotment')
+export class AllotmentPublicController {
+  constructor(private readonly apps: ApplicationsService) {}
+
+  @Post('check')
+  check(@Body() dto: AllotmentCheckDto) {
+    return this.apps.checkAllotment(dto.ipoId, dto.pan);
+  }
+}
 
 @Controller('applications')
 @UseGuards(JwtAuthGuard)

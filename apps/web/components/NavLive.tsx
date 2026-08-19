@@ -89,6 +89,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
       href: '/subscription', label: 'Subscription',
       sig: sig?.hotX != null ? <span className="nv-sig hot">{sig.hotX}×</span> : undefined,
     },
+    { href: '/allotment', label: 'Allotment' },
     {
       href: '/calendar', label: 'Calendar',
       sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,

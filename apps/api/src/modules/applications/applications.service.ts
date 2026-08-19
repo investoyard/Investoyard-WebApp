@@ -340,6 +340,64 @@ export class ApplicationsService {
   }
 
   /**
+   * Public allotment check — registrar-style PAN lookup, no auth. Searches
+   * across tenants (a PAN is one person regardless of channel) and returns
+   * ONLY first names + bid/allotment figures, never full PII.
+   */
+  async checkAllotment(ipoId: string, pan: string) {
+    const clean = (pan ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(clean)) throw new BadRequestException('Enter a valid 10-character PAN.');
+    const ipo = await tenantContext.runUnscoped(() =>
+      this.prisma.ipo.findUnique({
+        where: { id: ipoId },
+        select: { id: true, symbol: true, name: true, status: true, allotmentDate: true },
+      }),
+    );
+    if (!ipo) throw new NotFoundException('IPO not found.');
+
+    const panHash = this.vault.hash(clean);
+    const apps = await tenantContext.runUnscoped(() =>
+      this.prisma.application.findMany({
+        where: { ipoId, profile: { panHash }, status: { notIn: ['draft', 'failed', 'rejected'] } },
+        select: {
+          status: true, lots: true, category: true, applicantType: true, allottedLots: true,
+          ipo: { select: { lotSize: true } },
+          profile: { select: { fullName: true } },
+        },
+      }),
+    );
+
+    const today = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const allotmentOut = ipo.allotmentDate != null && ipo.allotmentDate.toISOString().slice(0, 10) <= today;
+    const firstName = (n?: string | null) => {
+      const parts = (n ?? '').trim().split(/\s+/);
+      return parts[0] ? `${parts[0]}${parts[1] ? ` ${parts[1][0]}.` : ''}` : 'Applicant';
+    };
+    const mapStatus = (a: { status: string; allottedLots: number | null }) => {
+      if (a.status === 'allotted' || (a.allottedLots != null && a.allottedLots > 0)) return 'allotted';
+      if (a.status === 'not_allotted' || a.status === 'released' || a.allottedLots === 0) return 'not_allotted';
+      return allotmentOut ? 'processing' : 'pending';
+    };
+
+    return {
+      ipo: {
+        symbol: ipo.symbol, name: ipo.name,
+        allotmentDate: ipo.allotmentDate ? ipo.allotmentDate.toISOString().slice(0, 10) : null,
+      },
+      allotmentOut,
+      found: apps.length > 0,
+      results: apps.map((a) => ({
+        applicant: firstName(a.profile.fullName),
+        category: a.category,
+        applicantType: a.applicantType,
+        lots: a.lots,
+        status: mapStatus(a),
+        allottedShares: a.allottedLots != null ? a.allottedLots * (a.ipo?.lotSize ?? 0) : null,
+      })),
+    };
+  }
+
+  /**
    * PAN-duplication buckets: reserved quotas (shareholder / employee) count
    * separately from the public retail/HNI bid — one application per PAN per
    * bucket per IPO. Retail vs HNI stays either/or (same public bucket).

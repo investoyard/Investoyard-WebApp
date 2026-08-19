@@ -19,6 +19,12 @@ export class CreateApplicationDto {
   @IsOptional() @IsString() consentNoticeVersion?: string;
 }
 
+/** Public allotment check (registrar-style PAN lookup). */
+export class AllotmentCheckDto {
+  @IsString() ipoId!: string;
+  @IsString() pan!: string;
+}
+
 export class RecordAllotmentDto {
   @IsInt() @Min(0) allottedLots!: number;
 }
