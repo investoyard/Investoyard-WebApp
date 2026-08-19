@@ -901,6 +901,25 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- TRUST PAGES & SEO LISTINGS */
+.trust-page { max-width: 780px; padding: 32px 0 56px; }
+.trust-page h1 { font-family: var(--font-display); font-size: 28px; font-weight: 650; letter-spacing: -.02em; }
+.trust-page .lead-p { font-size: 15.5px; color: var(--text-muted); margin-top: 8px; }
+.trust-page .prose { margin-top: 18px; }
+.trust-page .prose h2 { font-family: var(--font-display); font-size: 17px; font-weight: 650; letter-spacing: -.01em; margin: 26px 0 8px; }
+.trust-page .prose p { font-size: 14.5px; line-height: 1.75; color: var(--text); margin: 10px 0; }
+.trust-page .prose ul { margin: 10px 0 10px 20px; display: flex; flex-direction: column; gap: 7px; font-size: 14.5px; line-height: 1.65; }
+.trust-page .prose a { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+/* performance table (5 columns) */
+.pf2-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 92px 100px 104px; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--border); color: inherit; }
+.pf2-row:first-child { border-top: 0; }
+.gh-meta2 { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 700px) {
+  .pf2-row { grid-template-columns: minmax(0, 1fr) 84px 84px; }
+  .pf2-row .gh-col:nth-child(2), .pf2-row .gh-col:nth-child(3),
+  .gh-thead.pf2-row span:nth-child(2), .gh-thead.pf2-row span:nth-child(3) { display: none; }
+}
+
 /* ------------------------------------------------- LIVE NAV (signals + IPO command panel) */
 .nv { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 .nv-ipos { display: inline-flex; align-items: center; gap: 6px; font: inherit; border: 0; background: none; cursor: pointer; }

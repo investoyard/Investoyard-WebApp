@@ -33,18 +33,20 @@ export function SiteFooter() {
 
         <div>
           <h4>Company</h4>
-          <a href="#">About</a>
-          <a href="#">Help &amp; FAQ</a>
-          <a href="#">Contact</a>
+          <a href="/about">About</a>
+          <a href="/faqs">Help &amp; FAQ</a>
+          <a href="/performance">IPO Performance</a>
           <WhatsAppFooterLink />
           <a href="/admin">Admin panel</a>
         </div>
 
         <div className="legal">
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 16 }}>
+            <a href="/privacy-policy" style={{ display: 'inline-block' }}>Privacy Policy</a>
+            <a href="/terms" style={{ display: 'inline-block' }}>Terms &amp; Conditions</a>
+            <a href="/disclaimer" style={{ display: 'inline-block' }}>Disclaimer</a>
             <a href="https://scores.sebi.gov.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>SEBI SCORES (complaints)</a>
             <a href="https://smartodr.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>ODR Portal</a>
-            <a href="#" style={{ display: 'inline-block' }}>Investor Charter</a>
             <a href="https://www.sebi.gov.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>SEBI</a>
           </div>
           <p>

@@ -9,11 +9,15 @@ import { makeT, Lang } from '@investoyard/i18n';
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed'; // 'closed' = post-close phase (closed + listed)
 
-export function IpoExplorer({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
+export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all', initialType = 'all' }: {
+  ipos: IpoListItem[]; lang?: Lang;
+  /** SEO listing pages (/ipos/open, /sme, …) pre-set the filters */
+  initialStatus?: StatusFilter; initialType?: TypeFilter;
+}) {
   const tr = makeT(lang);
   const [query, setQuery] = useState('');
-  const [type, setType] = useState<TypeFilter>('all');
-  const [status, setStatus] = useState<StatusFilter>('all');
+  const [type, setType] = useState<TypeFilter>(initialType);
+  const [status, setStatus] = useState<StatusFilter>(initialStatus);
 
   // LIVE catalog hydration: this page is a static export built on the server, where the
   // build-time API fetch can be blocked (Cloudflare bot protection) or simply stale —
