@@ -8,7 +8,7 @@ type IconName =
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
-  | 'user' | 'user-plus' | 'pie' | 'cursor';
+  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
@@ -24,6 +24,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   users: <><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 6M17.5 20a5.5 5.5 0 0 0-3-4.9" /></>,
   doc: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v4h4" /></>,
   'file-pdf': <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><text x="12" y="17.5" textAnchor="middle" fontSize="6.2" fontWeight="700" fontFamily="Arial, sans-serif" fill="currentColor" stroke="none">PDF</text></>,
+  whatsapp: <path fill="currentColor" stroke="none" d="M12.04 2a9.9 9.9 0 0 0-8.53 14.9L2 22l5.25-1.47A9.9 9.9 0 1 0 12.04 2Zm0 1.67a8.23 8.23 0 1 1-4.2 15.3l-.3-.18-3.12.87.84-3.04-.2-.31a8.23 8.23 0 0 1 6.98-12.64Zm-3.1 4.42c-.19 0-.5.07-.76.36-.26.28-1 .97-1 2.37 0 1.4 1.02 2.75 1.16 2.94.14.19 1.97 3.01 4.78 4.22 2.34 1.01 2.81.81 3.32.76.5-.05 1.63-.67 1.86-1.31.23-.64.23-1.19.16-1.31-.07-.12-.26-.19-.54-.33-.28-.14-1.63-.8-1.88-.9-.25-.09-.44-.14-.62.14-.19.28-.72.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.23-1.37a8.4 8.4 0 0 1-1.54-1.92c-.16-.28-.02-.43.12-.57.13-.12.28-.32.42-.49.14-.16.19-.28.28-.47.09-.19.05-.35-.02-.49-.07-.14-.61-1.5-.86-2.05-.22-.48-.45-.5-.62-.5l-.55-.04Z" />,
   lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15.5 0 18M12 3c-2.5 2.5-2.5 15.5 0 18" /></>,
   sparkle: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" />,

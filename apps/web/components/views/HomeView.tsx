@@ -3,6 +3,7 @@ import { IpoExplorer } from '@/components/IpoExplorer';
 import { HeroBanner } from '@/components/HeroBanner';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
+import { WhatsAppCta } from '@/components/WhatsAppCta';
 import { Icon } from '@/components/Icon';
 import { Lang } from '@investoyard/i18n';
 
@@ -24,6 +25,9 @@ export async function HomeView({ lang }: { lang: Lang }) {
 
       {/* ---------- GMP accuracy: final GMP vs actual listing gain ---------- */}
       <GmpAccuracy ipos={ipos as any} />
+
+      {/* ---------- WhatsApp updates (renders once the channel URL is configured) ---------- */}
+      <WhatsAppCta />
 
       {/* ---------- HOW IT WORKS ---------- */}
       <div className="section-head">

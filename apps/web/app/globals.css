@@ -901,6 +901,15 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- WHATSAPP CTA (band + footer link) */
+.wa-band { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-sm); padding: 16px 20px; margin-top: 34px; }
+.wa-copy { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.wa-badge { width: 42px; height: 42px; border-radius: 12px; background: #e8f8ee; color: #1faa55; display: grid; place-items: center; flex-shrink: 0; }
+.wa-t { font-family: var(--font-display); font-weight: 650; font-size: 15.5px; letter-spacing: -.01em; }
+.wa-s { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+.wa-btn { background: #1faa55; color: #fff; border: 0; padding: 10px 18px; font-size: 13.5px; }
+.wa-btn:hover { background: #178f47; color: #fff; }
+
 /* ------------------------------------------------- SUBSCRIPTION HUB (/subscription) */
 .sh { padding-top: 28px; padding-bottom: 48px; }
 .sh-card { padding: 18px 20px; margin-top: 16px; }

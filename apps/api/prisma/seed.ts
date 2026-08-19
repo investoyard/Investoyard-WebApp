@@ -54,6 +54,7 @@ async function main() {
     ['watchlistEnabled', 'Watchlist', 'boolean', true, true],
     ['maxFamilyMembers', 'Max family profiles', 'number', 8, true],
     ['upiCap', 'UPI mandate cap (₹)', 'number', 500000, true],
+    ['whatsappChannel', 'WhatsApp channel / chat URL', 'string', '', true],
   ];
   for (const [key, label, valueType, defaultValue, isPublic] of features) {
     await prisma.featureDefinition.create({ data: { key, label, valueType, defaultValue, isPublic } });

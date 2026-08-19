@@ -1,3 +1,5 @@
+import { WhatsAppFooterLink } from '@/components/WhatsAppCta';
+
 export function SiteFooter() {
   return (
     <footer className="footer">
@@ -34,6 +36,7 @@ export function SiteFooter() {
           <a href="#">About</a>
           <a href="#">Help &amp; FAQ</a>
           <a href="#">Contact</a>
+          <WhatsAppFooterLink />
           <a href="/admin">Admin panel</a>
         </div>
 
