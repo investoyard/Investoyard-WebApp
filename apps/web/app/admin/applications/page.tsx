@@ -136,7 +136,7 @@ export default function AdminApplications() {
                         <td className="mono muted" style={{ fontSize: 12 }}>{a.appliedAt}</td>
                         <td>
                           {a.allottedLots != null ? (
-                            <span className="mono">{a.allottedLots > 0 ? `${a.allottedLots} lot(s)` : 'none'}{a.refundAmount ? ` · ${inr(a.refundAmount)} refund` : ''}</span>
+                            <span className="mono" title={a.allotmentReason ?? ''}>{a.allottedLots > 0 ? `${a.allottedLots} lot(s)` : 'none'}{a.refundAmount ? ` · ${inr(a.refundAmount)} refund` : ''}</span>
                           ) : canManage && !RESULT_DONE.includes(a.status) ? (
                             <span className="row" style={{ gap: 6 }}>
                               <input className="input mono" style={{ width: 56, padding: '4px 6px' }} placeholder="lots" value={draft[a.id] ?? ''}

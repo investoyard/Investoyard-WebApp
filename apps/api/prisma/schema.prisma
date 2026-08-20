@@ -523,6 +523,9 @@ model Ipo {
   gmps          IpoGmp[]
   documents     IpoDocument[]
   applications  Application[]
+  allotmentRecords AllotmentRecord[]
+  allotmentImports AllotmentImport[]
+  allotmentArchive AllotmentArchive?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -628,6 +631,7 @@ model Application {
   allottedAmount     Decimal?    // amount debited for the allotted shares
   refundAmount       Decimal?    // blocked amount released back
   allottedAt         DateTime?
+  allotmentReason    String?     // registrar's rejection reason (from the imported allotment file)
   status             ApplicationStatus @default(draft)
   idempotencyKey     String      @unique
   createdAt          DateTime    @default(now())
@@ -708,4 +712,65 @@ model DeviceToken {
   active   Boolean @default(true)
   @@unique([token])
   @@index([tenantId])
+}
+
+/// ── Registrar allotment data (Admin → Allotment → Import) ───────────────────
+/// Full registrar allottee-file rows (DBF / XLSB / XLSX / CSV), one set per IPO.
+/// Internal back-office data: raw PAN is kept by operator decision (the allotment
+/// list is an admin-only tool and partial-PAN search needs it). Size is bounded by
+/// archive-then-purge: rows are exported to a gz NDJSON archive on disk and deleted
+/// from the DB ~60 days after listing (or on demand), summaries stay forever.
+model AllotmentRecord {
+  id             Int     @id @default(autoincrement())
+  ipoId          String
+  ipo            Ipo     @relation(fields: [ipoId], references: [id])
+  applicationNo  String
+  pan            String  @default("")
+  dpClientId     String? // DP id + client id (16 chars)
+  category       String? // registrar bucket (IND / RET / SHA / EMP ...)
+  name           String?
+  appliedShares  Int     @default(0)
+  amount         Int     @default(0) // whole rupees applied / blocked
+  allottedShares Int     @default(0)
+  allottedAmount Int     @default(0) // whole rupees adjusted for allotment
+  refundAmount   Int     @default(0) // whole rupees released
+  reason         String? // registrar rejection reason (non-allottees)
+
+  @@unique([ipoId, applicationNo])
+  @@index([ipoId, pan])
+  @@index([ipoId, amount])
+}
+
+/// One uploaded registrar file (registrars split big IPOs into FILE1..FILEn, so
+/// several imports per IPO are normal). The summary row survives archive/purge.
+model AllotmentImport {
+  id         String    @id @default(uuid())
+  ipoId      String
+  ipo        Ipo       @relation(fields: [ipoId], references: [id])
+  fileName   String
+  fileSize   Int
+  format     String // dbf | xlsb | xlsx | xls | csv
+  status     String    @default("processing") // processing | done | failed
+  stage      String? // parsing | importing | matching (progress hint while processing)
+  totalRows  Int       @default(0)
+  imported   Int       @default(0) // rows written (duplicates across FILEn skipped)
+  allotted   Int       @default(0) // rows with allotted shares > 0
+  matched    Int       @default(0) // OUR applications auto-updated from this file
+  error      String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([ipoId, createdAt])
+}
+
+/// Archived (purged-from-DB) allotment data — gz NDJSON on the API disk, restorable
+/// into AllotmentRecord with one click.
+model AllotmentArchive {
+  id        String   @id @default(uuid())
+  ipoId     String   @unique
+  ipo       Ipo      @relation(fields: [ipoId], references: [id])
+  fileName  String // file under uploads/allotment-archive
+  rows      Int
+  fileSize  Int
+  createdAt DateTime @default(now())
 }

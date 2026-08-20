@@ -67,7 +67,7 @@ export class ApplicationsService {
    * operation (like the rail callbacks) — runs UNSCOPED so the platform operator can
    * reconcile applications across tenants; RLS-scoped viewing is unaffected.
    */
-  async recordAllotment(applicationId: string, allottedLots: number) {
+  async recordAllotment(applicationId: string, allottedLots: number, reason?: string) {
     return tenantContext.runUnscoped(async () => {
       const app = await this.prisma.application.findUnique({ where: { id: applicationId }, include: { ipo: true } });
       if (!app) throw new NotFoundException('Application not found');
@@ -80,13 +80,14 @@ export class ApplicationsService {
       const blocked = Number(app.amountBlocked ?? app.amount);
       const refundAmount = Math.max(0, blocked - allottedAmount);
       const status = allottedLots > 0 ? 'allotted' : 'not_allotted';
+      const allotmentReason = allottedLots > 0 ? null : (reason?.trim() || null); // registrar's rejection reason
 
       const updated = await this.prisma.application.update({
         where: { id: app.id },
-        data: { allottedLots, allottedAmount, refundAmount, allottedAt: new Date(), status },
+        data: { allottedLots, allottedAmount, refundAmount, allottedAt: new Date(), status, allotmentReason },
       });
       await this.prisma.applicationStatusEvent.create({
-        data: { applicationId: app.id, status, detail: { allottedLots, allottedAmount, refundAmount } as any },
+        data: { applicationId: app.id, status, detail: { allottedLots, allottedAmount, refundAmount, ...(allotmentReason ? { reason: allotmentReason } : {}) } as any },
       });
 
       // Notify the investor of the allotment outcome (push + in-app inbox).
@@ -350,7 +351,7 @@ export class ApplicationsService {
     const ipo = await tenantContext.runUnscoped(() =>
       this.prisma.ipo.findUnique({
         where: { id: ipoId },
-        select: { id: true, symbol: true, name: true, status: true, allotmentDate: true },
+        select: { id: true, symbol: true, name: true, status: true, allotmentDate: true, lotSize: true },
       }),
     );
     if (!ipo) throw new NotFoundException('IPO not found.');
@@ -379,21 +380,38 @@ export class ApplicationsService {
       return allotmentOut ? 'processing' : 'pending';
     };
 
+    let results = apps.map((a) => ({
+      applicant: firstName(a.profile.fullName),
+      category: a.category,
+      applicantType: a.applicantType,
+      lots: a.lots,
+      status: mapStatus(a),
+      allottedShares: a.allottedLots != null ? a.allottedLots * (a.ipo?.lotSize ?? 0) : null,
+    }));
+
+    // No in-house application — answer from the imported registrar file, which
+    // covers EVERY applicant in the issue (any channel), like registrar sites do.
+    if (results.length === 0) {
+      const recs: any[] = await this.prisma.allotmentRecord.findMany({ where: { ipoId, pan: clean }, take: 10 });
+      const lot = ipo.lotSize ?? 0;
+      results = recs.map((r) => ({
+        applicant: firstName(r.name),
+        category: r.category ?? '—',
+        applicantType: (r.category ?? '').startsWith('SHA') ? 'shareholder' : 'individual',
+        lots: lot > 0 ? Math.max(1, Math.round(r.appliedShares / lot)) : r.appliedShares,
+        status: r.allottedShares > 0 ? 'allotted' : 'not_allotted',
+        allottedShares: r.allottedShares,
+      })) as typeof results;
+    }
+
     return {
       ipo: {
         symbol: ipo.symbol, name: ipo.name,
         allotmentDate: ipo.allotmentDate ? ipo.allotmentDate.toISOString().slice(0, 10) : null,
       },
       allotmentOut,
-      found: apps.length > 0,
-      results: apps.map((a) => ({
-        applicant: firstName(a.profile.fullName),
-        category: a.category,
-        applicantType: a.applicantType,
-        lots: a.lots,
-        status: mapStatus(a),
-        allottedShares: a.allottedLots != null ? a.allottedLots * (a.ipo?.lotSize ?? 0) : null,
-      })),
+      found: results.length > 0,
+      results,
     };
   }
 

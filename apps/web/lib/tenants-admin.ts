@@ -344,6 +344,7 @@ export interface AdminApplication {
   applicantName?: string; mobileMasked?: string; category: string; applicantType: string;
   batchId?: string; // family/bulk batches share one id
   lots: number; amount: number; status: string; allottedLots?: number; refundAmount?: number;
+  allotmentReason?: string; // registrar's rejection reason (imported allotment file)
   commissionRate?: number; commissionAmount: number; appliedAt: string;
 }
 export const fetchApplications = (slug: string) => authed<AdminApplication[]>(`${API}/admin/applications/${slug}`, { method: 'GET' });
@@ -524,3 +525,57 @@ export interface IpoOps { startBid?: boolean; startPrint?: boolean; autoPollSubs
 export const updateIpoOps = (id: string, body: IpoOps) =>
   authed<{ id: string; startBid: boolean; startPrint: boolean; autoPollSubscription: boolean; bidMember: string | null }>(
     `${API}/ipos/${id}/ops`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/* -------------------------------------------------- admin: registrar allotment imports */
+export interface AllotmentImportRow {
+  id: string; ipoId: string; fileName: string; fileSize: number; format: string;
+  status: 'processing' | 'done' | 'failed'; stage?: string | null;
+  totalRows: number; imported: number; allotted: number; matched: number;
+  error?: string | null; createdAt: string; finishedAt?: string | null;
+}
+export interface AllotmentRecordRow {
+  id: number; applicationNo: string; pan: string; dpClientId?: string | null;
+  category?: string | null; name?: string | null; appliedShares: number; amount: number;
+  allottedShares: number; allottedAmount: number; refundAmount: number; reason?: string | null;
+}
+export interface AllotmentArchiveInfo { fileName: string; rows: number; fileSize: number; createdAt: string }
+export interface AllotmentSummary {
+  total: number; allotted: number; notAllotted: number;
+  archive?: AllotmentArchiveInfo | null; lastImport?: AllotmentImportRow | null;
+}
+
+/** Upload a registrar allottee file (DBF/XLSB/XLSX/CSV, <=100 MB) with progress. */
+export function uploadAllotmentFile(ipoId: string, file: File, onProgress?: (pct: number) => void): Promise<AllotmentImportRow> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API}/admin/allotment/imports`);
+    xhr.setRequestHeader('Authorization', `Bearer ${getOperatorToken()}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let body: any = {};
+      try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* non-JSON error page */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+      else reject(new Error(Array.isArray(body?.message) ? body.message.join(', ') : body?.message || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Upload failed - network error.'));
+    const fd = new FormData();
+    fd.append('ipoId', ipoId);
+    fd.append('file', file);
+    xhr.send(fd);
+  });
+}
+export const fetchAllotmentImports = (ipoId?: string) =>
+  authed<AllotmentImportRow[]>(`${API}/admin/allotment/imports${ipoId ? `?ipoId=${ipoId}` : ''}`, { method: 'GET' });
+export const fetchAllotmentImport = (id: string) =>
+  authed<AllotmentImportRow>(`${API}/admin/allotment/imports/${id}`, { method: 'GET' });
+export const fetchAllotmentSummary = (ipoId: string) =>
+  authed<AllotmentSummary>(`${API}/admin/allotment/summary?ipoId=${ipoId}`, { method: 'GET' });
+export const searchAllotmentRecords = (q: {
+  ipoId: string; pan?: string; amountOp?: string; amount?: number | string;
+  amountField?: string; status?: string; page?: number;
+}) => authed<{ total: number; page: number; pageSize: number; rows: AllotmentRecordRow[] }>(
+  `${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
+export const archiveAllotment = (ipoId: string) =>
+  authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
+export const restoreAllotment = (ipoId: string) =>
+  authed<{ restored: number }>(`${API}/admin/allotment/restore/${ipoId}`, { method: 'POST' });

@@ -899,6 +899,7 @@ export class AdminService {
           status: a.status,
           allottedLots: a.allottedLots ?? undefined,
           refundAmount: a.refundAmount != null ? Number(a.refundAmount) : undefined,
+          allotmentReason: a.allotmentReason ?? undefined, // registrar's rejection reason
           commissionRate: rate || undefined, // % on this channel
           commissionAmount: Math.round(allottedAmt * rate) / 100, // realized on allotted amount
           appliedAt: a.createdAt.toISOString().slice(0, 10),

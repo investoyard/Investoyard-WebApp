@@ -4,6 +4,7 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { RichText } from '@/components/ui/RichText';
 import { Modal } from '@/components/ui/Modal';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
@@ -67,9 +68,17 @@ export default function AdminNewsPage() {
     finally { setImgBusy(false); }
   };
 
+  // older posts stored plain text (blank line = paragraph) — lift to HTML for the editor
+  const bodyAsHtml = (body?: string | null) => {
+    const s = body ?? '';
+    if (!s.trim() || /^\s*</.test(s)) return s;
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return s.split(/\n{2,}/).map((p) => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+  };
+
   const openEdit = (r?: api.PostRow) =>
     setModal(r
-      ? { id: r.id, form: { ...r, ...( { tagsText: r.tags.join(', ') } as any) } }
+      ? { id: r.id, form: { ...r, body: bodyAsHtml(r.body), ...( { tagsText: r.tags.join(', ') } as any) } }
       : { form: { status: 'draft', ...( { tagsText: '' } as any) } });
 
   return (
@@ -137,8 +146,8 @@ export default function AdminNewsPage() {
             </Field>
             <Field label="Tags" hint="comma-separated"><input className="input" value={(modal.form as any).tagsText ?? ''} onChange={(e) => upd({ ...( { tagsText: e.target.value } as any) })} placeholder="subscription, sme" /></Field>
             <Field label="Author"><input className="input" value={modal.form.author ?? ''} onChange={(e) => upd({ author: e.target.value })} placeholder="Investoyard Desk" /></Field>
-            <Field label="Body" hint="paragraphs (blank line = new para) or HTML" span={3}>
-              <textarea className="input" rows={12} value={modal.form.body ?? ''} onChange={(e) => upd({ body: e.target.value })} />
+            <Field label="Body" span={3}>
+              <RichText value={modal.form.body ?? ''} onChange={(html) => upd({ body: html })} minHeight={260} />
             </Field>
           </div>
           <FormActions>

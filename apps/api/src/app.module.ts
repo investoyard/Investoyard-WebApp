@@ -30,6 +30,7 @@ import { MastersModule } from './modules/masters/masters.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { PostsModule } from './modules/posts/posts.module';
+import { AllotmentModule } from './modules/allotment/allotment.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { PostsModule } from './modules/posts/posts.module';
     PartnerModule,
     BannersModule,
     PostsModule,
+    AllotmentModule,
   ],
   providers: [
     PrismaService,

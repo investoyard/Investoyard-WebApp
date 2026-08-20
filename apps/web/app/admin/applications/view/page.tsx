@@ -62,6 +62,7 @@ function AppDetail() {
       ['Commission', a.commissionAmount ? <span className="mono">{inr(a.commissionAmount)}{a.commissionRate ? <span className="muted"> · {a.commissionRate}%</span> : null}</span> : '—'],
       ['Applied on', <span className="mono">{a.appliedAt}</span>],
       ['Allotment', a.allottedLots != null ? <span className="mono">{a.allottedLots > 0 ? `${a.allottedLots} lot(s)` : 'None'}{a.refundAmount ? ` · ${inr(a.refundAmount)} refund` : ''}</span> : <span className="muted">Awaiting basis</span>],
+      ...(a.allotmentReason ? [['Registrar reason', <span key="ar" style={{ fontSize: 13 }}>{a.allotmentReason}</span>] as [string, React.ReactNode]] : []),
     ]} />
   );
 
