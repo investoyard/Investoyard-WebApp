@@ -9,6 +9,7 @@ import { usePagination } from '@/components/ui/Pagination';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
+import { Toasts, useToast } from '@/components/ui/Toast';
 import { Icon } from '@/components/Icon';
 import { ipoPhase, priceBand, type IpoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
@@ -39,6 +40,25 @@ export default function AdminCatalog() {
     try { await fn(); await load(); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
+  };
+
+  // OPS gate badges (B / P) — one-click toggle, optimistic flip, revert on error.
+  const { toasts, push: toast } = useToast();
+  const [opsBusy, setOpsBusy] = useState<string | null>(null);
+  const setOpsLocal = (id: string, key: 'startBid' | 'startPrint', val: boolean) =>
+    setIpos((list) => list.map((x) => (x.id === id ? { ...x, extra: { ...x.extra, [key]: val } } : x)));
+  const toggleOps = async (i: api.AdminIpo, key: 'startBid' | 'startPrint') => {
+    const cur = i.extra?.[key] === true;
+    const label = key === 'startBid' ? 'Start Bid' : 'Start Printing';
+    setOpsBusy(`${i.id}:${key}`);
+    setOpsLocal(i.id, key, !cur);
+    try {
+      await api.updateIpoOps(i.id, { [key]: !cur });
+      toast(`${i.symbol} — ${label} turned ${cur ? 'OFF' : 'ON'}`, 'ok');
+    } catch (e: any) {
+      setOpsLocal(i.id, key, cur);
+      toast(`${i.symbol} — ${label} failed: ${String(e?.message ?? e)}`, 'err');
+    } finally { setOpsBusy(null); }
   };
   // GMP & Listing — quick-entry POPUP (was a separate page). Values load from
   // the full detail so the extra JSON merges safely on save.
@@ -139,6 +159,7 @@ export default function AdminCatalog() {
 
   return (
     <>
+      <Toasts toasts={toasts} />
       <PageHead
         title="IPO catalog"
         sub="The live catalog every tenant reads. Status is derived automatically from each issue’s timeline."
@@ -186,8 +207,17 @@ export default function AdminCatalog() {
                     {/* read-only operator-gate indicators (toggles live in IPO Operations) */}
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4 }}>
-                        <span title={`Start Bid ${i.extra?.startBid === true ? 'ON' : 'OFF'}`} style={{ width: 20, height: 20, borderRadius: 6, fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: i.extra?.startBid === true ? 'var(--pos-50, #eaf5ee)' : 'var(--bg-2)', color: i.extra?.startBid === true ? 'var(--pos)' : 'var(--text-muted)' }}>B</span>
-                        <span title={`Start Printing ${i.extra?.startPrint === true ? 'ON' : 'OFF'}`} style={{ width: 20, height: 20, borderRadius: 6, fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: i.extra?.startPrint === true ? 'var(--pos-50, #eaf5ee)' : 'var(--bg-2)', color: i.extra?.startPrint === true ? 'var(--pos)' : 'var(--text-muted)' }}>P</span>
+                        {([['startBid', 'B', 'Start Bid'], ['startPrint', 'P', 'Start Printing']] as const).map(([key, ch, label]) => {
+                          const on = i.extra?.[key] === true;
+                          return canManage ? (
+                            <button key={key} type="button" className={`ops-badge${on ? ' on' : ''}`}
+                              disabled={opsBusy === `${i.id}:${key}`}
+                              title={`${label} ${on ? 'ON' : 'OFF'} — click to turn ${on ? 'off' : 'on'}`}
+                              onClick={() => toggleOps(i, key)}>{ch}</button>
+                          ) : (
+                            <span key={key} className={`ops-badge${on ? ' on' : ''}`} title={`${label} ${on ? 'ON' : 'OFF'}`}>{ch}</span>
+                          );
+                        })}
                       </span>
                     </td>
                     <td><span className={`ph ${ph.phase}`}>{ph.label}</span></td>

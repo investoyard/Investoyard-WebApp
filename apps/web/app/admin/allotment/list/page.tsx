@@ -5,6 +5,7 @@ import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import * as api from '@/lib/tenants-admin';
 
 const fmtInt = (n: number) => n.toLocaleString('en-IN');
@@ -78,12 +79,13 @@ export default function AllotmentListPage() {
 
       {/* filters */}
       <div className="card"><div className="card-pad">
-        <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="filter-row">
           <div className="field" style={{ minWidth: 240, flex: '1 1 240px' }}>
             <label>IPO</label>
-            <select className="input" value={ipoId} onChange={(e) => setIpoId(e.target.value)} disabled={ipos === null}>
-              {(ipos ?? []).map((i) => <option key={i.id} value={i.id}>{i.symbol} — {i.name}</option>)}
-            </select>
+            <SearchSelect
+              options={(ipos ?? []).map((i) => ({ value: i.id, label: `${i.symbol} — ${i.name}` }))}
+              value={ipoId} onChange={setIpoId} disabled={ipos === null} placeholder="Search IPO…"
+            />
           </div>
           <div className="field" style={{ width: 170 }}>
             <label>PAN</label>
