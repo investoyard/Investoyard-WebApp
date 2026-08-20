@@ -267,8 +267,21 @@ function enrich(ipo: IpoDetail): IpoFull {
     leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),
     exchanges: ipo.type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'],
   };
-  if (ipo.gmp != null) f.gmpHistory = gmpSeries(ipo.symbol, ipo.gmp);
-  if (ipo.type === 'mainboard' && ipo.subscription) f.anchors = pickAnchors(ipo.symbol, 4);
+  // REAL data wins; synthesized series/anchors are for seed/demo rows ONLY
+  // (live rows always carry an `extra` object — never show fabricated data there).
+  const exAll: any = (ipo as any).extra;
+  const fmtDay = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d)
+    ? new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : d);
+  if (Array.isArray(exAll?.gmpLog) && exAll.gmpLog.length) {
+    f.gmpHistory = exAll.gmpLog.map((e: any) => ({ day: fmtDay(String(e.d ?? '')), value: Number(e.gmp) || 0 }));
+  } else if (ipo.gmp != null && exAll == null) {
+    f.gmpHistory = gmpSeries(ipo.symbol, ipo.gmp);
+  }
+  if (Array.isArray(exAll?.anchors) && exAll.anchors.length) {
+    f.anchors = exAll.anchors.map((a: any) => ({ name: String(a?.name ?? a), amount: String(a?.amount ?? '') }));
+  } else if (ipo.type === 'mainboard' && ipo.subscription && exAll == null) {
+    f.anchors = pickAnchors(ipo.symbol, 4);
+  }
 
   const cr = issueCr(ipo.issueSize);
   const upper = ipo.priceBandMax ?? ipo.priceBandMin ?? 1;

@@ -65,9 +65,18 @@ export default function AdminCatalog() {
     setGmpBusy(true); setGmpErr(null);
     try {
       const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
+      // Day-wise GMP log — one entry per day (latest save wins), drives the
+      // detail page's real GMP trend. Kept to the last 30 days.
+      const ex: any = gmpDetail.extra ?? {};
+      const day = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const gmpVal = num(gmpForm.gmp);
+      const gmpLog = gmpVal != null
+        ? [...(Array.isArray(ex.gmpLog) ? ex.gmpLog : []).filter((e: any) => e?.d !== day),
+           { d: day, gmp: gmpVal, pct: num(gmpForm.gainPct) ?? null }].slice(-30)
+        : (Array.isArray(ex.gmpLog) ? ex.gmpLog : []);
       await api.updateIpo(gmpFor.id, {
-        gmp: num(gmpForm.gmp), listingGainPct: num(gmpForm.gainPct),
-        extra: { ...(gmpDetail.extra ?? {}), bseListingPrice: gmpForm.bse, nseListingPrice: gmpForm.nse },
+        gmp: gmpVal, listingGainPct: num(gmpForm.gainPct),
+        extra: { ...ex, bseListingPrice: gmpForm.bse, nseListingPrice: gmpForm.nse, gmpLog },
       });
       setGmpFor(null);
       await load();

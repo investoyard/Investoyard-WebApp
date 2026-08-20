@@ -428,9 +428,11 @@ export interface MasterRow {
   categoryId?: string | null;   // issue-types → IpoCategoryMaster
   category?: MasterRow | null;  // issue-types (joined)
   allowMultiple?: boolean;      // relationships: repeatable per account
+  type?: string | null;         // anchors: Mutual Fund | FPI | Insurance | AIF | Other
+  notes?: string | null;        // anchors
   active: boolean;
 }
-export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles';
+export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors';
 export const fetchMaster = (kind: MasterKind) => authed<MasterRow[]>(`${API}/admin/masters/${kind}`, { method: 'GET' });
 export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

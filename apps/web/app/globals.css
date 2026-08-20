@@ -1127,7 +1127,7 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .btn-allot:hover, .ic-foot .btn-allot:hover { background: var(--brand-100, var(--brand-50)); color: var(--brand); box-shadow: var(--sh-sm); }
 
 /* ------------------------------------------------- HERO BANNER (compact dynamic carousel) */
-.hb { position: relative; overflow: hidden; border-radius: var(--r-2xl); margin: 18px 0 26px; box-shadow: var(--sh-md); }
+.hb { position: relative; overflow: hidden; border-radius: var(--r-2xl); margin: 2px 0 26px; box-shadow: var(--sh-md); }
 .hb-track { display: flex; transition: transform .45s var(--ease); }
 .hb-slide { flex: 0 0 100%; min-width: 0; min-height: 188px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 64px 34px 30px; background: var(--ink-grad); color: #fff; }
 .hb-slide.ipo.v1 { background: linear-gradient(150deg, #2f2465 0%, #3c2e7e 55%, #4a3a95 100%); }
@@ -1898,6 +1898,16 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .prose strong, .prose b { font-weight: 700; }
 /* document upload rows */
 .doc-up { display: grid; grid-template-columns: 170px 1fr auto auto; gap: 8px; align-items: center; }
+/* ASBA blanks: stacked rows — label+hint above, file+actions below, hairline apart */
+.doc-up.asba { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 14px 0; border-top: 1px solid var(--border); }
+.doc-up.asba:first-child { border-top: 0; padding-top: 2px; }
+.doc-lbl { font-size: 13.5px; font-weight: 600; }
+.doc-lbl .hint-line { display: block; font-size: 11.5px; font-weight: 400; color: var(--text-faint); margin-top: 3px; }
+.doc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* anchor picker rows (IPO form · Company tab) */
+.anchor-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.anchor-row:first-of-type { border-top: 0; }
+.anchor-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 4px; color: var(--text); }
 .doc-file .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 560px) { .doc-up { grid-template-columns: 1fr auto; } }

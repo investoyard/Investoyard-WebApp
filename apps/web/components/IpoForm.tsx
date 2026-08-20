@@ -62,6 +62,7 @@ interface FormState {
   sharesSize: Record<string, SzCell>; shareResv: Record<string, Resv>; resvRemarks: string; resvRemarks2: string;
   asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
   asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
+  anchors: { name: string; amount: string }[]; // picked from the Anchor Investors master, ₹ amount per IPO
 }
 const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
@@ -82,6 +83,7 @@ const blankForm = (): FormState => ({
   sharesSize: blankShares(), shareResv: blankShareResv(), resvRemarks: '', resvRemarks2: '',
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
+  anchors: [],
 });
 const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
@@ -124,6 +126,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           asbaSingle: str((d.documents ?? []).find((x) => x.type === 'asba_form_single')?.url),
           asbaShareholder: str((d.documents ?? []).find((x) => x.type === 'asba_form_shareholder')?.url),
           asbaResidentName: str(ex.asbaNames?.resident), asbaSyndicateName: str(ex.asbaNames?.syndicate), asbaSingleName: str(ex.asbaNames?.single), asbaShareholderName: str(ex.asbaNames?.shareholder),
+          anchors: Array.isArray(ex.anchors)
+            ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? ''), amount: String(a?.amount ?? '') }))
+            : [],
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
           retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail), noOfApp: str(ex.noOfApp),
@@ -184,6 +189,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
 
   const [asbaBusy, setAsbaBusy] = useState<string | null>(null);
+  // Anchor Investors master (Masters → Anchor Investors) — picked per IPO with a ₹ amount
+  const [anchorOpts, setAnchorOpts] = useState<api.MasterRow[]>([]);
+  useEffect(() => { api.fetchMaster('anchors').then(setAnchorOpts).catch(() => {}); }, []);
   const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', file?: File | null) => {
     if (!file) return;
     setAsbaBusy(slot); setErr(null);
@@ -221,6 +229,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       faqs: form.faqs, leads: form.leads, partners: form.partners,
       pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
       asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName, shareholder: form.asbaShareholderName },
+      // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
+      anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), amount: a.amount.trim() })),
       startBid: form.startBid, startPrint: form.startPrint,
       sharesSize: form.sharesSize, shareResv: form.shareResv, resvRemarks: form.resvRemarks, resvRemarks2: form.resvRemarks2,
     },
@@ -517,6 +527,37 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {/* ================= About Company ================= */}
         {tab === 'company' && (
           <div className="fstack">
+            <Panel title="Anchor investors" desc="Pick from the Anchor Investors master; the ₹ amount is per IPO. Shown on the public detail page.">
+              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4 }}>
+                <select
+                  className="input" style={{ maxWidth: 340 }} value=""
+                  onChange={(e) => {
+                    const n = e.target.value;
+                    if (n && !form.anchors.some((a) => a.name === n)) set({ anchors: [...form.anchors, { name: n, amount: '' }] });
+                  }}
+                >
+                  <option value="">+ Add anchor…</option>
+                  {anchorOpts.filter((o) => o.active && !form.anchors.some((a) => a.name === o.name)).map((o) => (
+                    <option key={o.id} value={o.name}>{o.name}{o.type ? ` — ${o.type}` : ''}</option>
+                  ))}
+                </select>
+                {anchorOpts.length === 0 && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>Master empty — add rows in Masters → Anchor Investors.</span>}
+              </div>
+              {form.anchors.map((a, i) => (
+                <div className="anchor-row" key={a.name}>
+                  <span className="anchor-name">{a.name}</span>
+                  <input
+                    className="input mono" style={{ maxWidth: 170 }} placeholder="₹250 Cr"
+                    value={a.amount}
+                    onChange={(e) => set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)) })}
+                  />
+                  <button type="button" className="icon-btn danger" title="Remove"
+                    onClick={() => set({ anchors: form.anchors.filter((_, j) => j !== i) })}>
+                    <Icon name="trash" size={14} />
+                  </button>
+                </div>
+              ))}
+            </Panel>
             <Panel title="Company Profile">
               <div className="form-grid">
                 <Field label="Company Logo">
@@ -573,26 +614,32 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {tab === 'docs' && (() => {
           const isMainboard = form.type === 'mainboard' && !/ncd|debt/i.test(form.issueType);
           const slot = (key: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', label: string, hint: string) => (
-            <div className="doc-up">
-              <span style={{ width: 210, fontSize: 13 }}>{label}<div className="muted" style={{ fontSize: 11 }}>{hint}</div></span>
-              <div className="doc-file">{form[key] ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{(form[(key + 'Name') as keyof FormState] as string) || 'form.pdf'}</span></> : <span className="muted" style={{ fontSize: 13 }}>Not uploaded</span>}</div>
-              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                {asbaBusy === key ? 'Uploading…' : form[key] ? 'Replace' : <><Icon name="upload" size={14} /> Upload PDF</>}
-                <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => onAsbaFile(key, e.target.files?.[0])} />
-              </label>
-              {form[key] && <button type="button" className="icon-btn danger" onClick={() => set({ [key]: '', [key + 'Name']: '' } as Partial<FormState>)} title="Remove"><Icon name="trash" size={15} /></button>}
+            // stacked layout: label+hint on their own line — no fixed column, nothing overlaps
+            <div className="doc-up asba">
+              <div className="doc-lbl">{label}<span className="hint-line">{hint}</span></div>
+              <div className="doc-row">
+                <div className="doc-file">{form[key] ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{(form[(key + 'Name') as keyof FormState] as string) || 'form.pdf'}</span></> : <span className="muted" style={{ fontSize: 13 }}>Not uploaded</span>}</div>
+                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                  {asbaBusy === key ? 'Uploading…' : form[key] ? 'Replace' : <><Icon name="upload" size={14} /> Upload PDF</>}
+                  <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => onAsbaFile(key, e.target.files?.[0])} />
+                </label>
+                {form[key] && <button type="button" className="icon-btn danger" onClick={() => set({ [key]: '', [key + 'Name']: '' } as Partial<FormState>)} title="Remove"><Icon name="trash" size={15} /></button>}
+              </div>
             </div>
           );
           return (
-            <Panel title="ASBA Print Forms" desc="Blank bid-cum-application PDFs — the system overlays applicant data for the 'apply through bank' print feature.">
-              <div className="lead-list">
-                {isMainboard ? <>
-                  {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
-                  {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
-                </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME / NCD)')}
-                {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
-              </div>
-            </Panel>
+            // spaced below the Documents card (the two panels were touching)
+            <div style={{ marginTop: 18 }}>
+              <Panel title="ASBA Print Forms" desc="Blank bid-cum-application PDFs — the system overlays applicant data for the 'apply through bank' print feature.">
+                <div className="lead-list">
+                  {isMainboard ? <>
+                    {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
+                    {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
+                  </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME / NCD)')}
+                  {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
+                </div>
+              </Panel>
+            </div>
           );
         })()}
 

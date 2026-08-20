@@ -32,12 +32,6 @@ const NAV: NavNode[] = [
     { href: '/admin/bidding/queue', label: 'Bid Queue' },
     { href: '/admin/bidding/failed', label: 'Failed / Retry' },
   ] },
-  { key: 'upi', label: 'UPI / Payments', icon: 'rupee', children: [
-    { href: '/admin/upi/pending', label: 'Pending' },
-    { href: '/admin/upi/success', label: 'Success' },
-    { href: '/admin/upi/failed', label: 'Failed' },
-    { href: '/admin/upi/expired', label: 'Expired' },
-  ] },
   { key: 'clients', label: 'Clients', icon: 'users', href: '/admin/clients', perm: 'clients.view' },
   { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', href: '/admin/tenants', perm: 'tenants.manage' },
   { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
@@ -45,10 +39,6 @@ const NAV: NavNode[] = [
   { key: 'allotment', label: 'Allotment', icon: 'receipt', children: [
     { href: '/admin/allotment/import', label: 'Import Allotment' },
     { href: '/admin/allotment/list', label: 'Allotment List' },
-  ] },
-  { key: 'refund', label: 'Refund / Demat', icon: 'bank', children: [
-    { href: '/admin/refund/refunds', label: 'Refunds' },
-    { href: '/admin/refund/demat', label: 'Demat Credit' },
   ] },
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
@@ -60,6 +50,7 @@ const NAV: NavNode[] = [
     { href: '/admin/masters/lead-managers', label: 'Lead Managers' },
     { href: '/admin/masters/relationships', label: 'Relationships' },
     { href: '/admin/masters/upi-handles', label: 'UPI Handles' },
+    { href: '/admin/masters/anchors', label: 'Anchor Investors' },
     { href: '/admin/masters/exchanges', label: 'Exchanges' },
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [

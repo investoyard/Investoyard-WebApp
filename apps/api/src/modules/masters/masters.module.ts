@@ -29,6 +29,8 @@ class MasterDto {
   @IsOptional() @IsString() baseType?: string;     // ipo-categories only: 'mainboard' | 'sme'
   @IsOptional() @IsString() categoryId?: string;   // issue-types only: → IpoCategoryMaster
   @IsOptional() @IsBoolean() allowMultiple?: boolean; // relationships only: repeatable per account
+  @IsOptional() @IsString() type?: string;   // anchors only: Mutual Fund | FPI | Insurance | AIF | Other
+  @IsOptional() @IsString() notes?: string;  // anchors only
   @IsOptional() @IsBoolean() active?: boolean;
 }
 class MasterPatchDto extends MasterDto {
@@ -43,6 +45,7 @@ const KINDS = {
   'issue-types': 'issueTypeMaster',
   relationships: 'relationshipMaster',
   'upi-handles': 'upiHandleMaster',
+  anchors: 'anchorMaster',
 } as const;
 type Kind = keyof typeof KINDS;
 
@@ -68,6 +71,7 @@ export class MastersController {
     if (kind === 'ipo-categories') fields.push('baseType');
     if (kind === 'issue-types') fields.push('categoryId');
     if (kind === 'relationships') fields.push('allowMultiple');
+    if (kind === 'anchors') fields.push('type', 'notes');
     const data: Record<string, any> = {};
     for (const f of fields) if (dto[f] !== undefined) data[f] = typeof dto[f] === 'string' ? dto[f].trim() : dto[f];
     if (typeof data.shortCode === 'string') data.shortCode = data.shortCode.toUpperCase();

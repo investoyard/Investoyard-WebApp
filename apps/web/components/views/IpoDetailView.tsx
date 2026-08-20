@@ -228,6 +228,28 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
               <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} />
+              {/* day-wise evolution — from the poller's per-day log (real data only) */}
+              {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
+                <div className="panel" style={{ marginTop: 14 }}>
+                  <h3>Day-wise subscription</h3>
+                  <div className="fin-scroll" style={{ marginTop: 10 }}>
+                    <table className="fin-tab">
+                      <thead><tr><th>Date</th><th>QIB</th><th>NII</th><th>Retail</th><th>Total</th></tr></thead>
+                      <tbody>
+                        {[...ex.subLog].reverse().map((e: any) => (
+                          <tr key={e.d}>
+                            <td>{/^\d{4}-\d{2}-\d{2}$/.test(String(e.d)) ? new Date(`${e.d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : e.d}</td>
+                            <td className="mono">{e.qib != null ? `${e.qib}×` : '—'}</td>
+                            <td className="mono">{e.nii != null ? `${e.nii}×` : '—'}</td>
+                            <td className="mono">{e.retail != null ? `${e.retail}×` : '—'}</td>
+                            <td className="mono" style={{ fontWeight: 700 }}>{e.total != null ? `${e.total}×` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               {/* section eyebrow kept for scroll-nav consistency */}
               {ipo.appWise && (
                 <div className="panel" style={{ marginTop: 14 }}>

@@ -224,6 +224,18 @@ model RelationshipMaster {
   createdAt     DateTime @default(now())
 }
 
+/// Anchor-investor master — institutions reusable across IPOs (picked per IPO
+/// with a ₹ amount in the IPO form; shown on the public detail page).
+model AnchorMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  type      String? // Mutual Fund | FPI | Insurance | AIF | Other
+  notes     String?
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
 /// Allowed UPI handles (the part after '@' in a UPI ID, e.g. "okaxis", "ybl").
 /// Profile UPI IDs are accepted only when their handle is an active row here.
 model UpiHandleMaster {

@@ -172,6 +172,16 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       const snap = JSON.stringify(subs);
       const changed = this.lastSnapshot.get(ipo.id) !== snap;
       if (changed) {
+        // Day-wise trend log for the detail page — one entry per IST day,
+        // the day's LATEST snapshot wins. Kept to the last 14 days in extra.subLog.
+        const day = this.istParts().ymd;
+        const row = await this.prisma.ipo.findUnique({ where: { id: ipo.id }, select: { extra: true } });
+        const ex: any = (row?.extra as any) ?? {};
+        const pick = (c: string) => { const s = subs.find((x) => x.category === c); return s ? Number(s.timesSubscribed) : null; };
+        const subLog = [
+          ...(Array.isArray(ex.subLog) ? ex.subLog : []).filter((e: any) => e?.d !== day),
+          { d: day, total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail') },
+        ].slice(-14);
         await this.prisma.$transaction([
           this.prisma.ipoSubscription.deleteMany({ where: { ipoId: ipo.id } }),
           this.prisma.ipoSubscription.createMany({
@@ -180,7 +190,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
               bidCount: s.bidCount, applicationsSubscribed: s.applicationsSubscribed,
             })),
           }),
-          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now } }),
+          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now, extra: { ...ex, subLog } } }),
         ]);
         this.lastSnapshot.set(ipo.id, snap);
       } else {
