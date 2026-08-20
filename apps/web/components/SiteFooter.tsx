@@ -35,6 +35,7 @@ export function SiteFooter() {
           <h4>Company</h4>
           <a href="/about">About</a>
           <a href="/faqs">Help &amp; FAQ</a>
+          <a href="/glossary">IPO Glossary</a>
           <a href="/performance">IPO Performance</a>
           <WhatsAppFooterLink />
           <a href="/admin">Admin panel</a>

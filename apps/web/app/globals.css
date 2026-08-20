@@ -901,6 +901,25 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .filters .input { min-width: 0; flex: 1 1 132px; }
   .section-head { flex-wrap: wrap; }
 }
+/* ------------------------------------------------- GLOSSARY + REMIND BUTTON */
+.gl-jump { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0 6px; }
+.gl-chip { font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--bg-2); border-radius: var(--pill); padding: 6px 12px; }
+.gl-chip:hover { background: var(--brand-50); color: var(--brand); }
+.gl-sec { margin-top: 30px; scroll-margin-top: calc(var(--header-h) + 16px); }
+.gl-sec h2 { font-family: var(--font-display); font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+.gl-list { margin-top: 12px; display: flex; flex-direction: column; }
+.gl-item { padding: 12px 0; border-top: 1px solid var(--border); }
+.gl-item:first-child { border-top: 0; }
+.gl-item dt { font-weight: 650; font-size: 14.5px; }
+.gl-item dd { font-size: 14px; line-height: 1.65; color: var(--text-muted); margin-top: 4px; }
+/* remind (bell) — full button + compact icon */
+.rb-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border-2); box-shadow: none; gap: 8px; font-size: 13.5px; padding: 10px 14px; }
+.rb-btn:hover { border-color: var(--brand-200); color: var(--brand); background: var(--surface); box-shadow: var(--sh-sm); }
+.rb-btn.on { background: var(--brand-50); color: var(--brand); border-color: var(--brand-200); }
+.rb-icon { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; transition: color .15s var(--ease), background .15s var(--ease), border-color .15s; }
+.rb-icon:hover { color: var(--brand); border-color: var(--brand-200); }
+.rb-icon.on { background: var(--brand-50); color: var(--brand); border-color: var(--brand-200); }
+
 /* ------------------------------------------------- NEWS (index + cards + home strip) */
 .news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; margin-top: 22px; }
 .news-grid.home { margin-top: 0; }

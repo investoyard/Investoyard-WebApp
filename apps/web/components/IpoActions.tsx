@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useStore, store } from '@/lib/store';
 import { Icon } from '@/components/Icon';
+import { RemindButton } from '@/components/RemindButton';
 import { inr } from '@/lib/format';
 import { makeT, Lang } from '@investoyard/i18n';
 
@@ -100,6 +101,7 @@ export function ApplyPanel({
           )}
         </>
       )}
+      {inWindow && <div style={{ marginTop: 10 }}><RemindButton symbol={symbol} /></div>}
       <p className="disclaimer" style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
         <Icon name="shield" size={14} style={{ marginTop: 1, flexShrink: 0 }} /> {tr('apply.selfPan')}
       </p>

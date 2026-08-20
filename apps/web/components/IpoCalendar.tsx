@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoFull } from '@/lib/api';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
+import { RemindButton } from '@/components/RemindButton';
 
 type Tone = 'open' | 'close' | 'allot' | 'list';
 interface Ev { date: string; label: string; tone: Tone; ipo: IpoFull }
@@ -108,6 +109,7 @@ export function IpoCalendar() {
         <span className="cal-ev-sym">{e.ipo.symbol} · {e.ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
       </span>
       <span className={`cal-ev-tag t-${e.tone}`}>{e.label}</span>
+      <RemindButton symbol={e.ipo.symbol} ipoId={(e.ipo as any).id} compact />
     </a>
   );
 

@@ -59,7 +59,7 @@ export default function FaqsPage() {
   return (
     <div className="trust-page">
       <h1>Help &amp; FAQs</h1>
-      <p className="lead-p">Quick answers about applying, allotment, GMP and your data.</p>
+      <p className="lead-p">Quick answers about applying, allotment, GMP and your data. New to the jargon? Start with the <a className="linklike" href="/glossary">IPO Glossary</a>.</p>
       <div className="faq-acc" style={{ marginTop: 18 }}>
         {FAQS.map((f, i) => (
           <details key={f.q} open={i === 0}>
