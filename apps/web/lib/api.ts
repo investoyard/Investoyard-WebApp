@@ -340,6 +340,25 @@ function enrich(ipo: IpoDetail): IpoFull {
 
 const FULL: IpoFull[] = MOCK.map(enrich);
 
+/** Published news posts (public; empty on failure). */
+export interface PostView {
+  slug: string; title: string; excerpt?: string | null; coverUrl?: string | null;
+  ipoSymbol?: string | null; tags: string[]; author?: string | null; publishedAt?: string | null;
+  body?: string;
+}
+export async function getPosts(limit = 24, ipo?: string): Promise<PostView[]> {
+  return safeGet<PostView[]>(`/posts?limit=${limit}${ipo ? `&ipo=${encodeURIComponent(ipo)}` : ''}`, []);
+}
+export async function getPost(slug: string): Promise<PostView | null> {
+  return safeGet<PostView | null>(`/posts/${encodeURIComponent(slug)}`, null);
+}
+/** Slugs for static generation — never empty (`output: export` needs ≥1 param). */
+export async function postSlugs(): Promise<string[]> {
+  const posts = await getPosts(60);
+  const slugs = posts.map((p) => p.slug);
+  return slugs.length ? slugs : ['welcome-to-investoyard'];
+}
+
 /** Admin-managed homepage banner slides (public; empty on failure). */
 export interface BannerView {
   id: string; title: string; subtitle?: string | null; imageUrl?: string | null;

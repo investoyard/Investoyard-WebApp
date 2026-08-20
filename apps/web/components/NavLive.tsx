@@ -94,6 +94,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
       href: '/calendar', label: 'Calendar',
       sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,
     },
+    { href: '/news', label: 'News' },
     { href: '/portfolio', label: 'Portfolio' },
     { href: '/account', label: 'Account' },
   ];

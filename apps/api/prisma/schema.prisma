@@ -224,6 +224,26 @@ model RelationshipMaster {
   createdAt     DateTime @default(now())
 }
 
+/// News / blog posts — admin-written IPO coverage (the SEO engine). Body is
+/// operator-authored rich text/HTML. Published posts are public.
+model Post {
+  id          String    @id @default(uuid())
+  slug        String    @unique
+  title       String
+  excerpt     String?
+  body        String
+  coverUrl    String?
+  ipoSymbol   String? // optional link to an IPO's coverage
+  tags        String[]  @default([])
+  status      String    @default("draft") // draft | published
+  publishedAt DateTime?
+  author      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, publishedAt])
+}
+
 /// Anchor-investor master — institutions reusable across IPOs (picked per IPO
 /// with a ₹ amount in the IPO form; shown on the public detail page).
 model AnchorMaster {

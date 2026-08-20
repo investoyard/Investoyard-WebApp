@@ -1,4 +1,5 @@
-import { getIpos } from '@/lib/api';
+import { getIpos, getPosts } from '@/lib/api';
+import { HomeNews } from '@/components/HomeNews';
 import { IpoExplorer } from '@/components/IpoExplorer';
 import { HeroBanner } from '@/components/HeroBanner';
 import { TodayStrip } from '@/components/TodayStrip';
@@ -11,6 +12,7 @@ import { Lang } from '@investoyard/i18n';
 /** Locale-parameterized home view — rendered at `/` (en) and `/[lang]/` (SEO routes). */
 export async function HomeView({ lang }: { lang: Lang }) {
   const ipos = await getIpos();
+  const posts = await getPosts(3);
   const q = lang === 'en' ? '' : `?lang=${lang}`; // app-page links keep the query form
 
   return (
@@ -31,6 +33,9 @@ export async function HomeView({ lang }: { lang: Lang }) {
 
       {/* ---------- GMP accuracy: final GMP vs actual listing gain ---------- */}
       <GmpAccuracy ipos={ipos as any} />
+
+      {/* ---------- latest news (hidden until something is published) ---------- */}
+      <HomeNews posts={posts} />
 
       {/* ---------- WhatsApp updates (renders once the channel URL is configured) ---------- */}
       <WhatsAppCta />

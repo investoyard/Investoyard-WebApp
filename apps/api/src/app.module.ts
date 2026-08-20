@@ -29,6 +29,7 @@ import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { PostsModule } from './modules/posts/posts.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { BannersModule } from './modules/banners/banners.module';
     MastersModule,
     PartnerModule,
     BannersModule,
+    PostsModule,
   ],
   providers: [
     PrismaService,

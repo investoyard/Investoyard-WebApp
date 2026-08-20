@@ -132,6 +132,21 @@ export const createPartnerKey = (tenantId: string, label?: string) =>
 export const revokePartnerKey = (id: string) =>
   authed<{ revoked: boolean }>(`${API}/admin/partner-keys/${id}`, { method: 'DELETE' });
 
+/* ---- news / blog posts ---- */
+export interface PostRow {
+  id: string; slug: string; title: string; excerpt?: string | null; body: string;
+  coverUrl?: string | null; ipoSymbol?: string | null; tags: string[];
+  status: 'draft' | 'published'; publishedAt?: string | null; author?: string | null;
+  createdAt: string; updatedAt: string;
+}
+export const fetchPosts = () => authed<PostRow[]>(`${API}/admin/posts`, { method: 'GET' });
+export const createPost = (body: Partial<PostRow>) =>
+  authed<PostRow>(`${API}/admin/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const updatePost = (id: string, body: Partial<PostRow>) =>
+  authed<PostRow>(`${API}/admin/posts/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deletePost = (id: string) =>
+  authed<{ deleted: boolean }>(`${API}/admin/posts/${id}`, { method: 'DELETE' });
+
 /* ---- homepage banners (admin-managed carousel slides) ---- */
 export interface BannerRow {
   id: string; title: string; subtitle?: string | null; imageUrl?: string | null;
