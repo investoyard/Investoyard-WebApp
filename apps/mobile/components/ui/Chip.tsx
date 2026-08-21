@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { fonts, ui } from '../../lib/theme';
 
-export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold';
+export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed';
 
 /** Soft-tinted pill palette (fintech spec):
  *  success (open/positive) · warn (upcoming/pending) · neutral (closed/listed/mainboard)
@@ -15,6 +15,8 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   info: { bg: ui.indigoTint, fg: ui.indigo },
   /** brand-gold moment — reserved for the "Allotted" celebration state */
   gold: { bg: '#FFF5D6', fg: '#8A6400' },
+  /** listed issues — light purple with near-black ink (matches the web chip) */
+  listed: { bg: '#E2D9F6', fg: '#241E3D' },
 };
 
 /** Status pill — 6px dot prefix, radius 999, 11/700, 4×10 padding. */

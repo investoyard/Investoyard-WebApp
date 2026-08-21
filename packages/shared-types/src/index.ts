@@ -6,6 +6,7 @@
  */
 
 export * from './bidEngine';
+export * from './glossary';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';

@@ -114,6 +114,12 @@ export default function HomeScreen() {
 
   const shortDate = (s?: string) => { const f = fmtDate(s); return f === '—' ? 'TBA' : f.slice(0, 6); };
 
+  // gold dot on the calendar icon when TODAY has any IPO event (open/close/
+  // allotment/listing) — zero home-screen space; the calendar leads with Today.
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const hasTodayEvents = (ipos ?? []).some((i) =>
+    i.openDate === todayIso || i.closeDate === todayIso || i.allotmentDate === todayIso || i.listingDate === todayIso);
+
   return (
     <>
       {/* one-time GMP awareness consent (compliance) */}
@@ -140,6 +146,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
               >
                 <CalendarIcon size={19} color="#ffffff" strokeWidth={1.8} />
+                {hasTodayEvents ? <View style={styles.todayDot} /> : null}
               </Pressable>
               <Pressable
                 onPress={() => router.push('/notifications')}
@@ -341,6 +348,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: ui.gradTop,
   },
   badgeTxt: { color: '#ffffff', fontSize: 9.5, fontFamily: fonts.extrabold, fontWeight: '800' },
+  // "something happens today" — gold dot on the calendar icon
+  todayDot: {
+    position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5,
+    backgroundColor: '#FFCB32', borderWidth: 1.5, borderColor: ui.gradTop,
+  },
   greet: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 12 },
   greetGold: { color: '#FFCB32', fontFamily: fonts.extrabold, fontWeight: '800' },
   // status chips with live counts

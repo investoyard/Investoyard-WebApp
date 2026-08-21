@@ -16,6 +16,7 @@ import { CompanyLogo } from '../components/ui/CompanyLogo';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { Chip, ChipTone } from '../components/ui/Chip';
 import { ChevronRightIcon } from '../components/ui/icons';
+import { RemindBell } from '../components/RemindBell';
 
 interface Ev { date: string; label: string; tone: ChipTone; dot: string; ipo: IpoFull }
 
@@ -136,6 +137,7 @@ export default function CalendarScreen() {
         <Text style={styles.sym} numberOfLines={1}>{e.ipo.symbol} · {e.ipo.type === 'sme' ? 'SME' : 'Mainboard'}</Text>
       </View>
       <Chip label={e.label} tone={e.tone} dot={false} />
+      <RemindBell ipoId={(e.ipo as any).id} size={13} />
     </Pressable>
   );
 
@@ -162,6 +164,30 @@ export default function CalendarScreen() {
           ),
         }}
       />
+      {/* ── TODAY strip — the day's events at a glance, above the calendar ── */}
+      {(() => {
+        const todays = byDate.get(today) ?? [];
+        if (todays.length === 0) return null;
+        return (
+          <View style={styles.todayCard}>
+            <Text style={styles.todayHead}>Today · {prettyDay(today)}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {todays.map((e, i) => (
+                <Pressable
+                  key={`${e.ipo.id}-${e.label}-${i}`}
+                  onPress={() => router.push(`/ipo/${e.ipo.symbol}`)}
+                  style={({ pressed }) => [styles.todayChip, pressed && { opacity: 0.75 }]}
+                >
+                  <View style={[styles.dot, { backgroundColor: e.dot }]} />
+                  <Text style={styles.todayChipSym}>{e.ipo.symbol}</Text>
+                  <Text style={styles.todayChipLbl}>{e.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        );
+      })()}
+
       <View style={styles.calCard}>
         {/* period header */}
         <View style={styles.monthRow}>
@@ -243,6 +269,15 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
+  // Today strip (sir's placement: calendar-top, Home stays untouched)
+  todayCard: { backgroundColor: ui.indigo, borderRadius: 20, padding: 14, marginBottom: 12 },
+  todayHead: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: '#FFCB32', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 9 },
+  todayChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6,
+  },
+  todayChipSym: { fontSize: 12, fontFamily: fonts.extrabold, fontWeight: '800', color: '#ffffff' },
+  todayChipLbl: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
   calCard: { backgroundColor: '#ffffff', borderRadius: 20, padding: 12, ...shadowCard },
   // compact header pill (sits right of the "IPO Calendar" title)
   viewSeg: {

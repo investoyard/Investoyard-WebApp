@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  NativeScrollEvent, NativeSyntheticEvent, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View,
+  Linking, NativeScrollEvent, NativeSyntheticEvent, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +27,7 @@ import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
+import { RemindBell } from '../../components/RemindBell';
 
 const STATUS_TONE: Record<string, ChipTone> = {
   open: 'success', upcoming: 'warn', closed: 'neutral', listed: 'neutral', withdrawn: 'danger',
@@ -98,6 +99,17 @@ export default function IpoDetailScreen() {
   const finParas = stripHtml(typeof ex.companyFinancials === 'string' ? ex.companyFinancials : undefined);
   const hasCompany = aboutParas.length > 0 || objectParas.length > 0 || finParas.length > 0 || (ipo.financials?.length ?? 0) > 0;
 
+  // day-wise trends — REAL admin/poller logs only (never synthesized on live rows)
+  const gmpLog: { d: string; gmp: number }[] = Array.isArray(ex.gmpLog)
+    ? ex.gmpLog.map((e: any) => ({ d: String(e?.d ?? ''), gmp: Number(e?.gmp) || 0 })) : [];
+  const subLog: { d: string; total: number }[] = Array.isArray(ex.subLog)
+    ? ex.subLog.map((e: any) => ({ d: String(e?.d ?? ''), total: Number(e?.total) || 0 })) : [];
+  const hasTrends = gmpLog.length >= 2 || subLog.length >= 2;
+  const anchors: { name: string; amount: string }[] = Array.isArray(ex.anchors)
+    ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? a), amount: String(a?.amount ?? '') })).filter((a: any) => a.name) : [];
+  const DOC_LABEL: Record<string, string> = { drhp: 'DRHP', rhp: 'RHP', anchor: 'Anchor allocation', prospectus: 'Prospectus' };
+  const docs = (ipo.documents ?? []).filter((d) => d.url && DOC_LABEL[d.type?.toLowerCase?.() ?? '']);
+
   /* ---- pinned section-nav plumbing (identity + chips never scroll away) ---- */
   const sections: { key: string; label: string }[] = [
     { key: 'overview', label: 'Overview' },
@@ -106,6 +118,7 @@ export default function IpoDetailScreen() {
     { key: 'reserve', label: 'Reserve' },
     { key: 'lots', label: 'Lots' },
     { key: 'gmp', label: 'GMP' },
+    ...(hasTrends ? [{ key: 'trends', label: 'Trends' }] : []),
     ...(hasCompany ? [{ key: 'company', label: 'Company' }] : []),
     { key: 'details', label: 'Details' },
   ];
@@ -155,6 +168,7 @@ export default function IpoDetailScreen() {
               </Text>
             </View>
             <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
+            {ipo.status !== 'listed' ? <RemindBell ipoId={(ipo as any).id} size={16} /> : null}
             <Pressable
               onPress={onShare}
               hitSlop={8}
@@ -294,6 +308,33 @@ export default function IpoDetailScreen() {
           <Card><GmpPanel ipo={ipo} disclaimer={t('detail.disclaimer')} /></Card>
         </View>
 
+        {/* day-wise trends — real logged data only */}
+        {hasTrends ? (
+          <View onLayout={reg('trends')}>
+            <SectionTitle label="Day-wise trends" style={{ marginTop: 24 }} />
+            <Card style={{ gap: 16 }}>
+              {gmpLog.length >= 2 ? (
+                <TrendBlock
+                  label="GMP (₹)"
+                  points={gmpLog.map((e) => e.gmp)}
+                  first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
+                  lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}
+                  color={gmpLog[gmpLog.length - 1].gmp >= 0 ? ui.green : ui.red}
+                />
+              ) : null}
+              {subLog.length >= 2 ? (
+                <TrendBlock
+                  label="Subscription (×)"
+                  points={subLog.map((e) => e.total)}
+                  first={subLog[0].d} lastDay={subLog[subLog.length - 1].d}
+                  lastValue={`${subLog[subLog.length - 1].total}×`}
+                  color={ui.indigo}
+                />
+              ) : null}
+            </Card>
+          </View>
+        ) : null}
+
         {/* SME norms */}
         {ipo.type === 'sme' && ipo.smeCompliance ? (
           <>
@@ -335,13 +376,35 @@ export default function IpoDetailScreen() {
           </View>
         ) : null}
 
-        {/* issue details */}
+        {/* anchor investors (per-IPO allocations from the admin master) */}
+        {anchors.length > 0 ? (
+          <>
+            <SectionTitle label="Anchor investors" meta={`${anchors.length} institutions`} style={{ marginTop: 24 }} />
+            <Card>
+              {anchors.map((a, i) => (
+                <KV key={`${a.name}-${i}`} k={a.name} v={a.amount ? `₹${a.amount} Cr` : '—'} last={i === anchors.length - 1} />
+              ))}
+            </Card>
+          </>
+        ) : null}
+
+        {/* issue details + offer documents */}
         <View onLayout={reg('details')}>
           <SectionTitle label="Issue details" style={{ marginTop: 24 }} />
           <Card>
             <KV k="Lead managers" v={leadManagers.join(', ')} />
             <KV k="Registrar" v={ipo.registrar ?? '—'} />
-            <KV k="Listing on" v={exchanges} last />
+            <KV k="Listing on" v={exchanges} last={docs.length === 0} />
+            {docs.map((d, i) => (
+              <Pressable
+                key={d.url}
+                onPress={() => Linking.openURL(d.url).catch(() => {})}
+                style={({ pressed }) => [styles.kv, i === docs.length - 1 && { borderBottomWidth: 0 }, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.kvK}>{DOC_LABEL[d.type.toLowerCase()]}</Text>
+                <Text style={[styles.kvV, { color: ui.indigo }]}>Open PDF ›</Text>
+              </Pressable>
+            ))}
           </Card>
         </View>
         </View>
@@ -378,6 +441,38 @@ function Metric({ k, v, hi }: { k: string; v: string; hi?: boolean }) {
     <View style={styles.metric}>
       <Text style={styles.metricK} numberOfLines={1}>{k}</Text>
       <Text style={[styles.metricV, hi && { color: ui.indigo }]} numberOfLines={1} adjustsFontSizeToFit>{v}</Text>
+    </View>
+  );
+}
+
+/** Day-wise trend chart — label row + full-width polyline over real log data. */
+function TrendBlock({ label, points, first, lastDay, lastValue, color }: {
+  label: string; points: number[]; first: string; lastDay: string; lastValue: string; color: string;
+}) {
+  const W = 296, H = 64, pad = 4;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const pts = points.map((v, i) => {
+    const x = pad + (i / (points.length - 1)) * (W - pad * 2);
+    const y = pad + (1 - (v - min) / span) * (H - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const day = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? new Date(`${s}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : s);
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ ...microLabel, fontSize: 10.5 }}>{label}</Text>
+        <Text style={{ fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color, fontVariant: ['tabular-nums'] }}>{lastValue}</Text>
+      </View>
+      <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ marginTop: 6 }}>
+        <Polyline points={pts} stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+        <Text style={styles.trendDay}>{day(first)}</Text>
+        <Text style={styles.trendDay}>{day(lastDay)}</Text>
+      </View>
     </View>
   );
 }
@@ -451,6 +546,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: ui.divider,
   },
   kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.muted },
+  trendDay: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
   kvV: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flexShrink: 1, textAlign: 'right' },
   applyBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

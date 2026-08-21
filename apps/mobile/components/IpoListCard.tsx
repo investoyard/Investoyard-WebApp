@@ -21,6 +21,7 @@ import { Chip, ChipTone } from './ui/Chip';
 import { Button } from './ui/Button';
 import { CompanyLogo } from './ui/CompanyLogo';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from './IpoPanels';
+import { RemindBell } from './RemindBell';
 
 type Topic = 'sub' | 'reservation' | 'lot' | 'timeline';
 
@@ -32,25 +33,46 @@ function localDay(): string {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
+function daysFromToday(date?: string): number | null {
+  if (!date) return null;
+  return Math.round((new Date(`${date}T00:00:00`).getTime() - new Date(`${localDay()}T00:00:00`).getTime()) / 86_400_000);
+}
 
 /**
- * Lifecycle tag (product spec): Upcoming · Pre Apply · Open Today · Live ·
- * Closing Today. "Pre Apply" = an upcoming issue whose operator has switched
- * Start Bid ON (applications accepted before the open date).
+ * ONE time-aware lifecycle tag per card (parity with web statusChip):
+ * Opens in Nd · Pre Apply · Open Today · Live · Closing Today · Allotment out ·
+ * light-purple Listed. "Pre Apply" = upcoming issue with Start Bid ON.
  */
 export function cardTag(ipo: IpoFull, t: (k: string) => string): { label: string; tone: ChipTone } {
   const today = localDay();
+  if (ipo.status === 'listed') return { label: 'Listed', tone: 'listed' };
+  if (ipo.status === 'closed') {
+    const ad = daysFromToday(ipo.allotmentDate);
+    if (ad != null && ad <= 0) return { label: 'Allotment out', tone: 'gold' };
+    return { label: t('status.closed'), tone: 'neutral' };
+  }
   if (ipo.status === 'open') {
     if (ipo.closeDate === today) return { label: 'Closing Today', tone: 'danger' };
     if (ipo.openDate === today) return { label: 'Open Today', tone: 'success' };
     return { label: 'Live', tone: 'success' };
   }
   if (ipo.status === 'upcoming') {
-    return (ipo.extra as any)?.startBid === true
-      ? { label: 'Pre Apply', tone: 'brand' }
-      : { label: 'Upcoming', tone: 'warn' };
+    if ((ipo.extra as any)?.startBid === true) return { label: 'Pre Apply', tone: 'brand' };
+    const od = daysFromToday(ipo.openDate);
+    if (od === 1) return { label: 'Opens tomorrow', tone: 'warn' };
+    if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, tone: 'warn' };
+    return { label: 'Upcoming', tone: 'warn' };
   }
   return { label: t(`status.${ipo.status}`), tone: STATUS_TONE[ipo.status] ?? 'neutral' };
+}
+
+/** Demand in plain words, calibrated per board (SME runs an order hotter). */
+export function demandWord(subX: number, sme: boolean): string {
+  const th = sme ? [1, 10, 50] : [1, 3, 10];
+  if (subX < th[0]) return 'building up';
+  if (subX < th[1]) return 'steady demand';
+  if (subX < th[2]) return 'strong demand';
+  return 'exceptional demand';
 }
 
 const TOPICS: { key: Topic; label: string }[] = [
@@ -94,7 +116,10 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
             {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}
           </Text>
         </View>
-        <Chip label={tag.label} tone={tag.tone} />
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          <Chip label={tag.label} tone={tag.tone} />
+          {ipo.status !== 'listed' ? <RemindBell ipoId={(ipo as any).id} size={14} /> : null}
+        </View>
       </View>
 
       {/* Row 2 — ONE hero figure (min investment) + compact secondary strip */}
@@ -150,7 +175,7 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
                 <View style={styles.subTrack}>
                   <View style={[styles.subFill, { width: `${Math.max(6, demandPct)}%` }]} />
                 </View>
-                <Text style={styles.subTxt}>{subX}× subscribed</Text>
+                <Text style={styles.subTxt}>{demandWord(subX, ipo.type === 'sme')} · {subX}×</Text>
               </View>
             ) : null}
           </View>

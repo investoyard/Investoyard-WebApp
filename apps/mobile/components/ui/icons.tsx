@@ -247,3 +247,76 @@ export function GearIconFill(p: IconProps) {
     </Svg>
   );
 }
+
+/* ── Insights tab + hub icons ── */
+
+export function InsightsIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M3.5 20.5h17" {...stroke(p)} />
+      <Path d="M4.5 16 9.5 11l3.5 3L20 7" {...stroke(p)} />
+      <Path d="M15.8 7H20v4.2" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function InsightsIconFill(p: IconProps) {
+  const c = p.color ?? '#1d1d1f';
+  return (
+    <Svg {...base(p)}>
+      <Path d="M4.5 20 4.5 16.5 9.5 11.5l3.5 3L20 8v12Z" fill={c} opacity={0.9} />
+      <Path d="M3.5 20.5h17" {...stroke(p)} />
+      <Path d="M15.8 7H20v4.2" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function SearchIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Circle cx={11} cy={11} r={7} {...stroke(p)} />
+      <Path d="m20.5 20.5-4.6-4.6" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function TrendUpIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M3.5 17.5 9.5 11l3.5 3.5L20.5 7" {...stroke(p)} />
+      <Path d="M15.8 7h4.7v4.7" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function BarsIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M5 20V13" {...stroke(p)} />
+      <Path d="M10.5 20V8" {...stroke(p)} />
+      <Path d="M16 20v-9.5" {...stroke(p)} />
+      <Path d="M21 20V4.5" {...stroke(p)} opacity={0.001} />
+      <Path d="M3.5 20.5h17" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function NewsIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M4 5.5h13v14a1.5 1.5 0 0 0 1.5 1.5H5.5A1.5 1.5 0 0 1 4 19.5Z" {...stroke(p)} />
+      <Path d="M17 8.5h3V19a1.5 1.5 0 0 1-1.5 2" {...stroke(p)} />
+      <Path d="M7 9.5h7M7 13h7M7 16.5h4.5" {...stroke(p)} />
+    </Svg>
+  );
+}
+
+export function BookIcon(p: IconProps) {
+  return (
+    <Svg {...base(p)}>
+      <Path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21Z" {...stroke(p)} />
+      <Path d="M4 18.5V21" {...stroke(p)} />
+      <Path d="M8.5 7.5h7" {...stroke(p)} />
+    </Svg>
+  );
+}

@@ -340,3 +340,84 @@ export async function deleteProfile(token: string, id: string): Promise<boolean>
     return false;
   }
 }
+
+// ── Public allotment checker (registrar-truth PAN lookup; no auth) ───────────
+export interface AllotmentResult {
+  applicant: string; category: string; applicantType: string;
+  lots: number; status: 'allotted' | 'not_allotted' | 'processing' | 'pending';
+  allottedShares: number | null;
+}
+export interface AllotmentCheck {
+  ipo: { symbol: string; name: string; allotmentDate: string | null };
+  allotmentOut: boolean;
+  found: boolean;
+  results: AllotmentResult[];
+}
+export async function checkAllotment(ipoId: string, pan: string): Promise<AllotmentCheck> {
+  const res = await fetch(`${API_BASE}/allotment/check`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId, pan }),
+  });
+  if (!res.ok) {
+    let msg = 'Could not check right now.';
+    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+    throw new Error(msg);
+  }
+  return (await res.json()) as AllotmentCheck;
+}
+
+// ── News + banners (public) ──────────────────────────────────────────────────
+export interface PostView {
+  slug: string; title: string; excerpt?: string | null; coverUrl?: string | null;
+  ipoSymbol?: string | null; tags: string[]; author?: string | null; publishedAt?: string | null;
+  body?: string;
+}
+export async function getPosts(limit = 24, ipo?: string): Promise<PostView[]> {
+  try {
+    const res = await fetch(`${API_BASE}/posts?limit=${limit}${ipo ? `&ipo=${encodeURIComponent(ipo)}` : ''}`);
+    if (res.ok) return (await res.json()) as PostView[];
+  } catch {}
+  return [];
+}
+export async function getPost(slug: string): Promise<PostView | null> {
+  try {
+    const res = await fetch(`${API_BASE}/posts/${encodeURIComponent(slug)}`);
+    if (res.ok) return (await res.json()) as PostView;
+  } catch {}
+  return null;
+}
+export interface BannerView {
+  id: string; title: string; subtitle?: string | null; imageUrl?: string | null;
+  linkUrl?: string | null; ctaLabel?: string | null;
+}
+export async function getBanners(): Promise<BannerView[]> {
+  try {
+    const res = await fetch(`${API_BASE}/banners`);
+    if (res.ok) return (await res.json()) as BannerView[];
+  } catch {}
+  return [];
+}
+
+// ── Watchlist (server-side reminders driving the hourly alert sweep) ─────────
+export interface WatchlistItem { id: string; ipoId: string }
+export async function listWatchlist(token: string): Promise<WatchlistItem[]> {
+  try {
+    const res = await fetch(`${API_BASE}/watchlist`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return (await res.json()) as WatchlistItem[];
+  } catch {}
+  return [];
+}
+export async function addWatchlist(token: string, ipoId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/watchlist`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ipoId }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+export async function removeWatchlist(token: string, ipoId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/watchlist/${ipoId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    return res.ok;
+  } catch { return false; }
+}

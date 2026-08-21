@@ -46,6 +46,13 @@ function RootStack() {
       <Stack.Screen name="notifications" options={{ title: t('notif.title') }} />
       <Stack.Screen name="calendar" options={{ title: 'IPO Calendar' }} />
       <Stack.Screen name="consents" options={{ title: t('consents.title') }} />
+      {/* Insights hub screens */}
+      <Stack.Screen name="gmp" options={{ title: 'GMP Trends' }} />
+      <Stack.Screen name="subscription" options={{ title: 'Subscription' }} />
+      <Stack.Screen name="performance" options={{ title: 'IPO Performance' }} />
+      <Stack.Screen name="glossary" options={{ title: 'IPO Glossary' }} />
+      <Stack.Screen name="news/index" options={{ title: 'News & Updates' }} />
+      <Stack.Screen name="news/[slug]" options={{ title: 'Investoyard News' }} />
     </Stack>
   );
 }

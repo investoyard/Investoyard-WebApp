@@ -7,12 +7,14 @@ import { tapLight } from '../../lib/haptics';
 import { AppHeader } from '../../components/ui/AppHeader';
 import {
   DocsIcon, DocsIconFill, GearIcon, GearIconFill,
-  HomeIcon, HomeIconFill, UsersIcon, UsersIconFill, IconProps,
+  HomeIcon, HomeIconFill, InsightsIcon, InsightsIconFill,
+  UsersIcon, UsersIconFill, IconProps,
 } from '../../components/ui/icons';
 
 /**
- * Primary navigation — 4 bottom tabs:
- *   Home (IPO explorer) · Applications (portfolio/allotment) · Profiles (family/KYC) · Account.
+ * Primary navigation — 5 bottom tabs:
+ *   Home (IPO explorer) · Insights (allotment checker + GMP/subscription/
+ *   performance/news/glossary hub) · Applications · Profiles · Account.
  * Group folder keeps every historical path (/, /applications, /profiles) unchanged.
  */
 
@@ -69,6 +71,13 @@ export default function TabsLayout() {
           title: 'Home',
           headerShown: false, // Home draws its own gradient hero
           tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={HomeIcon} Fill={HomeIconFill} />,
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={InsightsIcon} Fill={InsightsIconFill} />,
         }}
       />
       <Tabs.Screen

@@ -4,7 +4,7 @@
  * · Session (Sign out, red). Version footer.
  */
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LANGS } from '@investoyard/i18n';
 import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
@@ -14,9 +14,12 @@ import { useProfiles } from '../../components/profiles';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import {
-  BellIcon, ChevronDownIcon, ChevronRightIcon, GlobeIcon, LockIcon,
-  ShieldIcon, SignOutIcon, UsersIcon,
+  BellIcon, BookIcon, ChevronDownIcon, ChevronRightIcon, DocsIcon, GlobeIcon, LockIcon,
+  NewsIcon, ShieldIcon, SignOutIcon, UsersIcon,
 } from '../../components/ui/icons';
+
+const SITE = 'https://newipo.finwave.co';
+const openSite = (path: string) => Linking.openURL(`${SITE}${path}`).catch(() => {});
 
 export default function AccountScreen() {
   const t = useT();
@@ -98,6 +101,45 @@ export default function AccountScreen() {
             })}
           </View>
         ) : null}
+      </Card>
+
+      {/* About & Legal — the web trust pages (always current with the site) */}
+      <Text style={styles.groupLbl}>ABOUT &amp; LEGAL</Text>
+      <Card style={styles.group}>
+        <Row
+          icon={<NewsIcon size={19} color={ui.indigo} strokeWidth={1.8} />}
+          iconBg={ui.indigoTint}
+          label="About Investoyard"
+          onPress={() => openSite('/about')}
+        />
+        <Row
+          icon={<BookIcon size={19} color={ui.amber} strokeWidth={1.8} />}
+          iconBg={ui.amberTint}
+          label="Help & FAQs"
+          onPress={() => openSite('/faqs')}
+          divider
+        />
+        <Row
+          icon={<DocsIcon size={19} color={ui.slate} strokeWidth={1.8} />}
+          iconBg={ui.slateTint}
+          label="Terms & Conditions"
+          onPress={() => openSite('/terms')}
+          divider
+        />
+        <Row
+          icon={<DocsIcon size={19} color={ui.slate} strokeWidth={1.8} />}
+          iconBg={ui.slateTint}
+          label="Disclaimer"
+          onPress={() => openSite('/disclaimer')}
+          divider
+        />
+        <Row
+          icon={<ShieldIcon size={19} color={ui.green} strokeWidth={1.8} />}
+          iconBg={ui.greenTint}
+          label="Privacy Policy"
+          onPress={() => openSite('/privacy-policy')}
+          divider
+        />
       </Card>
 
       {token ? (
