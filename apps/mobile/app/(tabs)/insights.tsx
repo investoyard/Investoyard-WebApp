@@ -5,10 +5,11 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
 import { type IpoFull } from '../../lib/ipoCalc';
 import { checkAllotment, getIpos, type AllotmentCheck } from '../../lib/api';
+import { titleCase } from '../../lib/format';
 import { tapLight, tapSelect } from '../../lib/haptics';
 import { Card } from '../../components/ui/Card';
 import { Chip } from '../../components/ui/Chip';
@@ -27,6 +28,8 @@ const localDay = () => {
 
 export default function InsightsScreen() {
   const router = useRouter();
+  // "Check Allotment" on a card deep-links here with the IPO pre-selected
+  const { ipo: ipoParam } = useLocalSearchParams<{ ipo?: string }>();
   const [ipos, setIpos] = useState<IpoFull[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   // allotment checker state
@@ -38,6 +41,14 @@ export default function InsightsScreen() {
 
   const load = useCallback(async () => { setIpos(await getIpos()); }, []);
   useEffect(() => { load(); }, [load]);
+
+  // honour the ?ipo=SYMBOL deep link once the catalog is in
+  useEffect(() => {
+    if (!ipoParam || ipos.length === 0) return;
+    const hit = ipos.find((i) => i.symbol.toLowerCase() === String(ipoParam).toLowerCase());
+    if (hit && (hit as any).id) { setIpoId(String((hit as any).id)); setResult(null); setErr(null); }
+  }, [ipoParam, ipos]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try { await load(); } finally { setRefreshing(false); }
@@ -45,11 +56,15 @@ export default function InsightsScreen() {
 
   // IPOs worth checking: allotment date set and not in the far future, newest first
   const today = localDay();
-  const checkable = ipos
+  const pool = ipos
     .filter((i) => (i as any).id && i.allotmentDate && (i.status === 'closed' || i.status === 'listed' || i.allotmentDate <= today))
-    .sort((a, b) => (b.allotmentDate ?? '').localeCompare(a.allotmentDate ?? ''))
-    .slice(0, 10);
-  const selected = checkable.find((i) => (i as any).id === ipoId) ?? checkable[0] ?? null;
+    .sort((a, b) => (b.allotmentDate ?? '').localeCompare(a.allotmentDate ?? ''));
+  const shortlist = pool.slice(0, 10);
+  // a deep-linked IPO always appears, even if it falls outside the recent ten
+  const pinned = ipoId ? pool.find((i) => String((i as any).id) === ipoId) : undefined;
+  const checkable = pinned && !shortlist.some((i) => (i as any).id === (pinned as any).id)
+    ? [pinned, ...shortlist] : shortlist;
+  const selected = checkable.find((i) => String((i as any).id) === ipoId) ?? checkable[0] ?? null;
 
   const check = async () => {
     const id = selected ? String((selected as any).id) : null;
@@ -73,13 +88,13 @@ export default function InsightsScreen() {
       keyboardShouldPersistTaps="handled"
     >
       {/* ── Allotment checker ── */}
-      <SectionTitle label="Check allotment" meta="any PAN · registrar data" />
+      <SectionTitle label="Allotment Status" meta="any PAN · registrar data" />
       <Card>
         {checkable.length === 0 ? (
-          <Text style={styles.mutedTxt}>No IPO is in its allotment window right now — check back after the next issue closes.</Text>
+          <Text style={styles.mutedTxt}>No issue is in its allotment window right now — check back once the next one closes.</Text>
         ) : (
           <>
-            <Text style={styles.inK}>IPO</Text>
+            <Text style={styles.inK}>SELECT IPO</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 6 }}>
               {checkable.map((i) => {
                 const on = (selected as any)?.id === (i as any).id;
@@ -108,7 +123,7 @@ export default function InsightsScreen() {
             />
             {err ? <Text style={styles.errTxt}>{err}</Text> : null}
             <Button
-              label={busy ? 'Checking…' : `Check ${selected?.symbol ?? ''} allotment`}
+              label={busy ? 'Checking…' : 'Check Allotment'}
               onPress={check}
               disabled={busy || pan.length !== 10}
               style={{ marginTop: 12 }}
@@ -125,7 +140,7 @@ export default function InsightsScreen() {
                   result.results.map((r, i) => (
                     <View key={i} style={[styles.resRow, i > 0 && { borderTopWidth: 1, borderTopColor: ui.divider }]}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.resName} numberOfLines={1}>{r.applicant}</Text>
+                        <Text style={styles.resName} numberOfLines={1}>{titleCase(r.applicant)}</Text>
                         <Text style={styles.resMeta}>
                           {r.category}{r.applicantType !== 'individual' ? ` · ${r.applicantType}` : ''} · {r.lots} lot{r.lots === 1 ? '' : 's'} applied
                         </Text>
@@ -149,9 +164,9 @@ export default function InsightsScreen() {
       {/* ── Explore ── */}
       <SectionTitle label="Explore" style={{ marginTop: 22 }} />
       <View style={styles.grid}>
-        <Tile label="GMP Trends" sub="grey market · daily" Icon={TrendUpIcon} onPress={() => router.push('/gmp')} />
-        <Tile label="Subscription" sub="live demand" Icon={BarsIcon} onPress={() => router.push('/subscription')} />
-        <Tile label="Performance" sub="listing gains" Icon={SearchIcon} onPress={() => router.push('/performance')} />
+        <Tile label="GMP Trends" sub="grey market · day-wise" Icon={TrendUpIcon} onPress={() => router.push('/gmp')} />
+        <Tile label="Live Subscription" sub="category-wise demand" Icon={BarsIcon} onPress={() => router.push('/subscription')} />
+        <Tile label="Listing Performance" sub="listing-day gains" Icon={SearchIcon} onPress={() => router.push('/performance')} />
         <Tile label="News & Updates" sub="IPO coverage" Icon={NewsIcon} onPress={() => router.push('/news')} />
         <Tile label="IPO Glossary" sub="every term, simply" Icon={BookIcon} onPress={() => router.push('/glossary')} />
         <Tile label="IPO Calendar" sub="all key dates" Icon={CalendarIcon} onPress={() => router.push('/calendar')} />

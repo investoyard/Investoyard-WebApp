@@ -16,7 +16,8 @@ import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
 import { tapSelect } from '../../lib/haptics';
 import Svg, { Path, Polyline } from 'react-native-svg';
-import { fmtRange, inr, priceBand, stripHtml, closesInLabel } from '../../lib/format';
+import { fmtRange, inr, priceBand, stripHtml, closesInLabel, titleCase } from '../../lib/format';
+import { stageOf } from '../../lib/ipoStage';
 import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
 import { SectionTitle } from '../../components/ui/SectionTitle';
@@ -84,11 +85,13 @@ export default function IpoDetailScreen() {
     );
   }
 
+  const st = stageOf(ipo);
   const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
   // Operator gates: "Start Bid" → Apply (UPI) · "Start Printing" → Print Forms (bank ASBA).
   const canApply = inWindow && (ipo.extra as any)?.startBid === true;
   const canPrint = inWindow && (ipo.extra as any)?.startPrint === true;
   const closes = ipo.status === 'open' ? closesInLabel(ipo.closeDate) : null;
+  const postClose = st.stage === 'awaiting' || st.stage === 'allotmentout' || st.stage === 'listed';
   const ex: Record<string, any> = ipo.extra ?? {};
   const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
     ? ex.leads
@@ -111,17 +114,22 @@ export default function IpoDetailScreen() {
   const docs = (ipo.documents ?? []).filter((d) => d.url && DOC_LABEL[d.type?.toLowerCase?.() ?? '']);
 
   /* ---- pinned section-nav plumbing (identity + chips never scroll away) ---- */
-  const sections: { key: string; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'dates', label: 'Dates' },
-    ...(ipo.subscription && ipo.subscription.length > 0 ? [{ key: 'subs', label: 'Subscription' }] : []),
-    { key: 'reserve', label: 'Reserve' },
-    { key: 'lots', label: 'Lots' },
-    { key: 'gmp', label: 'GMP' },
-    ...(hasTrends ? [{ key: 'trends', label: 'Trends' }] : []),
-    ...(hasCompany ? [{ key: 'company', label: 'Company' }] : []),
-    { key: 'details', label: 'Details' },
-  ];
+  // Section order follows the stage: what matters NOW comes first (before the
+  // issue opens → lots & reservation; while live → subscription; after close →
+  // subscription & key dates).
+  const hasSubs = !!(ipo.subscription && ipo.subscription.length > 0);
+  const ALL: Record<string, string> = {
+    overview: 'Overview', gmp: 'GMP', subs: 'Subscription', lots: 'Lot Details',
+    reserve: 'Reservation', dates: 'Key Dates', trends: 'Trends', company: 'Company', details: 'Issue Details',
+  };
+  const order = postClose
+    ? ['overview', 'gmp', 'subs', 'dates', 'trends', 'lots', 'reserve', 'company', 'details']
+    : st.stage === 'upcoming' || st.stage === 'preapply'
+      ? ['overview', 'gmp', 'lots', 'reserve', 'dates', 'trends', 'subs', 'company', 'details']
+      : ['overview', 'gmp', 'subs', 'lots', 'reserve', 'dates', 'trends', 'company', 'details'];
+  const sections = order
+    .filter((k) => (k === 'subs' ? hasSubs : k === 'trends' ? hasTrends : k === 'company' ? hasCompany : true))
+    .map((key) => ({ key, label: ALL[key] }));
   const reg = (k: string) => (e: { nativeEvent: { layout: { y: number } } }) => { secY.current[k] = e.nativeEvent.layout.y; };
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
@@ -129,11 +137,14 @@ export default function IpoDetailScreen() {
     // and a one-line key-metrics strip (band · lot · min invest) above the chips.
     const on = y > 64;
     if (on !== navOn) { animateNext(); setNavOn(on); }
-    let cur = sections[0].key;
-    for (const s of sections) {
-      const sy = secY.current[s.key];
-      if (sy != null && sy - 24 <= y) cur = s.key;
-    }
+    // chips are ordered by relevance, the page by layout — track the section the
+    // reader is actually on by comparing measured Y positions, not chip order.
+    const byY = sections
+      .map((s) => ({ key: s.key, y: secY.current[s.key] }))
+      .filter((s): s is { key: string; y: number } => s.y != null)
+      .sort((a, b) => a.y - b.y);
+    let cur = byY[0]?.key ?? sections[0].key;
+    for (const s of byY) if (s.y - 24 <= y) cur = s.key;
     if (cur !== active) {
       setActive(cur);
       // keep the active chip visible in the bar
@@ -162,13 +173,13 @@ export default function IpoDetailScreen() {
           <View style={styles.pinRow}>
             <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={38} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.pinName} numberOfLines={1}>{ipo.name}</Text>
+              <Text style={styles.pinName} numberOfLines={1}>{titleCase(ipo.name)}</Text>
               <Text style={styles.pinSym} numberOfLines={1}>
                 {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'} · {exchanges}
               </Text>
             </View>
-            <Chip label={t(`status.${ipo.status}`)} tone={STATUS_TONE[ipo.status] ?? 'neutral'} />
-            {ipo.status !== 'listed' ? <RemindBell ipoId={(ipo as any).id} size={16} /> : null}
+            <Chip label={st.label} tone={st.tone} />
+            {st.stage !== 'listed' ? <RemindBell ipoId={(ipo as any).id} size={16} /> : null}
             <Pressable
               onPress={onShare}
               hitSlop={8}
@@ -207,7 +218,7 @@ export default function IpoDetailScreen() {
         ref={scrollRef}
         onScroll={onScroll}
         scrollEventThrottle={32}
-        contentContainerStyle={{ paddingBottom: inWindow ? 130 : 32 }}
+        contentContainerStyle={{ paddingBottom: inWindow || postClose ? 130 : 32 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
         }
@@ -223,15 +234,19 @@ export default function IpoDetailScreen() {
         {/* key metrics — one elevated card, 2×2 grid with hairline dividers */}
         <Card style={styles.metricsCard}>
           <View style={styles.metricsRow}>
-            <Metric k="Price band" v={priceBand(ipo.priceBandMin, ipo.priceBandMax)} />
+            <Metric k="Offer Price" v={priceBand(ipo.priceBandMin, ipo.priceBandMax)} />
             <View style={styles.mDivV} />
-            <Metric k="Bid lot" v={ipo.lotSize != null ? `${ipo.lotSize} shares` : '—'} />
+            <Metric k="Lot Size" v={ipo.lotSize != null ? `${ipo.lotSize} shares` : '—'} />
           </View>
           <View style={styles.mDivH} />
           <View style={styles.metricsRow}>
-            <Metric k="Min investment" v={inr(ipo.minAmount)} hi />
+            {postClose && ipo.subscriptionTimes != null ? (
+              <Metric k="Subscribed" v={`${ipo.subscriptionTimes}×`} hi />
+            ) : (
+              <Metric k="Min Application" v={inr(ipo.minAmount)} hi />
+            )}
             <View style={styles.mDivV} />
-            <Metric k="Issue size" v={ipo.issueSize ?? '—'} />
+            <Metric k="Issue Size" v={ipo.issueSize ?? '—'} />
           </View>
         </Card>
         </View>
@@ -286,16 +301,16 @@ export default function IpoDetailScreen() {
           </View>
         ) : null}
 
-        {/* reservation */}
+        {/* reservation — how the issue is split across investor categories */}
         <View onLayout={reg('reserve')}>
-          <SectionTitle label="Issue reservation" meta={ipo.issueSize} style={{ marginTop: 24 }} />
+          <SectionTitle label="Reservation" meta={ipo.issueSize} style={{ marginTop: 24 }} />
           <Card><ReservationPanel ipo={ipo} /></Card>
         </View>
 
-        {/* lot ladder */}
+        {/* lot details — what Retail / S-HNI / B-HNI must bid */}
         <View onLayout={reg('lots')}>
           <SectionTitle
-            label="Lot ladder"
+            label="Lot Details"
             meta={ipo.lotSize != null ? `1 lot = ${ipo.lotSize} shares` : undefined}
             style={{ marginTop: 24 }}
           />
@@ -390,7 +405,7 @@ export default function IpoDetailScreen() {
 
         {/* issue details + offer documents */}
         <View onLayout={reg('details')}>
-          <SectionTitle label="Issue details" style={{ marginTop: 24 }} />
+          <SectionTitle label="Issue Details" style={{ marginTop: 24 }} />
           <Card>
             <KV k="Lead managers" v={leadManagers.join(', ')} />
             <KV k="Registrar" v={ipo.registrar ?? '—'} />
@@ -411,11 +426,11 @@ export default function IpoDetailScreen() {
       </ScrollView>
 
 
-      {/* sticky bottom apply bar */}
+      {/* sticky action bar — what this stage calls for */}
       {inWindow ? (
         <View style={[styles.applyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.applyK}>MIN INVESTMENT</Text>
+            <Text style={styles.applyK}>MIN APPLICATION</Text>
             <Text style={styles.applyV}>{inr(ipo.minAmount)}</Text>
             {closes ? <Text style={styles.applyCloses}>{closes}</Text> : null}
             {ipo.status === 'open' && ipo.subscriptionTimes != null ? (
@@ -424,12 +439,37 @@ export default function IpoDetailScreen() {
           </View>
           {canApply || canPrint ? (
             <View style={{ gap: 8, minWidth: 150 }}>
-              {canApply ? <Button label="Apply now" small onPress={() => router.push(`/apply/${ipo.symbol}`)} /> : null}
+              {canApply ? (
+                <Button
+                  label={st.stage === 'preapply' ? 'Pre Apply' : 'Apply Now'}
+                  small
+                  onPress={() => router.push(`/apply/${ipo.symbol}`)}
+                />
+              ) : null}
               {canPrint ? <Button label="Print Forms" small variant="danger" onPress={() => router.push(`/print/${ipo.symbol}`)} /> : null}
             </View>
           ) : (
             <Button label="Bidding opens soon" variant="ghost" disabled onPress={() => {}} style={{ minWidth: 150 }} />
           )}
+        </View>
+      ) : postClose ? (
+        <View style={[styles.applyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.applyK}>{st.stage === 'listed' ? 'LISTING RESULT' : 'ALLOTMENT'}</Text>
+            <Text style={styles.applyV}>
+              {st.stage === 'listed'
+                ? (listingInfo(ipo)?.gainPct != null ? `${(listingInfo(ipo)!.gainPct ?? 0) >= 0 ? '+' : ''}${listingInfo(ipo)!.gainPct}%` : '—')
+                : st.label}
+            </Text>
+            {st.note ? <Text style={styles.applySub}>{st.note}</Text> : null}
+          </View>
+          <Button
+            label={st.stage === 'listed' ? 'IPO Performance' : 'Check Allotment'}
+            small
+            variant={st.stage === 'listed' ? 'ghost' : 'gold'}
+            onPress={() => router.push(st.stage === 'listed' ? '/performance' : `/insights?ipo=${encodeURIComponent(ipo.symbol)}`)}
+            style={{ minWidth: 150 }}
+          />
         </View>
       ) : null}
     </View>

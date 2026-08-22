@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { listingInfo, type IpoFull } from '../lib/ipoCalc';
 import { getIpos } from '../lib/api';
+import { titleCase } from '../lib/format';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
@@ -51,6 +52,7 @@ export default function PerformanceScreen() {
               <View style={styles.stat}>
                 <Text style={[styles.statV, { color: avg >= 0 ? ui.green : ui.red }]}>{avg >= 0 ? '+' : ''}{avg}%</Text>
                 <Text style={styles.statK}>avg listing gain</Text>
+
               </View>
               <View style={styles.statDiv} />
               <View style={styles.stat}>
@@ -64,7 +66,7 @@ export default function PerformanceScreen() {
               </View>
             </Card>
           ) : null}
-          <SectionTitle label="Listing day, issue by issue" style={{ marginTop: 16 }} />
+          <SectionTitle label="Listing day — issue by issue" style={{ marginTop: 16 }} />
           <Card style={{ paddingVertical: 4 }}>
             {listed.map(({ ipo, li }, idx) => {
               const pos = (li.gainPct ?? 0) >= 0;
@@ -77,7 +79,7 @@ export default function PerformanceScreen() {
                 >
                   <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={38} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.name} numberOfLines={1}>{ipo.name}</Text>
+                    <Text style={styles.name} numberOfLines={1}>{titleCase(ipo.name)}</Text>
                     <Text style={styles.meta} numberOfLines={1}>
                       {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}
                       {issueP != null ? ` · ₹${issueP}${li.price ? ` → ₹${li.price}` : ''}` : ''}

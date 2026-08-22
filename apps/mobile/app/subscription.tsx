@@ -8,7 +8,8 @@ import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import { getIpos } from '../lib/api';
-import { demandWord } from '../components/IpoListCard';
+import { titleCase } from '../lib/format';
+import { demandWord } from '../lib/ipoStage';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
@@ -27,7 +28,7 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
       <View style={styles.head}>
         <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={38} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{ipo.name}</Text>
+          <Text style={styles.name} numberOfLines={1}>{titleCase(ipo.name)}</Text>
           <Text style={styles.meta} numberOfLines={1}>{ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}</Text>
         </View>
         {total != null ? (
@@ -50,7 +51,7 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
           ))}
         </View>
       ) : (
-        <Text style={styles.mutedTxt}>Category-wise figures arrive once bidding starts.</Text>
+        <Text style={styles.mutedTxt}>Category-wise figures arrive once bidding opens.</Text>
       )}
     </Card>
   );
@@ -92,7 +93,7 @@ export default function SubscriptionScreen() {
           ) : null}
           {recent.length > 0 ? (
             <>
-              <SectionTitle label="Recently closed — final figures" style={{ marginTop: open.length ? 20 : 0 }} />
+              <SectionTitle label="Closed — final subscription" style={{ marginTop: open.length ? 20 : 0 }} />
               {recent.map((i) => <SubCard key={i.symbol} ipo={i} />)}
             </>
           ) : null}

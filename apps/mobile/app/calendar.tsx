@@ -10,6 +10,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { Stack, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, shadowCard, ui } from '../lib/theme';
 import { getIpos } from '../lib/api';
+import { titleCase } from '../lib/format';
 import type { IpoFull } from '../lib/ipoCalc';
 import { tapSelect } from '../lib/haptics';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
@@ -133,7 +134,7 @@ export default function CalendarScreen() {
     >
       <CompanyLogo uri={e.ipo.logoUrl} name={e.ipo.name} size={34} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>{e.ipo.name}</Text>
+        <Text style={styles.name} numberOfLines={1}>{titleCase(e.ipo.name)}</Text>
         <Text style={styles.sym} numberOfLines={1}>{e.ipo.symbol} · {e.ipo.type === 'sme' ? 'SME' : 'Mainboard'}</Text>
       </View>
       <Chip label={e.label} tone={e.tone} dot={false} />

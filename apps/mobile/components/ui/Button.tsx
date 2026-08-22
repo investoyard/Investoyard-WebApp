@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle, StyleProp } from 'react-native';
 import { fonts, ui } from '../../lib/theme';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold';
 
 /** 48px button, radius 14, 15/700 label, pressed scale 0.98. Ghost = indigo tint bg. */
 export function Button({ label, onPress, variant = 'primary', disabled, busy, small, style }: {
@@ -41,6 +41,8 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: ui.indigoTint },
   ghost: { backgroundColor: ui.indigoTint },
   danger: { backgroundColor: ui.redTint },
+  /** the money moment — "Check Allotment" once the basis is out */
+  gold: { backgroundColor: '#FFF5D6' },
   txtBase: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700' },
   txtSmall: { fontSize: 13.5 },
 });
@@ -50,4 +52,5 @@ const txtStyles = StyleSheet.create({
   secondary: { color: ui.indigo },
   ghost: { color: ui.indigo },
   danger: { color: ui.red },
+  gold: { color: '#8A6400' },
 });

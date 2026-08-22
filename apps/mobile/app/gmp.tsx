@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import { getIpos } from '../lib/api';
+import { titleCase } from '../lib/format';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
@@ -35,9 +36,9 @@ function Row({ ipo, last }: { ipo: IpoFull; last: boolean }) {
     >
       <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={38} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>{ipo.name}</Text>
+        <Text style={styles.name} numberOfLines={1}>{titleCase(ipo.name)}</Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}{est != null ? ` · est. ₹${est}` : ''}
+          {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}{est != null ? ` · est. listing ₹${est}` : ''}
         </Text>
       </View>
       {log.length >= 2 ? <Sparkline values={log} color={pos ? ui.green : ui.red} /> : null}
@@ -63,7 +64,7 @@ export default function GmpScreen() {
   const withGmp = (ipos ?? []).filter((i) => i.gmp != null && i.status !== 'withdrawn');
   const groups: { label: string; rows: IpoFull[] }[] = [
     { label: 'Open now', rows: withGmp.filter((i) => i.status === 'open') },
-    { label: 'Upcoming', rows: withGmp.filter((i) => i.status === 'upcoming') },
+    { label: 'Opening soon', rows: withGmp.filter((i) => i.status === 'upcoming') },
     { label: 'Awaiting listing', rows: withGmp.filter((i) => i.status === 'closed') },
   ].filter((g) => g.rows.length > 0);
 

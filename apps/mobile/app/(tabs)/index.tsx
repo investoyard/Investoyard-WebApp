@@ -1,34 +1,33 @@
 /**
- * Home — IPO dashboard v3 (compact):
- *   slim gradient hero (logo · calendar + bell-with-badge · one greeting line)
- *   → status filter chips WITH live counts → Mainboard/SME segment →
- *   "Open now" rich cards · "Upcoming" & "Recently closed" compact rows.
- *   One-time GMP awareness dialog (compliance). No duplicate shortcuts —
- *   Apply lives on cards, Allotment/Applicants on their tabs.
+ * Home — the IPO feed, cards-first.
+ *   Slim header: "Live Subscription" (left, pulses while issues are open) ·
+ *   search / calendar / alerts (right). No brand block, no greeting — the
+ *   first IPO card is visible the moment the app opens.
+ *   → search expands inline (name or symbol) → status chips with live counts →
+ *   Mainboard/SME segment → stage-driven IPO cards.
+ * One-time GMP awareness dialog (compliance).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { fonts, animateNext, shadowCard, ui } from '../../lib/theme';
 import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
+import { stageOf } from '../../lib/ipoStage';
 import { getIpos, getNotifications } from '../../lib/api';
 import { useAuth } from '../../components/auth';
-import { useProfiles } from '../../components/profiles';
-import { useT } from '../../components/i18n';
-import { fmtDate } from '../../lib/format';
+import { fmtDate, titleCase } from '../../lib/format';
+import { tapLight } from '../../lib/haptics';
 import { IpoListCard } from '../../components/IpoListCard';
-import { Logo } from '../../components/Logo';
 import { GmpDialog } from '../../components/GmpDialog';
-import { BrandGradient } from '../../components/ui/Gradient';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { IllusDocs } from '../../components/ui/illustrations';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { FadeInUp } from '../../components/ui/motion';
-import { BellIcon, CalendarIcon, ChevronRightIcon } from '../../components/ui/icons';
+import { BellIcon, CalendarIcon, ChevronRightIcon, SearchIcon, XIcon } from '../../components/ui/icons';
 
 type Filter = 'all' | 'open' | 'upcoming' | 'closed';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -46,19 +45,10 @@ const BOARDS: { key: Board; label: string }[] = [
   { key: 'sme', label: 'SME' },
 ];
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
 export default function HomeScreen() {
-  const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { profiles } = useProfiles();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
   const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,14 +56,12 @@ export default function HomeScreen() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [board, setBoard] = useState<Board>('all');
+  const [searchOn, setSearchOn] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<TextInput>(null);
 
-  // gradient hero → light status bar while this tab is focused
-  useFocusEffect(
-    useCallback(() => {
-      setStatusBarStyle('light');
-      return () => setStatusBarStyle('dark');
-    }, []),
-  );
+  // light header (no gradient hero any more) → dark status-bar content
+  useFocusEffect(useCallback(() => { setStatusBarStyle('dark'); }, []));
 
   const load = useCallback(async () => {
     const [rows, notifs] = await Promise.all([
@@ -99,76 +87,104 @@ export default function HomeScreen() {
     }
   }, [load]);
 
-  const firstName = profiles.find((p) => p.relationship === 'self')?.fullName.trim().split(/\s+/)[0] ?? 'Investor';
   // Board filter applies FIRST — sections and status filtering both respect it.
   const base = (ipos ?? []).filter((i) => board === 'all' || i.type === board);
-  const openIpos = base.filter((i) => i.status === 'open');
-  const upcoming = base.filter((i) => i.status === 'upcoming');
-  const listed = base.filter((i) => i.status === 'listed' || i.status === 'closed');
-  const filtered = filter === 'all' ? base
-    : filter === 'closed' ? base.filter((i) => i.status === 'closed' || i.status === 'listed')
-    : base.filter((i) => i.status === filter);
+  const q = query.trim().toLowerCase();
+  const searched = q
+    ? base.filter((i) => i.name.toLowerCase().includes(q) || i.symbol.toLowerCase().includes(q))
+    : base;
+  const openIpos = searched.filter((i) => i.status === 'open');
+  const upcoming = searched.filter((i) => i.status === 'upcoming');
+  const listed = searched.filter((i) => i.status === 'listed' || i.status === 'closed');
+  const filtered = filter === 'all' ? searched
+    : filter === 'closed' ? searched.filter((i) => i.status === 'closed' || i.status === 'listed')
+    : searched.filter((i) => i.status === filter);
   const counts: Record<Filter, number> = {
-    all: base.length, open: openIpos.length, upcoming: upcoming.length, closed: listed.length,
+    all: searched.length, open: openIpos.length, upcoming: upcoming.length, closed: listed.length,
   };
 
   const shortDate = (s?: string) => { const f = fmtDate(s); return f === '—' ? 'TBA' : f.slice(0, 6); };
 
-  // gold dot on the calendar icon when TODAY has any IPO event (open/close/
-  // allotment/listing) — zero home-screen space; the calendar leads with Today.
+  // gold dot on the calendar icon when TODAY carries any IPO event
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const hasTodayEvents = (ipos ?? []).some((i) =>
     i.openDate === todayIso || i.closeDate === todayIso || i.allotmentDate === todayIso || i.listingDate === todayIso);
+  const liveCount = (ipos ?? []).filter((i) => i.status === 'open').length;
+
+  const openSearch = () => {
+    tapLight(); animateNext(); setSearchOn(true);
+    setTimeout(() => searchRef.current?.focus(), 60);
+  };
+  const closeSearch = () => {
+    tapLight(); animateNext(); setSearchOn(false); setQuery('');
+  };
 
   return (
     <>
       {/* one-time GMP awareness consent (compliance) */}
       <GmpDialog />
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={{ paddingBottom: 110 /* clear the floating tab bar */ }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" colors={[ui.indigo]} />
-        }
-      >
-        {/* ── compact gradient hero: logo · calendar + alerts · greeting ── */}
-        <View style={[styles.hero, { paddingTop: insets.top + 10 }]}>
-          <BrandGradient />
-          <View pointerEvents="none" style={[styles.orb, { width: 190, height: 190, borderRadius: 95, top: -110, right: -50, backgroundColor: 'rgba(255,255,255,0.05)' }]} />
-          <View style={styles.heroRow}>
-            <Logo height={20} variant="light" />
-            <View style={styles.heroIcons}>
-              <Pressable
-                onPress={() => router.push('/calendar')}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="IPO calendar"
-                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
-              >
-                <CalendarIcon size={19} color="#ffffff" strokeWidth={1.8} />
+
+      {/* ── slim header: Live Subscription · search / calendar / alerts ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        {searchOn ? (
+          <View style={styles.searchRow}>
+            <SearchIcon size={17} color={ui.muted} strokeWidth={2} />
+            <TextInput
+              ref={searchRef}
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search IPO by name or symbol"
+              placeholderTextColor={ui.muted}
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            <Pressable onPress={closeSearch} hitSlop={8} style={({ pressed }) => [styles.searchClose, pressed && { opacity: 0.6 }]}>
+              <XIcon size={16} color={ui.slate} strokeWidth={2.2} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.headRow}>
+            <Pressable
+              onPress={() => { tapLight(); router.push('/subscription'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Live subscription of open IPOs"
+              style={({ pressed }) => [styles.liveBtn, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
+            >
+              <View style={[styles.liveDot, liveCount === 0 && { backgroundColor: ui.muted }]} />
+              <Text style={styles.liveTxt}>Live Subscription</Text>
+              {liveCount > 0 ? <Text style={styles.liveN}>{liveCount}</Text> : null}
+            </Pressable>
+            <View style={styles.headIcons}>
+              <Pressable onPress={openSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel="Search IPOs"
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6, transform: [{ scale: 0.95 }] }]}>
+                <SearchIcon size={19} color={ui.title} strokeWidth={1.9} />
+              </Pressable>
+              <Pressable onPress={() => router.push('/calendar')} hitSlop={8} accessibilityRole="button" accessibilityLabel="IPO calendar"
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6, transform: [{ scale: 0.95 }] }]}>
+                <CalendarIcon size={19} color={ui.title} strokeWidth={1.9} />
                 {hasTodayEvents ? <View style={styles.todayDot} /> : null}
               </Pressable>
-              <Pressable
-                onPress={() => router.push('/notifications')}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] }]}
-              >
-                <BellIcon size={19} color="#ffffff" strokeWidth={1.8} />
+              <Pressable onPress={() => router.push('/notifications')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Alerts"
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6, transform: [{ scale: 0.95 }] }]}>
+                <BellIcon size={19} color={ui.title} strokeWidth={1.9} />
                 {unread > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
-                  </View>
+                  <View style={styles.badge}><Text style={styles.badgeTxt}>{unread > 9 ? '9+' : unread}</Text></View>
                 ) : null}
               </Pressable>
             </View>
           </View>
-          <Text style={styles.greet}>
-            {greeting()}, {firstName} <Text style={styles.greetGold}>•</Text>
-          </Text>
-        </View>
+        )}
+      </View>
 
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={{ paddingBottom: 110 /* clear the floating tab bar */ }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
+        }
+      >
         {/* ── status chips WITH counts (summary + filter in one control) ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
           {FILTERS.map(({ key, label }) => {
@@ -210,6 +226,18 @@ export default function HomeScreen() {
             <SkeletonCard lines={3} />
             <SkeletonCard lines={2} />
           </View>
+        ) : q ? (
+          /* search results — one flat list, no sectioning */
+          filtered.length === 0 ? (
+            <EmptyState art={<IllusDocs />} title={`No IPO matches “${query.trim()}”`} body="Try the company name or its exchange symbol." />
+          ) : (
+            <>
+              <SectionTitle label={`${filtered.length} result${filtered.length === 1 ? '' : 's'}`} style={styles.section} />
+              {filtered.map((i, idx) => (
+                <FadeInUp key={i.id} index={idx}><IpoListCard ipo={i} /></FadeInUp>
+              ))}
+            </>
+          )
         ) : filter !== 'all' ? (
           /* filtered flat list */
           filtered.length === 0 ? (
@@ -242,7 +270,7 @@ export default function HomeScreen() {
             {/* Upcoming — compact rows */}
             {upcoming.length > 0 ? (
               <FadeInUp index={openIpos.length}>
-                <SectionTitle label="Upcoming" style={styles.section} />
+                <SectionTitle label="Opening soon" style={styles.section} />
                 <View style={styles.compactCard}>
                   {upcoming.map((i, idx) => (
                     <CompactRow
@@ -260,10 +288,11 @@ export default function HomeScreen() {
             {/* Recently closed — closed (allotment phase) + listed issues, with gain when listed */}
             {listed.length > 0 ? (
               <FadeInUp index={openIpos.length + 1}>
-                <SectionTitle label="Recently closed" style={styles.section} />
+                <SectionTitle label="Allotment & listings" style={styles.section} />
                 <View style={styles.compactCard}>
                   {listed.map((i, idx) => {
                     const li = listingInfo(i);
+                    const st = stageOf(i);
                     return (
                       <CompactRow
                         key={i.id}
@@ -278,7 +307,7 @@ export default function HomeScreen() {
                             ) : null}
                           </View>
                         ) : (
-                          <Text style={styles.compactMeta}>{t(`status.${i.status}`)}</Text>
+                          <Text style={[styles.compactMeta, st.stage === 'allotmentout' && { color: '#8A6400' }]}>{st.label}</Text>
                         )}
                         divider={idx > 0}
                         onPress={() => router.push(`/ipo/${i.symbol}`)}
@@ -316,7 +345,7 @@ function CompactRow({ ipo, right, divider, onPress }: {
     >
       <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={36} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.compactName} numberOfLines={1}>{ipo.name}</Text>
+        <Text style={styles.compactName} numberOfLines={1}>{titleCase(ipo.name)}</Text>
         <Text style={styles.compactSym} numberOfLines={1}>{ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}</Text>
       </View>
       {right}
@@ -327,71 +356,73 @@ function CompactRow({ ipo, right, divider, onPress }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  orb: { position: 'absolute' },
-  // compact hero — one row + one greeting line (no dashboard headline)
-  hero: {
-    overflow: 'hidden',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  // ── slim white header (replaces the gradient hero) ──
+  header: {
+    backgroundColor: '#ffffff', paddingHorizontal: 16, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: ui.divider,
   },
-  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  heroIcons: { flexDirection: 'row', gap: 8 },
-  iconBtn: {
-    width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  liveBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: ui.canvas, borderRadius: 999, paddingLeft: 11, paddingRight: 13, height: 34,
   },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: ui.green },
+  liveTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, letterSpacing: -0.1 },
+  liveN: {
+    fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800', color: '#ffffff',
+    backgroundColor: ui.green, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, overflow: 'hidden',
+  },
+  headIcons: { flexDirection: 'row', gap: 4 },
+  iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   badge: {
-    position: 'absolute', top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9,
+    position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8,
     paddingHorizontal: 4, backgroundColor: '#E5484D', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: ui.gradTop,
+    borderWidth: 1.5, borderColor: '#ffffff',
   },
-  badgeTxt: { color: '#ffffff', fontSize: 9.5, fontFamily: fonts.extrabold, fontWeight: '800' },
-  // "something happens today" — gold dot on the calendar icon
+  badgeTxt: { color: '#ffffff', fontSize: 9, fontFamily: fonts.extrabold, fontWeight: '800' },
   todayDot: {
-    position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5,
-    backgroundColor: '#FFCB32', borderWidth: 1.5, borderColor: ui.gradTop,
+    position: 'absolute', top: 4, right: 5, width: 9, height: 9, borderRadius: 5,
+    backgroundColor: '#FFCB32', borderWidth: 1.5, borderColor: '#ffffff',
   },
-  greet: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 12 },
-  greetGold: { color: '#FFCB32', fontFamily: fonts.extrabold, fontWeight: '800' },
+  // inline search
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 9, height: 40,
+    backgroundColor: ui.canvas, borderRadius: 14, paddingHorizontal: 13,
+  },
+  searchInput: { flex: 1, fontSize: 14.5, fontFamily: fonts.medium, color: ui.title, padding: 0 },
+  searchClose: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: ui.slateTint },
   // status chips with live counts
   filters: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 8, flexDirection: 'row' },
   fchip: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    paddingHorizontal: 14, height: 36, borderRadius: 999, backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    ...shadowCard,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, height: 36, borderRadius: 999, backgroundColor: '#ffffff', ...shadowCard, elevation: 1,
   },
   fchipOn: { backgroundColor: ui.indigo },
-  fchipTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
-  fchipTxtOn: { color: '#ffffff' },
-  fchipN: {
-    fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo,
-    backgroundColor: ui.indigoTint, borderRadius: 999, minWidth: 20, height: 20,
-    textAlign: 'center', lineHeight: 20, overflow: 'hidden', fontVariant: ['tabular-nums'],
-  },
-  fchipNOn: { color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.22)' },
+  fchipTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
+  fchipTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },
+  fchipN: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.muted, fontVariant: ['tabular-nums'] },
+  fchipNOn: { color: 'rgba(255,255,255,0.85)' },
+  // board segment
   seg: {
-    flexDirection: 'row', marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: '#ffffff', borderRadius: 999, padding: 3, ...shadowCard,
+    flexDirection: 'row', marginHorizontal: 16, marginBottom: 14,
+    backgroundColor: ui.slateTint, borderRadius: 12, padding: 3,
   },
-  segBtn: { flex: 1, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  segBtnOn: { backgroundColor: ui.indigoTint },
-  segTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  segBtn: { flex: 1, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: '#ffffff', ...shadowCard, elevation: 2 },
+  segTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   segTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
-  refreshed: { fontSize: 11.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.green, textAlign: 'center', marginBottom: 8 },
-  section: { marginTop: 14, marginHorizontal: 16 },
+  refreshed: { textAlign: 'center', fontSize: 12, color: ui.green, fontFamily: fonts.bold, fontWeight: '700', marginBottom: 8 },
+  section: { marginTop: 6, marginBottom: 10, paddingHorizontal: 16 },
+  // compact rows (upcoming / recently closed)
   compactCard: {
-    marginHorizontal: 16, marginBottom: 12, backgroundColor: '#ffffff', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 4,
-    ...shadowCard,
+    backgroundColor: '#ffffff', borderRadius: 20, marginHorizontal: 16,
+    paddingHorizontal: 14, paddingVertical: 4, ...shadowCard,
   },
-  compactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  compactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   compactDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
   compactName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, letterSpacing: 0.2 },
-  compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
-  compactPrice: { fontSize: 13, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  gain: { fontSize: 13, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  compactPrice: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
+  gain: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', marginTop: 1, fontVariant: ['tabular-nums'] },
 });
