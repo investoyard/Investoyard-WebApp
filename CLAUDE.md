@@ -35,7 +35,8 @@ iisnode locks `dist` + the Prisma engine DLL while the pool runs. **User** stops
 - **Allotment imports** (admin): registrar allottee files (DBF/XLSB/XLSX/CSV, ≤100 MB; IIS limit raised to 200 MB in `apps/api/web.config`) per IPO — parsed in a **spawned worker process** (a 1M-row XLSB needs ~3 GB heap / 25 s; NEVER parse in the iisnode event loop), batch-inserted into `AllotmentRecord` (raw PAN by operator decision — admin-only data), auto-matches OUR applications by PAN → status + registrar rejection reason (`Application.allotmentReason`) through the standard recordAllotment path. **Allotment List** search: partial PAN + amount with `>/</=`. DB size bounded by **archive-then-purge**: gz NDJSON on disk, one-click restore, auto-sweep 60 days after listing. Public `/allotment` checker answers ANY PAN from registrar rows when we hold no in-house application.
 - **Day-wise trends**: admin GMP saves append `extra.gmpLog`; subscription poller appends `extra.subLog`. `enrich()` shows REAL data or nothing for live rows — synthesized series are seed/demo-only.
 - **Live-slug contract** (static export): dynamic pages need a `/X/live` client fallback + IIS rewrite in `apps/web/public/web.config` — exists for `ipos`, `apply`, `print`, `news`.
-- Mobile mirrors the apply/print flows (BidControls, /print screen, expo-file-system+sharing downloads) — **but Phase 1/2 web features (hubs/strips/chips) are NOT yet on mobile**.
+- **Mobile (Expo)**: apply/print flows + **5 tabs** — Home · **Insights** · Applications · Profiles · Account. Insights = allotment checker (any PAN) + GMP / Live Subscription / Listing Performance / News / Glossary / Calendar. Home is cards-first (no hero/greeting): slim header with **Live Subscription** pill, inline **search**, calendar (gold dot when today has events), alerts. Cards/detail/hubs render day-wise trends, anchors, DRHP-RHP links, reminder bells; News carries the banner carousel; Account links the web trust pages.
+- **Stage engine** (`apps/mobile/lib/ipoStage.ts`): ONE source for status label/tone, which panels a stage offers, and its CTA — upcoming→Remind Me · pre-apply→Pre Apply · live→Apply Now · awaiting/allotment-out→Check Allotment · listed→IPO Performance. Card stat grid swaps **Min Application → Subscribed** after close; detail-page sections reorder by stage.
 
 ## Commands (from repo root)
 ```
@@ -51,7 +52,11 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 ## Conventions
 - **Design = "calm & data-clear"** (Apple discipline + functional financial color). Neutral base, hairline borders, indigo on CTAs; **semantic green/red only for financial signals**. Listed chip = light purple; Print Forms CTA = light red `#fdebea`/`#b3372e`. **Never copy competitor UI** (IPOJI/IPOGuru studied for features, not looks).
 - Reusable admin UI lives in `apps/web/components/ui` — incl. **SearchSelect** (type-to-filter combobox; list renders via portal because admin `.card` is `overflow:hidden`), **Toast** (top-right toasts), `.filter-row` (aligns filter fields + buttons; `.field` carries an 18px bottom margin).
-- **One type contract** — shared types AND the bid engine live in `packages/shared-types`.
+- **One type contract** — shared types, the bid engine, the glossary AND `format.ts` (`titleCase()`, the `LABEL` vocabulary, `demandWord`) live in `packages/shared-types`. Web and mobile IMPORT these; never re-implement locally.
+- **Web ≠ mobile by design**: web is the research + SEO surface (density, tables, full detail, trust signals, conversion for anonymous visitors); mobile is the task surface (speed, one CTA per stage). What must stay identical: vocabulary, status wording, Title-Case names, semantic colours, the GMP disclaimer.
+- **Vocabulary** (customer-facing): Offer Price · Lot Size · Min Application · Issue Size · Lot Details · Reservation · Key Dates · Subscribed · Allotment Status · Listing Performance · Opening Soon. Statuses: Opens in Nd · Pre Apply · Open Today · Live · Closing Today · **Awaiting Allotment** · **Allotment Out** · Listed. SEO meta copy deliberately keeps "price band" — that's the search term.
+- **IPO names** are ALL CAPS from registrars → always render through `titleCase()` (keeps HDFC/SBI/NTPC, fixes honorifics, handles 5Paisa).
+- Web IPO list has **two layouts**: `IpoCompareTable` (sortable, default ≥1024px) and the card grid (default below); user's choice persists in `localStorage`.
 - **i18n** — `packages/i18n` en+hi (front-site feature pages are currently EN-literal; hindi pass pending).
 - Round-based workflow: build → deploy → user verifies → "commit all". PowerShell 5.1: no `&&`, no embedded `"` in git -m (use quote-free here-strings).
 
@@ -66,10 +71,11 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 - NSE adapter: verified WEB API v1.20.5; BSE iBBS: guarded template (domestic doc still needed). Docs at `D:\Claude\IPO Application\`; member creds in admin Exchange Rails (subscription polling always uses the operator's own member; bidding routes by the IPO's active online-series member).
 
 ## Open items
-- **Sir's decision pending**: Buyback + OFS modules & new IPO fields (see the field-list doc from 2026-08-20 session).
-- **Untested**: partner-API end-to-end (needs a key), MANIPAL blank on a live IPO, WhatsApp channel URL not yet configured, mobile walk-through.
-- **Mobile catch-up** of Phase 1–3 web features; EAS Android build (needs Expo account + icon).
-- Human actions: counsel sign-offs (incl. Terms/Disclaimer drafts), NSE UAT creds, domestic BSE iBBS doc, native Hindi review.
+- **Sir's decision pending**: Buyback + OFS modules & new IPO fields (see the field-list doc from the 2026-08-20 session).
+- **Historical data**: two Excel deliverables on the operator's Desktop — a blank template and a **pre-filled skeleton** (2,267 IPOs 2010→today, 2,177 financial rows, 242 buybacks 2020+; OFS + 2015-19 buybacks need manual entry). Awaiting the data person; then build the **importer** that reads those sheets into the catalog.
+- **Untested**: registrar upload end-to-end (ALTREJ.DBF / MOLBIO XLSB + one archive→restore cycle), partner-API end-to-end (needs a key), MANIPAL blank on a live IPO, WhatsApp channel URL not yet configured, reminders/bells, first news post, mobile device walk-through.
+- EAS Android build (needs Expo account + icon); native Hindi pass on the newer mobile screens.
+- Human actions: counsel sign-offs (Terms/Disclaimer drafts, consent wording, the raw-PAN allotment store), NSE UAT creds, domestic BSE iBBS doc, native Hindi review.
 
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.
