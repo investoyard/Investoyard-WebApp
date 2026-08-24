@@ -6,6 +6,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
 import { useTenant } from '@/components/TenantProvider';
+import { titleCase } from '@investoyard/shared-types';
 
 /**
  * Live navigation — the menu is itself an instrument ("data in the nav"):
@@ -128,7 +129,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             <div className="nv-ipo" key={ipo.id}>
               <a className="nv-ipomain" href={`/ipos/${ipo.symbol}`}>
                 <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={28} />
-                <span className="nv-iponame" title={ipo.name}>{ipo.name}</span>
+                <span className="nv-iponame" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</span>
                 <span className={`ic-status ${c.cls}`}>{c.pulse && <span className="pd" />}{c.label}</span>
               </a>
               {canApply && <a className="nv-mini" href={`/apply/${ipo.symbol}${q}`}>Apply</a>}

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoFull } from '@/lib/api';
 import { checkAllotment, type AllotmentCheck } from '@/lib/consumer-api';
 import { Icon } from '@/components/Icon';
+import { titleCase } from '@investoyard/shared-types';
 
 /**
  * Allotment checker — "Did you get the shares?" Registrar-style lookup:
@@ -57,7 +58,7 @@ export function AllotmentChecker({ ipos: baked, compact = false }: { ipos?: IpoF
         <select className="input ac-sel" value={ipoId} onChange={(e) => { setIpoId(e.target.value); setRes(null); }} aria-label="Select IPO">
           {options.length === 0 && <option value="">No allotments to check yet</option>}
           {options.map((i) => (
-            <option key={(i as any).id} value={(i as any).id}>{i.symbol} — {i.name}</option>
+            <option key={(i as any).id} value={(i as any).id}>{i.symbol} — {titleCase(i.name)}</option>
           ))}
         </select>
         <input

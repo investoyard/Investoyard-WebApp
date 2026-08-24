@@ -5,6 +5,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { inr, priceBand } from '@/lib/format';
 import { Lang } from '@investoyard/i18n';
+import { titleCase } from '@investoyard/shared-types';
 
 /**
  * Compact dynamic homepage banner — replaces the tall static hero.
@@ -135,7 +136,7 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
                 <div className="hb-iporow">
                   <IpoLogo logo={ipo.logo} name={ipo.name} size={46} />
                   <div style={{ minWidth: 0 }}>
-                    <div className="hb-name" title={ipo.name}>{ipo.name}</div>
+                    <div className="hb-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</div>
                     <div className="hb-meta">
                       {ipo.type === 'sme' ? 'SME' : 'Mainboard'} · {priceBand(ipo.priceBandMin, ipo.priceBandMax)}
                       {ipo.lotSize ? <> · Lot {ipo.lotSize}</> : null}

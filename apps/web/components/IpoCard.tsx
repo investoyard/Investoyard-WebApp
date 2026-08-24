@@ -10,6 +10,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
+import { LABEL, titleCase } from '@investoyard/shared-types';
 
 type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -76,8 +77,8 @@ export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: 
   if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: 'closed' };
   if (ipo.status === 'closed') {
     const ad = daysFromToday(ipo.allotmentDate);
-    if (ad != null && ad <= 0) return { label: 'Allotment out', cls: 'allot' };
-    return { label: 'Closed', cls: 'closed' };
+    if (ad != null && ad <= 0) return { label: 'Allotment Out', cls: 'allot' };
+    return { label: 'Awaiting Allotment', cls: 'closed' };
   }
   if (ipo.status === 'open') {
     if (ipo.closeDate === today) return { label: 'Closing today', cls: 'closing', pulse: true };
@@ -129,7 +130,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
   const listedP = Number(String(exL.nseListingPrice || exL.bseListingPrice || '').replace(/[^\d.]/g, '')) || 0;
   const listedGain = ipo.listingGainPct ?? (isListed && listedP && issueP ? Math.round(((listedP - issueP) / issueP) * 1000) / 10 : undefined);
   const topics: { key: Topic; label: React.ReactNode }[] = [
-    { key: 'reservation', label: 'Reserve' },
+    { key: 'reservation', label: LABEL.reservation },
     { key: 'lot', label: 'Lots' },
     // Listed cards drop Timeline (historical by then) so the chip row stays on
     // ONE line and card heights match across the grid.
@@ -151,7 +152,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-top">
         <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
         <div className="grow">
-          <a className="ic-name" href={detailHref} title={ipo.name}>{ipo.name}</a>
+          <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>{titleCase(ipo.name)}</a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             {(() => { const c = statusChip(ipo); return (
@@ -176,10 +177,10 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       )}
 
       <div className="ic-specs">
-        <div><span className="k">Price band</span><span className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span></div>
-        <div className="hi"><span className="k">Lot size</span><span className="v mono">{ipo.lotSize ?? '—'}</span></div>
-        <div className="hi"><span className="k">Min invest</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
-        <div><span className="k">Issue size</span><span className="v mono">{ipo.issueSize ?? '—'}</span></div>
+        <div><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span></div>
+        <div className="hi"><span className="k">{LABEL.lotSize}</span><span className="v mono">{ipo.lotSize ?? '—'}</span></div>
+        <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
+        <div><span className="k">{LABEL.issueSize}</span><span className="v mono">{ipo.issueSize ?? '—'}</span></div>
       </div>
 
       <div className="ic-topics">
@@ -192,17 +193,21 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       {open && <TopicPanel k={open} ipo={ipo} tr={tr} />}
 
       <div className="ic-foot">
-        {canApply && <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={16} /></a>}
+        {canApply && (
+          <a className="btn ic-apply" href={`/apply/${ipo.symbol}${q}`}>
+            {ipo.status === 'upcoming' ? LABEL.preApply : LABEL.applyNow} <Icon name="arrow-right" size={16} />
+          </a>
+        )}
         {canPrint && (
           // soft light-red CTA — distinct from Apply's indigo
           <a className="btn ic-apply btn-pdf" href={`/print/${ipo.symbol}${q}`}>
-            Print Forms <Icon name="file-pdf" size={15} />
+            {LABEL.printForms} <Icon name="file-pdf" size={15} />
           </a>
         )}
         {!canApply && !canPrint && (
           statusChip(ipo).cls === 'allot'
             // allotment is out → the card's job changes: help the user check it
-            ? <a className="btn ic-apply btn-allot" href={`/portfolio${q}`}>Check allotment <Icon name="arrow-right" size={15} /></a>
+            ? <a className="btn ic-apply btn-allot" href={`/allotment${q}`}>{LABEL.checkAllotment} <Icon name="arrow-right" size={15} /></a>
             : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>
         )}
         <span style={{ flex: 1 }} />

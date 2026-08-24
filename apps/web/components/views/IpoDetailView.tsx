@@ -12,6 +12,7 @@ import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
+import { LABEL, titleCase } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -82,7 +83,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
       <div className={`detail-hero st-${ipo.status}`}>
         <IpoLogo logo={ipo.logo} name={ipo.name} size={60} />
         <div className="grow">
-          <h1 style={{ margin: 0 }}>{ipo.name}</h1>
+          <h1 style={{ margin: 0 }}>{titleCase(ipo.name)}</h1>
           <div className="ic-meta" style={{ marginTop: 8 }}>
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
@@ -95,14 +96,14 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
 
       <div className="detail-layout" style={{ marginTop: 24 }}>
         <div>
-          <SectionTabs items={tabs} title={ipo.name} logo={ipo.logo} status={ipo.status} statusLabel={tr(`status.${ipo.status}`)} autoFocusId={ipo.status === 'open' && ipo.subscription ? 'subscription' : undefined} />
+          <SectionTabs items={tabs} title={titleCase(ipo.name)} logo={ipo.logo} status={ipo.status} statusLabel={tr(`status.${ipo.status}`)} autoFocusId={ipo.status === 'open' && ipo.subscription ? 'subscription' : undefined} />
 
           <section id="overview">
             <div className="metrics">
-              <div className="metric hl"><div className="k">Price band</div><div className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</div></div>
+              <div className="metric hl"><div className="k">{LABEL.offerPrice}</div><div className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</div></div>
               <div className="metric"><div className="k">Bid lot</div><div className="v mono">{ipo.lotSize ?? '—'}</div></div>
-              <div className="metric hl"><div className="k">Min investment</div><div className="v mono">{inr(ipo.minAmount)}</div></div>
-              <div className="metric"><div className="k">Issue size</div><div className="v mono">{ipo.issueSize ?? '—'}</div></div>
+              <div className="metric hl"><div className="k">{LABEL.minApplication}</div><div className="v mono">{inr(ipo.minAmount)}</div></div>
+              <div className="metric"><div className="k">{LABEL.issueSize}</div><div className="v mono">{ipo.issueSize ?? '—'}</div></div>
             </div>
 
             {/* Listing performance — only once the issue is listed */}

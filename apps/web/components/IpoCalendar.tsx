@@ -10,6 +10,7 @@ import { getIpos, type IpoFull } from '@/lib/api';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { RemindButton } from '@/components/RemindButton';
+import { titleCase } from '@investoyard/shared-types';
 
 type Tone = 'open' | 'close' | 'allot' | 'list';
 interface Ev { date: string; label: string; tone: Tone; ipo: IpoFull }
@@ -105,7 +106,7 @@ export function IpoCalendar() {
     <a className="cal-evrow" href={`/ipos/${e.ipo.symbol}`}>
       <IpoLogo logo={e.ipo.logo} name={e.ipo.name} size={36} />
       <span className="grow">
-        <span className="cal-ev-name" title={e.ipo.name}>{e.ipo.name}</span>
+        <span className="cal-ev-name" title={titleCase(e.ipo.name)}>{titleCase(e.ipo.name)}</span>
         <span className="cal-ev-sym">{e.ipo.symbol} · {e.ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
       </span>
       <span className={`cal-ev-tag t-${e.tone}`}>{e.label}</span>

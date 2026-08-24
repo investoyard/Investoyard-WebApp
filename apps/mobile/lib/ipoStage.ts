@@ -138,14 +138,8 @@ export function stageOf(ipo: IpoFull): StageInfo {
   };
 }
 
-/** Demand in plain words, calibrated per board (SME runs an order hotter). */
-export function demandWord(subX: number, sme: boolean): string {
-  const th = sme ? [1, 10, 50] : [1, 3, 10];
-  if (subX < th[0]) return 'Building up';
-  if (subX < th[1]) return 'Steady demand';
-  if (subX < th[2]) return 'Strong demand';
-  return 'Exceptional demand';
-}
+/** Demand in plain words — shared with web so both surfaces phrase it alike. */
+export { demandWord } from '@investoyard/shared-types';
 
 /** Expected listing gain implied by the grey-market premium (arithmetic, not a forecast). */
 export function gmpGainPct(ipo: IpoFull): number | null {

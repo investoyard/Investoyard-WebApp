@@ -4,6 +4,7 @@ import { getIpos, type IpoFull } from '@/lib/api';
 import { subscriptionTable } from '@/lib/ipoCalc';
 import { IpoLogo } from '@/components/IpoLogo';
 import { demandLabel } from '@/components/IpoCard';
+import { titleCase } from '@investoyard/shared-types';
 
 /**
  * Live subscription hub — who's bidding, right now. One instrument panel per
@@ -71,7 +72,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
                 <a className="sh-ipo" href={`/ipos/${ipo.symbol}`}>
                   <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={38} />
                   <span className="gh-name-wrap">
-                    <span className="gh-name" title={ipo.name}>{ipo.name}</span>
+                    <span className="gh-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</span>
                     <span className="gh-meta">{ipo.type === 'sme' ? 'SME' : 'Mainboard'} · closes {ipo.closeDate ? new Date(`${ipo.closeDate}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</span>
                   </span>
                 </a>
@@ -109,7 +110,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
                   <span className="gh-ipo">
                     <IpoLogo logo={(i as any).logo} name={i.name} size={30} />
                     <span className="gh-name-wrap">
-                      <span className="gh-name" title={i.name}>{i.name}</span>
+                      <span className="gh-name" title={titleCase(i.name)}>{titleCase(i.name)}</span>
                       <span className="gh-meta">{i.type === 'sme' ? 'SME' : 'Mainboard'} · {i.status === 'listed' ? 'Listed' : 'Closed'}</span>
                     </span>
                   </span>

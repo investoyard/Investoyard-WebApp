@@ -5,6 +5,7 @@ import { Icon } from '@/components/Icon';
 import { RemindButton } from '@/components/RemindButton';
 import { inr } from '@/lib/format';
 import { makeT, Lang } from '@investoyard/i18n';
+import { LABEL } from '@investoyard/shared-types';
 
 function WatchButton({ symbol }: { symbol: string }) {
   const watched = useStore((s) => s.watchlist.includes(symbol));
@@ -60,7 +61,7 @@ export function ApplyPanel({
       {status === 'open' && subscribedX != null && (
         <div className="sub-live-line"><span className="live-dot" />{subscribedX}× subscribed <small>· live</small></div>
       )}
-      <div className="kv" style={{ marginTop: 8 }}><span className="k">Price band</span><span className="v mono">{priceLabel}</span></div>
+      <div className="kv" style={{ marginTop: 8 }}><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceLabel}</span></div>
 
       {canApply && lot > 0 ? (
         <>

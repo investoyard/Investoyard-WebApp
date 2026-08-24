@@ -2,9 +2,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoListItem } from '@/lib/api';
 import { IpoCard } from '@/components/IpoCard';
+import { IpoCompareTable } from '@/components/IpoCompareTable';
 import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
+
+const VIEW_KEY = 'investoyard.ipoView';
 
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed'; // 'closed' = post-close phase (closed + listed)
@@ -24,6 +27,9 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
   // IPOs added after the last build would be missing. The browser refetches on mount
   // and replaces the baked-in list whenever the live call returns data.
   const [live, setLive] = useState<IpoListItem[] | null>(null);
+  // Desktop defaults to the comparison TABLE (the view a researcher wants and a
+  // phone can't give); narrow screens always get cards. Choice is remembered.
+  const [view, setView] = useState<'cards' | 'table'>('cards');
   useEffect(() => {
     getIpos().then((r) => { if (Array.isArray(r) && r.length) setLive(r); }).catch(() => { /* keep the baked-in list */ });
     // deep-linkable filters (?f=open|upcoming|closed & ?board=mainboard|sme) — used by the nav's IPO panel
@@ -31,7 +37,14 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
     const f = p.get('f'); const b = p.get('board');
     if (f === 'open' || f === 'upcoming' || f === 'closed') setStatus(f);
     if (b === 'mainboard' || b === 'sme') setType(b);
+    const saved = (() => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } })();
+    if (saved === 'cards' || saved === 'table') setView(saved);
+    else if (window.matchMedia('(min-width: 1024px)').matches) setView('table');
   }, []);
+  const pickView = (v: 'cards' | 'table') => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode — session-only */ }
+  };
   const ipos = live ?? initial;
 
   const statusTabs: { key: StatusFilter; label: string }[] = [
@@ -74,6 +87,15 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
           <Icon name="search" size={16} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search company or symbol…" aria-label="Search IPOs" />
         </div>
+        {/* view switch — desktop only (cards are the only sensible phone layout) */}
+        <div className="viewseg" role="group" aria-label="Layout">
+          <button type="button" className={view === 'table' ? 'on' : ''} onClick={() => pickView('table')} aria-pressed={view === 'table'}>
+            <Icon name="list" size={15} /> Table
+          </button>
+          <button type="button" className={view === 'cards' ? 'on' : ''} onClick={() => pickView('cards')} aria-pressed={view === 'cards'}>
+            <Icon name="layers" size={15} /> Cards
+          </button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -82,6 +104,8 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
           <h3>No IPOs match</h3>
           <p className="muted">Try clearing the search or switching filters.</p>
         </div>
+      ) : view === 'table' ? (
+        <IpoCompareTable ipos={filtered as any} lang={lang} />
       ) : (
         <div className="ipo-list">
           {filtered.map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}

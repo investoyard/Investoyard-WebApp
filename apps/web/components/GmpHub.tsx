@@ -5,6 +5,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { GmpNotice } from '@/components/GmpNotice';
 import { useTenant } from '@/components/TenantProvider';
 import { priceBand } from '@/lib/format';
+import { LABEL, titleCase } from '@investoyard/shared-types';
 
 /**
  * GMP hub — every IPO's grey-market premium on one calm page: ₹ premium,
@@ -82,7 +83,7 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
       <div className="panel gh-table">
         <div className="gh-row gh-thead">
           <span>IPO</span>
-          <span className="gh-col">Price band</span>
+          <span className="gh-col">{LABEL.offerPrice}</span>
           <span className="gh-col">GMP</span>
           <span className="gh-col">Over band</span>
           <span className="gh-col">Est. listing</span>
@@ -94,7 +95,7 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
             <span className="gh-ipo">
               <IpoLogo logo={(i as any).logo} name={i.name} size={32} />
               <span className="gh-name-wrap">
-                <span className="gh-name" title={i.name}>{i.name}</span>
+                <span className="gh-name" title={titleCase(i.name)}>{titleCase(i.name)}</span>
                 <span className="gh-meta">{i.type === 'sme' ? 'SME' : 'Mainboard'} · {statusWord(i.status)}</span>
               </span>
             </span>

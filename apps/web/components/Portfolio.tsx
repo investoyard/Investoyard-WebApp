@@ -8,6 +8,7 @@ import { Icon } from '@/components/Icon';
 import { useStore, store, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
 import { getConsumerToken, listApplications, type ApiApplication } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
+import { titleCase } from '@investoyard/shared-types';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
 
@@ -295,7 +296,7 @@ export function Portfolio() {
                     <div className="row" style={{ gap: 13, flexWrap: 'nowrap' }}>
                       <CompanyMark name={ipo.name} symbol={sym} size="md" />
                       <div>
-                        <a className="linklike" href={`/ipos/${sym}${q}`}><h3>{ipo.name}</h3></a>
+                        <a className="linklike" href={`/ipos/${sym}${q}`}><h3>{titleCase(ipo.name)}</h3></a>
                         <div className="meta" style={{ marginTop: 5 }}>
                           <span className="chip">{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
                           <span className="muted mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span>
