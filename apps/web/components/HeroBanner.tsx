@@ -5,7 +5,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { inr, priceBand } from '@/lib/format';
 import { Lang } from '@investoyard/i18n';
-import { titleCase } from '@investoyard/shared-types';
+import { LABEL, demandWord, titleCase } from '@investoyard/shared-types';
 
 /**
  * Compact dynamic homepage banner — replaces the tall static hero.
@@ -36,6 +36,52 @@ function slideTag(ipo: IpoFull): { label: string; cls: string } {
 
 const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
   ? new Date(`${s}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—');
+
+/**
+ * Live countdown to the close of bidding (3pm cut-off on the closing day).
+ * Starts null so the static export and the first client render agree, then
+ * ticks every second — the urgency device on a "Closing today" slide.
+ */
+function useCountdown(closeDate?: string): string | null {
+  const [left, setLeft] = useState<string | null>(null);
+  useEffect(() => {
+    if (!closeDate || !/^\d{4}-\d{2}-\d{2}$/.test(closeDate)) return;
+    const end = new Date(`${closeDate}T15:00:00`).getTime(); // exchange cut-off
+    const tick = () => {
+      const ms = end - Date.now();
+      if (ms <= 0) { setLeft(null); return; }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1000);
+      setLeft(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [closeDate]);
+  return left;
+}
+
+/** The one figure that anchors an IPO slide, chosen by what the stage makes matter. */
+function heroFigure(ipo: IpoFull): { k: string; v: string; sub?: string; tone: 'gold' | 'pos' | 'neg' | 'plain' } | null {
+  const band = ipo.priceBandMax ?? ipo.priceBandMin;
+  if (ipo.gmp != null && band) {
+    const pct = ipo.gmpPct ?? Math.round((ipo.gmp / band) * 1000) / 10;
+    return {
+      k: 'Grey Market Premium',
+      v: `${ipo.gmp >= 0 ? '+' : '−'}₹${Math.abs(ipo.gmp)}`,
+      sub: `${pct >= 0 ? '+' : ''}${pct}% est. gain`,
+      tone: ipo.gmp >= 0 ? 'pos' : 'neg',
+    };
+  }
+  if (ipo.subscriptionTimes != null) {
+    return { k: 'Subscribed', v: `${ipo.subscriptionTimes}×`, sub: demandWord(ipo.subscriptionTimes, ipo.type === 'sme'), tone: 'gold' };
+  }
+  if (ipo.minAmount != null) {
+    return { k: LABEL.minApplication, v: inr(ipo.minAmount), sub: ipo.lotSize ? `${ipo.lotSize} shares / lot` : undefined, tone: 'plain' };
+  }
+  return null;
+}
 
 export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang?: Lang }) {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
@@ -126,40 +172,7 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
         ))}
 
         {/* auto-generated IPO slides */}
-        {featured.map((ipo, i) => {
-          const tag = slideTag(ipo);
-          const canApply = (ipo as any).extra?.startBid === true;
-          const canPrint = (ipo as any).extra?.startPrint === true;
-          return (
-            <div className={`hb-slide ipo v${i % 3}`} key={ipo.id}>
-              <div className="hb-main">
-                <div className="hb-iporow">
-                  <IpoLogo logo={ipo.logo} name={ipo.name} size={46} />
-                  <div style={{ minWidth: 0 }}>
-                    <div className="hb-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</div>
-                    <div className="hb-meta">
-                      {ipo.type === 'sme' ? 'SME' : 'Mainboard'} · {priceBand(ipo.priceBandMin, ipo.priceBandMax)}
-                      {ipo.lotSize ? <> · Lot {ipo.lotSize}</> : null}
-                      {ipo.minAmount ? <> · Min {inr(ipo.minAmount)}</> : null}
-                    </div>
-                  </div>
-                  <span className={`hb-tag ${tag.cls}`}>{tag.label}</span>
-                </div>
-                <div className="hb-sub">
-                  <Icon name="calendar" size={13} /> {fmtD(ipo.openDate)} – {fmtD(ipo.closeDate)}
-                  {ipo.status === 'open' && ipo.subscriptionTimes != null && (
-                    <span className="hb-subx"><span className="live-dot" /> {ipo.subscriptionTimes}× subscribed</span>
-                  )}
-                </div>
-              </div>
-              <div className="hb-ctas">
-                {canApply && <a className="btn btn-white" href={`/apply/${ipo.symbol}${q}`}>Apply now <Icon name="arrow-right" size={15} /></a>}
-                {canPrint && <a className="btn btn-pdf" href={`/print/${ipo.symbol}${q}`}>Print Forms <Icon name="file-pdf" size={14} /></a>}
-                {!canApply && !canPrint && <a className="btn btn-ondark" href={`/ipos/${ipo.symbol}${q}`}>View details</a>}
-              </div>
-            </div>
-          );
-        })}
+        {featured.map((ipo) => <IpoSlide key={ipo.id} ipo={ipo} q={q} />)}
       </div>
 
       {slideCount > 1 && (
@@ -179,5 +192,96 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * One IPO slide — identity and actions on the left, a LIVE PANEL on the right
+ * carrying the figures a visitor actually came for (GMP with implied gain,
+ * subscription, and a ticking countdown on the closing day). Depth comes from
+ * the company logo bled off the right edge as a watermark plus a gold aurora,
+ * and the accent colour follows the stage so slides don't all read alike.
+ */
+function IpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
+  const tag = slideTag(ipo);
+  const canApply = (ipo as any).extra?.startBid === true;
+  const canPrint = (ipo as any).extra?.startPrint === true;
+  const hero = heroFigure(ipo);
+  const closing = tag.cls === 'closing';
+  const countdown = useCountdown(closing ? ipo.closeDate : undefined);
+  const subX = ipo.subscriptionTimes;
+
+  return (
+    <div className={`hb-slide ipo acc-${tag.cls}`}>
+      {/* depth: aurora wash + the company mark bleeding off the right edge */}
+      <span className="hb-aurora" aria-hidden />
+      {ipo.logo && <img className="hb-watermark" src={ipo.logo} alt="" aria-hidden />}
+
+      <div className="hb-main">
+        <div className="hb-iporow">
+          <IpoLogo logo={ipo.logo} name={ipo.name} size={46} />
+          <div style={{ minWidth: 0 }}>
+            <div className="hb-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</div>
+            <div className="hb-meta">
+              <span className={`hb-board ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
+              {ipo.symbol}
+            </div>
+          </div>
+          <span className={`hb-tag ${tag.cls}`}>{closing && <span className="hb-pulse" />}{tag.label}</span>
+        </div>
+
+        {/* the decision numbers, in the product's vocabulary */}
+        <div className="hb-specs">
+          <span><i>{LABEL.offerPrice}</i>{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span>
+          <span><i>{LABEL.lotSize}</i>{ipo.lotSize ?? '—'}</span>
+          <span><i>{LABEL.minApplication}</i>{inr(ipo.minAmount)}</span>
+          <span><i>{LABEL.issueSize}</i>{ipo.issueSize ?? '—'}</span>
+        </div>
+
+        <div className="hb-sub">
+          <Icon name="calendar" size={13} /> {fmtD(ipo.openDate)} – {fmtD(ipo.closeDate)}
+        </div>
+
+        <div className="hb-ctas">
+          {canApply && (
+            <a className="btn btn-gold" href={`/apply/${ipo.symbol}${q}`}>
+              {ipo.status === 'upcoming' ? LABEL.preApply : LABEL.applyNow} <Icon name="arrow-right" size={15} />
+            </a>
+          )}
+          {canPrint && <a className="btn btn-ondark" href={`/print/${ipo.symbol}${q}`}>{LABEL.printForms} <Icon name="file-pdf" size={14} /></a>}
+          {!canApply && !canPrint && <a className="btn btn-white" href={`/ipos/${ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
+        </div>
+      </div>
+
+      {/* ── live panel: the hero figure + supporting tiles ── */}
+      {(hero || subX != null || countdown) && (
+        <div className="hb-live">
+          {hero && (
+            <div className={`hb-hero t-${hero.tone}`}>
+              <span className="k">{hero.k}</span>
+              <span className="v">{hero.v}</span>
+              {hero.sub && <span className="s">{hero.sub}</span>}
+            </div>
+          )}
+          <div className="hb-tiles">
+            {subX != null && hero?.k !== 'Subscribed' && (
+              <div className="hb-tile">
+                <span className="k">{LABEL.subscribed}</span>
+                <span className="v">{subX}×</span>
+                <span className="bar"><i style={{ width: `${Math.max(8, Math.min(100, (subX / 15) * 100))}%` }} /></span>
+              </div>
+            )}
+            {countdown && (
+              <div className="hb-tile urgent">
+                <span className="k">Closes in</span>
+                <span className="v mono">{countdown}</span>
+                <span className="s">today, 3:00 pm</span>
+              </div>
+            )}
+          </div>
+          {ipo.gmp != null && <span className="hb-disc">GMP is unofficial · not investment advice</span>}
+        </div>
+      )}
+    </div>
   );
 }

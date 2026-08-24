@@ -303,6 +303,7 @@ export interface AdminIpo {
   registrar?: string; gmp?: number; reservations?: string[];
   logoUrl?: string;
   autoPollSubscription?: boolean;
+  hidden?: boolean; // bulk-imported, not yet published to the public site
   extra?: Record<string, any>; // operator-extended fields (categoryName, issueType, …)
 }
 export interface IpoDoc { type: string; url: string; summary?: string }
@@ -579,3 +580,47 @@ export const archiveAllotment = (ipoId: string) =>
   authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
 export const restoreAllotment = (ipoId: string) =>
   authed<{ restored: number }>(`${API}/admin/allotment/restore/${ipoId}`, { method: 'POST' });
+
+/* -------------------------------------------------- admin: IPO catalog import (Excel) */
+export interface IpoImportPreview {
+  id: string; fileName: string; createdAt: string;
+  counts: {
+    parsed: number; toCreate: number; skippedExisting: number; invalid: number;
+    financials: number; anchors: number; peers: number; buybacks: number; ofs: number;
+  };
+  sample: { row: number; symbol: string; name: string; type: string; openDate?: string; issueSizeCr?: number }[];
+  skipped: { row: number; symbol: string; reason: string }[];
+  invalid: { row: number; symbol?: string; errors: string[] }[];
+  parked: string[];
+}
+
+/** Upload the filled data-entry workbook. Validates only - nothing is written yet. */
+export function uploadIpoWorkbook(file: File, onProgress?: (pct: number) => void): Promise<IpoImportPreview> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API}/admin/ipo-import`);
+    xhr.setRequestHeader('Authorization', `Bearer ${getOperatorToken()}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let body: any = {};
+      try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* non-JSON error page */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+      else reject(new Error(Array.isArray(body?.message) ? body.message.join(', ') : body?.message || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Upload failed - network error.'));
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.send(fd);
+  });
+}
+export const commitIpoImport = (id: string) =>
+  authed<{ created: number; financials: number; anchors: number; peers: number }>(
+    `${API}/admin/ipo-import/commit/${id}`, { method: 'POST' });
+export const fetchIpoImportPending = () =>
+  authed<{ catalogOnly: number }>(`${API}/admin/ipo-import/pending`, { method: 'GET' });
+export const publishImportedIpos = (symbols: string[], published = true) =>
+  authed<{ updated: number }>(`${API}/admin/ipo-import/publish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols, published }),
+  });
+/** Admin catalog view includes bulk-imported rows; the public site never does. */
+export const fetchAllIpos = () => fetch(`${API}/ipos?all=1&limit=2000`).then(j<AdminIpo[]>);

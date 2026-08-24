@@ -1209,8 +1209,58 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .hb { position: relative; overflow: hidden; border-radius: var(--r-2xl); margin: 2px 0 26px; box-shadow: var(--sh-md); }
 .hb-track { display: flex; transition: transform .45s var(--ease); }
 .hb-slide { flex: 0 0 100%; min-width: 0; min-height: 188px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 64px 34px 30px; background: var(--ink-grad); color: #fff; }
-.hb-slide.ipo.v1 { background: linear-gradient(150deg, #2f2465 0%, #3c2e7e 55%, #4a3a95 100%); }
-.hb-slide.ipo.v2 { background: linear-gradient(150deg, #241c4e 0%, #322768 50%, #3c2e7e 100%); }
+.hb-slide.ipo { position: relative; overflow: hidden; background: linear-gradient(135deg, #241c4e 0%, #33276b 45%, #43348c 100%); padding-right: 30px; }
+/* depth 1 — soft aurora wash, tinted by the stage accent */
+.hb-aurora { position: absolute; inset: 0; pointer-events: none; background:
+  radial-gradient(120% 90% at 88% 12%, var(--hb-acc, rgba(255,203,50,.20)) 0%, transparent 58%),
+  radial-gradient(80% 70% at 8% 100%, rgba(124,77,255,.28) 0%, transparent 60%); }
+/* depth 2 — the company mark, huge and quiet, bleeding off the right edge */
+.hb-watermark { position: absolute; right: -34px; top: 50%; transform: translateY(-50%); width: 250px; height: 250px;
+  object-fit: contain; opacity: .07; filter: grayscale(1) brightness(2.4); pointer-events: none; user-select: none; }
+/* stage accents so five slides never read alike */
+.hb-slide.acc-closing { --hb-acc: rgba(255,179,71,.30); }
+.hb-slide.acc-live { --hb-acc: rgba(60,200,130,.24); }
+.hb-slide.acc-soon { --hb-acc: rgba(255,203,50,.18); }
+.hb-slide.ipo > .hb-main, .hb-slide.ipo > .hb-live { position: relative; z-index: 1; }
+
+/* left column — specs strip in the product vocabulary */
+.hb-board { font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border-radius: 5px;
+  padding: 2px 6px; margin-right: 8px; background: rgba(255,255,255,.16); color: #fff; }
+.hb-board.sme { background: var(--gold); color: #4a3600; }
+.hb-specs { display: flex; flex-wrap: wrap; gap: 8px 26px; margin-top: 15px; font-size: 14.5px; font-weight: 650;
+  color: #fff; font-variant-numeric: tabular-nums; }
+.hb-specs span { display: flex; flex-direction: column; gap: 2px; }
+.hb-specs i { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.hb-slide.ipo .hb-ctas { flex-direction: row; flex-wrap: wrap; margin-top: 16px; }
+.hb-tag .hb-pulse { width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 6px;
+  display: inline-block; animation: ic-pulse 1.5s var(--ease) infinite; }
+
+/* ── right column — the live panel (fills what used to be dead space) ── */
+.hb-live { flex: 0 0 264px; display: flex; flex-direction: column; gap: 10px; }
+.hb-hero { display: flex; flex-direction: column; border-radius: var(--r); padding: 13px 16px;
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(3px); }
+.hb-hero .k { font-size: 9.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+.hb-hero .v { font-family: var(--font-display); font-size: clamp(30px, 4vw, 42px); font-weight: 700; letter-spacing: -.03em;
+  line-height: 1.05; margin-top: 5px; font-variant-numeric: tabular-nums; }
+.hb-hero .s { font-size: 12px; font-weight: 650; margin-top: 3px; color: rgba(255,255,255,.75); }
+.hb-hero.t-pos .v { color: #6ee7a8; }
+.hb-hero.t-neg .v { color: #ff9d94; }
+.hb-hero.t-gold .v { color: var(--gold); }
+.hb-hero.t-plain .v { color: #fff; }
+.hb-tiles { display: flex; gap: 10px; }
+.hb-tile { flex: 1; min-width: 0; border-radius: var(--r-sm); padding: 9px 12px; background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12); display: flex; flex-direction: column; gap: 3px; }
+.hb-tile .k { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: rgba(255,255,255,.6); }
+.hb-tile .v { font-size: 17px; font-weight: 750; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.hb-tile .s { font-size: 10.5px; color: rgba(255,255,255,.6); }
+.hb-tile .bar { display: block; height: 4px; border-radius: 999px; background: rgba(255,255,255,.18); overflow: hidden; margin-top: 3px; }
+.hb-tile .bar i { display: block; height: 100%; border-radius: 999px; background: var(--gold); }
+.hb-tile.urgent { background: rgba(255,179,71,.16); border-color: rgba(255,179,71,.35); }
+.hb-tile.urgent .v { color: #ffd579; }
+.hb-disc { font-size: 10px; color: rgba(255,255,255,.5); }
+/* gold primary CTA — highest-contrast pairing we own, reserved for the money action */
+.btn-gold { background: var(--gold); color: #4a3600; border: 1px solid transparent; font-weight: 700; }
+.btn-gold:hover { background: #ffd75c; }
 .hb-slide.promo.img { background-size: cover; background-position: center; }
 .hb-main { flex: 1; min-width: 0; }
 .hb-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.75); }
@@ -1241,6 +1291,11 @@ a.ga-row:hover .ga-name { color: var(--brand); }
   .hb-ctas { flex-direction: row; flex-wrap: wrap; }
   .hb-arrow { display: none; } /* swipe on touch */
   .hb-trust { gap: 14px; }
+  /* the live panel stacks under the identity block on narrow screens */
+  .hb-live { flex: 1 1 auto; }
+  .hb-watermark { width: 170px; right: -46px; opacity: .05; }
+  .hb-specs { gap: 8px 18px; font-size: 13.5px; }
+  .hb-hero .v { font-size: 30px; }
 }
 
 /* ------------------------------------------------- IPO CALENDAR (/calendar) */
@@ -2120,6 +2175,8 @@ button.ops-badge { cursor: pointer; transition: box-shadow .12s var(--ease), tra
 button.ops-badge:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent); }
 button.ops-badge:active { transform: translateY(1px); }
 button.ops-badge:disabled { opacity: .5; cursor: wait; }
+/* imported-but-unpublished marker */
+.ops-badge.hid { background: #fdf3d6; color: #7a5a00; }
 
 /* password field with show/hide toggle */
 .pw-wrap { position: relative; display: flex; width: 100%; }

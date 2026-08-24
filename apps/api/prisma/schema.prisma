@@ -515,6 +515,11 @@ model Ipo {
   objectsOfIssue String?
   smeFlags      Json?
   reservations  String[]  @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
+  /// bulk-imported historical rows start hidden — they sit in the catalog for review
+  /// and are excluded from every public read until an operator publishes them.
+  /// A real column, not a JSON flag: `NOT (extra->'k' = true)` is NULL-not-TRUE for
+  /// rows without the key, which silently hides the whole catalog.
+  hidden        Boolean   @default(false)
   autoPollSubscription Boolean @default(true) // admin per-IPO switch for the live NSE subscription poller
   subscriptionAsOf     DateTime?             // last time the poller refreshed this IPO's subscription
   extra         Json?     // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…

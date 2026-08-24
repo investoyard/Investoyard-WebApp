@@ -27,8 +27,8 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
   // IPOs added after the last build would be missing. The browser refetches on mount
   // and replaces the baked-in list whenever the live call returns data.
   const [live, setLive] = useState<IpoListItem[] | null>(null);
-  // Desktop defaults to the comparison TABLE (the view a researcher wants and a
-  // phone can't give); narrow screens always get cards. Choice is remembered.
+  // Cards are the default everywhere (operator decision — the brand layout leads);
+  // the comparison table is one click away on desktop and the choice is remembered.
   const [view, setView] = useState<'cards' | 'table'>('cards');
   useEffect(() => {
     getIpos().then((r) => { if (Array.isArray(r) && r.length) setLive(r); }).catch(() => { /* keep the baked-in list */ });
@@ -39,7 +39,6 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
     if (b === 'mainboard' || b === 'sme') setType(b);
     const saved = (() => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } })();
     if (saved === 'cards' || saved === 'table') setView(saved);
-    else if (window.matchMedia('(min-width: 1024px)').matches) setView('table');
   }, []);
   const pickView = (v: 'cards' | 'table') => {
     setView(v);

@@ -28,8 +28,9 @@ export default function AdminCatalog() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<IpoPhase | 'all'>('all');
 
+  // admin sees EVERYTHING, including bulk-imported rows the public site hides
   const load = useCallback(async () => {
-    try { setIpos(await api.fetchIpos()); setErr(null); }
+    try { setIpos(await api.fetchAllIpos()); setErr(null); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLoading(false); }
   }, []);
@@ -58,6 +59,22 @@ export default function AdminCatalog() {
     } catch (e: any) {
       setOpsLocal(i.id, key, cur);
       toast(`${i.symbol} — ${label} failed: ${String(e?.message ?? e)}`, 'err');
+    } finally { setOpsBusy(null); }
+  };
+
+  // Bulk-imported rows are hidden from the public site until published (one click).
+  const togglePublished = async (i: api.AdminIpo) => {
+    const hidden = i.hidden === true;
+    const patch = (val: boolean | undefined) =>
+      setIpos((list) => list.map((x) => (x.id === i.id ? { ...x, hidden: val } : x)));
+    setOpsBusy(`${i.id}:pub`);
+    patch(hidden ? undefined : true);
+    try {
+      await api.publishImportedIpos([i.symbol], hidden);
+      toast(`${i.symbol} — ${hidden ? 'published to the site' : 'hidden from the site'}`, 'ok');
+    } catch (e: any) {
+      patch(hidden ? true : undefined);
+      toast(`${i.symbol} — ${String(e?.message ?? e)}`, 'err');
     } finally { setOpsBusy(null); }
   };
   // GMP & Listing — quick-entry POPUP (was a separate page). Values load from
@@ -207,6 +224,15 @@ export default function AdminCatalog() {
                     {/* read-only operator-gate indicators (toggles live in IPO Operations) */}
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4 }}>
+                        {i.hidden === true ? (
+                          canManage ? (
+                            <button type="button" className="ops-badge hid" disabled={opsBusy === `${i.id}:pub`}
+                              title="Imported — hidden from the public site. Click to publish."
+                              onClick={() => togglePublished(i)}>H</button>
+                          ) : (
+                            <span className="ops-badge hid" title="Imported — hidden from the public site">H</span>
+                          )
+                        ) : null}
                         {([['startBid', 'B', 'Start Bid'], ['startPrint', 'P', 'Start Printing']] as const).map(([key, ch, label]) => {
                           const on = i.extra?.[key] === true;
                           return canManage ? (

@@ -11,8 +11,21 @@ export class IpoController {
   constructor(private readonly ipo: IpoService) {}
 
   @Get()
-  list(@Query('type') type?: string, @Query('status') status?: string, @Query('q') q?: string) {
-    return this.ipo.list({ type, status, q });
+  list(
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    /** admin surfaces opt IN to the bulk-imported historical rows */
+    @Query('all') all?: string,
+  ) {
+    return this.ipo.list({
+      type, status, q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      includeCatalogOnly: all === '1' || all === 'true',
+    });
   }
 
   // Catalog management — the IPO catalog is global platform data (operator-managed).

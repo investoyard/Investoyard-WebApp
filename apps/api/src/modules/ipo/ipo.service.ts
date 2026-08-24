@@ -53,6 +53,7 @@ function toDetail(ipo: any) {
     })),
     subscriptionAsOf: ipo.subscriptionAsOf ? ipo.subscriptionAsOf.toISOString() : undefined,
     autoPollSubscription: ipo.autoPollSubscription ?? undefined,
+    hidden: ipo.hidden === true ? true : undefined, // imported, not yet published
     documents: (ipo.documents ?? []).map((d: any) => ({ type: d.type, url: d.url })),
     smeCompliance: sme ? { meetsNorms: sme.meetsNorms, ebitdaTest: sme.ebitdaTest, ofsPct: sme.ofsPct, gcpPct: sme.gcpPct } : undefined,
     reservations: ipo.reservations ?? [],
@@ -64,15 +65,25 @@ function toDetail(ipo: any) {
 export class IpoService {
   constructor(private prisma: PrismaService, private rail: RailService, private notifications: NotificationsService) {}
 
-  async list(f: { type?: string; status?: string; q?: string }) {
+  /**
+   * Catalog list. Bulk-imported historical rows carry `extra.catalogOnly` and are
+   * EXCLUDED by default — otherwise thousands of past issues would ship to every
+   * front-site page load and the mobile app. Admin surfaces pass includeCatalogOnly.
+   * `limit` is capped so this endpoint can never return an unbounded payload.
+   */
+  async list(f: { type?: string; status?: string; q?: string; limit?: number; offset?: number; includeCatalogOnly?: boolean }) {
+    const take = Math.min(Math.max(1, f.limit ?? 500), 2000);
     const rows = await this.prisma.ipo.findMany({
       where: {
         type: f.type as any,
         status: f.status as any,
         name: f.q ? { contains: f.q, mode: 'insensitive' } : undefined,
+        ...(f.includeCatalogOnly ? {} : { hidden: false }),
       },
       include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
       orderBy: { closeDate: 'asc' },
+      take,
+      skip: f.offset && f.offset > 0 ? f.offset : undefined,
     });
     return rows.map(toDetail);
   }

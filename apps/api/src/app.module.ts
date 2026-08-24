@@ -31,6 +31,7 @@ import { PartnerModule } from './modules/partner/partner.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { AllotmentModule } from './modules/allotment/allotment.module';
+import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AllotmentModule } from './modules/allotment/allotment.module';
     BannersModule,
     PostsModule,
     AllotmentModule,
+    IpoImportModule,
   ],
   providers: [
     PrismaService,
