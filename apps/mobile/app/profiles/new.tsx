@@ -4,13 +4,15 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
+import { animateNext, fonts, microLabel, shadowCard, ui } from '../../lib/theme';
+import { tapSelect } from '../../lib/haptics';
 import { useT } from '../../components/i18n';
 import { useProfiles, Relationship } from '../../components/profiles';
 import { getRelationships, getUpiHandles, RelationshipOption } from '../../lib/api';
 import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
+import { CheckIcon, ChevronDownIcon } from '../../components/ui/icons';
 
 /** Fallback when the relationships master can't be fetched (offline). */
 const DEFAULT_OPTIONS: RelationshipOption[] = [
@@ -46,7 +48,13 @@ export default function NewProfileScreen() {
   const [depository, setDepository] = useState<'NSDL' | 'CDSL'>('NSDL');
   const [dpId, setDpId] = useState('');
   const [clientId, setClientId] = useState('');
-  const [upiId, setUpiId] = useState('');
+  // UPI is captured as two parts and joined on save (name + admin-approved handle)
+  const [upiName, setUpiName] = useState('');
+  const [upiHandle, setUpiHandle] = useState('');
+  const [handleOpen, setHandleOpen] = useState(false);
+  const upiId = upiName && upiHandle ? `${upiName}@${upiHandle}` : '';
+  // optional bank/contact block stays collapsed until asked for
+  const [bankOpen, setBankOpen] = useState(false);
   // optional bank/contact — prefill the printed ASBA form
   const [bankName, setBankName] = useState('');
   const [branchName, setBranchName] = useState('');
@@ -82,6 +90,11 @@ export default function NewProfileScreen() {
     setPincode(editing.pincode ?? '');
     setEmail(editing.email ?? '');
     setMobile(editing.mobile ?? '');
+    // a profile that already carries bank/contact detail opens that block, so
+    // nothing the operator saved earlier looks lost behind a collapsed section
+    if (editing.bankName || editing.ifsc || editing.address || editing.email || editing.mobile || editing.hasBank) {
+      setBankOpen(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing?.id]);
 
@@ -188,6 +201,16 @@ export default function NewProfileScreen() {
             ))}
           </View>
 
+          {/* Plain-language explainer — most applicants don't know which one they hold. */}
+          <Text style={styles.dematNote}>
+            {isCdsl
+              ? 'CDSL — Central Depository Services. Your demat account is ONE 16-digit number (no DP ID).'
+              : 'NSDL — National Securities Depository. Your demat account has TWO parts: a DP ID (IN + 6 digits) and an 8-digit Client ID.'}
+          </Text>
+          <Text style={styles.dematNote}>
+            Find it in your broker&apos;s app under Demat/Profile, or at the top of a demat holding statement.
+            Not sure which you have? A 16-digit number starting 12… is CDSL; one starting IN is NSDL.
+          </Text>
           {!isCdsl && (
             <Field label={`${t('profile.dpId')} — IN prefix is added automatically`} value={dpId}
               onChange={(v) => setDpId(v.replace(/\D/g, '').slice(0, 6))} placeholder="301234 (6 digits)" maxLength={6} mono keyboard="number-pad" />
@@ -195,16 +218,64 @@ export default function NewProfileScreen() {
           <Field label={isCdsl ? 'Demat number (16 digits)' : `${t('profile.clientId')} (8 digits)`} value={clientId}
             onChange={(v) => setClientId(v.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8))}
             placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} mono keyboard="number-pad" />
-          <Field label={t('profile.upi')} value={upiId} onChange={setUpiId}
-            placeholder={editing?.upiId ? 'saved ✓ — type to replace' : 'name@bank'} autoCapitalize="none" mono />
-          {upiId && upiFormatOk && !upiHandleOk ? (
-            <Text style={styles.upiWarn}>@{upiId.split('@')[1]} is not a supported UPI handle — allowed: {upiHandles.slice(0, 6).map((h) => `@${h}`).join(', ')}…</Text>
-          ) : null}
+          {/* UPI is split: the user types only the name and PICKS the handle from
+              the admin-managed master, so an unsupported handle is impossible. */}
+          <View style={styles.upiWrap}>
+            <Text style={styles.upiLabel}>{t('profile.upi')}</Text>
+            <View style={styles.upiRow}>
+              <TextInput
+                style={styles.upiName}
+                value={upiName}
+                onChangeText={(v) => setUpiName(v.replace(/[^\w.\-]/g, ''))}
+                placeholder={editing?.upiId ? 'saved ✓ — type to replace' : 'yourname'}
+                placeholderTextColor={ui.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable
+                onPress={() => { tapSelect(); setHandleOpen((o) => !o); }}
+                style={({ pressed }) => [styles.upiHandle, pressed && { opacity: 0.75 }]}
+              >
+                <Text style={styles.upiHandleTxt}>@{upiHandle || 'select'}</Text>
+                <ChevronDownIcon size={13} color={ui.indigo} strokeWidth={2.2} />
+              </Pressable>
+            </View>
+            {handleOpen ? (
+              <View style={styles.handleList}>
+                {upiHandles.length === 0 ? (
+                  <Text style={styles.hint}>Handle list unavailable — try again in a moment.</Text>
+                ) : upiHandles.map((h) => (
+                  <Pressable
+                    key={h}
+                    onPress={() => { tapSelect(); setUpiHandle(h); setHandleOpen(false); }}
+                    style={({ pressed }) => [styles.handleItem, h === upiHandle && styles.handleItemOn, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={[styles.handleTxt, h === upiHandle && styles.handleTxtOn]}>@{h}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.hint}>
+              {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : 'Type your UPI name, then pick the handle.'}
+            </Text>
+          </View>
         </Card>
 
         <SectionTitle label="Bank & contact" meta="optional" style={{ marginTop: 24 }} />
         <Card>
-          <Text style={styles.hint}>Used to pre-fill the printed ASBA form.</Text>
+          <Pressable
+            style={styles.optToggle}
+            onPress={() => { tapSelect(); animateNext(); setBankOpen((o) => !o); }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: bankOpen }}
+          >
+            <View style={[styles.checkbox, bankOpen && styles.checkboxOn]}>
+              {bankOpen ? <CheckIcon size={13} color="#ffffff" strokeWidth={3} /> : null}
+            </View>
+            <Text style={styles.optToggleTxt}>Add bank &amp; contact details — pre-fills the printed ASBA form</Text>
+          </Pressable>
+          {!bankOpen ? null : (
+          <>
           <Field label="Mobile" value={mobile} onChange={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))} maxLength={10} placeholder="98XXXXXXXX" mono keyboard="number-pad" />
           <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" autoCapitalize="none" />
           <Field label="Bank name" value={bankName} onChange={setBankName} placeholder="HDFC Bank" />
@@ -216,6 +287,8 @@ export default function NewProfileScreen() {
           <Field label="City" value={city} onChange={setCity} />
           <Field label="State" value={stateName} onChange={setStateName} />
           <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad" />
+          </>
+          )}
         </Card>
 
         {!editing ? (
@@ -277,6 +350,38 @@ const styles = StyleSheet.create({
   note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, lineHeight: 18 },
   hint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12.5, marginBottom: 4 },
   upiWarn: { fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, fontSize: 12, marginTop: 2, lineHeight: 17 },
+  // demat explainer
+  dematNote: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12, lineHeight: 17, marginTop: 10 },
+  // split UPI input: name + handle picker
+  upiWrap: { marginTop: 16 },
+  upiLabel: { ...microLabel, fontSize: 11, marginBottom: 7 },
+  upiRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  upiName: {
+    flex: 1, height: 48, borderRadius: 12, paddingHorizontal: 14,
+    backgroundColor: ui.canvas, borderWidth: 1, borderColor: ui.divider,
+    fontFamily: fonts.semibold, fontWeight: '600', fontSize: 15, color: ui.title,
+  },
+  upiHandle: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, height: 48, paddingHorizontal: 14,
+    borderRadius: 12, backgroundColor: ui.indigoTint, minWidth: 108, justifyContent: 'center',
+  },
+  upiHandleTxt: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 14, color: ui.indigo },
+  handleList: {
+    marginTop: 8, borderRadius: 12, backgroundColor: ui.canvas, padding: 6,
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+  },
+  handleItem: { paddingHorizontal: 12, height: 34, borderRadius: 999, justifyContent: 'center', backgroundColor: '#ffffff' },
+  handleItemOn: { backgroundColor: ui.indigo },
+  handleTxt: { fontFamily: fonts.semibold, fontWeight: '600', fontSize: 13, color: ui.slate },
+  handleTxtOn: { color: '#ffffff' },
+  // optional-section checkbox
+  optToggle: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 6, borderWidth: 1.6, borderColor: ui.divider,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff',
+  },
+  checkboxOn: { backgroundColor: ui.indigo, borderColor: ui.indigo },
+  optToggleTxt: { flex: 1, fontFamily: fonts.semibold, fontWeight: '600', fontSize: 13, color: ui.body, lineHeight: 18 },
   label: { ...microLabel, fontSize: 11, marginTop: 16, marginBottom: 7 },
   input: {
     height: 48, borderRadius: 12, paddingHorizontal: 14,

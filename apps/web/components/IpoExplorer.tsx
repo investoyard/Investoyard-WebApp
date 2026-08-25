@@ -6,6 +6,7 @@ import { IpoCompareTable } from '@/components/IpoCompareTable';
 import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
+import { compareForList, isRecent } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
 
@@ -53,15 +54,27 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
     { key: 'closed', label: 'Closed' },
   ];
 
-  const filtered = useMemo(() => {
+  /**
+   * The list shows what's CURRENT: everything still in play, plus issues that
+   * finished within the last six months. Older history lives on /ipos/archive,
+   * which is what keeps this page usable once the full catalog is published.
+   * Ordering is the shared stage order — closing today first, listed last.
+   */
+  const { filtered, olderCount } = useMemo(() => {
     const ql = query.trim().toLowerCase();
-    return (ipos as any[]).filter((i) => {
+    const matches = (ipos as any[]).filter((i) => {
       if (type !== 'all' && i.type !== type) return false;
       if (status === 'closed' ? !(i.status === 'closed' || i.status === 'listed')
         : status !== 'all' && i.status !== status) return false;
       if (ql && !(`${i.name} ${i.symbol}`.toLowerCase().includes(ql))) return false;
       return true;
     });
+    // a search should reach the whole catalog; browsing stays in the recent window
+    const inWindow = ql ? matches : matches.filter((i) => isRecent(i));
+    return {
+      filtered: [...inWindow].sort(compareForList),
+      olderCount: matches.length - inWindow.length,
+    };
   }, [ipos, query, type, status]);
 
   return (
@@ -108,6 +121,13 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
       ) : (
         <div className="ipo-list">
           {filtered.map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}
+        </div>
+      )}
+
+      {olderCount > 0 && (
+        <div className="archive-cta">
+          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} aren&apos;t shown here.</span>
+          <a className="btn btn-secondary btn-sm" href="/ipos/archive">Browse IPO archive <Icon name="arrow-right" size={14} /></a>
         </div>
       )}
     </section>

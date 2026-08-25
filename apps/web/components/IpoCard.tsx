@@ -81,13 +81,13 @@ export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: 
     return { label: 'Awaiting Allotment', cls: 'closed' };
   }
   if (ipo.status === 'open') {
-    if (ipo.closeDate === today) return { label: 'Closing today', cls: 'closing', pulse: true };
-    if (ipo.openDate === today) return { label: 'Open today', cls: 'opentoday', pulse: true };
+    if (ipo.closeDate === today) return { label: 'Closing Today', cls: 'closing', pulse: true };
+    if (ipo.openDate === today) return { label: 'Open Today', cls: 'opentoday', pulse: true };
     return { label: 'Live', cls: 'live', pulse: true };
   }
   if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: 'preapply' };
   const od = daysFromToday(ipo.openDate);
-  if (od === 1) return { label: 'Opens tomorrow', cls: 'soon' };
+  if (od === 1) return { label: 'Opens Tomorrow', cls: 'soon' };
   if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: 'soon' };
   return { label: 'Upcoming', cls: 'upcoming' };
 }

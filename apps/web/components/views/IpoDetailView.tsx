@@ -168,9 +168,18 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                   <div className="f1x-box">
                     <div className="mini-h"><Icon name="users" size={14} /> Applications required for 1× subscription</div>
                     <div className="f1x">
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-retail)' } as React.CSSProperties}><div className="k">Retail (≤₹2L)</div><div className="v">{ipo.formsFor1x.retail.toLocaleString('en-IN')} <small>forms</small></div></div>
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-hni1)' } as React.CSSProperties}><div className="k">S-HNI (₹2–10L)</div><div className="v">{ipo.formsFor1x.sHni.toLocaleString('en-IN')} <small>forms</small></div></div>
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-hni2)' } as React.CSSProperties}><div className="k">B-HNI (&gt;₹10L)</div><div className="v">{ipo.formsFor1x.bHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      {ipo.formsFor1x.retail != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-retail)' } as React.CSSProperties}><div className="k">Retail (≤₹2L)</div><div className="v">{ipo.formsFor1x.retail.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                      {ipo.formsFor1x.sHni != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-hni1)' } as React.CSSProperties}><div className="k">S-HNI (₹2–10L)</div><div className="v">{ipo.formsFor1x.sHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                      {ipo.formsFor1x.bHni != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-hni2)' } as React.CSSProperties}><div className="k">B-HNI (&gt;₹10L)</div><div className="v">{ipo.formsFor1x.bHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                    </div>
+                    <div className="hint" style={{ marginTop: 8 }}>
+                      From this issue&apos;s reservation split and lot size — the minimum bid each category can place.
                     </div>
                   </div>
                 )}

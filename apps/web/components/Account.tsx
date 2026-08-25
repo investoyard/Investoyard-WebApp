@@ -231,6 +231,15 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [relInfo, setRelInfo] = useState(false); // ⓘ tap-toggle (hover uses the title tooltip)
+  // Optional bank/contact block — open by default when the profile already has any
+  // of it, so nothing the user saved earlier looks lost behind a collapsed section.
+  const [bankOpen, setBankOpen] = useState(() => !!(editing && (
+    editing.bankName || editing.ifsc || editing.address || editing.email || editing.mobile || editing.hasBank
+  )));
+  // UPI is edited as two parts; f.upiId stays the single source of truth.
+  const upiName = (f.upiId ?? '').split('@')[0] ?? '';
+  const upiHandle = (f.upiId ?? '').split('@')[1] ?? '';
+  const setUpi = (name: string, handle: string) => upd({ upiId: name && handle ? `${name}@${handle}` : name });
   const panLocked = !!editing?.hasApplications; // self-PAN integrity once applications exist
   // Functional update: browser autofill fires many onChange events in one tick;
   // a plain {...f, ...patch} merge would clobber all but the last field.
@@ -348,26 +357,43 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
             placeholder={isCdsl ? '16-digit demat number' : '8-digit client ID'} />
         </div>
       </div>
+      {/* Plain-language explainer — most applicants don't know which one they hold. */}
+      <p className="demat-note">
+        {isCdsl
+          ? <><b>CDSL</b> (Central Depository Services) — your demat account is <b>one 16-digit number</b>; there is no separate DP ID.</>
+          : <><b>NSDL</b> (National Securities Depository) — your demat account has <b>two parts</b>: a DP ID (<span className="mono">IN</span> + 6 digits) and an 8-digit Client ID.</>}
+        {' '}Find it in your broker&apos;s app under Demat / Profile, or at the top of a demat holding statement.
+        Not sure which you hold? A 16-digit number beginning <span className="mono">12…</span> is CDSL; one beginning <span className="mono">IN</span> is NSDL.
+      </p>
+      {/* UPI is split: type the name, PICK the handle from the admin master, so an
+          unsupported handle can't be entered in the first place. */}
       <div className="field">
         <label>{tr('profile.upi')}</label>
-        <input className="input mono" value={f.upiId ?? ''} onChange={(e) => upd({ upiId: e.target.value })}
-          list="upi-handle-suggestions"
-          placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'name@bank'} />
-        {/* suggest name@<allowed handle> once the local part is typed */}
-        <datalist id="upi-handle-suggestions">
-          {(f.upiId ?? '').replace(/@.*$/, '') &&
-            upiHandles.map((h) => <option key={h} value={`${(f.upiId ?? '').replace(/@.*$/, '')}@${h}`} />)}
-        </datalist>
-        <span className="hint">{tr('apply.selfPan')}</span>
+        <div className="upi-split">
+          <input className="input mono" value={upiName}
+            onChange={(e) => setUpi(e.target.value.replace(/[^\w.\-]/g, ''), upiHandle)}
+            placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'yourname'} />
+          <span className="upi-at">@</span>
+          <select className="input mono upi-handle" value={upiHandle}
+            onChange={(e) => setUpi(upiName, e.target.value)}
+            aria-label="UPI handle">
+            <option value="">select…</option>
+            {upiHandles.map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
+        <span className="hint">
+          {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : tr('apply.selfPan')}
+        </span>
+        {upiName && !upiHandle && <span className="hint" style={{ color: 'var(--neg)' }}>Pick the handle that follows @</span>}
         {f.upiId && !upiFormatOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid UPI id</span>}
-        {f.upiId && upiFormatOk && !upiHandleOk && (
-          <span className="hint" style={{ color: 'var(--neg)' }}>
-            @{f.upiId.split('@')[1]} is not a supported UPI handle
-          </span>
-        )}
       </div>
 
-      <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact <span className="hint">(optional — used to pre-fill the printed ASBA form)</span></div>
+      <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact</div>
+      <label className="opt-toggle">
+        <input type="checkbox" checked={bankOpen} onChange={(e) => setBankOpen(e.target.checked)} />
+        <span>Add bank &amp; contact details — pre-fills the printed ASBA form</span>
+      </label>
+      {bankOpen && (<>
       <div className="cols-2">
         <div className="field">
           <label>Mobile</label>
@@ -398,6 +424,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
         <div className="field"><label>State</label><input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" /></div>
       </div>
       <div className="field" style={{ maxWidth: 220 }}><label>Pincode</label><input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" /></div>
+      </>)}
 
       {err && <div className="banner warn" style={{ marginTop: 10 }}>{err}</div>}
       <div className="row" style={{ marginTop: 18, justifyContent: 'flex-end' }}>

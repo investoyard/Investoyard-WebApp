@@ -18,7 +18,9 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   faceValue?: number;
   freshIssue?: string;
   offerForSale?: string;
-  formsFor1x?: { retail: number; sHni: number; bHni: number };
+  /** Applications needed for 1× — derived from the operator's REAL reservation
+   *  table + real lot size; a category is absent when we can't compute it. */
+  formsFor1x?: { retail?: number; sHni?: number; bHni?: number };
   appWise?: { key: string; label: string; formsFor1x: number; apps: number; times: number }[];
   totalApps?: number;
   financialYears?: string[];
@@ -290,21 +292,55 @@ function enrich(ipo: IpoDetail): IpoFull {
   f.freshIssue = `₹${Math.round(cr * (ipo.type === 'sme' ? 1 : 0.85))} Cr`;
   if (ipo.type !== 'sme' && cr) f.offerForSale = `₹${Math.round(cr * 0.15)} Cr`;
 
-  // Applications required for 1× + app-wise subscription (from live subscription data only)
-  if (ipo.subscription && cr) {
+  /**
+   * Applications required for 1× subscription — REAL data only.
+   *
+   * Derived from the operator's reservation table (extra.shareResv), the actual
+   * lot size and issue size, and the SEBI category floors the bid engine uses
+   * (retail ≤ ₹2L · S-HNI ₹2–10L · B-HNI > ₹10L). A category is omitted when its
+   * reservation isn't set, and the whole block is omitted when the reservation
+   * table hasn't been filled — an estimate presented as fact is worse than
+   * showing nothing.
+   */
+  const resv: any = exAll?.shareResv;
+  if (resv && cr && lot > 0 && upper > 0) {
+    const pctOf = (k: string): number => {
+      const raw = resv?.[k];
+      const v = Number(String(raw?.pct ?? '').replace(/[^\d.]/g, ''));
+      return raw?.on && Number.isFinite(v) && v > 0 ? v : 0;
+    };
     const totalShares = (cr * 1e7) / upper;
-    const retailForms = Math.max(1, Math.round((totalShares * 0.35) / lot));
-    const sHniForms = Math.max(1, Math.round((totalShares * 0.05) / (14 * lot)));
-    const bHniForms = Math.max(1, Math.round((totalShares * 0.10) / (67 * lot)));
-    f.formsFor1x = { retail: retailForms, sHni: sHniForms, bHni: bHniForms };
-    const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
-    const nT = sub.nii ?? sub.hni ?? 0, rT = sub.retail ?? 0;
-    f.appWise = [
-      { key: 'hniBt', label: 'HNI-BT (S-HNI)', formsFor1x: sHniForms, apps: Math.round(sHniForms * nT * 1.1), times: r2(nT * 1.1) },
-      { key: 'hniAt', label: 'HNI-AT (B-HNI)', formsFor1x: bHniForms, apps: Math.round(bHniForms * nT * 0.8), times: r2(nT * 0.8) },
-      { key: 'retail', label: 'Retail', formsFor1x: retailForms, apps: Math.round(retailForms * rT), times: r2(rT) },
-    ];
-    f.totalApps = f.appWise.reduce((a, b) => a + b.apps, 0);
+    const perLot = lot * upper;                                   // ₹ for one lot
+    const minLots = (floorAmt: number) => Math.floor(floorAmt / perLot) + 1;
+    const formsFor = (pct: number, lots: number): number | undefined =>
+      pct > 0 && lots > 0 ? Math.max(1, Math.round((totalShares * pct / 100) / (lots * lot))) : undefined;
+
+    const retail = formsFor(pctOf('retail'), 1);                  // retail floor = 1 lot
+    const sHni = formsFor(pctOf('hni2'), minLots(200_000));        // first bid above ₹2L
+    const bHni = formsFor(pctOf('hni'), minLots(1_000_000));       // first bid above ₹10L
+    if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
+
+    // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
+    if (ipo.subscription?.length) {
+      const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
+      const rows = [
+        { key: 'retail', label: 'Retail', forms: retail, times: sub.retail },
+        { key: 'hniBt', label: 'S-HNI', forms: sHni, times: sub.snii ?? sub.nii ?? sub.hni },
+        { key: 'hniAt', label: 'B-HNI', forms: bHni, times: sub.bnii ?? sub.nii ?? sub.hni },
+      ].filter((r): r is { key: string; label: string; forms: number; times: number } =>
+        typeof r.forms === 'number' && typeof r.times === 'number');
+      if (rows.length) {
+        f.appWise = rows.map((r) => ({
+          key: r.key, label: r.label, formsFor1x: r.forms,
+          apps: Math.round(r.forms * r.times), times: r2(r.times),
+        }));
+        // the operator's own figure wins over anything derived
+        const entered = Number(String(exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
+        f.totalApps = Number.isFinite(entered) && entered > 0
+          ? entered
+          : f.appWise.reduce((a, b) => a + b.apps, 0);
+      }
+    }
   }
 
   // Financials (4-year, synthesized from a deterministic base)
