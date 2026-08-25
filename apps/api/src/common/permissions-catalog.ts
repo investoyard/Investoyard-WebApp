@@ -11,6 +11,7 @@ export const PERMISSION_CATALOG = [
   { key: 'roles.manage', label: 'Create / edit roles', group: 'Roles & permissions' },
   { key: 'ipos.view', label: 'View IPOs', group: 'IPOs' },
   { key: 'ipos.manage', label: 'Create / edit IPOs', group: 'IPOs' },
+  { key: 'gmp.submit', label: 'Enter GMP values', group: 'IPOs' },
   { key: 'bids.view', label: 'View bids', group: 'Bids' },
   { key: 'bids.manage', label: 'Manage bids / allotment', group: 'Bids' },
   { key: 'clients.view', label: 'View clients (investors)', group: 'Clients' },

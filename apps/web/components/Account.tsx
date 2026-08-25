@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 import { Modal } from '@/components/ui/Modal';
 import { makeT, Lang } from '@investoyard/i18n';
 import {
-  listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles,
+  listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
   type ApiProfile, type ProfileInput, type Relationship, type Depository, type RelationshipOption,
 } from '@/lib/consumer-api';
 
@@ -62,6 +62,13 @@ export function Account() {
   };
   useEffect(() => { if (signedIn) load(); }, [signedIn]);
 
+  // GMP contributors reach the entry board from here — it is their only way in.
+  const [gmpOk, setGmpOk] = useState(false);
+  useEffect(() => {
+    if (!signedIn) return;
+    gmpAccess().then((r) => setGmpOk(!!r?.allowed)).catch(() => setGmpOk(false));
+  }, [signedIn]);
+
   if (!mobile) {
     return (
       <div className="empty fade-up">
@@ -95,6 +102,17 @@ export function Account() {
       </div>
       {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
       {msg && <div className="banner ok" style={{ marginTop: 12 }}>{msg}</div>}
+
+      {gmpOk && (
+        <a className="panel" href="/gmp/entry" style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+          <span className="pk-ic"><Icon name="trending" size={17} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <b style={{ display: 'block', fontSize: 14.5 }}>Enter GMP</b>
+            <span className="muted" style={{ fontSize: 13 }}>You are a GMP contributor — update premiums for open and upcoming IPOs.</span>
+          </span>
+          <Icon name="chevron-right" size={16} />
+        </a>
+      )}
 
       {(profiles?.length ?? 0) > 5 && (
         <input

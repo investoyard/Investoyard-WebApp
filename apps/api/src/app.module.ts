@@ -32,6 +32,8 @@ import { BannersModule } from './modules/banners/banners.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { AllotmentModule } from './modules/allotment/allotment.module';
 import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
+import { GmpEntryModule } from './modules/gmp-entry/gmp-entry.module';
+import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
 
 @Module({
   imports: [
@@ -64,6 +66,8 @@ import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
     PostsModule,
     AllotmentModule,
     IpoImportModule,
+    GmpEntryModule,
+    PartnerOnboardingModule,
   ],
   providers: [
     PrismaService,

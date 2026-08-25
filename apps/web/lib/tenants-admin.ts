@@ -627,3 +627,50 @@ export const publishImportedIpos = (symbols: string[], published = true) =>
   });
 /** Admin catalog view includes bulk-imported rows; the public site never does. */
 export const fetchAllIpos = () => fetch(`${API}/ipos?all=1&limit=2000`).then(j<AdminIpo[]>);
+
+/* -------------------------------------------------- admin: GMP log + contributors */
+export interface GmpLogRow {
+  id: string; symbol?: string; name?: string; value: number;
+  source?: string | null; by?: string | null; byId?: string | null; at: string;
+}
+export interface GmpContributorRow {
+  id: string; userId: string; active: boolean; note?: string | null;
+  createdAt: string; name?: string | null; mobile?: string | null;
+}
+export const fetchGmpLog = (limit = 100) =>
+  authed<GmpLogRow[]>(`${API}/admin/gmp/log?limit=${limit}`, { method: 'GET' });
+export const fetchGmpContributors = () =>
+  authed<GmpContributorRow[]>(`${API}/admin/gmp/contributors`, { method: 'GET' });
+export const addGmpContributor = (mobile: string, note?: string) =>
+  authed<{ added: boolean }>(`${API}/admin/gmp/contributors`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile, note }),
+  });
+export const removeGmpContributor = (id: string) =>
+  authed<{ removed: boolean }>(`${API}/admin/gmp/contributors/${id}`, { method: 'DELETE' });
+
+/* -------------------------------------------------- admin: partner applications */
+export interface PartnerApplicationRow {
+  id: string; status: 'submitted' | 'changes_requested' | 'approved' | 'rejected';
+  kind: string; legalName: string; contactName: string; mobile: string; email: string;
+  city?: string | null; state?: string | null; entityType?: string | null;
+  createdAt: string; reviewedAt?: string | null; tenantId?: string | null;
+}
+export interface PartnerApplicationDetail extends PartnerApplicationRow {
+  pan?: string | null; gstin?: string | null; sebiRegNo?: string | null; arn?: string | null;
+  notes?: string | null; documents: { type: string; url: string; name?: string }[];
+  reviewNote?: string | null; inviteToken?: string | null; activatedAt?: string | null;
+}
+export const fetchPartnerApplications = (status = 'submitted') =>
+  authed<PartnerApplicationRow[]>(`${API}/admin/partner-applications?status=${status}`, { method: 'GET' });
+export const fetchPartnerApplication = (id: string) =>
+  authed<PartnerApplicationDetail>(`${API}/admin/partner-applications/${id}`, { method: 'GET' });
+export const approvePartnerApplication = (id: string, body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) =>
+  authed<{ ok: boolean; slug: string; code: string | null; username: string; activationLink: string; emailSent: boolean; emailDev: boolean }>(
+    `${API}/admin/partner-applications/${id}/approve`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const requestPartnerChanges = (id: string, note: string) =>
+  authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/changes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+export const rejectPartnerApplication = (id: string, note: string) =>
+  authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/reject`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });

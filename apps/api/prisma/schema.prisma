@@ -435,6 +435,7 @@ model User {
   watchlist     WatchlistItem[]
   devices       DeviceToken[]
   memberships   Membership[]
+  gmpContributor GmpContributor?
 
   @@index([tenantId])
 }
@@ -563,8 +564,25 @@ model IpoGmp {
   value  Decimal
   trend  String?
   source String?
+  /// who entered it — GMP is unofficial, so every value stays traceable to a person
+  submittedBy     String?
+  submittedByName String?
   asOf   DateTime @default(now())
   @@index([ipoId, asOf])
+  @@index([submittedBy])
+}
+
+/// Allow-list of non-operator users permitted to submit GMP. Operators reach the
+/// same screen through the `gmp.submit` permission instead; this covers people
+/// who should enter GMP without any admin access at all.
+model GmpContributor {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  active    Boolean  @default(true)
+  note      String?
+  addedBy   String?
+  createdAt DateTime @default(now())
 }
 
 model IpoDocument {
@@ -778,4 +796,49 @@ model AllotmentArchive {
   rows      Int
   fileSize  Int
   createdAt DateTime @default(now())
+}
+
+/// Partner self-onboarding. Submissions live HERE, not in Tenant: a half-real
+/// tenant would leak into the tenant tree, the settings cascade, RLS scoping and
+/// every report. On approval the operator runs the normal registerTenant() path,
+/// which assigns the channel code and creates the admin user.
+model PartnerApplication {
+  id           String   @id @default(uuid())
+  /// the OTP-verified account that submitted it (lets them resume + track status)
+  userId       String?
+  mobile       String
+  email        String
+  contactName  String
+  /// what the applicant is asking to become; the operator decides the real type
+  kind         String   @default("partner") // partner | whitelabel | branch
+
+  entityType   String?  // individual | proprietorship | partnership | llp | pvt_ltd
+  legalName    String
+  panTokenRef  String?  // PII (vault) — business PAN, resolved only on the review screen
+  panMasked    String?
+  gstin        String?
+  city         String?
+  state        String?
+  sebiRegNo    String?
+  arn          String?
+  notes        String?
+  /// [{ type, url, name }] — uploaded via the applicant-scoped endpoint
+  documents    Json?
+
+  status       String   @default("submitted") // submitted | changes_requested | approved | rejected
+  reviewNote   String?
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  tenantId     String?  // set once approved
+
+  /// single-use activation link emailed on approval (operator can copy it if SMTP is off)
+  inviteToken   String?   @unique
+  inviteExpires DateTime?
+  activatedAt   DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([mobile])
 }

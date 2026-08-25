@@ -224,3 +224,44 @@ export const addWatchlist = (ipoId: string) =>
   authedConsumer<any>('/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId }) });
 export const removeWatchlist = (ipoId: string) =>
   authedConsumer<any>(`/watchlist/${ipoId}`, { method: 'DELETE' });
+
+/* ---- GMP entry (contributors + operators with gmp.submit) ---- */
+export interface GmpBoardRow {
+  id: string; symbol: string; name: string; type: string; status: string;
+  logoUrl?: string | null; priceBandMin?: number; priceBandMax?: number;
+  openDate?: string; closeDate?: string;
+  currentGmp: number | null; currentBy: string | null; currentAt: string | null;
+}
+export const gmpAccess = () => authedConsumer<{ allowed: boolean }>('/gmp-entry/access', { method: 'GET' });
+export const gmpBoard = () => authedConsumer<GmpBoardRow[]>('/gmp-entry/board', { method: 'GET' });
+export const gmpSubmit = (entries: { ipoId: string; value: number }[]) =>
+  authedConsumer<{ saved: number; errors: string[] }>('/gmp-entry', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }),
+  });
+
+/* ---- partner self-onboarding (applicant side) ---- */
+export interface PartnerApplyInput {
+  kind?: string; contactName: string; email: string;
+  entityType?: string; legalName: string; pan?: string; gstin?: string;
+  city?: string; state?: string; sebiRegNo?: string; arn?: string; notes?: string;
+  documents?: { type: string; url: string; name?: string }[];
+}
+export interface MyPartnerApplication {
+  id: string; status: 'submitted' | 'changes_requested' | 'approved' | 'rejected';
+  kind: string; legalName: string; contactName: string; email: string;
+  entityType?: string | null; gstin?: string | null; city?: string | null; state?: string | null;
+  sebiRegNo?: string | null; arn?: string | null; notes?: string | null; panMasked?: string | null;
+  documents: { type: string; url: string; name?: string }[];
+  reviewNote?: string | null; createdAt: string; reviewedAt?: string | null;
+}
+export const submitPartnerApplication = (body: PartnerApplyInput) =>
+  authedConsumer<{ id: string; status: string }>('/partner-apply', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+export const myPartnerApplication = () =>
+  authedConsumer<MyPartnerApplication | null>('/partner-apply/mine', { method: 'GET' });
+/** No session — the token from the approval email is the credential. */
+export const activatePartner = (token: string, password: string) =>
+  req<{ ok: boolean; username: string }>('/partner-activate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password }),
+  });
