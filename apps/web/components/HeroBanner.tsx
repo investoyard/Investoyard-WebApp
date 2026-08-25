@@ -489,8 +489,9 @@ function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: stri
     ];
   })() : [];
 
-  const hasForms = lanes.some((l) => l.forms != null);
-  const hasGain = lanes.some((l) => l.gain != null);
+  // Both derived columns ALWAYS render — a dash tells the reader the metric
+  // exists and is pending, where a missing column just looks like it never did.
+  const hasGmpData = lanes.some((l) => l.gain != null);
   if (lanes.length === 0) return null;
   const nf = (n: number) => Math.round(n).toLocaleString('en-IN');
 
@@ -498,40 +499,38 @@ function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: stri
     <div className={`hb-mx${active ? ' on' : ''}`}>
       <CandleBackdrop />
 
-      <div className="hb-mxhead">
-        <span className="hb-mxtitle">{LABEL.lotDetails}</span>
-        {li && (
-          <span className={`hb-mxpill ${(li.gainPct ?? 0) >= 0 ? 'up' : 'down'}`}>
-            Listed {li.price ? `₹${li.price}` : ''}{li.gainPct != null ? ` ${(li.gainPct ?? 0) >= 0 ? '+' : ''}${li.gainPct}%` : ''}
-          </span>
-        )}
-        {!li && showGmp && <span className="hb-mxpill up">GMP +₹{ipo.gmp}</span>}
-      </div>
+      {(li || showGmp) && (
+        <div className="hb-mxhead">
+          {li ? (
+            <span className={`hb-mxpill ${(li.gainPct ?? 0) >= 0 ? 'up' : 'down'}`}>
+              Listed {li.price ? `₹${li.price}` : ''}{li.gainPct != null ? ` ${(li.gainPct ?? 0) >= 0 ? '+' : ''}${li.gainPct}%` : ''}
+            </span>
+          ) : (
+            <span className="hb-mxpill up">GMP +₹{ipo.gmp}</span>
+          )}
+        </div>
+      )}
 
-      {/* the grid tracks only the columns that actually render, so a sparse IPO
-          doesn't leave dead space where "For 1×" and "Est. gain" would be */}
       {(() => {
-        const cols = ['74px', 'minmax(0,1fr)', '74px', ...(hasForms ? ['58px'] : []), ...(hasGain ? ['70px'] : [])].join(' ');
-        const grid = { gridTemplateColumns: cols };
         const resvOf = (k: string) => pct.get(k === 'sHNI' ? 'S-HNI' : k === 'bHNI' ? 'B-HNI' : 'Retail');
         return (
           <div className="hb-lanes" role="table">
-            <div className="hb-lane hd" role="row" style={grid}>
+            <div className="hb-lane hd" role="row">
               <span role="columnheader">Category</span>
               <span role="columnheader">Shares (Lots)</span>
               <span role="columnheader">Amount</span>
-              {hasForms && <span role="columnheader">For 1×</span>}
-              {hasGain && <span role="columnheader">Est. gain</span>}
+              <span role="columnheader">For 1×</span>
+              <span role="columnheader">Est. gain</span>
             </div>
             {lanes.map((l) => (
-              <div className={`hb-lane t-${l.tone}`} key={l.key} role="row" style={grid}>
+              <div className={`hb-lane t-${l.tone}`} key={l.key} role="row">
                 <span className="cat" role="cell">
                   {l.key}{resvOf(l.key) != null && <i>{resvOf(l.key)}%</i>}
                 </span>
                 <span className="hb-shr" role="cell">{nf(l.shares)} <i>({l.range})</i></span>
                 <span role="cell">{nf(l.amount)}</span>
-                {hasForms && <span role="cell">{l.forms != null ? nf(l.forms) : '—'}</span>}
-                {hasGain && <span className="gain" role="cell">{l.gain != null ? `+${nf(l.gain)}` : '—'}</span>}
+                <span role="cell" className={l.forms == null ? 'na' : undefined}>{l.forms != null ? nf(l.forms) : '—'}</span>
+                <span role="cell" className={l.gain != null ? 'gain' : 'na'}>{l.gain != null ? `+${nf(l.gain)}` : '—'}</span>
               </div>
             ))}
           </div>
@@ -541,8 +540,9 @@ function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: stri
       {countdown && (
         <div className="hb-mxcd"><span className="k">Closes in</span><b className="mono">{countdown}</b><span className="s">today, 3 pm</span></div>
       )}
-      {qib != null && <span className="hb-mxnote">QIB {qib}% reserved for institutions — not open to public bids.</span>}
-      {hasGain && <span className="hb-mxnote">Est. gain at GMP · grey market is unofficial and unregulated — not investment advice.</span>}
+      {/* only when a real GMP is on screen — the column alone, showing dashes,
+          isn't presenting a grey-market figure so needs no disclaimer */}
+      {hasGmpData && <span className="hb-mxnote">Est. gain at GMP · grey market is unofficial — not investment advice.</span>}
     </div>
   );
 }
