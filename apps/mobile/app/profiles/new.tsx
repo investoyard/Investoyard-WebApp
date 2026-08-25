@@ -52,6 +52,7 @@ export default function NewProfileScreen() {
   const [upiName, setUpiName] = useState('');
   const [upiHandle, setUpiHandle] = useState('');
   const [handleOpen, setHandleOpen] = useState(false);
+  const [handleQuery, setHandleQuery] = useState('');
   const upiId = upiName && upiHandle ? `${upiName}@${upiHandle}` : '';
   // optional bank/contact block stays collapsed until asked for
   const [bankOpen, setBankOpen] = useState(false);
@@ -72,6 +73,8 @@ export default function NewProfileScreen() {
   // Allowed UPI handles (admin master) — a UPI ID saves only on a listed handle.
   const [upiHandles, setUpiHandles] = useState<string[]>([]);
   useEffect(() => { getUpiHandles().then(setUpiHandles); }, []);
+  // The handle master can run long — filter it rather than make people scan a wall of chips.
+  const handleMatches = upiHandles.filter((h) => h.includes(handleQuery.trim().toLowerCase()));
 
   // Prefill once when the record to edit is available (secrets stay blank).
   useEffect(() => {
@@ -204,12 +207,9 @@ export default function NewProfileScreen() {
           {/* Plain-language explainer — most applicants don't know which one they hold. */}
           <Text style={styles.dematNote}>
             {isCdsl
-              ? 'CDSL — Central Depository Services. Your demat account is ONE 16-digit number (no DP ID).'
-              : 'NSDL — National Securities Depository. Your demat account has TWO parts: a DP ID (IN + 6 digits) and an 8-digit Client ID.'}
-          </Text>
-          <Text style={styles.dematNote}>
-            Find it in your broker&apos;s app under Demat/Profile, or at the top of a demat holding statement.
-            Not sure which you have? A 16-digit number starting 12… is CDSL; one starting IN is NSDL.
+              ? 'CDSL — one 16-digit number, no separate DP ID.'
+              : 'NSDL — two parts: DP ID (IN + 6 digits) and an 8-digit Client ID.'}
+            {' '}Find it in your broker&apos;s app under Demat. Starts 12… → CDSL, starts IN → NSDL.
           </Text>
           {!isCdsl && (
             <Field label={`${t('profile.dpId')} — IN prefix is added automatically`} value={dpId}
@@ -233,10 +233,10 @@ export default function NewProfileScreen() {
                 autoCorrect={false}
               />
               <Pressable
-                onPress={() => { tapSelect(); setHandleOpen((o) => !o); }}
+                onPress={() => { tapSelect(); setHandleOpen((o) => !o); setHandleQuery(''); }}
                 style={({ pressed }) => [styles.upiHandle, pressed && { opacity: 0.75 }]}
               >
-                <Text style={styles.upiHandleTxt}>@{upiHandle || 'select'}</Text>
+                <Text style={styles.upiHandleTxt} numberOfLines={1}>@{upiHandle || 'select'}</Text>
                 <ChevronDownIcon size={13} color={ui.indigo} strokeWidth={2.2} />
               </Pressable>
             </View>
@@ -244,15 +244,35 @@ export default function NewProfileScreen() {
               <View style={styles.handleList}>
                 {upiHandles.length === 0 ? (
                   <Text style={styles.hint}>Handle list unavailable — try again in a moment.</Text>
-                ) : upiHandles.map((h) => (
-                  <Pressable
-                    key={h}
-                    onPress={() => { tapSelect(); setUpiHandle(h); setHandleOpen(false); }}
-                    style={({ pressed }) => [styles.handleItem, h === upiHandle && styles.handleItemOn, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={[styles.handleTxt, h === upiHandle && styles.handleTxtOn]}>@{h}</Text>
-                  </Pressable>
-                ))}
+                ) : (
+                  <>
+                    {/* Only worth a search box once scanning the chips costs more than typing. */}
+                    {upiHandles.length > 8 ? (
+                      <TextInput
+                        style={styles.handleSearch}
+                        value={handleQuery}
+                        onChangeText={setHandleQuery}
+                        placeholder="Search handle…"
+                        placeholderTextColor={ui.muted}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    ) : null}
+                    <View style={styles.handleChips}>
+                      {handleMatches.length === 0 ? (
+                        <Text style={styles.hint}>No handle matches “{handleQuery}”.</Text>
+                      ) : handleMatches.map((h) => (
+                        <Pressable
+                          key={h}
+                          onPress={() => { tapSelect(); setUpiHandle(h); setHandleOpen(false); setHandleQuery(''); }}
+                          style={({ pressed }) => [styles.handleItem, h === upiHandle && styles.handleItemOn, pressed && { opacity: 0.7 }]}
+                        >
+                          <Text style={[styles.handleTxt, h === upiHandle && styles.handleTxtOn]}>@{h}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </>
+                )}
               </View>
             ) : null}
             <Text style={styles.hint}>
@@ -351,7 +371,7 @@ const styles = StyleSheet.create({
   hint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12.5, marginBottom: 4 },
   upiWarn: { fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, fontSize: 12, marginTop: 2, lineHeight: 17 },
   // demat explainer
-  dematNote: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12, lineHeight: 17, marginTop: 10 },
+  dematNote: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   // split UPI input: name + handle picker
   upiWrap: { marginTop: 16 },
   upiLabel: { ...microLabel, fontSize: 11, marginBottom: 7 },
@@ -363,13 +383,15 @@ const styles = StyleSheet.create({
   },
   upiHandle: {
     flexDirection: 'row', alignItems: 'center', gap: 6, height: 48, paddingHorizontal: 14,
-    borderRadius: 12, backgroundColor: ui.indigoTint, minWidth: 108, justifyContent: 'center',
+    borderRadius: 12, backgroundColor: ui.indigoTint, width: 124, justifyContent: 'center',
   },
-  upiHandleTxt: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 14, color: ui.indigo },
-  handleList: {
-    marginTop: 8, borderRadius: 12, backgroundColor: ui.canvas, padding: 6,
-    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+  upiHandleTxt: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 14, color: ui.indigo, flexShrink: 1 },
+  handleList: { marginTop: 8, borderRadius: 12, backgroundColor: ui.canvas, padding: 6 },
+  handleSearch: {
+    height: 38, borderRadius: 9, paddingHorizontal: 12, marginBottom: 6,
+    backgroundColor: '#ffffff', fontFamily: fonts.medium, fontSize: 13.5, color: ui.title,
   },
+  handleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   handleItem: { paddingHorizontal: 12, height: 34, borderRadius: 999, justifyContent: 'center', backgroundColor: '#ffffff' },
   handleItemOn: { backgroundColor: ui.indigo },
   handleTxt: { fontFamily: fonts.semibold, fontWeight: '600', fontSize: 13, color: ui.slate },
