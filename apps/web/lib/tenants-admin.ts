@@ -618,6 +618,9 @@ export const commitIpoImport = (id: string) =>
     `${API}/admin/ipo-import/commit/${id}`, { method: 'POST' });
 export const fetchIpoImportPending = () =>
   authed<{ catalogOnly: number }>(`${API}/admin/ipo-import/pending`, { method: 'GET' });
+/** Undo an import: removes hidden, never-published rows that carry no activity. */
+export const deleteImportedIpos = () =>
+  authed<{ deleted: number; kept: number }>(`${API}/admin/ipo-import/delete-imported`, { method: 'POST' });
 export const publishImportedIpos = (symbols: string[], published = true) =>
   authed<{ updated: number }>(`${API}/admin/ipo-import/publish`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols, published }),

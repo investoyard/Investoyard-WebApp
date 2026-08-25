@@ -64,6 +64,16 @@ export class IpoImportController {
     return { catalogOnly: await this.svc.catalogOnlyCount() };
   }
 
+  /**
+   * Undo an import — removes hidden, never-published, importer-created rows that
+   * carry no applications / watchlist / allotment data. Published IPOs are safe.
+   */
+  @Post('delete-imported')
+  @RequirePermissions('ipos.manage')
+  deleteImported() {
+    return this.svc.deleteImported();
+  }
+
   /** Publish (or re-hide) imported rows on the public site. */
   @Post('publish')
   @RequirePermissions('ipos.manage')

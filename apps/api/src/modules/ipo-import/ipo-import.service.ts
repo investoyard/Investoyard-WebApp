@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { tenantContext } from '../../common/tenant-context';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import {
   DOC_COLUMNS, FINANCIAL_COLUMNS, FIRST_DATA_ROW, HEADER_ROW, IPO_COLUMNS, KPI_COLUMNS,
@@ -372,5 +374,45 @@ export class IpoImportService {
   /** Count of imported-but-unpublished rows, for the admin badge. */
   async catalogOnlyCount(): Promise<number> {
     return this.prisma.ipo.count({ where: { hidden: true } });
+  }
+
+  /**
+   * Undo an import — delete every HIDDEN row that has never been published.
+   * Deliberately narrow so a mis-click can't take out live data:
+   *  · only `hidden: true` rows (a published IPO is never touched);
+   *  · only rows this importer created (`extra.importedAt` present);
+   *  · only rows with no applications, watchlist entries or allotment records
+   *    attached — anything with real activity is reported as kept, not deleted.
+   */
+  async deleteImported(): Promise<{ deleted: number; kept: number }> {
+    const rows = await this.prisma.ipo.findMany({
+      where: { hidden: true, extra: { path: ['importedAt'], not: Prisma.DbNull } },
+      select: { id: true, symbol: true },
+    });
+    let deleted = 0;
+    let kept = 0;
+    for (const r of rows) {
+      // unscoped: activity from ANY tenant must protect the row, not just this one
+      const [apps, watch, allot] = await tenantContext.runUnscoped(() => Promise.all([
+        this.prisma.application.count({ where: { ipoId: r.id } }),
+        this.prisma.watchlistItem.count({ where: { ipoId: r.id } }),
+        this.prisma.allotmentRecord.count({ where: { ipoId: r.id } }),
+      ]));
+      if (apps > 0 || watch > 0 || allot > 0) { kept++; continue; }
+      try {
+        // children first — no cascade is declared on these relations
+        await this.prisma.ipoDocument.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoSubscription.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoGmp.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoCategory.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipo.delete({ where: { id: r.id } });
+        deleted++;
+      } catch (e: any) {
+        kept++;
+        this.log.warn(`could not delete ${r.symbol}: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    }
+    this.log.log(`deleteImported: ${deleted} removed, ${kept} kept`);
+    return { deleted, kept };
   }
 }
