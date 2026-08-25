@@ -1051,9 +1051,11 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 
 /* ------------------------------------------------- LIVE NAV (signals + IPO command panel) */
 .nv { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
-.nv-ipos { display: inline-flex; align-items: center; gap: 6px; font: inherit; border: 0; background: none; cursor: pointer; }
-.nav-link .nv-sig, .nv-mtrigger .nv-sig, .nv-sheetlink .nv-sig { margin-left: 6px; }
-.nv-sig { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; border-radius: var(--pill); padding: 2px 7px; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.nv-ipos { display: inline-flex; align-items: center; gap: 5px; font: inherit; border: 0; background: none; cursor: pointer; }
+.nav-link .nv-sig, .nv-mtrigger .nv-sig, .nv-sheetlink .nv-sig { margin-left: 5px; }
+/* inside a flex row the gap already spaces the badge — don't add margin on top */
+.nv-ipos .nv-sig, .nv-mtrigger .nv-sig { margin-left: 0; }
+.nv-sig { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700; border-radius: var(--pill); padding: 2px 6px; font-variant-numeric: tabular-nums; vertical-align: 1px; }
 .nv-sig.live { background: var(--pos-soft); color: var(--pos); }
 .nv-sig.gp { background: var(--pos-soft); color: var(--pos); }
 .nv-sig.hot { background: var(--gold-50); color: #8a6d1f; }
@@ -1703,18 +1705,18 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .admin-shell.collapsed .admin-logo { justify-content: center; padding: 8px 0 18px; }
 .admin-shell.collapsed .admin-logo .lg-txt { display: none; }
 .admin-shell.collapsed .admin-nav { overflow-y: auto; overflow-x: hidden; gap: 4px; }
-.admin-shell.collapsed .nav-link { justify-content: center; padding: 11px 0; }
-.admin-shell.collapsed .nav-link .lbl { display: none; }
+.admin-shell.collapsed .admin-side .nav-link { justify-content: center; padding: 11px 0; }
+.admin-shell.collapsed .admin-side .nav-link .lbl { display: none; }
 .admin-shell.collapsed .nav-parent > svg:last-child { display: none; }
 .admin-shell.collapsed .nav-sub { display: none !important; }
 /* hover tooltip for collapsed labels */
-.admin-shell.collapsed .nav-link[data-label]::after {
+.admin-shell.collapsed .admin-side .nav-link[data-label]::after {
   content: attr(data-label); position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%);
   background: #1f2634; color: #fff; padding: 7px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
   opacity: 0; pointer-events: none; transition: opacity .12s var(--ease); z-index: 70; box-shadow: 0 8px 20px rgba(16,24,40,.32);
 }
-.admin-shell.collapsed .nav-link:hover::after { opacity: 1; }
-.admin-shell.collapsed .nav-fly.open .nav-link::after { opacity: 0; }
+.admin-shell.collapsed .admin-side .nav-link:hover::after { opacity: 1; }
+.admin-shell.collapsed .admin-side .nav-fly.open .nav-link::after { opacity: 0; }
 /* flyout submenu popover */
 .nav-fly { position: relative; }
 .fly-pop { position: absolute; left: calc(100% + 12px); top: -6px; min-width: 214px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 44px rgba(16,24,40,.20); padding: 8px; z-index: 60; display: flex; flex-direction: column; gap: 2px; }
@@ -1762,13 +1764,16 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .admin-nav::-webkit-scrollbar { width: 7px; }
 .admin-nav::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
 .nav-group { display: flex; flex-direction: column; }
-/* nav rows — leaf links and parent toggles share .nav-link */
-.nav-link { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; padding: 9.5px 12px; border-radius: 9px; color: var(--text-muted); font-family: inherit; font-weight: 500; font-size: 13.5px; transition: background .13s var(--ease), color .13s var(--ease); }
-.nav-link svg { flex-shrink: 0; opacity: .85; }
-.nav-link:hover { background: var(--bg-2); color: var(--text); }
-.nav-link:hover svg { opacity: 1; }
-.nav-link.active { background: var(--brand); color: #fff; font-weight: 600; box-shadow: 0 6px 16px rgba(60,46,126,.28); }
-.nav-link.active svg { opacity: 1; color: #fff; }
+/* nav rows — leaf links and parent toggles share .nav-link.
+   SCOPED to .admin-side on purpose: the front site uses .nav-link too (line ~404)
+   and these rules, being later in this one global sheet, used to win — the 11px
+   gap here is what pushed the count badges away from "IPOs" in the site header. */
+.admin-side .nav-link { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; padding: 9.5px 12px; border-radius: 9px; color: var(--text-muted); font-family: inherit; font-weight: 500; font-size: 13.5px; transition: background .13s var(--ease), color .13s var(--ease); }
+.admin-side .nav-link svg { flex-shrink: 0; opacity: .85; }
+.admin-side .nav-link:hover { background: var(--bg-2); color: var(--text); }
+.admin-side .nav-link:hover svg { opacity: 1; }
+.admin-side .nav-link.active { background: var(--brand); color: #fff; font-weight: 600; box-shadow: 0 6px 16px rgba(60,46,126,.28); }
+.admin-side .nav-link.active svg { opacity: 1; color: #fff; }
 .nav-parent > svg:last-child { opacity: .6; transition: transform .18s var(--ease); transform: rotate(-90deg); }
 .nav-group.open .nav-parent > svg:last-child { transform: rotate(0deg); }
 .nav-parent.active > svg:last-child { opacity: .95; }
@@ -2375,21 +2380,24 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 /* imported-but-unpublished marker */
 .ops-badge.hid { background: #fdf3d6; color: #7a5a00; }
 
-/* split UPI input: name + admin-approved handle picker */
-.upi-split { display: flex; align-items: center; gap: 0; }
-.upi-split .input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.upi-at { display: inline-flex; align-items: center; justify-content: center; height: 38px; padding: 0 9px;
+/* Split UPI input: name (grows) + searchable admin-approved handle (fixed).
+   The name is the part people actually type, so it takes the free space; the
+   handle is picked from a short list and never needs to be wider than one. */
+.upi-split { display: flex; align-items: stretch; gap: 0; }
+.upi-split .upi-name { flex: 1 1 auto; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.upi-at { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; flex: 0 0 auto;
   background: var(--bg-2); border-top: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2);
-  color: var(--text-muted); font-weight: 700; }
-.upi-split .upi-handle { flex: 0 0 auto; min-width: 132px; border-radius: 0 var(--r-sm) var(--r-sm) 0; border-left: 0; }
+  color: var(--text-muted); font-weight: 700; font-size: 13.5px; }
+.upi-split .upi-handle { flex: 0 0 158px; min-width: 0; }
+.upi-split .upi-handle .input { width: 100%; border-radius: 0 var(--r-sm) var(--r-sm) 0; border-left: 0; text-overflow: ellipsis; }
 
 /* optional-section checkbox (bank & contact) */
 .opt-toggle { display: flex; align-items: center; gap: 9px; margin: 4px 0 12px; cursor: pointer; font-size: 13.5px; color: var(--text); }
 .opt-toggle input { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
 
 /* NSDL / CDSL explainer under the demat fields */
-.demat-note { font-size: 12.5px; line-height: 1.6; color: var(--text-muted); background: var(--bg-2);
-  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; margin: 2px 0 4px; }
+.demat-note { font-size: 11.5px; line-height: 1.5; color: var(--text-muted); background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 7px 10px; margin: 0 0 10px; }
 .demat-note b { color: var(--text); }
 
 /* password field with show/hide toggle */

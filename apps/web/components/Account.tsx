@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore, store } from '@/lib/store';
 import { Icon } from '@/components/Icon';
 import { Modal } from '@/components/ui/Modal';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { makeT, Lang } from '@investoyard/i18n';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
@@ -378,26 +379,28 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
       {/* Plain-language explainer — most applicants don't know which one they hold. */}
       <p className="demat-note">
         {isCdsl
-          ? <><b>CDSL</b> (Central Depository Services) — your demat account is <b>one 16-digit number</b>; there is no separate DP ID.</>
-          : <><b>NSDL</b> (National Securities Depository) — your demat account has <b>two parts</b>: a DP ID (<span className="mono">IN</span> + 6 digits) and an 8-digit Client ID.</>}
-        {' '}Find it in your broker&apos;s app under Demat / Profile, or at the top of a demat holding statement.
-        Not sure which you hold? A 16-digit number beginning <span className="mono">12…</span> is CDSL; one beginning <span className="mono">IN</span> is NSDL.
+          ? <><b>CDSL</b> — one 16-digit number, no separate DP ID.</>
+          : <><b>NSDL</b> — two parts: DP ID (<span className="mono">IN</span>+6 digits) and 8-digit Client ID.</>}
+        {' '}Find it in your broker&apos;s app under Demat. Starts <span className="mono">12…</span> → CDSL,
+        starts <span className="mono">IN</span> → NSDL.
       </p>
       {/* UPI is split: type the name, PICK the handle from the admin master, so an
           unsupported handle can't be entered in the first place. */}
       <div className="field">
         <label>{tr('profile.upi')}</label>
         <div className="upi-split">
-          <input className="input mono" value={upiName}
+          <input className="input mono upi-name" value={upiName}
             onChange={(e) => setUpi(e.target.value.replace(/[^\w.\-]/g, ''), upiHandle)}
             placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'yourname'} />
           <span className="upi-at">@</span>
-          <select className="input mono upi-handle" value={upiHandle}
-            onChange={(e) => setUpi(upiName, e.target.value)}
-            aria-label="UPI handle">
-            <option value="">select…</option>
-            {upiHandles.map((h) => <option key={h} value={h}>{h}</option>)}
-          </select>
+          <div className="upi-handle">
+            <SearchSelect
+              options={upiHandles.map((h) => ({ value: h, label: h }))}
+              value={upiHandle}
+              onChange={(v) => setUpi(upiName, v)}
+              placeholder="handle"
+            />
+          </div>
         </div>
         <span className="hint">
           {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : tr('apply.selfPan')}
