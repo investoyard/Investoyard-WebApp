@@ -25,12 +25,17 @@ export function clearConsumerSession() {
 
 async function req<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, init);
+  const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
+    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  // Nest sends an EMPTY body when a handler returns null (and for 204) — not the
+  // string "null" — so res.json() threw "Unexpected end of JSON input" on the
+  // partner apply screen for anyone without an application yet. An empty 200
+  // means "no content", so read it as null rather than an error.
+  return (body ? JSON.parse(body) : null) as T;
 }
 const post = <T>(path: string, body: any) =>
   req<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

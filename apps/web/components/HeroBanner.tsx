@@ -106,10 +106,25 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
     return [...open, ...soon].slice(0, 6);
   }, [ipos]);
 
-  /** Slides 0 and 1 are the brand pair — they hold the screen longer than the
-   *  data slides so the branding actually registers before the catalog starts. */
-  const BRAND_SLIDES = 2;
-  const slideCount = BRAND_SLIDES + banners.length + featured.length;
+  /** The leading brand slides hold the screen longer than the data slides so the
+   *  branding actually registers before the catalog starts.
+   *
+   *  FOUR are in rotation while the operator picks: 0 hero · 1 promise wall ·
+   *  2 numbers (light) · 3 three-steps (ink). Two will be deleted after the
+   *  review — see LIGHT_BRAND_SLIDES below when removing one. */
+  const BRAND_SLIDES = 4;
+
+  /** The IPO slides in render order. While the pastel treatment is under review
+   *  the first PASTEL_TWINS issues appear in both treatments back to back; the
+   *  cap keeps the rotation from ballooning as the catalog grows. */
+  const PASTEL_TWINS = 2;
+  const ipoSlides = useMemo(
+    () => featured.flatMap((ipo, i) => (i < PASTEL_TWINS
+      ? [{ ipo, pastel: false }, { ipo, pastel: true }]
+      : [{ ipo, pastel: false }])),
+    [featured],
+  );
+  const slideCount = BRAND_SLIDES + banners.length + ipoSlides.length;
   const dwellMs = idx < BRAND_SLIDES ? 9000 : 5000;
 
   // Auto-rotate on a ticking timer rather than a fixed interval: the dwell
@@ -131,10 +146,12 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
   }, [idx, slideCount, dwellMs]);
   useEffect(() => { if (idx >= slideCount) setIdx(0); }, [slideCount, idx]);
 
-  // slide 2 walks its promise chips one at a time while it's on screen
+  // the promise slides walk their chips one at a time while on screen — both
+  // the dark version (1) and the pastel one under review (3) share the counter
+  // so the two animate identically and only the treatment differs
   const [focus, setFocus] = useState(0);
   useEffect(() => {
-    if (idx !== 1) return;
+    if (idx !== 1 && idx !== 3) return;
     setFocus(0);
     const t = setInterval(() => setFocus((f) => (f + 1) % PROMISES.length), 900);
     return () => clearInterval(t);
@@ -142,9 +159,15 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
 
   const go = (n: number) => setIdx(((n % slideCount) + slideCount) % slideCount);
 
+  // The arrows, dots and progress bar are white — on a light slide they would
+  // vanish, so the whole carousel flips to dark chrome while one is on screen.
+  // Both the pastel BRAND slides and the pastel IPO twins count as light.
+  const lightNow = LIGHT_BRAND_SLIDES.has(idx)
+    || ipoSlides[idx - BRAND_SLIDES - banners.length]?.pastel === true;
+
   return (
     <section
-      className="hb fade-up"
+      className={`hb fade-up${lightNow ? ' hb--light' : ''}`}
       aria-roledescription="carousel"
       onMouseEnter={() => { paused.current = true; }}
       onMouseLeave={() => { paused.current = false; }}
@@ -157,13 +180,20 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
       }}
     >
       <div className="hb-track" style={{ transform: `translateX(-${idx * 100}%)` }}>
-        {/* slides 0–1 — the brand pair (also the fallback when the catalog is quiet) */}
+        {/* slides 0–3 — the brand set (also the fallback when the catalog is quiet) */}
         <BrandSlide
           q={q}
           open={ipos.filter((i) => i.status === 'open').length}
           upcoming={ipos.filter((i) => i.status === 'upcoming').length}
         />
         <PromiseSlide q={q} focus={focus} />
+        {/* the same two, in pastel — under review */}
+        <PastelHeroSlide
+          q={q}
+          open={ipos.filter((i) => i.status === 'open').length}
+          upcoming={ipos.filter((i) => i.status === 'upcoming').length}
+        />
+        <PastelPromiseSlide q={q} focus={focus} />
 
         {/* admin-managed promo slides */}
         {banners.map((b) => (
@@ -184,10 +214,18 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
           </div>
         ))}
 
-        {/* auto-generated IPO slides — `active` gates the lane animation so it
-            plays when the slide arrives, not for every slide on page load */}
-        {featured.map((ipo, i) => (
-          <IpoSlide key={ipo.id} ipo={ipo} q={q} active={idx === BRAND_SLIDES + banners.length + i} />
+        {/* Auto-generated IPO slides — `active` gates the lane animation so it
+            plays when the slide arrives, not for every slide on page load.
+
+            While the pastel treatment is under review each of the first few
+            IPOs renders TWICE, dark then pastel, so the two are judged on
+            identical data rather than on different issues. `ipoSlides` holds
+            that flattened order; drop it back to `featured.map` when the
+            decision is made. */}
+        {ipoSlides.map((s, i) => (
+          s.pastel
+            ? <PastelIpoSlide key={`${s.ipo.id}-p`} ipo={s.ipo} q={q} />
+            : <IpoSlide key={s.ipo.id} ipo={s.ipo} q={q} active={idx === BRAND_SLIDES + banners.length + i} />
         ))}
       </div>
 
@@ -296,11 +334,14 @@ function BrandSlide({ q, open, upcoming }: { q: string; open: number; upcoming: 
 
       {/* the line that says it in one breath — set as a stagger so the second
           half reaches into the space the plane leaves on the right */}
-      <div className="hb2-hindi" lang="hi">
+      {/* Mixed script by design — the two English words are the ones every
+          investor already uses, so the line reads faster than full Devanagari.
+          No lang="hi" on the wrapper: only the Hindi spans carry it. */}
+      <div className="hb2-hindi">
         <span className="q" aria-hidden>“</span>
         <p>
-          <span className="l1">डीमैट कहीं भी,</span>
-          <span className="l2">अप्लाई इधर ही</span>
+          <span className="l1">Demat <span lang="hi">कहीं भी,</span></span>
+          <span className="l2">Apply <span lang="hi">इधर ही</span></span>
         </p>
         <span className="tr">Demat anywhere — apply right here</span>
       </div>
@@ -353,6 +394,269 @@ function PromiseSlide({ q, focus }: { q: string; focus: number }) {
             </span>
           </span>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CANDIDATE BRAND SLIDES C and D — under review alongside the two above.
+
+   Same WORDS as slides 0 and 1, a different treatment: light pastel ground,
+   indigo ink, and the composition mirrored so the visual leads on the left and
+   the copy answers on the right. Holding the content constant is the point —
+   it makes the four a straight judgement on treatment rather than on wording.
+
+   Pastel tints are the ones already used by the IPO category lanes (lavender
+   #CBBFFF, peach #FFD3A5, mint #A9E5C8) so the banner stays internally
+   consistent. Two of the four get deleted once the operator decides.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Brand slides rendered on a LIGHT ground — the carousel chrome (arrows, dots,
+ *  progress) inverts while one of these is showing, or it would disappear.
+ *  Keep in step with the slide order in the track when slides change. */
+const LIGHT_BRAND_SLIDES = new Set([2, 3]);
+
+/** Shared pastel atmosphere: soft colour blobs and the dotted texture, in place
+ *  of the dark slides' clouds and paper plane. */
+function PastelDeco() {
+  return (
+    <span className="hbp-deco" aria-hidden>
+      <span className="hbp-blob b1" />
+      <span className="hbp-blob b2" />
+      <span className="hbp-blob b3" />
+      <span className="hbp-tex" />
+    </span>
+  );
+}
+
+/**
+ * CANDIDATE C — slide 0's content in pastel, mirrored.
+ *
+ * The Hindi statement leads on the left as the hero rather than trailing on the
+ * right, and the English copy answers it. Identical badges, headline, sub-line
+ * (with the same live open/upcoming counts) and CTAs.
+ */
+function PastelHeroSlide({ q, open, upcoming }: { q: string; open: number; upcoming: number }) {
+  return (
+    <div className="hb-slide hb-pastel">
+      <PastelDeco />
+
+      <div className="hbp-hindi">
+        <span className="q" aria-hidden>“</span>
+        <p>
+          <span className="l1">Demat <span lang="hi">कहीं भी,</span></span>
+          <span className="l2">Apply <span lang="hi">इधर ही</span></span>
+        </p>
+        <span className="tr">Demat anywhere — apply right here</span>
+      </div>
+
+      <div className="hb-main hbp-main">
+        <span className="hbp-badges">
+          <span className="hbp-badge"><Icon name="shield" size={13} /> Trusted</span>
+          <span className="hbp-badge"><Icon name="lock" size={13} /> Secure</span>
+          <span className="hbp-badge"><Icon name="bolt" size={13} /> Lightning Fast</span>
+        </span>
+        <h1 className="hbp-h">
+          Investing in IPOs,<br />Has <span className="hbp-mark">Never Been This Easy!</span>
+        </h1>
+        <p className="hbp-sub">
+          Everything you need — from registration to allotment — on one platform.
+          {open > 0 && <> <b>{open} open now</b>{upcoming > 0 ? <> · {upcoming} upcoming</> : null}.</>}
+        </p>
+        <div className="hb-ctas hbp-ctas">
+          <a className="btn btn-gold" href="#ipos">Explore IPOs <Icon name="arrow-right" size={15} /></a>
+          <a className="btn btn-inkline" href={`/login${q}`}>Apply for family</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * CANDIDATE D — slide 1's content in pastel, mirrored.
+ *
+ * The same eight promises, as solid pastel tiles on the left instead of glass
+ * chips on the right, walking one at a time on the same `focus` counter so both
+ * versions animate identically and only the treatment differs.
+ */
+function PastelPromiseSlide({ q, focus }: { q: string; focus: number }) {
+  return (
+    <div className="hb-slide hb-pastel promise">
+      <PastelDeco />
+
+      <div className="hbp-promises">
+        {PROMISES.map((p, i) => (
+          <span key={p.title} className={`hbp-chip c-${p.tone}${i === focus ? ' on' : ''}`} title={p.full}>
+            <span className="ic"><Icon name={p.icon} size={17} strokeWidth={2.1} /></span>
+            <b>{p.title}</b>
+          </span>
+        ))}
+      </div>
+
+      <div className="hb-main hbp-main">
+        <span className="hbp-badges">
+          <span className="hbp-badge"><Icon name="sparkle" size={13} /> Mainboard &amp; SME · India</span>
+        </span>
+        <h1 className="hbp-h">
+          Invest in IPOs with <span className="hbp-mark">“Blink of Eye”</span> with Investoyard.
+        </h1>
+        <p className="hbp-sub">Eight things we do so you never miss an issue — or an allotment.</p>
+        <div className="hb-ctas hbp-ctas">
+          <a className="btn btn-gold" href="#ipos">Explore IPOs <Icon name="arrow-right" size={15} /></a>
+          <a className="btn btn-inkline" href={`/login${q}`}>Create free account</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/** ₹ figures in the banner, in the Indian grouping. */
+const nf = (n: number) => Math.round(n).toLocaleString('en-IN');
+
+export interface CategoryLane {
+  key: string; tone: string; range: string;
+  shares: number; amount: number;
+  forms?: number; gain?: number; resv?: number;
+}
+
+/**
+ * The per-category figures both IPO treatments render — derived ONCE here so the
+ * dark lanes and the pastel cards can never drift apart.
+ *
+ * Bid floors come from the same rule the bid engine uses: retail is one lot up
+ * to ₹2L, S-HNI above that to ₹10L, B-HNI beyond. Returns [] when the issue has
+ * no price band or lot size yet, which is the caller's cue to render nothing.
+ */
+function categoryLanes(ipo: IpoFull, showGmp: boolean): CategoryLane[] {
+  const lot = ipo.lotSize ?? 0;
+  const perLot = lot * (ipo.priceBandMax ?? ipo.priceBandMin ?? 0);
+  if (perLot <= 0) return [];
+
+  const pct = new Map(calc.reservation(ipo).filter((r) => r.pct > 0).map((r) => [r.cat, r.pct]));
+  const rMax = Math.max(1, Math.floor(200_000 / perLot));
+  const sMin = rMax + 1;
+  const sMax = Math.max(sMin, Math.floor(1_000_000 / perLot));
+  const bMin = sMax + 1;
+
+  const row = (key: string, tone: string, resvKey: string, minLots: number, range: string, forms?: number): CategoryLane => ({
+    key, tone, range,
+    shares: minLots * lot,
+    amount: minLots * perLot,
+    forms,
+    // arithmetic on an unofficial number — labelled as an estimate, never a promise
+    gain: showGmp ? minLots * lot * (ipo.gmp as number) : undefined,
+    resv: pct.get(resvKey),
+  });
+
+  return [
+    row('Retail', 'ret', 'Retail', 1, `1–${rMax}`, ipo.formsFor1x?.retail),
+    row('sHNI', 'shni', 'S-HNI', sMin, `${sMin}–${sMax}`, ipo.formsFor1x?.sHni),
+    row('bHNI', 'bhni', 'B-HNI', bMin, `${bMin}+`, ipo.formsFor1x?.bHni),
+  ];
+}
+
+/* ── CANDIDATE: the IPO slide in pastel (under review beside the dark one) ──
+   Same data, read along the other axis. The dark slide lays the categories out
+   as ROWS in a table; here each category is its own CARD, so the figures for
+   one investor type read top-to-bottom as a single unit instead of being
+   tracked across a row. The dates chip is replaced by a lifecycle rail, which
+   answers something the dark slide cannot: where this issue is in its life. */
+
+/** Open → Close → Allotment → Listing, with the passed steps filled.
+ *  Driven by the DATES, not by `status` — the operator often forgets to advance
+ *  the status, and stage.ts takes the same position. */
+function LifeRail({ ipo }: { ipo: IpoFull }) {
+  const steps = [
+    { k: 'Open', d: ipo.openDate },
+    { k: 'Close', d: ipo.closeDate },
+    { k: 'Allotment', d: (ipo as any).allotmentDate as string | undefined },
+    { k: 'Listing', d: (ipo as any).listingDate as string | undefined },
+  ];
+  const done = steps.map((s) => { const n = daysUntil(s.d); return n != null && n <= 0; });
+  const current = done.lastIndexOf(true) + 1; // the next step still ahead
+
+  return (
+    <div className="hbi-rail" aria-label="IPO lifecycle">
+      {steps.map((s, i) => (
+        <div className={`hbi-step${done[i] ? ' done' : ''}${i === current ? ' now' : ''}`} key={s.k}>
+          <span className="dot" aria-hidden />
+          <b>{s.k}</b>
+          <i>{fmtD(s.d)}</i>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
+  const tag = slideTag(ipo);
+  const canApply = (ipo as any).extra?.startBid === true;
+  const canPrint = (ipo as any).extra?.startPrint === true;
+  const closing = tag.cls === 'closing';
+  const countdown = useCountdown(closing ? ipo.closeDate : undefined);
+  const tenant = useTenant();
+  const showGmp = tenant.flags.gmpEnabled && ipo.gmp != null;
+  const lanes = categoryLanes(ipo, showGmp);
+  const hasGmpData = lanes.some((l) => l.gain != null);
+
+  return (
+    <div className="hb-slide hb-ipopastel">
+      <PastelDeco />
+
+      <div className="hbi-left">
+        <div className="hbi-ident">
+          <IpoLogo logo={ipo.logo} name={ipo.name} size={40} />
+          <div style={{ minWidth: 0 }}>
+            <div className="hbi-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</div>
+            <div className="hbi-meta">
+              <span className={`hbi-board ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
+              <span className="sym">{ipo.symbol}</span>
+              <span className={`hbi-tag ${tag.cls}`}>{closing && <span className="hb-pulse" />}{tag.label}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* the price band leads — it is the number every visitor looks for first */}
+        <div className="hbi-hero">
+          <span className="k">{LABEL.offerPrice}</span>
+          <b>{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</b>
+          <span className="pair"><i>{LABEL.lotSize}</i>{ipo.lotSize ?? '—'}</span>
+          <span className="pair"><i>{LABEL.minApplication}</i>{inr(ipo.minAmount)}</span>
+        </div>
+
+        <LifeRail ipo={ipo} />
+
+        <div className="hb-ctas hbi-ctas">
+          {canApply && (
+            <a className="btn btn-gold" href={`/apply/${ipo.symbol}${q}`}>
+              {ipo.status === 'upcoming' ? LABEL.preApply : LABEL.applyNow} <Icon name="arrow-right" size={15} />
+            </a>
+          )}
+          {canPrint && <a className="btn btn-inkline" href={`/print/${ipo.symbol}${q}`}>{LABEL.printForms} <Icon name="file-pdf" size={14} /></a>}
+          {!canApply && !canPrint && <a className="btn btn-inkline" href={`/ipos/${ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
+          {countdown && <span className="hbi-cd"><i>Closes in</i><b className="mono">{countdown}</b></span>}
+        </div>
+      </div>
+
+      <div className="hbi-cards">
+        {showGmp && <span className="hbi-gmp">GMP +₹{ipo.gmp}</span>}
+        <div className="hbi-grid">
+          {lanes.map((l) => (
+            <div className={`hbi-card t-${l.tone}`} key={l.key}>
+              <span className="hd">{l.key}{l.resv != null && <i>{l.resv}%</i>}</span>
+              <span className="row"><i>Shares</i><b>{nf(l.shares)}</b></span>
+              <span className="row"><i>Lots</i><b>{l.range}</b></span>
+              <span className="row"><i>Amount</i><b>₹{nf(l.amount)}</b></span>
+              <span className="row"><i>For 1×</i><b className={l.forms == null ? 'na' : undefined}>{l.forms != null ? nf(l.forms) : '—'}</b></span>
+              <span className="row"><i>Est. gain</i><b className={l.gain != null ? 'gain' : 'na'}>{l.gain != null ? `+${nf(l.gain)}` : '—'}</b></span>
+            </div>
+          ))}
+        </div>
+        {/* identical wording to the dark slide — a grey-market figure on screen
+            always carries the disclaimer */}
+        {hasGmpData && <span className="hbi-note">Est. gain at GMP · grey market is unofficial — not investment advice.</span>}
       </div>
     </div>
   );
@@ -460,40 +764,15 @@ function CandleBackdrop() {
  * remove themselves rather than printing a wall of dashes.
  */
 function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: string | null; active: boolean }) {
-  const lot = ipo.lotSize ?? 0;
-  const perLot = lot * (ipo.priceBandMax ?? ipo.priceBandMin ?? 0);
   const li = listingInfo(ipo);
   const tenant = useTenant();
   const showGmp = tenant.flags.gmpEnabled && ipo.gmp != null;
-
-  const pct = new Map(calc.reservation(ipo).filter((r) => r.pct > 0).map((r) => [r.cat, r.pct]));
-  const qib = pct.get('QIB');
-
-  const lanes = perLot > 0 ? (() => {
-    const rMax = Math.max(1, Math.floor(200_000 / perLot));
-    const sMin = rMax + 1;
-    const sMax = Math.max(sMin, Math.floor(1_000_000 / perLot));
-    const bMin = sMax + 1;
-    const row = (key: string, tone: string, minLots: number, range: string, forms?: number) => ({
-      key, tone, range,
-      shares: minLots * lot,
-      amount: minLots * perLot,
-      forms,
-      // arithmetic on an unofficial number — labelled as an estimate, never a promise
-      gain: showGmp ? minLots * lot * (ipo.gmp as number) : undefined,
-    });
-    return [
-      row('Retail', 'ret', 1, `1–${rMax}`, ipo.formsFor1x?.retail),
-      row('sHNI', 'shni', sMin, `${sMin}–${sMax}`, ipo.formsFor1x?.sHni),
-      row('bHNI', 'bhni', bMin, `${bMin}+`, ipo.formsFor1x?.bHni),
-    ];
-  })() : [];
+  const lanes = categoryLanes(ipo, showGmp);
 
   // Both derived columns ALWAYS render — a dash tells the reader the metric
   // exists and is pending, where a missing column just looks like it never did.
   const hasGmpData = lanes.some((l) => l.gain != null);
   if (lanes.length === 0) return null;
-  const nf = (n: number) => Math.round(n).toLocaleString('en-IN');
 
   return (
     <div className={`hb-mx${active ? ' on' : ''}`}>
@@ -511,31 +790,26 @@ function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: stri
         </div>
       )}
 
-      {(() => {
-        const resvOf = (k: string) => pct.get(k === 'sHNI' ? 'S-HNI' : k === 'bHNI' ? 'B-HNI' : 'Retail');
-        return (
-          <div className="hb-lanes" role="table">
-            <div className="hb-lane hd" role="row">
-              <span role="columnheader">Category</span>
-              <span role="columnheader">Shares (Lots)</span>
-              <span role="columnheader">Amount</span>
-              <span role="columnheader">For 1×</span>
-              <span role="columnheader">Est. gain</span>
-            </div>
-            {lanes.map((l) => (
-              <div className={`hb-lane t-${l.tone}`} key={l.key} role="row">
-                <span className="cat" role="cell">
-                  {l.key}{resvOf(l.key) != null && <i>{resvOf(l.key)}%</i>}
-                </span>
-                <span className="hb-shr" role="cell">{nf(l.shares)} <i>({l.range})</i></span>
-                <span role="cell">{nf(l.amount)}</span>
-                <span role="cell" className={l.forms == null ? 'na' : undefined}>{l.forms != null ? nf(l.forms) : '—'}</span>
-                <span role="cell" className={l.gain != null ? 'gain' : 'na'}>{l.gain != null ? `+${nf(l.gain)}` : '—'}</span>
-              </div>
-            ))}
+      <div className="hb-lanes" role="table">
+        <div className="hb-lane hd" role="row">
+          <span role="columnheader">Category</span>
+          <span role="columnheader">Shares (Lots)</span>
+          <span role="columnheader">Amount</span>
+          <span role="columnheader">For 1×</span>
+          <span role="columnheader">Est. gain</span>
+        </div>
+        {lanes.map((l) => (
+          <div className={`hb-lane t-${l.tone}`} key={l.key} role="row">
+            <span className="cat" role="cell">
+              {l.key}{l.resv != null && <i>{l.resv}%</i>}
+            </span>
+            <span className="hb-shr" role="cell">{nf(l.shares)} <i>({l.range})</i></span>
+            <span role="cell">{nf(l.amount)}</span>
+            <span role="cell" className={l.forms == null ? 'na' : undefined}>{l.forms != null ? nf(l.forms) : '—'}</span>
+            <span role="cell" className={l.gain != null ? 'gain' : 'na'}>{l.gain != null ? `+${nf(l.gain)}` : '—'}</span>
           </div>
-        );
-      })()}
+        ))}
+      </div>
 
       {countdown && (
         <div className="hb-mxcd"><span className="k">Closes in</span><b className="mono">{countdown}</b><span className="s">today, 3 pm</span></div>

@@ -20,12 +20,15 @@ export interface ResolvedSetting { value: any; locked: boolean; source: string }
 export type Resolved = Record<string, ResolvedSetting>;
 
 async function j<T>(res: Response): Promise<T> {
+  const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
+    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  // an empty 200 (Nest returns one for a null handler result, and for 204) is
+  // "no content", not a parse error — see the note in consumer-api.ts
+  return (body ? JSON.parse(body) : null) as T;
 }
 
 /**

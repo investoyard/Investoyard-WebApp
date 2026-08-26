@@ -973,16 +973,48 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
   .section-head { flex-wrap: wrap; }
 }
 /* ------------------------------------------------- GLOSSARY + REMIND BUTTON */
-.gl-jump { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0 6px; }
-.gl-chip { font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--bg-2); border-radius: var(--pill); padding: 6px 12px; }
+/* 58 terms need room to sit two-up — wider than the other trust pages.
+   Both classes are on the same element, so this must out-specify .trust-page's
+   own max-width (780px), which is defined later in this sheet. */
+.trust-page.gl-page { max-width: 1000px; }
+/* filter bar pins UNDER the site header (which is sticky at top 0, z-index 50) */
+.gl-bar { position: sticky; top: var(--header-h); z-index: 20; display: flex; flex-direction: column; gap: 9px;
+  margin: 18px 0 4px; padding: 12px 0 11px; border-bottom: 1px solid var(--border);
+  /* same recipe as .tabs.sticky-tabs — --top-bg is ADMIN-scoped and would be
+     undefined here, leaving the bar transparent with text scrolling under it */
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(12px); -webkit-backdrop-filter: saturate(180%) blur(12px); }
+.gl-search { position: relative; display: flex; align-items: center; }
+.gl-search svg { position: absolute; left: 13px; color: var(--text-faint); pointer-events: none; }
+.gl-search .input { padding-left: 39px; padding-right: 38px; height: 42px; }
+.gl-clear { position: absolute; right: 8px; width: 26px; height: 26px; border: 0; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center; background: var(--bg-2); color: var(--text-muted); }
+.gl-clear:hover { background: var(--border-2); color: var(--text); }
+/* one scrollable strip so the chips never wrap the bar to three rows */
+.gl-chips { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 1px; }
+.gl-chips::-webkit-scrollbar { display: none; }
+.gl-chip { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--bg-2);
+  border-radius: var(--pill); padding: 6px 12px; white-space: nowrap; transition: background .14s var(--ease), color .14s var(--ease); }
 .gl-chip:hover { background: var(--brand-50); color: var(--brand); }
-.gl-sec { margin-top: 30px; scroll-margin-top: calc(var(--header-h) + 16px); }
-.gl-sec h2 { font-family: var(--font-display); font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
-.gl-list { margin-top: 12px; display: flex; flex-direction: column; }
-.gl-item { padding: 12px 0; border-top: 1px solid var(--border); }
-.gl-item:first-child { border-top: 0; }
-.gl-item dt { font-weight: 650; font-size: 14.5px; }
-.gl-item dd { font-size: 14px; line-height: 1.65; color: var(--text-muted); margin-top: 4px; }
+.gl-chip.on { background: var(--brand); color: #fff; }
+.gl-count { font-size: 13px; color: var(--text-muted); margin: 14px 0 0; }
+.gl-count b { color: var(--text); }
+/* Used only when the browser does the jump itself — a deep link opened cold.
+   Chip clicks are handled in JS (scrollToSection) because these two insets ADD:
+   html carries scroll-padding-top: calc(var(--header-h) + 72px) = 136px, so the
+   47px here lands a heading at 183px — clear of the 64px header plus the ~107px
+   sticky bar, with a small gap. */
+.gl-sec { margin-top: 26px; scroll-margin-top: 47px; }
+.gl-sec h2 { display: flex; align-items: baseline; gap: 9px; font-family: var(--font-display); font-size: 18px;
+  font-weight: 650; letter-spacing: -.01em; }
+.gl-sec h2 .n { font-family: var(--font-sans); font-size: 11px; font-weight: 700; color: var(--text-faint);
+  background: var(--bg-2); border-radius: var(--pill); padding: 2px 8px; }
+/* cards two-up: 58 definitions in one column is a very long scroll */
+.gl-list { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gl-item { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.gl-item dt { font-weight: 700; font-size: 14px; color: var(--text); }
+.gl-item dd { font-size: 13.5px; line-height: 1.6; color: var(--text-muted); margin: 4px 0 0; }
+@media (max-width: 780px) { .gl-list { grid-template-columns: 1fr; } }
 /* remind (bell) — full button + compact icon */
 .rb-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border-2); box-shadow: none; gap: 8px; font-size: 13.5px; padding: 10px 14px; }
 .rb-btn:hover { border-color: var(--brand-200); color: var(--brand); background: var(--surface); box-shadow: var(--sh-sm); }
@@ -2516,3 +2548,184 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .pk-kind:hover { border-color: var(--border-2); }
 .pk-kind.on { border-color: var(--brand); background: var(--brand-50); }
 .pk-kind.on b { color: var(--brand); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CANDIDATE BRAND SLIDES C + D — the same content as slides 0 and 1, in pastel
+   (under review — two of the four get deleted once the operator decides).
+
+   Sizing deliberately MIRRORS .hb-slide.brand2: the track takes the height of
+   its tallest slide, so anything taller here silently stretches every other
+   slide in the banner. Keep the paddings and type sizes in step with brand2.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* carousel chrome inverts while a light slide is on screen */
+.hb--light .hb-arrow { background: rgba(35,27,74,.10); color: #2b2258; }
+.hb--light .hb-arrow:hover { background: rgba(35,27,74,.20); }
+.hb--light .hb-dot { background: rgba(35,27,74,.26); }
+.hb--light .hb-dot.on { background: #6b57c9; }
+.hb--light .hb-prog { background: rgba(35,27,74,.10); }
+.hb--light .hb-prog i { background: #6b57c9; }
+
+/* mirrored columns: the visual leads, the copy answers */
+.hb-slide.hb-pastel { position: relative; overflow: hidden; display: grid; align-items: center;
+  grid-template-columns: 1fr minmax(330px, 400px); gap: 30px; padding: 24px 58px 32px; color: #241c4e;
+  background: linear-gradient(118deg, #f1edff 0%, #eaf4f3 46%, #fff4e9 100%); }
+
+/* atmosphere — soft pastel blobs and the dotted texture, in place of the dark
+   slides' clouds and paper plane */
+.hbp-deco { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.hbp-blob { position: absolute; border-radius: 50%; filter: blur(38px); opacity: .55; }
+.hbp-blob.b1 { width: 300px; height: 300px; left: -70px; top: -110px; background: #CBBFFF; }
+.hbp-blob.b2 { width: 260px; height: 260px; right: 6%; bottom: -120px; background: #A9E5C8; }
+.hbp-blob.b3 { width: 220px; height: 220px; left: 44%; top: -100px; background: #FFD3A5; opacity: .42; }
+.hbp-tex { position: absolute; right: 2%; bottom: 8%; width: 170px; height: 130px; opacity: .5;
+  background-image: radial-gradient(circle, rgba(60,46,126,.24) 1.3px, transparent 1.6px); background-size: 16px 16px;
+  -webkit-mask: radial-gradient(circle at 76% 74%, #000, transparent 72%); mask: radial-gradient(circle at 76% 74%, #000, transparent 72%); }
+
+.hbp-main { position: relative; z-index: 1; min-width: 0; }
+.hbp-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.hbp-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--pill);
+  padding: 5px 12px; font-size: 11.5px; font-weight: 650; color: #3b3370;
+  background: rgba(255,255,255,.72); border: 1px solid rgba(60,46,126,.14); }
+.hbp-badge svg { color: #7a67d6; }
+.hbp-h { font-family: var(--font-display); font-size: clamp(22px, 3vw, 32px); line-height: 1.14; font-weight: 700;
+  letter-spacing: -.025em; color: #1d1642; margin: 0; text-wrap: balance; }
+/* the accent is a pastel highlighter block — gold or pastel TYPE on a pale
+   ground fails contrast, the same colour behind dark ink does not */
+.hbp-mark { background: linear-gradient(180deg, transparent 56%, rgba(255,203,50,.55) 56%); padding: 0 2px; }
+.hbp-sub { font-size: 13.5px; line-height: 1.55; color: #5d5684; margin: 9px 0 0; max-width: 46ch; }
+.hbp-sub b { color: #2b2160; }
+/* scoped (0,3,0) so it beats the base .hb-ctas column rule regardless of order */
+.hb-slide.hb-pastel .hb-ctas { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.hb-slide.hb-pastel .hb-ctas .btn { flex: 0 0 auto; width: auto; padding: 10px 20px; font-size: 13.5px; }
+.btn-inkline { background: rgba(255,255,255,.7); color: #2b2160; border: 1px solid rgba(43,33,96,.22); box-shadow: none; }
+.btn-inkline:hover { background: #fff; border-color: rgba(43,33,96,.34); }
+
+/* ── C: the Hindi statement leads, on the left ── */
+.hbp-hindi { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.hbp-hindi .q { position: absolute; left: -8px; top: -30px; font-family: var(--font-display); font-size: 76px;
+  line-height: 1; color: rgba(122,103,214,.20); pointer-events: none; }
+.hbp-hindi p { margin: 0; font-family: 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', system-ui, sans-serif;
+  font-size: clamp(26px, 4.2vw, 52px); line-height: 1.22; font-weight: 600; color: #241c4e; letter-spacing: -.015em;
+  white-space: nowrap; }
+.hbp-hindi .l1, .hbp-hindi .l2 { display: block; }
+.hbp-hindi .l2 { margin-left: 1.9em; color: #6b57c9; font-weight: 700; }
+.hbp-hindi .tr { margin-top: 12px; margin-left: 1.9em; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  color: #7b71a8; white-space: nowrap; }
+
+/* ── D: the eight promises as solid pastel tiles ── */
+.hbp-promises { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; align-content: center; min-width: 0; }
+.hbp-chip { display: flex; align-items: center; gap: 9px; border-radius: 12px; padding: 9px 11px; min-width: 0;
+  background: rgba(255,255,255,.66); border: 1px solid rgba(60,46,126,.10);
+  transition: background .16s var(--ease), transform .16s var(--ease), border-color .16s var(--ease); }
+.hbp-chip .ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; flex: 0 0 auto; }
+.hbp-chip b { font-size: 12px; font-weight: 700; color: #2b2160; letter-spacing: -.01em; line-height: 1.3;
+  min-width: 0; overflow-wrap: anywhere; }
+/* one tint per promise group, from the same pastel family as the IPO lanes */
+.hbp-chip.c-ind .ic { background: #E7E0FF; color: #5b46b8; }
+.hbp-chip.c-blu .ic { background: #DFEBFF; color: #2f5fa8; }
+.hbp-chip.c-grn .ic { background: #DDF3E7; color: #1f7a52; }
+.hbp-chip.c-gld .ic { background: #FFEFC9; color: #8a6d1f; }
+/* the spotlight — one tile lifts while the slide is on screen */
+.hbp-chip.on { background: #fff; border-color: rgba(255,203,50,.75); transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(60,46,126,.13); }
+@media (prefers-reduced-motion: reduce) { .hbp-chip.on { transform: none; } }
+
+@media (max-width: 1180px) { .hbp-promises { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 940px) {
+  .hb-slide.hb-pastel { grid-template-columns: 1fr; gap: 16px; align-items: start; padding: 22px 44px 30px; }
+  .hbp-hindi .q { display: none; }
+  .hbp-hindi .l2, .hbp-hindi .tr { margin-left: 0; }
+  .hbp-hindi p, .hbp-hindi .tr { white-space: normal; }
+  .hbp-promises { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 780px) { .hbp-promises { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ── CANDIDATE: the IPO slide in pastel (under review beside the dark one) ──
+   Categories become CARDS (one column each) instead of the dark slide's rows,
+   and the dates chip becomes a lifecycle rail. Sized to the same 302px as every
+   other slide — the track takes its tallest child, so anything bigger here
+   stretches the whole banner. */
+.hb-slide.hb-ipopastel { position: relative; overflow: hidden; display: grid; align-items: center;
+  grid-template-columns: minmax(300px, 380px) 1fr; gap: 26px; padding: 20px 58px 28px; color: #241c4e;
+  background: linear-gradient(118deg, #f2eeff 0%, #ecf5f2 52%, #fff5ea 100%); }
+.hbi-left, .hbi-cards { position: relative; z-index: 1; min-width: 0; }
+
+/* identity */
+.hbi-ident { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.hbi-ident .ipologo { border-radius: 10px; flex: 0 0 auto; }
+.hbi-name { font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em;
+  color: #1d1642; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbi-meta { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 11.5px; color: #6d6790; }
+.hbi-meta .sym { font-weight: 650; letter-spacing: .02em; }
+.hbi-board { font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border-radius: 5px;
+  padding: 2px 6px; background: #E7E0FF; color: #5b46b8; }
+.hbi-board.sme { background: #FFEFC9; color: #8a6d1f; }
+.hbi-tag { font-size: 10.5px; font-weight: 750; border-radius: var(--pill); padding: 2px 9px;
+  background: #fff; border: 1px solid rgba(60,46,126,.14); color: #3b3370; }
+.hbi-tag.live { background: #DDF3E7; border-color: rgba(31,122,82,.22); color: #1f7a52; }
+.hbi-tag.closing { background: #FFE2DC; border-color: rgba(183,58,38,.22); color: #b73a26; }
+.hbi-tag .hb-pulse { background: currentColor; }
+
+/* the price band leads */
+.hbi-hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin-top: 13px; }
+.hbi-hero .k { flex: 0 0 100%; font-size: 9.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #7b71a8; }
+.hbi-hero > b { font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; color: #2b2160; }
+.hbi-hero .pair { display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: #3b3370; }
+.hbi-hero .pair i { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: #7b71a8; }
+
+/* lifecycle rail — the passed steps fill in, the next one is ringed */
+.hbi-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 13px; }
+.hbi-step { position: relative; display: flex; flex-direction: column; gap: 1px; padding-top: 13px; min-width: 0; }
+/* the connector runs behind the dots, drawn on every step but the first */
+.hbi-step::before { content: ''; position: absolute; left: -50%; right: 50%; top: 4px; height: 2px; background: rgba(60,46,126,.14); }
+.hbi-step:first-child::before { display: none; }
+.hbi-step.done::before { background: #A9E5C8; }
+.hbi-step .dot { position: absolute; left: 0; top: 0; width: 10px; height: 10px; border-radius: 50%;
+  background: #fff; border: 2px solid rgba(60,46,126,.22); }
+.hbi-step.done .dot { background: #4bbd85; border-color: #4bbd85; }
+.hbi-step.now .dot { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,203,50,.28); }
+.hbi-step b { font-size: 10.5px; font-weight: 750; color: #3b3370; }
+.hbi-step i { font-style: normal; font-size: 10.5px; color: #7b71a8; font-variant-numeric: tabular-nums; }
+.hbi-step.now b { color: #8a6d1f; }
+
+.hb-slide.hb-ipopastel .hb-ctas { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 14px; }
+.hb-slide.hb-ipopastel .hb-ctas .btn { flex: 0 0 auto; width: auto; padding: 9px 17px; font-size: 13px; }
+.hbi-cd { display: flex; flex-direction: column; }
+.hbi-cd i { font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #7b71a8; }
+.hbi-cd b { font-size: 14px; font-weight: 800; color: #b73a26; font-variant-numeric: tabular-nums; }
+
+/* ── one card per investor category — the axis flip from the dark slide ── */
+.hbi-cards { display: flex; flex-direction: column; gap: 6px; }
+.hbi-gmp { align-self: flex-end; border-radius: var(--pill); padding: 3px 11px; font-size: 11.5px; font-weight: 750;
+  background: #DDF3E7; color: #1f7a52; }
+.hbi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hbi-card { border-radius: 12px; padding: 8px 10px 9px; background: rgba(255,255,255,.72);
+  border: 1px solid rgba(60,46,126,.10); border-top: 3px solid var(--hbi-tone, #CBBFFF); min-width: 0; }
+.hbi-card.t-ret { --hbi-tone: #CBBFFF; }
+.hbi-card.t-shni { --hbi-tone: #FFD3A5; }
+.hbi-card.t-bhni { --hbi-tone: #A9E5C8; }
+.hbi-card .hd { display: flex; align-items: baseline; gap: 5px; font-size: 12.5px; font-weight: 800;
+  color: #2b2160; padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid rgba(60,46,126,.09); }
+.hbi-card .hd i { font-style: normal; font-size: 9.5px; font-weight: 700; color: #7b71a8; }
+.hbi-card .row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 1.5px 0; }
+.hbi-card .row i { font-style: normal; font-size: 10px; color: #7b71a8; }
+.hbi-card .row b { font-size: 11.5px; font-weight: 750; color: #3b3370; font-variant-numeric: tabular-nums; }
+.hbi-card .row b.gain { color: #1f7a52; }
+.hbi-card .row b.na { color: #a8a2c4; font-weight: 650; }
+.hbi-note { font-size: 9.5px; line-height: 1.45; color: #857ead; }
+
+@media (max-width: 1180px) { .hb-slide.hb-ipopastel { grid-template-columns: minmax(260px, 320px) 1fr; gap: 18px; } }
+@media (max-width: 940px) {
+  .hb-slide.hb-ipopastel { grid-template-columns: 1fr; gap: 14px; align-items: start; padding: 20px 44px 28px; }
+  .hbi-grid { grid-template-columns: 1fr; }
+  .hbi-card .row { padding: 0; }
+}
+
+/* FAQ sections reuse the glossary's sticky bar + section heading; only the
+   accordion inside differs */
+.faq-sec .faq-acc { margin-top: 12px; }
+.faq-sec .faq-acc summary { font-size: 14px; }
+.faq-sec .faq-acc p { font-size: 13.5px; }
