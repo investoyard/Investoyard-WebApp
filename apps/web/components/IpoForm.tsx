@@ -398,46 +398,29 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
 
   /**
-   * Blocking checks shown inline.
+   * Blocking checks shown inline — all of them from the ENGINE now.
    *
-   * B01 / B09 / B10 come from the ENGINE, not from here — the admin form is not
-   * the only writer (the Excel importer and the API both call computeIssue), so
-   * a rule that lives only in this component is a rule half the callers skip.
-   * What remains below are the checks that need form state the engine never
-   * sees, plus the bounds checks still awaiting a per-row rule pack (B02).
+   * The admin form is not the only writer: the Excel importer and the API both
+   * call computeIssue directly, so a rule living in this component is a rule
+   * half the callers skip. B01 · B02 · W01 · B09 · B10 are engine rules and the
+   * form only renders them.
+   *
+   * The one check kept locally is B04, as a post-condition. It should be
+   * unfalsifiable — Step 3 absorbs the residual, so the sum always reconciles —
+   * which is exactly why it is worth asserting rather than assuming.
    */
   const issues = useMemo(() => {
     const out: { code: string; msg: string; blocking: boolean }[] = [];
-    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
     for (const p of derived.issues) out.push({ code: p.code, msg: p.message, blocking: p.severity === 'blocking' });
-    const big = n(form.shareResv.hni?.pct); const small = n(form.shareResv.hni2?.pct);
-    if (form.shareResv.hni?.on && form.shareResv.hni2?.on && big > 0 && small > 0 && small > big) {
-      out.push({ code: 'B-NII', msg: `HNI Big is ${big}% but Small is ${small}% — SEBI gives Big the larger two-thirds of the NII quota. Check they are not transposed.`, blocking: false });
-    }
-    const b = derived.rulePack.bounds;
-    const qib = n(form.shareResv.qib?.pct); const retail = n(form.shareResv.retail?.pct);
-    if (qib > 0 && b.qib?.max != null && qib > b.qib.max) {
-      out.push({ code: 'B-QIB', msg: `QIB is ${qib}% — ${derived.rulePack.label} caps it at ${b.qib.max}%.`, blocking: true });
-    }
-    if (qib > 0 && b.qib?.min != null && qib < b.qib.min) {
-      out.push({ code: 'B-QIB', msg: `QIB is ${qib}% — ${derived.rulePack.label} requires at least ${b.qib.min}%.`, blocking: true });
-    }
-    if (retail > 0 && b.retail?.min != null && retail < b.retail.min) {
-      out.push({ code: 'B-RET', msg: `Retail is ${retail}% — ${derived.rulePack.label} requires at least ${b.retail.min}%.`, blocking: true });
-    }
-    if (retail > 0 && b.retail?.max != null && retail > b.retail.max) {
-      out.push({ code: 'B-RET', msg: `Retail is ${retail}% — ${derived.rulePack.label} caps it at ${b.retail.max}%.`, blocking: true });
-    }
     const sc = derived.primary;
     if (sc) {
       const sum = sc.categories.reduce((a: number, c: any) => a + c.shares, 0);
       if (sum !== sc.netOfferShares) {
-        out.push({ code: 'B-SUM', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
+        out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
       }
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(form.shareResv), derived]);
+  }, [derived]);
 
   /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
   const legSumCr = (() => {

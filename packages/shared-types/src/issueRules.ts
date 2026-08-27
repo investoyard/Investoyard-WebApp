@@ -23,11 +23,30 @@ export interface CategoryThreshold {
   upTo?: number;
 }
 
+/** A floor and/or ceiling on one category's share of the net offer. */
+export interface CategoryBound { min?: number; max?: number }
+
 export interface RulePack {
   label: string;
-  /** category floors/ceilings as a percentage of the net offer -- VERIFY */
-  bounds: { qib?: { min?: number; max?: number }; nii?: { min?: number; max?: number }; retail?: { min?: number; max?: number } };
-  /** how the NII quota divides between big and small bidders -- VERIFY */
+  /**
+   * Category floors/ceilings as a percentage of the net offer -- VERIFY.
+   *
+   * Keyed by the engine's category keys (`qib` · `hni` = B-HNI · `hni2` = S-HNI
+   * · `retail` …), plus the pseudo-key **`nii`** for the combined HNI quota,
+   * which the regulation bounds as a whole rather than row by row.
+   *
+   * Deliberately NOT pinning `hni`/`hni2` to absolute percentages. ICDR sets a
+   * FLOOR on NII (6(1)) or a ceiling (6(2)), not an exact figure — an issuer may
+   * offer more than the minimum, and then Big and Small scale with it. What is
+   * fixed is the RATIO between them, which is `niiSplit`.
+   */
+  bounds: Record<string, CategoryBound>;
+  /**
+   * How the NII quota divides, as a RATIO -- VERIFY. SEBI gives bids above
+   * ₹10 L two-thirds of the NII portion and ₹2–10 L bids one-third, so B-HNI
+   * (`hni`) is always the larger of the two. Enforcing the ratio rather than
+   * `10` and `5` catches the Big/Small transposition at any NII total.
+   */
   niiSplit: { big: number; small: number };
   /** MF share of the net (post-anchor) QIB book -- VERIFY */
   mfPctOfNetQib: number;
@@ -55,7 +74,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
   'mainboard/book_built/icdr_6_1': {
     label: 'Mainboard · book-built · ICDR 6(1)',
     bounds: { qib: { max: 50 }, nii: { min: 15 }, retail: { min: 35 } },
-    niiSplit: { big: 10, small: 5 },
+    niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
     thresholds: THRESHOLDS,
@@ -64,7 +83,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
   'mainboard/book_built/icdr_6_2': {
     label: 'Mainboard · book-built · ICDR 6(2)',
     bounds: { qib: { min: 75 }, nii: { max: 15 }, retail: { max: 10 } },
-    niiSplit: { big: 10, small: 5 },
+    niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
     thresholds: THRESHOLDS,
@@ -73,7 +92,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
   'mainboard/fixed_price/icdr_6_1': {
     label: 'Mainboard · fixed price',
     bounds: { retail: { min: 50 } },
-    niiSplit: { big: 10, small: 5 },
+    niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
     thresholds: THRESHOLDS,
@@ -82,7 +101,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
   'sme/book_built/icdr_6_1': {
     label: 'SME · book-built',
     bounds: {},
-    niiSplit: { big: 10, small: 5 },
+    niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 60,
     thresholds: THRESHOLDS,
@@ -91,7 +110,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
   'sme/fixed_price/icdr_6_1': {
     label: 'SME · fixed price',
     bounds: {},
-    niiSplit: { big: 10, small: 5 },
+    niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
     thresholds: THRESHOLDS,

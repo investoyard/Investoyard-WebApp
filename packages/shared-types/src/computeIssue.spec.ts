@@ -233,10 +233,80 @@ describe('computeIssue — validation catalogue (spec §6)', () => {
 });
 
 describe('computeIssue — B09/B10 do not stack', () => {
-  it('reports only B10 on a fixed-price issue with an anchor', () => {
+  it('reports B10 but not B09 on a fixed-price issue with an anchor', () => {
     const r = computeIssue({
       ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: { pctOfQib: 60 },
     });
-    expect(r.issues.map((i) => i.code)).toEqual(['B10']);
+    const codes = r.issues.map((i) => i.code);
+    expect(codes).toContain('B10');
+    // the fixed-price pack caps the anchor at 0, so an unguarded B09 would tell
+    // the operator to REDUCE a percentage they need to REMOVE
+    expect(codes).not.toContain('B09');
+    // B02 does fire here, and correctly: a fixed-price issue owes retail 50%
+    expect(r.issues.find((i) => i.code === 'B02')?.message).toMatch(/Retail.*at least 50/);
+  });
+});
+
+/**
+ * B02 — spec §9 negative case 2, and the rule the brief singles out:
+ * "B02 must reject the legacy HNI Big/Small swap under ICDR_6_2."
+ */
+describe('computeIssue — B02 category bounds', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+
+  it('rejects the legacy Big/Small transposition under ICDR 6(2)', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 5, hni2: 10, retail: 10 } });
+    const b02 = find(r, 'B02');
+    expect(b02.some((i) => i.severity === 'blocking' && /transposed/.test(i.message))).toBe(true);
+  });
+
+  it('rejects the same transposition under ICDR 6(1)', () => {
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 5, hni2: 10, retail: 35 },
+    });
+    expect(find(r, 'B02').some((i) => /transposed/.test(i.message))).toBe(true);
+  });
+
+  it('accepts a 2:1 split at an NII total above the 6(1) floor', () => {
+    // 6(1) sets a FLOOR on NII, so 24/12 is legal — absolute 10/5 bounds
+    // would have rejected it
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 29, hni: 24, hni2: 12, retail: 35 },
+    });
+    expect(r.issues).toEqual([]);
+  });
+
+  it('warns, but does not block, on an off-ratio split that is not transposed', () => {
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 8, hni2: 7, retail: 35 },
+    });
+    const w = find(r, 'W01');
+    expect(w).toHaveLength(1);
+    expect(w[0].severity).toBe('warning');
+    expect(find(r, 'B02').filter((i) => /transposed/.test(i.message))).toHaveLength(0);
+  });
+
+  it('enforces the QIB floor under 6(2) and the retail floor under 6(1)', () => {
+    const lowQib = computeIssue({ ...MVELECTRO, reservation: { qib: 70, hni: 13, hni2: 7, retail: 10 } });
+    expect(find(lowQib, 'B02').some((i) => /QIB.*at least 75/.test(i.message))).toBe(true);
+
+    const lowRetail = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 20, hni2: 10, retail: 20 },
+    });
+    expect(find(lowRetail, 'B02').some((i) => /Retail.*at least 35/.test(i.message))).toBe(true);
+  });
+
+  it('bounds the COMBINED NII quota, not just the rows', () => {
+    // 20% NII under 6(2), correctly split 2:1 — each row alone looks unremarkable
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 13.334, hni2: 6.666, retail: 5 } });
+    expect(find(r, 'B02').some((i) => /Big \+ Small.*caps it at 15/.test(i.message))).toBe(true);
+  });
+
+  it('stays silent on the corrected fixture', () => {
+    expect(computeIssue(MVELECTRO).issues).toEqual([]);
   });
 });

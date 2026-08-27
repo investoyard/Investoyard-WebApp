@@ -281,6 +281,73 @@ function validateInputs(inp: IssueInputs, pack: RulePack, mechanism: Mechanism):
     }
   }
 
+  /* ── B02: every percentage inside the rule pack's bounds ── */
+  const pctOf = (k: string) => num(inp.reservation?.[k]);
+  const label = (k: string) => CATEGORY_LABELS[k] ?? k;
+  const anyEntered = pcts.length > 0;
+
+  if (anyEntered) {
+    // per-category bounds, plus the combined NII quota the regulation bounds
+    // as a whole rather than row by row
+    const checked: [string, string, number][] = [
+      ...Object.keys(inp.reservation ?? {})
+        .filter((k) => pctOf(k) > 0)
+        .map((k) => [k, label(k), pctOf(k)] as [string, string, number]),
+      ['nii', 'HNI (Big + Small)', pctOf('hni') + pctOf('hni2')],
+    ];
+    for (const [key, name, value] of checked) {
+      const bound = pack.bounds[key];
+      if (!bound || value <= 0) continue;
+      if (bound.max != null && value > bound.max) {
+        out.push({
+          code: 'B02', severity: 'blocking', field: `reservation.${key}`,
+          message: `${name} is ${value}% — ${pack.label} caps it at ${bound.max}%.`,
+        });
+      }
+      if (bound.min != null && value < bound.min) {
+        out.push({
+          code: 'B02', severity: 'blocking', field: `reservation.${key}`,
+          message: `${name} is ${value}% — ${pack.label} requires at least ${bound.min}%.`,
+        });
+      }
+    }
+
+    /*
+     * The Big/Small split. SEBI gives bids above ₹10 L two-thirds of the NII
+     * portion, so B-HNI is ALWAYS the larger row. Checking the ratio rather
+     * than the absolute 10 and 5 catches the transposition at any NII total —
+     * a 6(1) issuer may offer more than the 15% floor, and then both rows
+     * scale with it.
+     *
+     * Transposed (Big < Small) BLOCKS: it is a straight data-entry defect, and
+     * it published wrong figures on three live records. A ratio that is merely
+     * off warns — an unusual split is the issuer's business, not an error.
+     */
+    const big = pctOf('hni'), small = pctOf('hni2');
+    if (big > 0 && small > 0) {
+      const { big: rBig, small: rSmall } = pack.niiSplit;
+      if (rBig > 0 && rSmall > 0) {
+        if (big < small) {
+          out.push({
+            code: 'B02', severity: 'blocking', field: 'reservation.hni',
+            message: `HNI (Big) is ${big}% but HNI (Small) is ${small}%. `
+              + `${pack.label} gives bids above ₹10 L the larger ${rBig}:${rSmall} share of the NII quota — `
+              + `the two rows are transposed.`,
+          });
+        } else {
+          const expectedBig = ((big + small) * rBig) / (rBig + rSmall);
+          if (Math.abs(big - expectedBig) > 0.001) {
+            out.push({
+              code: 'W01', severity: 'warning', field: 'reservation.hni',
+              message: `HNI splits ${big}% / ${small}%, not the customary ${rBig}:${rSmall} `
+                + `(${+expectedBig.toFixed(3)}% / ${+((big + small) - expectedBig).toFixed(3)}%).`,
+            });
+          }
+        }
+      }
+    }
+  }
+
   /* ── B09 / B10: anchor ── */
   const anchorPct = num(inp.anchor?.pctOfQib);
   if (anchorPct > 0) {
