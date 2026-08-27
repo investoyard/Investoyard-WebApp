@@ -75,14 +75,26 @@ export const RETAIL_MAX_AMOUNT = 200_000;
 export const SNII_MAX_AMOUNT = 1_000_000;
 
 /**
- * UPI mandate ceiling -- VERIFY. Above this a bid must go through bank ASBA,
- * which is also why it is the ASBA form split: `{SYMBOL}.pdf` for resident
- * bids up to this, `{SYMBOL}_SA.pdf` for syndicate bids above it (spec §2.13).
+ * UPI mandate ceiling -- VERIFY. A bid above this cannot carry a UPI mandate
+ * and must go through bank ASBA. A PAYMENT rule.
  *
  * The one threshold here an operator may override per tenant (`bidEngine`'s
  * `upiCap`); this is the default, not a hard limit.
  */
 export const UPI_MANDATE_MAX = 500_000;
+
+/**
+ * ASBA form split -- VERIFY. Up to this, the resident form (`{SYMBOL}.pdf`);
+ * above it, the syndicate form (`{SYMBOL}_SA.pdf`) — spec §2.13. A FORM-TYPE
+ * rule, and mainboard only; SME and NCD issues use a single form.
+ *
+ * Deliberately its OWN constant even though it equals UPI_MANDATE_MAX today.
+ * They are different rules that happen to share a number, and collapsing them
+ * means a future UPI-limit revision silently changes which ASBA form every
+ * mainboard IPO prints. Written as a literal, not as `= UPI_MANDATE_MAX`, so
+ * the two can move independently.
+ */
+export const ASBA_SYNDICATE_ABOVE = 500_000;
 
 const RETAIL_MAX = RETAIL_MAX_AMOUNT;
 const SNII_MAX = SNII_MAX_AMOUNT;

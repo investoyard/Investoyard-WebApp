@@ -16,7 +16,7 @@
  * at cut-off block the same amount; HNI must bid at price anyway).
  */
 
-import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT, UPI_MANDATE_MAX } from './issueRules';
+import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE } from './issueRules';
 
 export type BidCategory = 'retail' | 'shni' | 'bhni' | 'shareholder';
 export type BidFormType = 'normal' | 'syndicate';
@@ -37,7 +37,7 @@ export interface BidRules {
 export const DEFAULT_BID_RULES: BidRules = {
   retailCap: RETAIL_MAX_AMOUNT,
   bhniAbove: SNII_MAX_AMOUNT,
-  syndicateAbove: UPI_MANDATE_MAX,
+  syndicateAbove: ASBA_SYNDICATE_ABOVE,  // form choice, NOT the UPI cap
   upiCap: UPI_MANDATE_MAX,
 };
 

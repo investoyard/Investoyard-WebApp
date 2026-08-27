@@ -14,10 +14,10 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
-const ASBA_RETAIL_LIMIT = UPI_MANDATE_MAX;
+const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
 
 /** Shared relations needed to fill an ASBA form for an application. */
 const ASBA_INCLUDE = {
