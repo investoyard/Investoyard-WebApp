@@ -89,6 +89,22 @@ export interface ScenarioResult {
   residualTo?: string;
 }
 
+export type IssueSeverity = 'blocking' | 'warning';
+
+/**
+ * One validation finding, carrying the spec's rule code.
+ *
+ * A LIST, not scattered `if`s at each call site, so that every caller — admin
+ * form, Excel importer, API — reaches the same verdict on the same inputs.
+ */
+export interface IssueProblem {
+  code: string;
+  severity: IssueSeverity;
+  message: string;
+  /** the input at fault, for inline display */
+  field?: string;
+}
+
 export interface IssueDerived {
   rulePack: RulePack;
   regulationBasis: RegulationBasis;
@@ -97,6 +113,8 @@ export interface IssueDerived {
   primary?: ScenarioResult;
   /** true when there was not enough input to derive anything */
   empty: boolean;
+  /** spec §6 findings. Blocking ones must prevent publication. */
+  issues: IssueProblem[];
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -232,6 +250,62 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
   };
 }
 
+/**
+ * Spec §6 rules that depend only on the INPUTS, not on a price scenario.
+ *
+ * B01 has to live here rather than in the form. Step 3 absorbs the floor-to-lot
+ * residual into one category, so percentages summing to 99.9 still produce a
+ * result where `Σ shares == net_offer_shares` — the shortfall is silently
+ * handed to the residual holder and every post-condition still passes. Checked
+ * only at the form, a bad split entered by any other route (the Excel importer,
+ * the API) derives cleanly and looks right.
+ */
+function validateInputs(inp: IssueInputs, pack: RulePack, mechanism: Mechanism): IssueProblem[] {
+  const out: IssueProblem[] = [];
+
+  /* ── B01: the reservation table must account for the whole net offer ── */
+  const pcts = Object.keys(inp.reservation ?? {})
+    .map((k) => num(inp.reservation[k]))
+    .filter((v) => v > 0);
+  if (pcts.length) {
+    const total = pcts.reduce((a, v) => a + v, 0);
+    // spec says == 100.000; tolerate float noise only
+    if (Math.abs(total - 100) > 0.001) {
+      out.push({
+        code: 'B01',
+        severity: 'blocking',
+        field: 'reservation',
+        message: `Reservation percentages total ${+total.toFixed(3)}%, not 100%. `
+          + `The ${Math.abs(100 - total) > 0 ? 'difference' : 'shortfall'} would be absorbed into the residual category and disappear.`,
+      });
+    }
+  }
+
+  /* ── B09 / B10: anchor ── */
+  const anchorPct = num(inp.anchor?.pctOfQib);
+  if (anchorPct > 0) {
+    if (mechanism === 'fixed_price') {
+      // B10 only. A fixed-price pack caps the anchor at 0, so B09 would fire too
+      // and tell the operator to reduce a percentage they need to remove.
+      out.push({
+        code: 'B10',
+        severity: 'blocking',
+        field: 'anchor',
+        message: 'A fixed-price issue has no anchor round — there is no book to anchor. Clear the anchor percentage.',
+      });
+    } else if (pack.anchorMaxPctOfQib != null && anchorPct > pack.anchorMaxPctOfQib) {
+      out.push({
+        code: 'B09',
+        severity: 'blocking',
+        field: 'anchor',
+        message: `Anchor is ${anchorPct}% of QIB — ${pack.label} caps it at ${pack.anchorMaxPctOfQib}%.`,
+      });
+    }
+  }
+
+  return out;
+}
+
 export function computeIssue(inp: IssueInputs): IssueDerived {
   const mechanism: Mechanism = inp.mechanism ?? (inp.fixedPrice ? 'fixed_price' : 'book_built');
   const basis: RegulationBasis = inp.regulationBasis ?? inferRegulationBasis(num(inp.reservation?.qib));
@@ -258,5 +332,9 @@ export function computeIssue(inp: IssueInputs): IssueDerived {
     ?? (pack.applicationThresholdBasis === 'floor' ? scenarios.floor : scenarios.cap)
     ?? scenarios.cap ?? scenarios.floor;
 
-  return { rulePack: pack, regulationBasis: basis, scenarios, primary, empty: !primary };
+  return {
+    rulePack: pack, regulationBasis: basis, scenarios, primary,
+    empty: !primary,
+    issues: validateInputs(inp, pack, mechanism),
+  };
 }

@@ -37,8 +37,15 @@ const RESV_ROWS: { key: string; label: string }[] = [
 type Doc = { type: string; name: string; url: string };
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
-type Resv = { on: boolean; pct: string; count: string; remark: string; req1x: string };
-const blankResv = (): Resv => ({ on: false, pct: '', count: '', remark: '', req1x: '' });
+/**
+ * A reservation row as STORED: the tick and the percentage, nothing else.
+ *
+ * Share count, category remark and require-for-1x used to live here too. They
+ * are projections of `pct`, so persisting them created a second copy that could
+ * — and did — drift from the number it was computed from.
+ */
+type Resv = { on: boolean; pct: string };
+const blankResv = (): Resv => ({ on: false, pct: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
   symbol: string; name: string; type: string; issueType: string; status: string; faceValue: string; lotSize: string; isin: string;
@@ -47,7 +54,7 @@ interface FormState {
   startBid: boolean; startPrint: boolean; // operator gates: apply/pre-apply + ASBA form printing
   categoryName: string; // IPO Category master name (drives type via its platform mapping)
   priceBandMin: string; priceBandMax: string;
-  retailDiscount: string; retailCutOff: string;
+  retailDiscount: string;
   /** applications RECEIVED — an operator observation. Not to be confused with
    *  applications-for-1x, which the engine derives. Was `noOfApp`. */
   applicationsReceived: string;
@@ -59,6 +66,8 @@ interface FormState {
   /** total offer in ₹ Cr — Fresh/OFS below split it */
   issueSizeCr: string;
   tickSize: string; employeeDiscount: string; shareholderDiscount: string; finalIssuePrice: string;
+  /** anchor as a % of the QIB quota — the input B09 checks against the rule pack */
+  anchorPct: string;
   /** off-the-top reservations, taken before the category split */
   cvEmployee: string; cvShareholder: string;
   freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
@@ -82,10 +91,10 @@ const blankForm = (): FormState => ({
   startBid: false, startPrint: false, // OFF until the operator explicitly opens bidding/printing
   categoryName: '',
   priceBandMin: '', priceBandMax: '',
-  retailDiscount: '', retailCutOff: '', applicationsReceived: '',
+  retailDiscount: '', applicationsReceived: '',
   mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
   exNse: true, exBse: true, issueSizeCr: '',
-  tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '',
+  tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '', anchorPct: '',
   cvEmployee: '', cvShareholder: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
@@ -146,7 +155,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : [],
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
-          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff),
+          retailDiscount: str(ex.retailDiscount),
           // `noOfApp` is the legacy name for the same operator observation
           applicationsReceived: str(ex.applicationsReceived ?? ex.noOfApp),
           mechanism: str(ex.mechanism) || 'book_built', regulationBasis: str(ex.regulationBasis),
@@ -155,6 +164,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           issueSizeCr: str(ex.issueSizeCr ?? d.issueSizeCr ?? ''),
           tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
           shareholderDiscount: str(ex.shareholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
+          anchorPct: str(ex.anchorPct),
           cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
           freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
           ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
@@ -166,7 +176,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           companyDescription: str(ex.companyDescription), companyStrength: str(ex.companyStrength), companyFinancials: str(ex.companyFinancials), contactInfo: str(ex.contactInfo),
           faqs: Array.isArray(ex.faqs) ? ex.faqs : [], leads: Array.isArray(ex.leads) ? ex.leads : [], partners: Array.isArray(ex.partners) ? ex.partners : [],
           pdfSeries: Array.isArray(ex.pdfSeries) ? ex.pdfSeries : [], onlineSeries: Array.isArray(ex.onlineSeries) ? ex.onlineSeries : [],
-          shareResv: ex.shareResv ?? (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
+          // legacy rows carry count/remark/req1x — read the inputs only and let
+          // the derived columns come from the engine
+          shareResv: ex.shareResv
+            ? Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: !!ex.shareResv[r.key]?.on, pct: str(ex.shareResv[r.key]?.pct) }]))
+            : (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
           resvRemarks: str(ex.resvRemarks),
         };
         initial.current = loaded; setForm(loaded);
@@ -253,7 +267,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     autoPollSubscription: form.autoPollSubscription,
     extra: {
       issueType: form.issueType, faceValue: form.faceValue, categoryName: form.categoryName,
-      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc,
+      retailDiscount: form.retailDiscount,
+      // retailCutOff is NOT written — it is price cap minus retail discount,
+      // recomputed wherever it is shown (spec B23).
       applicationsReceived: form.applicationsReceived,
       // mirrored under the old key while readers migrate — remove once
       // nothing greps for `noOfApp` (web/lib/api.ts was the last one)
@@ -262,6 +278,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       issueSizeCr: form.issueSizeCr,
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
       shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
+      anchorPct: form.anchorPct,
       carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
@@ -277,7 +294,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
       anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), amount: a.amount.trim() })),
       startBid: form.startBid, startPrint: form.startPrint,
-      shareResv: form.shareResv, resvRemarks: form.resvRemarks,
+      // only the tick and the percentage; every other column is derived on read
+      shareResv: Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: form.shareResv[r.key].on, pct: form.shareResv[r.key].pct }])),
+      resvRemarks: form.resvRemarks,
     },
   });
 
@@ -366,29 +385,31 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         { key: 'shareholder', basis: 'amount' as const, value: n(form.cvShareholder) },
       ].filter((c) => c.value > 0),
       finalIssuePrice: n(form.finalIssuePrice) || undefined,
+      anchor: n(form.anchorPct) > 0 ? { pctOfQib: n(form.anchorPct) } : undefined,
     };
     return computeIssue(inputs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      form.issueSizeCr, form.cvEmployee, form.cvShareholder, JSON.stringify(form.shareResv)]);
+      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.anchorPct, form.finalIssuePrice,
+      JSON.stringify(form.shareResv)]);
 
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
 
   /**
-   * Blocking checks, evaluated inline. Deliberately the few our data can
-   * actually violate rather than the spec's full B01-B23 — each one here has
-   * been seen in a live record.
+   * Blocking checks shown inline.
+   *
+   * B01 / B09 / B10 come from the ENGINE, not from here — the admin form is not
+   * the only writer (the Excel importer and the API both call computeIssue), so
+   * a rule that lives only in this component is a rule half the callers skip.
+   * What remains below are the checks that need form state the engine never
+   * sees, plus the bounds checks still awaiting a per-row rule pack (B02).
    */
   const issues = useMemo(() => {
     const out: { code: string; msg: string; blocking: boolean }[] = [];
     const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
-    const on = RESV_ROWS.filter((r) => form.shareResv[r.key]?.on && n(form.shareResv[r.key].pct) > 0);
-    const total = on.reduce((a, r) => a + n(form.shareResv[r.key].pct), 0);
-    if (on.length && Math.abs(total - 100) > 0.01) {
-      out.push({ code: 'B-PCT', msg: `Reservation percentages total ${total}%, not 100%.`, blocking: true });
-    }
+    for (const p of derived.issues) out.push({ code: p.code, msg: p.message, blocking: p.severity === 'blocking' });
     const big = n(form.shareResv.hni?.pct); const small = n(form.shareResv.hni2?.pct);
     if (form.shareResv.hni?.on && form.shareResv.hni2?.on && big > 0 && small > 0 && small > big) {
       out.push({ code: 'B-NII', msg: `HNI Big is ${big}% but Small is ${small}% — SEBI gives Big the larger two-thirds of the NII quota. Check they are not transposed.`, blocking: false });
@@ -818,6 +839,23 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
               <div className="form-grid one" style={{ marginTop: 12 }}>
                 <Field label="Remarks"><input className="input" value={form.resvRemarks} onChange={(e) => set({ resvRemarks: e.target.value })} placeholder="Fresh Issue of Equity Shares of up to Rs. 400 Cr and Offer for Sale…" /></Field>
+              </div>
+            </Panel>
+
+            <Panel title="Anchor" desc="A sub-allocation of the QIB quota, not a category of its own — which is why it is not a row in the table above.">
+              <div className="form-grid">
+                <Field label="Anchor (% of QIB)" hint={`${derived.rulePack.label} caps this at ${derived.rulePack.anchorMaxPctOfQib ?? '—'}%`}>
+                  <input className="input mono" value={form.anchorPct} placeholder="60"
+                    onChange={(e) => set({ anchorPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                <Field label="Anchor shares" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.shares.toLocaleString('en-IN') : ''} />
+                </Field>
+                <Field label="Net QIB after anchor" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.netQibShares.toLocaleString('en-IN') : ''} />
+                </Field>
               </div>
             </Panel>
           </div>

@@ -9,6 +9,7 @@ import { DL, Empty } from '@/components/ui/Detail';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import { ipoPhase, priceBand } from '@/lib/format';
+import { derive } from '@/lib/ipoCalc';
 import * as api from '@/lib/tenants-admin';
 import { cleanRich } from '@/lib/richClean';
 
@@ -58,6 +59,11 @@ function IpoDetail() {
   const canManage = operatorCan(me, 'ipos.manage');
 
   const ex: Record<string, any> = ipo.extra ?? {};
+  // one derivation for this screen, from the same engine the edit form uses
+  const derivedIssue = derive(ipo as any);
+  const retailCutOff = ipo.priceBandMax != null
+    ? Number(ipo.priceBandMax) - (Number(ex.retailDiscount) || 0)
+    : null;
   const day = (v?: string) => (v ? String(v).slice(0, 10) : undefined);
   const milestones: { label: string; date?: string }[] = [
     { label: 'Anchor', date: day(ex.anchorDate) },
@@ -78,7 +84,9 @@ function IpoDetail() {
         ['Face value', ex.faceValue ? `₹${ex.faceValue}` : '—'],
         ['Issue size', ipo.issueSizeCr != null ? `₹${ipo.issueSizeCr} cr` : '—'],
         ['Retail discount', ex.retailDiscount ? `₹${ex.retailDiscount}` : '—'],
-        ['Retail cut off', ex.retailCutOff ? `₹${ex.retailCutOff}` : '—'],
+        // derived: price cap − retail discount. Never read back from storage —
+        // a stored copy is one more number that can drift from its own inputs.
+        ['Retail cut off', retailCutOff != null ? `₹${retailCutOff}` : '—'],
         ['GMP', ipo.gmp != null ? <span style={{ color: 'var(--pos)', fontWeight: 600 }}>+{ipo.gmp}</span> : '—'],
         ['Listing gain', ipo.listingGainPct != null ? `${ipo.listingGainPct}%` : '—'],
         ['Registrar', ipo.registrar],
@@ -126,51 +134,59 @@ function IpoDetail() {
     </div>
   );
 
-  // Shares & Reservation (read-only view of the operator-entered tables)
-  const SZ_LABELS: [string, string][] = [['qib', 'QIB'], ['hni', 'HNI'], ['retail', 'Retail'], ['employee', 'Employee'], ['shareholder', 'ShareHolder'], ['other', 'Other'], ['anchor', 'Anchor'], ['qibpost', 'QIB Post Anchor']];
+  /*
+   * Shares & Reservation.
+   *
+   * The percentage is the operator's; every other column is DERIVED here, from
+   * the same computeIssue() the edit form and the public page use. It used to
+   * render `shareResv[k].count / .req1x / .remark` — values typed by hand beside
+   * the percentage they follow from, with nothing reconciling the two.
+   *
+   * The legacy "Shares Size Info" grid is gone with it: the edit form stopped
+   * writing `extra.sharesSize` when that grid was dropped, so this block had
+   * been rendering nothing but stale rows on old records.
+   */
   const RESV_LABELS: [string, string][] = [['qib', 'QIB'], ['hni', 'HNI (Big)'], ['hni2', 'HNI (Small)'], ['retail', 'Retail'], ['employee', 'Employee'], ['shareholder', 'ShareHolder'], ['other', 'Other']];
-  const sz: Record<string, any> = ex.sharesSize ?? {};
   const resv: Record<string, any> = ex.shareResv ?? {};
-  const hasSz = SZ_LABELS.some(([k]) => Object.values(sz[k] ?? {}).some((v: any) => String(v ?? '').trim() !== ''));
   const hasResv = RESV_LABELS.some(([k]) => resv[k]?.on);
-  const sharesTab = (!hasSz && !hasResv) ? (
-    <Empty icon="chart" title="No shares / reservation data" sub="Fill the Shares & Reservation tab in the Edit screen." />
+  const sharesTab = !hasResv ? (
+    <Empty icon="chart" title="No shares / reservation data" sub="Fill the Offer & Reservation tab in the Edit screen." />
   ) : (
-    <>
-      {hasSz && (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%' }}>
-            <thead><tr><th>Category</th><th>Share</th><th>Min Price (Cr.)</th><th>Max Price (Cr.)</th><th>NCD Max</th><th>IND</th><th>HNI</th></tr></thead>
-            <tbody>
-              {SZ_LABELS.filter(([k]) => Object.values(sz[k] ?? {}).some((v: any) => String(v ?? '').trim() !== '')).map(([k, label]) => (
-                <tr key={k}>
-                  <td style={{ fontWeight: 600 }}>{label}</td>
-                  <td className="mono">{sz[k]?.share || '—'}</td><td className="mono">{sz[k]?.minP || '—'}</td><td className="mono">{sz[k]?.maxP || '—'}</td>
-                  <td className="mono">{sz[k]?.ncd || '—'}</td><td className="mono">{sz[k]?.ind || '—'}</td><td className="mono">{sz[k]?.hni || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div style={{ overflowX: 'auto' }}>
+      <div className="dl-label" style={{ marginBottom: 8 }}>
+        Share reservation
+        {derivedIssue.primary ? <span className="muted" style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}> · derived at ₹{derivedIssue.primary.price}</span> : null}
+      </div>
+      <table className="table" style={{ width: '100%' }}>
+        <thead><tr><th>Category</th><th>%</th><th>Share count</th><th>Req. for 1×</th><th>Remark</th></tr></thead>
+        <tbody>
+          {RESV_LABELS.filter(([k]) => resv[k]?.on).map(([k, label]) => {
+            const d = derivedIssue.primary?.categories.find((c) => c.key === k);
+            const dash = <span className="muted">—</span>;
+            return (
+              <tr key={k}>
+                <td style={{ fontWeight: 600 }}>{label}</td>
+                <td className="mono">{resv[k]?.pct || '—'}</td>
+                <td className="mono">{d ? d.shares.toLocaleString('en-IN') : dash}</td>
+                <td className="mono">{d?.appsFor1x != null ? d.appsFor1x.toLocaleString('en-IN') : dash}</td>
+                <td>{d ? d.remark : dash}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {derivedIssue.primary?.anchor && (
+        <div className="dl-label" style={{ marginTop: 14, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+          Anchor <span className="mono">{derivedIssue.primary.anchor.shares.toLocaleString('en-IN')}</span> shares
+          {' · '}net QIB <span className="mono">{derivedIssue.primary.anchor.netQibShares.toLocaleString('en-IN')}</span>
         </div>
       )}
-      {hasResv && (
-        <div style={{ overflowX: 'auto', marginTop: hasSz ? 18 : 0 }}>
-          <div className="dl-label" style={{ marginBottom: 8 }}>Share reservation</div>
-          <table className="table" style={{ width: '100%' }}>
-            <thead><tr><th>Category</th><th>%</th><th>Share count</th><th>Req. for 1×</th><th>Remark</th></tr></thead>
-            <tbody>
-              {RESV_LABELS.filter(([k]) => resv[k]?.on).map(([k, label]) => (
-                <tr key={k}>
-                  <td style={{ fontWeight: 600 }}>{label}</td>
-                  <td className="mono">{resv[k]?.pct || '—'}</td><td className="mono">{resv[k]?.count || '—'}</td>
-                  <td className="mono">{resv[k]?.req1x || '—'}</td><td>{resv[k]?.remark || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {derivedIssue.issues.length > 0 && (
+        <div className="banner warn" style={{ marginTop: 14 }}>
+          {derivedIssue.issues.map((p) => <div key={p.code}><b>{p.code}</b> · {p.message}</div>)}
         </div>
       )}
-    </>
+    </div>
   );
 
   const ASBA_LABEL: Record<string, string> = {

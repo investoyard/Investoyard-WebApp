@@ -165,3 +165,78 @@ describe('computeIssue — legacy amount-only records', () => {
     expect(cat(r, 'retail').appsFor1x).toBe(20_069);
   });
 });
+
+/**
+ * Spec §9 negative cases. One test per rule code.
+ *
+ * These sit in the engine rather than the admin form because the form is not
+ * the only writer — the Excel importer and the API reach computeIssue directly.
+ */
+describe('computeIssue — validation catalogue (spec §6)', () => {
+  const problem = (r: ReturnType<typeof computeIssue>, code: string) =>
+    r.issues.find((i) => i.code === code);
+
+  it('is silent on the corrected fixture', () => {
+    expect(computeIssue(MVELECTRO).issues).toEqual([]);
+  });
+
+  /* ── negative case 1 ── */
+  it('B01 — reservation percentages must total 100', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 10, hni2: 5, retail: 9.9 } });
+    expect(problem(r, 'B01')?.severity).toBe('blocking');
+  });
+
+  it('B01 fires even though the residual absorbs the shortfall invisibly', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 10, hni2: 5, retail: 9.9 } });
+    const s = r.scenarios.cap!;
+    // the post-conditions still pass — which is exactly why B01 cannot be left
+    // to a Sigma-check downstream
+    expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+    expect(problem(r, 'B01')).toBeDefined();
+  });
+
+  /* ── negative case 3 ── */
+  it('B09 — anchor cannot exceed the rule pack cap', () => {
+    const r = computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 65 } });
+    expect(problem(r, 'B09')?.severity).toBe('blocking');
+    expect(problem(r, 'B09')?.message).toContain('60');
+  });
+
+  it('B09 accepts the cap exactly', () => {
+    expect(problem(computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 60 } }), 'B09')).toBeUndefined();
+  });
+
+  /* ── negative case 4 ── */
+  it('B10 — a fixed-price issue cannot have an anchor round', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: { pctOfQib: 60 },
+    });
+    expect(problem(r, 'B10')?.severity).toBe('blocking');
+  });
+
+  it('B10 does not fire on a fixed-price issue with no anchor', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: undefined,
+    });
+    expect(problem(r, 'B10')).toBeUndefined();
+  });
+
+  /* ── negative case 5: not reachable, and that is the point ── */
+  it('B03/B04 cannot be violated — every leg and carve-out is floored to a lot', () => {
+    for (const lotSize of [7, 34, 37, 200, 1_600]) {
+      const s = computeIssue({ ...MVELECTRO, lotSize }).scenarios.cap!;
+      expect(s.netOfferShares % lotSize).toBe(0);
+      expect(s.categories.every((c) => c.shares % lotSize === 0)).toBe(true);
+      expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+    }
+  });
+});
+
+describe('computeIssue — B09/B10 do not stack', () => {
+  it('reports only B10 on a fixed-price issue with an anchor', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: { pctOfQib: 60 },
+    });
+    expect(r.issues.map((i) => i.code)).toEqual(['B10']);
+  });
+});
