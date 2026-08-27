@@ -107,24 +107,24 @@ enum FeatureValueType {
 
 /// The tenant tree: platform (operator) → direct / partner → branch.
 model Tenant {
-  id           String     @id @default(uuid())
-  type         TenantType
-  parentId     String?
-  parent       Tenant?    @relation("TenantTree", fields: [parentId], references: [id])
-  children     Tenant[]   @relation("TenantTree")
-  slug         String     @unique
-  name         String
-  status       String     @default("active")
-  customDomain String?    @unique
-  brandColor   String?
-  goldColor    String?
-  logoUrl      String?
-  flags        Json?
-  profile      Json?      // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
-  code         String?    @unique  // 6-digit channel code (partners/branches), sequential from 601001
-  commissionRate Decimal? @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  type           TenantType
+  parentId       String?
+  parent         Tenant?    @relation("TenantTree", fields: [parentId], references: [id])
+  children       Tenant[]   @relation("TenantTree")
+  slug           String     @unique
+  name           String
+  status         String     @default("active")
+  customDomain   String?    @unique
+  brandColor     String?
+  goldColor      String?
+  logoUrl        String?
+  flags          Json?
+  profile        Json? // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
+  code           String?    @unique // 6-digit channel code (partners/branches), sequential from 601001
+  commissionRate Decimal?   @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   roles             Role[]
   memberships       Membership[]
@@ -203,12 +203,13 @@ model PartnerApiKey {
 /// so it's outside RLS and only reachable via admin RBAC.
 model ProviderConfig {
   tenantId  String   @default("t-platform") // 't-platform' = platform default; else a white-label tenant's own config
-  provider  String   // 'sms' | 'email' | 'push' | 'whatsapp' | 'ai'
+  provider  String // 'sms' | 'email' | 'push' | 'whatsapp' | 'ai'
   enabled   Boolean  @default(false)
   settings  Json     @default("{}") // non-secret config (providerName, senderId, templateId, …)
   secrets   Json     @default("{}") // field name → vault token
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@id([tenantId, provider])
   @@index([tenantId])
 }
@@ -267,12 +268,12 @@ model UpiHandleMaster {
 }
 
 model IpoCategoryMaster {
-  id        String   @id @default(uuid())
-  name      String   @unique // e.g. "Main Board IPO", "SME IPO"
-  baseType  String   @default("mainboard") // engine mapping: 'mainboard' | 'sme'
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String            @id @default(uuid())
+  name       String            @unique // e.g. "Main Board IPO", "SME IPO"
+  baseType   String            @default("mainboard") // engine mapping: 'mainboard' | 'sme'
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
   issueTypes IssueTypeMaster[]
 }
 
@@ -319,7 +320,7 @@ model Registrar {
   city          String?
   state         String?
   pincode       String?
-  allotmentUrl  String?  // IPO allotment-status check URL
+  allotmentUrl  String? // IPO allotment-status check URL
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -327,31 +328,33 @@ model Registrar {
 
 model MessageType {
   id          String   @id @default(uuid())
-  channel     String   // 'sms' | 'email' | 'whatsapp'
-  key         String   // 'otp' | 'allotment' | …
+  channel     String // 'sms' | 'email' | 'whatsapp'
+  key         String // 'otp' | 'allotment' | …
   label       String
   description String?
   vars        String[] @default([]) // variable names the caller supplies ({{var}})
   system      Boolean  @default(false) // built-in — protected from delete / key change
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@unique([channel, key])
 }
 
 model MessageTemplate {
   id            String   @id @default(uuid())
   tenantId      String   @default("t-platform") // platform default; white-label tenants override
-  channel       String   // 'sms' | 'email' | 'whatsapp'
-  key           String   // 'otp' | 'whatsapp_verify' | 'empanelment' | …
+  channel       String // 'sms' | 'email' | 'whatsapp'
+  key           String // 'otp' | 'whatsapp_verify' | 'empanelment' | …
   locale        String   @default("en")
   enabled       Boolean  @default(true)
-  dltTemplateId String?  // SMS: DLT-registered template id (text lives in DLT)
-  senderId      String?  // SMS: sender/header override
-  body          String?  // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
-  subject       String?  // Email subject
-  bodyHtml      String?  // Email HTML body ({{var}} placeholders)
+  dltTemplateId String? // SMS: DLT-registered template id (text lives in DLT)
+  senderId      String? // SMS: sender/header override
+  body          String? // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
+  subject       String? // Email subject
+  bodyHtml      String? // Email HTML body ({{var}} placeholders)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
   @@unique([tenantId, channel, key, locale])
   @@index([tenantId])
 }
@@ -386,14 +389,14 @@ model TenantSetting {
 }
 
 model Role {
-  id          String    @id @default(uuid())
+  id          String       @id @default(uuid())
   tenantId    String?
-  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
   name        String
   permissions String[]
-  scope       RoleScope @default(own)
-  isSystem    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
+  scope       RoleScope    @default(own)
+  isSystem    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
   memberships Membership[]
 
   @@unique([tenantId, name])
@@ -416,25 +419,25 @@ model Membership {
 }
 
 model User {
-  id               String   @id @default(uuid())
+  id               String     @id @default(uuid())
   tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  mobile           String?  @unique  // customers: OTP login. Operators may have none.
-  username         String?  @unique  // operators (superadmin/partner/branch): password login
-  passwordHash     String?           // scrypt hash for operator accounts
+  tenant           Tenant     @relation(fields: [tenantId], references: [id])
+  mobile           String?    @unique // customers: OTP login. Operators may have none.
+  username         String?    @unique // operators (superadmin/partner/branch): password login
+  passwordHash     String? // scrypt hash for operator accounts
   email            String?
   name             String?
   status           UserStatus @default(active)
-  marketingConsent Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  marketingConsent Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
-  profiles      InvestorProfile[]
-  consents      Consent[]
-  applications  Application[]
-  watchlist     WatchlistItem[]
-  devices       DeviceToken[]
-  memberships   Membership[]
+  profiles       InvestorProfile[]
+  consents       Consent[]
+  applications   Application[]
+  watchlist      WatchlistItem[]
+  devices        DeviceToken[]
+  memberships    Membership[]
   gmpContributor GmpContributor?
 
   @@index([tenantId])
@@ -448,15 +451,15 @@ model InvestorProfile {
   user         User       @relation(fields: [userId], references: [id])
   relationship String     @default("self") // validated against RelationshipMaster (lowercase)
   fullName     String
-  panTokenRef  String     // PII (vault, reversible — used at rail-call time)
-  panHash      String     // deterministic HMAC of the PAN — uniqueness + dup detection
+  panTokenRef  String // PII (vault, reversible — used at rail-call time)
+  panHash      String // deterministic HMAC of the PAN — uniqueness + dup detection
   dateOfBirth  DateTime?
   depository   Depository
   dpId         String
   clientId     String
-  bankTokenRef String?    // PII (vault) — bank A/C number
+  bankTokenRef String? // PII (vault) — bank A/C number
   ifsc         String?
-  upiTokenRef  String?    // PII (vault)
+  upiTokenRef  String? // PII (vault)
   // optional contact/bank fields used to prefill the ASBA form (not vaulted — low sensitivity)
   bankName     String?
   branchName   String?
@@ -465,109 +468,114 @@ model InvestorProfile {
   state        String?
   pincode      String?
   email        String?
-  mobile       String?    // applicant's own contact (falls back to the account mobile on ASBA print)
+  mobile       String? // applicant's own contact (falls back to the account mobile on ASBA print)
   active       Boolean    @default(true) // false = deactivated (has applications, so never hard-deleted)
   kycStatus    KycStatus  @default(unverified)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   applications Application[]
+
   @@unique([tenantId, panHash]) // a PAN is registered once per tenant (self-PAN rule)
   @@index([userId])
   @@index([tenantId])
 }
 
 model Consent {
-  id            String      @id @default(uuid())
+  id            String        @id @default(uuid())
   tenantId      String
-  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
   userId        String
-  user          User        @relation(fields: [userId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
   type          ConsentType
   noticeVersion String
-  grantedAt     DateTime    @default(now())
+  grantedAt     DateTime      @default(now())
   withdrawnAt   DateTime?
   channel       String?
   applications  Application[]
+
   @@index([userId, type])
   @@index([tenantId])
 }
 
 model Ipo {
-  id            String    @id @default(uuid())
-  symbol        String    @unique
-  name          String
-  logoUrl       String?
-  type          IpoType
-  exchanges     String[]
-  status        IpoStatus @default(upcoming)
-  openDate       DateTime?
-  closeDate      DateTime?
-  allotmentDate  DateTime?
-  listingDate    DateTime?
-  listingGainPct Decimal?
-  priceBandMin   Decimal?
-  priceBandMax   Decimal?
-  lotSize        Int?
-  minAmount      Decimal?
-  issueSize      Decimal?
-  isin          String?
-  registrar     String?
-  objectsOfIssue String?
-  smeFlags      Json?
-  reservations  String[]  @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
+  id                   String            @id @default(uuid())
+  symbol               String            @unique
+  name                 String
+  logoUrl              String?
+  type                 IpoType
+  exchanges            String[]
+  status               IpoStatus         @default(upcoming)
+  openDate             DateTime?
+  closeDate            DateTime?
+  allotmentDate        DateTime?
+  listingDate          DateTime?
+  listingGainPct       Decimal?
+  priceBandMin         Decimal?
+  priceBandMax         Decimal?
+  lotSize              Int?
+  minAmount            Decimal?
+  issueSize            Decimal?
+  isin                 String?
+  registrar            String?
+  objectsOfIssue       String?
+  smeFlags             Json?
+  reservations         String[]          @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
   /// bulk-imported historical rows start hidden — they sit in the catalog for review
   /// and are excluded from every public read until an operator publishes them.
   /// A real column, not a JSON flag: `NOT (extra->'k' = true)` is NULL-not-TRUE for
   /// rows without the key, which silently hides the whole catalog.
-  hidden        Boolean   @default(false)
-  autoPollSubscription Boolean @default(true) // admin per-IPO switch for the live NSE subscription poller
-  subscriptionAsOf     DateTime?             // last time the poller refreshed this IPO's subscription
-  extra         Json?     // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
-  categories    IpoCategory[]
-  subscriptions IpoSubscription[]
-  gmps          IpoGmp[]
-  documents     IpoDocument[]
-  applications  Application[]
-  allotmentRecords AllotmentRecord[]
-  allotmentImports AllotmentImport[]
-  allotmentArchive AllotmentArchive?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  hidden               Boolean           @default(false)
+  autoPollSubscription Boolean           @default(true) // admin per-IPO switch for the live NSE subscription poller
+  subscriptionAsOf     DateTime? // last time the poller refreshed this IPO's subscription
+  extra                Json? // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
+  categories           IpoCategory[]
+  subscriptions        IpoSubscription[]
+  gmps                 IpoGmp[]
+  documents            IpoDocument[]
+  applications         Application[]
+  allotmentRecords     AllotmentRecord[]
+  allotmentImports     AllotmentImport[]
+  allotmentArchive     AllotmentArchive?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 }
 
 model IpoCategory {
-  id    String @id @default(uuid())
+  id    String  @id @default(uuid())
   ipoId String
-  ipo   Ipo    @relation(fields: [ipoId], references: [id])
+  ipo   Ipo     @relation(fields: [ipoId], references: [id])
   code  String
   label String?
+
   @@unique([ipoId, code])
 }
 
 model IpoSubscription {
-  id             String   @id @default(uuid())
-  ipoId          String
-  ipo            Ipo      @relation(fields: [ipoId], references: [id])
-  category       String
-  timesSubscribed Decimal              // subscription by SHARES (demand qty ÷ offered)
-  bidCount       Int?                  // number of applications/bids in this category (from catwise)
-  applicationsSubscribed Decimal?      // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
-  asOf           DateTime @default(now())
+  id                     String   @id @default(uuid())
+  ipoId                  String
+  ipo                    Ipo      @relation(fields: [ipoId], references: [id])
+  category               String
+  timesSubscribed        Decimal // subscription by SHARES (demand qty ÷ offered)
+  bidCount               Int? // number of applications/bids in this category (from catwise)
+  applicationsSubscribed Decimal? // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
+  asOf                   DateTime @default(now())
+
   @@index([ipoId, asOf])
 }
 
 model IpoGmp {
-  id     String   @id @default(uuid())
-  ipoId  String
-  ipo    Ipo      @relation(fields: [ipoId], references: [id])
-  value  Decimal
-  trend  String?
-  source String?
+  id              String   @id @default(uuid())
+  ipoId           String
+  ipo             Ipo      @relation(fields: [ipoId], references: [id])
+  value           Decimal
+  trend           String?
+  source          String?
   /// who entered it — GMP is unofficial, so every value stays traceable to a person
   submittedBy     String?
   submittedByName String?
-  asOf   DateTime @default(now())
+  asOf            DateTime @default(now())
+
   @@index([ipoId, asOf])
   @@index([submittedBy])
 }
@@ -586,81 +594,83 @@ model GmpContributor {
 }
 
 model IpoDocument {
-  id      String @id @default(uuid())
+  id      String  @id @default(uuid())
   ipoId   String
-  ipo     Ipo    @relation(fields: [ipoId], references: [id])
+  ipo     Ipo     @relation(fields: [ipoId], references: [id])
   type    String // RHP / DRHP / prospectus
   url     String
   summary String?
 }
 
 model MemberCredential {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   tenantId        String?
-  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant          Tenant?       @relation(fields: [tenantId], references: [id])
   exchange        Exchange
   memberName      String
-  memberType      String   // broker / merchant_banker / syndicate
+  memberType      String // broker / merchant_banker / syndicate
   loginId         String
   memberCode      String
-  passwordRef     String   // vault ref
-  ibbsIdRef       String?  // vault ref (BSE)
-  checksumKeyRef  String?  // vault ref (BSE) — AES-256 key for the request Checksum header
+  passwordRef     String // vault ref
+  ibbsIdRef       String? // vault ref (BSE)
+  checksumKeyRef  String? // vault ref (BSE) — AES-256 key for the request Checksum header
   subBrokerCode   String?
   baseUrl         String
-  env             String   // live / uat
-  active          Boolean  @default(true)
-  subscriptionUse Boolean  @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
+  env             String // live / uat
+  active          Boolean       @default(true)
+  subscriptionUse Boolean       @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
   applications    Application[]
+
   @@index([tenantId])
 }
 
 model Application {
-  id                 String      @id @default(uuid())
+  id                 String            @id @default(uuid())
   tenantId           String
-  tenant             Tenant      @relation(fields: [tenantId], references: [id])
+  tenant             Tenant            @relation(fields: [tenantId], references: [id])
   userId             String
-  user               User        @relation(fields: [userId], references: [id])
+  user               User              @relation(fields: [userId], references: [id])
   investorProfileId  String
-  profile            InvestorProfile @relation(fields: [investorProfileId], references: [id])
+  profile            InvestorProfile   @relation(fields: [investorProfileId], references: [id])
   ipoId              String
-  ipo                Ipo         @relation(fields: [ipoId], references: [id])
+  ipo                Ipo               @relation(fields: [ipoId], references: [id])
   memberCredentialId String?
   memberCredential   MemberCredential? @relation(fields: [memberCredentialId], references: [id])
-  consentId          String?           // DPDP: the data-sharing consent this bid was submitted under
+  consentId          String? // DPDP: the data-sharing consent this bid was submitted under
   consent            Consent?          @relation(fields: [consentId], references: [id])
 
-  category           String            // investor bucket (retail / sNII / bNII / qib)
+  category           String // investor bucket (retail / sNII / bNII / qib)
   applicantType      ApplicantCategory @default(individual)
-  batchId            String?           // set when created via family/bulk apply — groups the batch
+  batchId            String? // set when created via family/bulk apply — groups the batch
   lots               Int
   /// exact share quantity as submitted (partner API sends FINAL figures); null → lots × lotSize
   shareQty           Int?
   /// print grouping label on the ASBA form (partner-supplied, or the account holder)
   familyGroup        String?
-  atCutoff           Boolean     @default(true)
+  atCutoff           Boolean           @default(true)
   bidPrice           Decimal?
   amount             Decimal
   applyMethod        ApplyMethod
   rail               Exchange?
   applicationNumber  String?
-  asbaFormNo         String?     // ASBA print-form number, allocated from the IPO's active "PDF Printing" series
+  asbaFormNo         String? // ASBA print-form number, allocated from the IPO's active "PDF Printing" series
   bidReferenceNumber String?
   upiFlag            String?
   asbaBlockRef       String?
-  remark             String?     // our bid UID, echoed to rail
+  remark             String? // our bid UID, echoed to rail
   amountBlocked      Decimal?
-  allottedLots       Int?        // lots actually allotted (0 = not allotted)
-  allottedAmount     Decimal?    // amount debited for the allotted shares
-  refundAmount       Decimal?    // blocked amount released back
+  allottedLots       Int? // lots actually allotted (0 = not allotted)
+  allottedAmount     Decimal? // amount debited for the allotted shares
+  refundAmount       Decimal? // blocked amount released back
   allottedAt         DateTime?
-  allotmentReason    String?     // registrar's rejection reason (from the imported allotment file)
+  allotmentReason    String? // registrar's rejection reason (from the imported allotment file)
   status             ApplicationStatus @default(draft)
-  idempotencyKey     String      @unique
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  idempotencyKey     String            @unique
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  events             ApplicationStatusEvent[]
+  events ApplicationStatusEvent[]
+
   @@index([userId])
   @@index([ipoId])
   @@index([tenantId])
@@ -673,10 +683,10 @@ model Notification {
   id        String    @id @default(uuid())
   tenantId  String?
   userId    String
-  type      String    // allotment | listing | status
+  type      String // allotment | listing | status
   title     String
   body      String
-  data      Json?     // { applicationId, ipoSymbol, status, ... }
+  data      Json? // { applicationId, ipoSymbol, status, ... }
   channel   String    @default("push")
   sentAt    DateTime?
   readAt    DateTime?
@@ -691,7 +701,7 @@ model AuditLog {
   id          String   @id @default(uuid())
   actorId     String?
   actorMobile String?
-  action      String   // e.g. role.create, member.add, ipo.update, setting.set, allotment.record
+  action      String // e.g. role.create, member.add, ipo.update, setting.set, allotment.record
   targetType  String?
   targetId    String?
   targetLabel String?
@@ -703,12 +713,13 @@ model AuditLog {
 }
 
 model ApplicationStatusEvent {
-  id            String   @id @default(uuid())
+  id            String            @id @default(uuid())
   applicationId String
-  application   Application @relation(fields: [applicationId], references: [id])
+  application   Application       @relation(fields: [applicationId], references: [id])
   status        ApplicationStatus
   detail        Json?
-  at            DateTime @default(now())
+  at            DateTime          @default(now())
+
   @@index([applicationId])
 }
 
@@ -720,6 +731,7 @@ model WatchlistItem {
   user      User     @relation(fields: [userId], references: [id])
   ipoId     String
   createdAt DateTime @default(now())
+
   @@unique([userId, ipoId])
   @@index([tenantId])
 }
@@ -733,6 +745,7 @@ model DeviceToken {
   platform String
   token    String
   active   Boolean @default(true)
+
   @@unique([token])
   @@index([tenantId])
 }
@@ -803,42 +816,77 @@ model AllotmentArchive {
 /// every report. On approval the operator runs the normal registerTenant() path,
 /// which assigns the channel code and creates the admin user.
 model PartnerApplication {
-  id           String   @id @default(uuid())
+  id          String  @id @default(uuid())
   /// the OTP-verified account that submitted it (lets them resume + track status)
-  userId       String?
-  mobile       String
-  email        String
-  contactName  String
+  userId      String?
+  mobile      String
+  email       String
+  contactName String
   /// what the applicant is asking to become; the operator decides the real type
-  kind         String   @default("partner") // partner | whitelabel | branch
+  kind        String  @default("partner") // partner | whitelabel | branch
 
-  entityType   String?  // individual | proprietorship | partnership | llp | pvt_ltd
-  legalName    String
-  panTokenRef  String?  // PII (vault) — business PAN, resolved only on the review screen
-  panMasked    String?
-  gstin        String?
-  city         String?
-  state        String?
-  sebiRegNo    String?
-  arn          String?
-  notes        String?
+  entityType  String? // individual | proprietorship | partnership | llp | pvt_ltd
+  legalName   String
+  panTokenRef String? // PII (vault) — business PAN, resolved only on the review screen
+  panMasked   String?
+  gstin       String?
+  city        String?
+  state       String?
+  sebiRegNo   String?
+  arn         String?
+  notes       String?
   /// [{ type, url, name }] — uploaded via the applicant-scoped endpoint
-  documents    Json?
+  documents   Json?
 
-  status       String   @default("submitted") // submitted | changes_requested | approved | rejected
-  reviewNote   String?
-  reviewedBy   String?
-  reviewedAt   DateTime?
-  tenantId     String?  // set once approved
+  status     String    @default("submitted") // submitted | changes_requested | approved | rejected
+  reviewNote String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  tenantId   String? // set once approved
 
   /// single-use activation link emailed on approval (operator can copy it if SMTP is off)
   inviteToken   String?   @unique
   inviteExpires DateTime?
   activatedAt   DateTime?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
   @@index([mobile])
+}
+
+/// Every transactional message the system sends, on ANY route — OTP, partner
+/// approval, allotment alerts, WhatsApp replies, and operator test sends.
+///
+/// Written by the LEAF adapters (SmsService / EmailService / WhatsappService),
+/// not by their callers: a new feature that sends a message is logged without
+/// anyone remembering to add logging. Recording never throws — a logging fault
+/// must not lose a real send.
+///
+/// The recipient is stored MASKED (98XXXX1234 / j***@example.com) with the last
+/// four digits kept separately so support can find a delivery without the log
+/// becoming a table of contact details.
+model MessageLog {
+  id                String   @id @default(uuid())
+  tenantId          String?
+  channel           String // sms | email | whatsapp
+  templateKey       String? // otp | empanelment | … (null for ad-hoc sends)
+  recipient         String // masked
+  recipientLast4    String? // search key
+  subject           String? // email only
+  preview           String? // rendered body, truncated
+  status            String // sent | failed | dev
+  provider          String? // rmlconnect | custom | msg91 | smtp | meta
+  providerMessageId String?
+  error             String?
+  /// operator "Send test" from Message Templates rather than a real event
+  isTest            Boolean  @default(false)
+  meta              Json?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([channel, status, createdAt])
+  @@index([recipientLast4])
+  @@index([tenantId, createdAt])
 }

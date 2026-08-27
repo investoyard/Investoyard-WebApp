@@ -16,19 +16,18 @@ type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
 const ISSUE_TYPES = ['IPO', 'FPO', 'Rights Issue', 'OFS'] as const;
 const TABS: { key: string; label: string; icon: IconName }[] = [
-  { key: 'basic', label: 'Basic Details', icon: 'box' },
-  { key: 'shares', label: 'Shares & Reservation', icon: 'chart' },
+  { key: 'basic', label: 'Issue Setup', icon: 'box' },
+  { key: 'pricing', label: 'Pricing', icon: 'rupee' },
+  { key: 'offer', label: 'Offer & Reservation', icon: 'chart' },
   { key: 'company', label: 'About Company', icon: 'globe' },
   { key: 'docs', label: 'Documents', icon: 'doc' },
   { key: 'series', label: 'Application Series', icon: 'list' },
 ];
 // Shares Size Info rows
-const SZ_CATS = ['qib', 'hni', 'retail', 'employee', 'shareholder', 'other'];
 const SZ_ROWS: { key: string; label: string; extra?: boolean }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI', extra: true }, { key: 'retail', label: 'Retail', extra: true },
   { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' }, { key: 'other', label: 'Other' },
 ];
-const SZ_TAIL: { key: string; label: string }[] = [{ key: 'anchor', label: 'Anchor' }, { key: 'qibpost', label: 'QIB Post Anchor' }];
 // Share Reservation rows — HNI (Big) and HNI (Small) grouped together
 const RESV_ROWS: { key: string; label: string }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI (Big)' }, { key: 'hni2', label: 'HNI (Small)' },
@@ -38,10 +37,7 @@ const RESV_ROWS: { key: string; label: string }[] = [
 type Doc = { type: string; name: string; url: string };
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
-type SzCell = { share: string; minP: string; maxP: string; ncd: string; ind: string; hni: string };
 type Resv = { on: boolean; pct: string; count: string; remark: string; req1x: string };
-const blankSz = (): SzCell => ({ share: '', minP: '', maxP: '', ncd: '', ind: '', hni: '' });
-const blankShares = (): Record<string, SzCell> => Object.fromEntries([...SZ_CATS, 'anchor', 'qibpost'].map((k) => [k, blankSz()]));
 const blankResv = (): Resv => ({ on: false, pct: '', count: '', remark: '', req1x: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
@@ -51,12 +47,20 @@ interface FormState {
   startBid: boolean; startPrint: boolean; // operator gates: apply/pre-apply + ASBA form printing
   categoryName: string; // IPO Category master name (drives type via its platform mapping)
   priceBandMin: string; priceBandMax: string;
-  retailDiscount: string; retailCutOff: string; ncdMaxSeries: string; maxAmtRetail: string;
+  retailDiscount: string; retailCutOff: string;
   /** applications RECEIVED — an operator observation. Not to be confused with
    *  applications-for-1x, which the engine derives. Was `noOfApp`. */
   applicationsReceived: string;
   /** offer structure — drives every derived figure (spec §5 Steps 1-2) */
   mechanism: string; regulationBasis: string;
+  /** Which exchanges this issue lists on. SME usually lists on ONE platform;
+   *  mainboard usually both. Previously invented by the API from the board. */
+  exNse: boolean; exBse: boolean;
+  /** total offer in ₹ Cr — Fresh/OFS below split it */
+  issueSizeCr: string;
+  tickSize: string; employeeDiscount: string; shareholderDiscount: string; finalIssuePrice: string;
+  /** off-the-top reservations, taken before the category split */
+  cvEmployee: string; cvShareholder: string;
   freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
   bseListingPrice: string; nseListingPrice: string;
   registrar: string; registrarEmail: string; registrarPhone: string; registrarUrl: string;
@@ -66,7 +70,7 @@ interface FormState {
   anchorDate: string; refundDate: string;
   openDate: string; closeDate: string; qibCloseDate: string; allotmentDate: string; dematDate: string; listingDate: string;
   documents: Doc[]; leads: string[]; partners: Partner[]; pdfSeries: Series[]; onlineSeries: Series[];
-  sharesSize: Record<string, SzCell>; shareResv: Record<string, Resv>; resvRemarks: string; resvRemarks2: string;
+  shareResv: Record<string, Resv>; resvRemarks: string;
   asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
   asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
   anchors: { name: string; amount: string }[]; // picked from the Anchor Investors master, ₹ amount per IPO
@@ -78,8 +82,11 @@ const blankForm = (): FormState => ({
   startBid: false, startPrint: false, // OFF until the operator explicitly opens bidding/printing
   categoryName: '',
   priceBandMin: '', priceBandMax: '',
-  retailDiscount: '', retailCutOff: '', ncdMaxSeries: '', maxAmtRetail: '', applicationsReceived: '',
+  retailDiscount: '', retailCutOff: '', applicationsReceived: '',
   mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
+  exNse: true, exBse: true, issueSizeCr: '',
+  tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '',
+  cvEmployee: '', cvShareholder: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
   logoUrl: '', companyWebsite: '', companyPromoter: '',
@@ -88,7 +95,7 @@ const blankForm = (): FormState => ({
   anchorDate: '', refundDate: '',
   openDate: '', closeDate: '', qibCloseDate: '', allotmentDate: '', dematDate: '', listingDate: '',
   documents: [], leads: [], partners: [], pdfSeries: [], onlineSeries: [],
-  sharesSize: blankShares(), shareResv: blankShareResv(), resvRemarks: '', resvRemarks2: '',
+  shareResv: blankShareResv(), resvRemarks: '',
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
   anchors: [],
@@ -139,10 +146,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : [],
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
-          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail),
+          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff),
           // `noOfApp` is the legacy name for the same operator observation
           applicationsReceived: str(ex.applicationsReceived ?? ex.noOfApp),
           mechanism: str(ex.mechanism) || 'book_built', regulationBasis: str(ex.regulationBasis),
+          exNse: (d.exchanges ?? []).some((x: string) => /nse/i.test(x)) || !(d.exchanges ?? []).length,
+          exBse: (d.exchanges ?? []).some((x: string) => /bse/i.test(x)) || !(d.exchanges ?? []).length,
+          issueSizeCr: str(ex.issueSizeCr ?? d.issueSizeCr ?? ''),
+          tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
+          shareholderDiscount: str(ex.shareholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
+          cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
           freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
           ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
           bseListingPrice: str(ex.bseListingPrice), nseListingPrice: str(ex.nseListingPrice),
@@ -153,9 +166,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           companyDescription: str(ex.companyDescription), companyStrength: str(ex.companyStrength), companyFinancials: str(ex.companyFinancials), contactInfo: str(ex.contactInfo),
           faqs: Array.isArray(ex.faqs) ? ex.faqs : [], leads: Array.isArray(ex.leads) ? ex.leads : [], partners: Array.isArray(ex.partners) ? ex.partners : [],
           pdfSeries: Array.isArray(ex.pdfSeries) ? ex.pdfSeries : [], onlineSeries: Array.isArray(ex.onlineSeries) ? ex.onlineSeries : [],
-          sharesSize: ex.sharesSize ?? blankShares(),
           shareResv: ex.shareResv ?? (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
-          resvRemarks: str(ex.resvRemarks), resvRemarks2: str(ex.resvRemarks2),
+          resvRemarks: str(ex.resvRemarks),
         };
         initial.current = loaded; setForm(loaded);
       } catch (e: any) { setErr(String(e?.message ?? e)); }
@@ -179,9 +191,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const setDoc = (i: number, part: Partial<Doc>) => set({ documents: form.documents.map((d, x) => (x === i ? { ...d, ...part } : d)) });
   const setPartner = (i: number, part: Partial<Partner>) => set({ partners: form.partners.map((d, x) => (x === i ? { ...d, ...part } : d)) });
   const setFaq = (i: number, part: Partial<{ q: string; a: string }>) => set({ faqs: form.faqs.map((f, x) => (x === i ? { ...f, ...part } : f)) });
-  const setSz = (key: string, part: Partial<SzCell>) => set({ sharesSize: { ...form.sharesSize, [key]: { ...form.sharesSize[key], ...part } } });
   const setResv = (key: string, part: Partial<Resv>) => set({ shareResv: { ...form.shareResv, [key]: { ...form.shareResv[key], ...part } } });
-  const szSum = (field: keyof SzCell) => SZ_CATS.reduce((a, k) => a + (Number(form.sharesSize[k]?.[field]) || 0), 0);
   const setSeries = (key: 'pdfSeries' | 'onlineSeries', i: number, part: Partial<Series>) => set({ [key]: form[key].map((s, x) => (x === i ? { ...s, ...part } : s)) } as Partial<FormState>);
   const activate = (key: 'pdfSeries' | 'onlineSeries', i: number) => set({ [key]: form[key].map((s, x) => ({ ...s, active: x === i })) } as Partial<FormState>);
   const addSeries = (key: 'pdfSeries' | 'onlineSeries') => set({ [key]: [...form[key], { member: form.partners[0]?.member ?? '', from: '', to: '', active: form[key].length === 0, ...(key === 'onlineSeries' ? { exchange: 'NSE' } : {}) }] } as Partial<FormState>);
@@ -213,10 +223,21 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     finally { setAsbaBusy(null); }
   };
 
+  /** SME lists on NSE Emerge / BSE SME; mainboard on the main boards. */
+  const exchangeList = (): string[] => {
+    const sme = form.type === 'sme';
+    const out: string[] = [];
+    if (form.exNse) out.push(sme ? 'NSE SME' : 'NSE');
+    if (form.exBse) out.push(sme ? 'BSE SME' : 'BSE');
+    return out;
+  };
+
   const payload = (): api.IpoWrite => ({
     name: form.name, type: form.type, status: form.status,
     priceBandMin: num(form.priceBandMin), priceBandMax: num(form.priceBandMax), lotSize: num(form.lotSize),
-    issueSizeCr: szSum('maxP') > 0 ? szSum('maxP') : undefined,
+    issueSizeCr: (num(form.issueSizeCr) ?? 0) > 0 ? num(form.issueSizeCr) : undefined,
+    // explicit, not invented from the board — an SME issue may list on one platform only
+    exchanges: exchangeList(),
     registrar: form.registrar || undefined, isin: form.isin || undefined, logoUrl: form.logoUrl || undefined,
     objectsOfIssue: form.objectsOfIssue || undefined,
     openDate: form.openDate ? form.openDate.slice(0, 10) : undefined, closeDate: form.closeDate ? form.closeDate.slice(0, 10) : undefined,
@@ -232,12 +253,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     autoPollSubscription: form.autoPollSubscription,
     extra: {
       issueType: form.issueType, faceValue: form.faceValue, categoryName: form.categoryName,
-      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc, ncdMaxSeries: form.ncdMaxSeries, maxAmtRetail: form.maxAmtRetail,
+      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc,
       applicationsReceived: form.applicationsReceived,
       // mirrored under the old key while readers migrate — remove once
       // nothing greps for `noOfApp` (web/lib/api.ts was the last one)
       noOfApp: form.applicationsReceived,
       mechanism: form.mechanism, regulationBasis: form.regulationBasis || undefined,
+      issueSizeCr: form.issueSizeCr,
+      tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
+      shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
+      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
@@ -252,7 +277,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
       anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), amount: a.amount.trim() })),
       startBid: form.startBid, startPrint: form.startPrint,
-      sharesSize: form.sharesSize, shareResv: form.shareResv, resvRemarks: form.resvRemarks, resvRemarks2: form.resvRemarks2,
+      shareResv: form.shareResv, resvRemarks: form.resvRemarks,
     },
   });
 
@@ -327,17 +352,26 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       lotSize: n(form.lotSize),
       priceFloor: n(form.priceBandMin),
       priceCap: n(form.priceBandMax),
-      issueSizeCr: n(form.sharesSize?.total?.maxP) || undefined,
+      issueSizeCr: n(form.issueSizeCr) || undefined,
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis as LegBasis, value: n(form.freshValue) },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis as LegBasis, value: n(form.ofsValue) },
       reservation,
-      discounts: { retail: n(form.retailDiscount) },
+      discounts: {
+        retail: n(form.retailDiscount),
+        employee: n(form.employeeDiscount),
+        shareholder: n(form.shareholderDiscount),
+      },
+      carveouts: [
+        { key: 'employee', basis: 'amount' as const, value: n(form.cvEmployee) },
+        { key: 'shareholder', basis: 'amount' as const, value: n(form.cvShareholder) },
+      ].filter((c) => c.value > 0),
+      finalIssuePrice: n(form.finalIssuePrice) || undefined,
     };
     return computeIssue(inputs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      JSON.stringify(form.shareResv), JSON.stringify(form.sharesSize?.total)]);
+      form.issueSizeCr, form.cvEmployee, form.cvShareholder, JSON.stringify(form.shareResv)]);
 
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
@@ -384,6 +418,36 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(form.shareResv), derived]);
 
+  /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
+  const legSumCr = (() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const price = n(form.priceBandMax) || n(form.priceBandMin);
+    const leg = (basis: string, v: string) => (basis === 'none' ? 0 : basis === 'amount' ? n(v) : price ? (n(v) * price) / 1e7 : 0);
+    const sum = leg(form.freshBasis, form.freshValue) + leg(form.ofsBasis, form.ofsValue);
+    return sum > 0 ? sum.toFixed(2) : '';
+  })();
+
+  /**
+   * ISIN check digit (ISO 6166): expand letters to digits, double alternate
+   * digits from the right, sum, and the total must reach the next multiple of
+   * ten. A typo in an ISIN otherwise surfaces as a failed exchange bid.
+   */
+  const isinHint = (() => {
+    const v = form.isin.trim().toUpperCase();
+    if (!v) return null;
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(v)) return 'Not a valid ISIN shape (2 letters + 9 + check digit).';
+    const digits = v.slice(0, 11).split('').map((c) => (/[0-9]/.test(c) ? c : String(c.charCodeAt(0) - 55))).join('');
+    let sum = 0;
+    const rev = digits.split('').reverse();
+    for (let i = 0; i < rev.length; i++) {
+      let d = Number(rev[i]);
+      if (i % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+      sum += d;
+    }
+    const check = (10 - (sum % 10)) % 10;
+    return check === Number(v[11]) ? 'Checksum valid.' : `Checksum fails — expected ${check} as the last digit.`;
+  })();
+
   const retailCutOffCalc = (() => {
     const max = Number(form.priceBandMax);
     if (!Number.isFinite(max) || max <= 0) return '';
@@ -391,15 +455,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     return String(Math.max(0, max - disc));
   })();
 
-  const szInput = (key: string, field: keyof SzCell) => <input className="input mono" value={form.sharesSize[key][field]} onChange={(e) => setSz(key, { [field]: e.target.value } as Partial<SzCell>)} />;
-  const szRow = (r: { key: string; label: string; extra?: boolean }) => (
-    <tr key={r.key}>
-      <th className="sz-lbl">{r.label}</th>
-      <td>{szInput(r.key, 'share')}</td><td>{szInput(r.key, 'minP')}</td><td>{szInput(r.key, 'maxP')}</td>
-      {r.extra ? <><td>{szInput(r.key, 'ncd')}</td><td>{szInput(r.key, 'ind')}</td><td>{szInput(r.key, 'hni')}</td></>
-        : <><td className="sz-off" /><td className="sz-off" /><td className="sz-off" /></>}
-    </tr>
-  );
 
   // Application-series members are restricted to the partners added in Basic Details → IPO Partner.
   const partnerMembers = Array.from(new Set(form.partners.map((p) => p.member).filter(Boolean)));
@@ -476,19 +531,35 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     <select className="input" value={form.type} onChange={(e) => set({ type: e.target.value })}><option value="mainboard">Main Board IPO</option><option value="sme">SME IPO</option></select>
                   )}
                 </Field>
-                <Field label="ISIN"><input className="input mono" value={form.isin} onChange={(e) => set({ isin: e.target.value })} placeholder="INE000000000" /></Field>
-                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+                <Field label="ISIN" hint={isinHint ?? undefined}>
+                  <input className="input mono" value={form.isin}
+                    onChange={(e) => set({ isin: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })}
+                    placeholder="INE000000000" />
+                </Field>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                   <Field label="Face Value (₹)"><input className="input mono" value={form.faceValue} onChange={(e) => set({ faceValue: e.target.value })} placeholder="2.00" /></Field>
-                  <Field label="Lot Size"><input className="input mono" value={form.lotSize} onChange={(e) => set({ lotSize: e.target.value })} placeholder="1" /></Field>
                   <Field label="Is Active"><div style={{ paddingTop: 3 }}><Toggle on={isActive} onChange={(v) => set({ status: v ? 'upcoming' : 'withdrawn' })} /></div></Field>
+                  {/* Shareholder / Employee quotas are now CARVE-OUT ROWS on the
+                      Offer tab — a quota exists because shares are set aside for
+                      it, not because a switch was flipped. */}
                   <Field label="Shareholder Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowShareholder} onChange={(v) => set({ allowShareholder: v })} /></div></Field>
                   <Field label="Employee Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowEmployee} onChange={(v) => set({ allowEmployee: v })} /></div></Field>
                 </div>
-                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                   <Field label="Start Bid" hint="ON → investors can apply / pre-apply. OFF → Apply hidden on site & app."><div style={{ paddingTop: 3 }}><Toggle on={form.startBid} onChange={(v) => set({ startBid: v })} /></div></Field>
                   <Field label="Start Printing" hint="ON → prefilled ASBA form printing available. OFF → print hidden."><div style={{ paddingTop: 3 }}><Toggle on={form.startPrint} onChange={(v) => set({ startPrint: v })} /></div></Field>
+                  {/* Which exchanges this issue lists on — CHOSEN, not inferred.
+                      The API used to write ['NSE','BSE'] for every mainboard issue
+                      and both SME platforms for every SME one, so an issue on a
+                      single platform was recorded as listing on two. */}
+                  <Field label={form.type === 'sme' ? 'NSE Emerge' : 'NSE'} hint="listed on this exchange">
+                    <div style={{ paddingTop: 3 }}><Toggle on={form.exNse} onChange={(v) => set({ exNse: v })} /></div>
+                  </Field>
+                  <Field label={form.type === 'sme' ? 'BSE SME' : 'BSE'} hint={form.type === 'sme' ? 'SME usually lists on ONE platform' : 'listed on this exchange'}>
+                    <div style={{ paddingTop: 3 }}><Toggle on={form.exBse} onChange={(v) => set({ exBse: v })} /></div>
+                  </Field>
                   {editing && (
-                    <div style={{ gridColumn: 'span 3' }}>
+                    <div style={{ gridColumn: '1 / -1' }}>
                       <Field label="Live subscription">
                         <div style={{ paddingTop: 3, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                           <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} />
@@ -502,60 +573,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-            <Panel title="Pricing & Issue">
-              <div className="form-grid">
-                <Field label="Price band — min (₹)"><input className="input mono" value={form.priceBandMin} onChange={(e) => set({ priceBandMin: e.target.value })} /></Field>
-                <Field label="Price band — max (₹)"><input className="input mono" value={form.priceBandMax} onChange={(e) => set({ priceBandMax: e.target.value })} /></Field>
-                <Field label="Retail Discount (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
-                <Field label="Retail Cut Off (₹)" hint="auto: max band − discount"><input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} /></Field>
-                <Field label="Max amt — Retail (₹)"><input className="input mono" value={form.maxAmtRetail} onChange={(e) => set({ maxAmtRetail: e.target.value })} /></Field>
-                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1x, which is derived">
-                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
-                </Field>
-              </div>
-            </Panel>
+            {/* Pricing moved to its own tab — Reservation cannot be derived
+                without the lot size and the price scenarios, so pricing has to
+                come first (spec §8). */}
 
-            <Panel title="Offer structure" desc="What is being offered, and under which regulation. These four inputs drive every derived figure below.">
-              <div className="form-grid">
-                <Field label="Mechanism">
-                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
-                    <option value="book_built">Book-built</option>
-                    <option value="fixed_price">Fixed price</option>
-                  </select>
-                </Field>
-                <Field label="Regulation basis" hint={`auto: ${derived.rulePack.label}`}>
-                  <select className="input" value={form.regulationBasis} onChange={(e) => set({ regulationBasis: e.target.value })}>
-                    <option value="">Auto — from the QIB %</option>
-                    <option value="icdr_6_1">ICDR 6(1) — QIB up to 50%</option>
-                    <option value="icdr_6_2">ICDR 6(2) — QIB at least 75%</option>
-                  </select>
-                </Field>
-                <Field label="Fresh issue" hint="new shares issued by the company">
-                  <div className="row" style={{ gap: 8 }}>
-                    <select className="input" style={{ width: 120 }} value={form.freshBasis} onChange={(e) => set({ freshBasis: e.target.value })}>
-                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
-                    </select>
-                    <input className="input mono" value={form.freshValue} disabled={form.freshBasis === 'none'}
-                      onChange={(e) => set({ freshValue: e.target.value.replace(/[^\d.]/g, '') })} />
-                  </div>
-                </Field>
-                <Field label="Offer for sale" hint="existing shares sold by shareholders">
-                  <div className="row" style={{ gap: 8 }}>
-                    <select className="input" style={{ width: 120 }} value={form.ofsBasis} onChange={(e) => set({ ofsBasis: e.target.value })}>
-                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
-                    </select>
-                    <input className="input mono" value={form.ofsValue} disabled={form.ofsBasis === 'none'}
-                      onChange={(e) => set({ ofsValue: e.target.value.replace(/[^\d.]/g, '') })} />
-                  </div>
-                </Field>
-              </div>
-              {form.freshBasis === 'none' && form.ofsBasis === 'none' && (
-                <p className="hint" style={{ marginTop: 6 }}>
-                  Until one of these is set, the public detail page shows a Fresh / OFS split
-                  <b> estimated at 85 / 15</b> rather than the real one.
-                </p>
-              )}
-            </Panel>
 
             <Panel title="Important Dates">
               <div className="form-grid">
@@ -617,28 +638,125 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         )}
 
         {/* ================= Shares & Reservation ================= */}
-        {tab === 'shares' && (
+        {tab === 'pricing' && (
           <div className="fstack">
-            <Panel title="Shares Size Info">
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table sz-table" style={{ width: '100%' }}>
-                  <thead><tr><th /><th>Share</th><th>Min Price(Cr.)</th><th>Max Price(Cr.)</th><th>NCD Max Price</th><th>IND</th><th>HNI</th></tr></thead>
-                  <tbody>
-                    {SZ_ROWS.map(szRow)}
-                    <tr className="sz-total">
-                      <th className="sz-lbl">Total</th>
-                      <td><input className="input mono" disabled value={szSum('share')} /></td>
-                      <td><input className="input mono" disabled value={szSum('minP').toFixed(2)} /></td>
-                      <td><input className="input mono" disabled value={szSum('maxP').toFixed(2)} /></td>
-                      <td className="sz-off" /><td className="sz-off" /><td className="sz-off" />
-                    </tr>
-                    {SZ_TAIL.map(szRow)}
-                  </tbody>
-                </table>
+            <Panel title="Price & lot" desc="The reservation split cannot be derived without these, which is why pricing comes before it.">
+              <div className="form-grid">
+                <Field label="Mechanism" required>
+                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
+                    <option value="book_built">Book-built</option>
+                    <option value="fixed_price">Fixed price</option>
+                  </select>
+                </Field>
+                <Field label="Lot Size" required hint="shares per application lot">
+                  <input className="input mono" value={form.lotSize} onChange={(e) => set({ lotSize: e.target.value })} placeholder="1" />
+                </Field>
+                <Field label={form.mechanism === 'fixed_price' ? 'Issue price (₹)' : 'Price band — min (₹)'}>
+                  <input className="input mono" value={form.priceBandMin} onChange={(e) => set({ priceBandMin: e.target.value })} />
+                </Field>
+                <Field label="Price band — max (₹)" hint={form.mechanism === 'fixed_price' ? 'not used for a fixed-price issue' : undefined}>
+                  <input className="input mono" value={form.priceBandMax} disabled={form.mechanism === 'fixed_price'} onChange={(e) => set({ priceBandMax: e.target.value })} />
+                </Field>
+                <Field label="Tick size (₹)"><input className="input mono" value={form.tickSize} onChange={(e) => set({ tickSize: e.target.value })} placeholder="1" /></Field>
+                <Field label="Final issue price (₹)" hint="set after the book closes; becomes the displayed scenario">
+                  <input className="input mono" value={form.finalIssuePrice} onChange={(e) => set({ finalIssuePrice: e.target.value })} />
+                </Field>
               </div>
             </Panel>
 
-            <Panel title="Share Reservation" desc="Tick the categories that apply. HNI (Big) and HNI (Small) are separate quotas.">
+            <Panel title="Discounts" desc="Per-category discount off the offer price. Each lowers that category's minimum application.">
+              <div className="form-grid">
+                <Field label="Retail (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
+                <Field label="Employee (₹)"><input className="input mono" value={form.employeeDiscount} onChange={(e) => set({ employeeDiscount: e.target.value })} /></Field>
+                <Field label="Shareholder (₹)"><input className="input mono" value={form.shareholderDiscount} onChange={(e) => set({ shareholderDiscount: e.target.value })} /></Field>
+                <Field label="Retail cut-off (₹)" hint="derived: max band − retail discount">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} />
+                </Field>
+              </div>
+            </Panel>
+
+            <Panel title="After the issue" desc="Filled once the registrar and the exchanges publish. Not needed to open bidding.">
+              <div className="form-grid">
+                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which is derived on the next tab">
+                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
+                </Field>
+                <Field label="NSE listing price (₹)"><input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} /></Field>
+                <Field label="BSE listing price (₹)"><input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} /></Field>
+              </div>
+            </Panel>
+          </div>
+        )}
+        {tab === 'offer' && (
+          <div className="fstack">
+            <Panel title="Offer structure" desc="What is being offered, and under which regulation. These four inputs drive every derived figure below.">
+              <div className="form-grid">
+                <Field label="Mechanism">
+                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
+                    <option value="book_built">Book-built</option>
+                    <option value="fixed_price">Fixed price</option>
+                  </select>
+                </Field>
+                <Field label="Regulation basis" hint={`auto: ${derived.rulePack.label}`}>
+                  <select className="input" value={form.regulationBasis} onChange={(e) => set({ regulationBasis: e.target.value })}>
+                    <option value="">Auto — from the QIB %</option>
+                    <option value="icdr_6_1">ICDR 6(1) — QIB up to 50%</option>
+                    <option value="icdr_6_2">ICDR 6(2) — QIB at least 75%</option>
+                  </select>
+                </Field>
+                <Field label="Fresh issue" hint="new shares issued by the company">
+                  <div className="leg-split">
+                    <select className="input" value={form.freshBasis} onChange={(e) => set({ freshBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.freshValue} disabled={form.freshBasis === 'none'}
+                      onChange={(e) => set({ freshValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+                <Field label="Offer for sale" hint="existing shares sold by shareholders">
+                  <div className="leg-split">
+                    <select className="input" value={form.ofsBasis} onChange={(e) => set({ ofsBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.ofsValue} disabled={form.ofsBasis === 'none'}
+                      onChange={(e) => set({ ofsValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+              </div>
+              {form.freshBasis === 'none' && form.ofsBasis === 'none' && (
+                <p className="hint" style={{ marginTop: 6 }}>
+                  Until one of these is set, the public detail page shows a Fresh / OFS split
+                  <b> estimated at 85 / 15</b> rather than the real one.
+                </p>
+              )}
+            </Panel>
+            {/* The "Shares Size Info" grid is gone (brief §3: DROP). Its share
+                counts and ₹Cr columns were typed by hand beside the percentages
+                they are computed from; they are now the derived panel below.
+                Its NCD / IND / HNI columns were debt-issue fields that belong on
+                an NCD form, not here. */}
+            <Panel title="Offer size" desc="The total on offer. Fresh and OFS above split it; enter the total the RHP states.">
+              <div className="form-grid">
+                <Field label="Total issue size (₹ Cr)" required>
+                  <input className="input mono" value={form.issueSizeCr}
+                    onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} placeholder="290" />
+                </Field>
+                <Field label="Fresh + OFS" hint="derived from the two legs above">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
+                </Field>
+              </div>
+            </Panel>
+            <Panel title="Carve-outs" desc="Shares set aside off the top, before the category split — enter ₹ Cr. A quota exists because shares are reserved for it.">
+              <div className="form-grid">
+                <Field label="Employee (₹ Cr)">
+                  <input className="input mono" value={form.cvEmployee} onChange={(e) => set({ cvEmployee: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                <Field label="Shareholder (₹ Cr)">
+                  <input className="input mono" value={form.cvShareholder} onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+              </div>
+            </Panel>
+
+            <Panel title="Share Reservation" desc="Enter each category's percentage of the NET offer. Everything to the right is derived — HNI (Big) takes the larger two-thirds of the NII quota.">
               {/* SEBI splits the NII quota two-thirds to bids above ₹10 L (Big) and
                   one-third to ₹2–10 L (Small), so Big is ALWAYS the larger share.
                   Three live records had the two transposed, which fed wrong
@@ -700,7 +818,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
               <div className="form-grid one" style={{ marginTop: 12 }}>
                 <Field label="Remarks"><input className="input" value={form.resvRemarks} onChange={(e) => set({ resvRemarks: e.target.value })} placeholder="Fresh Issue of Equity Shares of up to Rs. 400 Cr and Offer for Sale…" /></Field>
-                <Field label="Remarks 2"><input className="input" value={form.resvRemarks2} onChange={(e) => set({ resvRemarks2: e.target.value })} placeholder="BRLM: DAM Capital Advisors" /></Field>
               </div>
             </Panel>
           </div>
@@ -817,7 +934,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   {isMainboard ? <>
                     {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
                     {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
-                  </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME / NCD)')}
+                  </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME)')}
                   {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
                 </div>
               </Panel>

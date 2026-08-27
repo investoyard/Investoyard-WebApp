@@ -3082,3 +3082,11 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
   padding: 9px 13px; border-radius: var(--r-sm); background: var(--brand-50); font-size: 12.5px; font-weight: 650; }
 .rc-summary i { font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .09em;
   text-transform: uppercase; color: var(--text-faint); margin-right: 6px; }
+
+/* ── IPO form: the Fresh / OFS legs — a basis picker plus its value ──
+   Not a plain flex row: `.input` carries width:100%, so the value field fought
+   the select's fixed width and the two ended up misaligned. Explicit flex
+   bases, and stretch so both controls share a height whatever their padding. */
+.leg-split { display: flex; align-items: stretch; gap: 8px; }
+.leg-split select.input { flex: 0 0 116px; min-width: 0; }
+.leg-split input.input { flex: 1 1 auto; min-width: 0; }

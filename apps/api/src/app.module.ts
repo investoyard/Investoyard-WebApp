@@ -9,6 +9,7 @@ import { ProviderConfigModule } from './common/provider-config.service';
 import { TemplateModule } from './common/template.service';
 import { MessagingModule } from './common/messaging.service';
 import { EmailModule } from './common/email.service';
+import { MessageLogModule } from './common/message-log.service';
 import { HealthModule } from './modules/health/health.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -34,6 +35,7 @@ import { AllotmentModule } from './modules/allotment/allotment.module';
 import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
 import { GmpEntryModule } from './modules/gmp-entry/gmp-entry.module';
 import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
+import { MessageLogApiModule } from './modules/message-log/message-log.module';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-on
     TemplateModule,
     MessagingModule,
     EmailModule,
+    MessageLogModule,
     HealthModule,
     UploadModule,
     AuthModule,
@@ -68,6 +71,7 @@ import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-on
     IpoImportModule,
     GmpEntryModule,
     PartnerOnboardingModule,
+    MessageLogApiModule,
   ],
   providers: [
     PrismaService,

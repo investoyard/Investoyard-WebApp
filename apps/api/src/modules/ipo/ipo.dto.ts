@@ -60,6 +60,8 @@ export class UpdateIpoDto {
   @IsOptional() @IsNumber() gmp?: number;
   @IsOptional() @IsNumber() listingGainPct?: number;
   @IsOptional() @IsBoolean() autoPollSubscription?: boolean;
+  /** exchanges chosen by staff — SME may list on one platform only */
+  @IsOptional() @IsArray() @IsString({ each: true }) exchanges?: string[];
   @IsOptional() @IsObject() extra?: Record<string, any>;
 }
 
@@ -68,6 +70,8 @@ export class UpdateIpoOpsDto {
   @IsOptional() @IsBoolean() startBid?: boolean;
   @IsOptional() @IsBoolean() startPrint?: boolean;
   @IsOptional() @IsBoolean() autoPollSubscription?: boolean;
+  /** exchanges chosen by staff — SME may list on one platform only */
+  @IsOptional() @IsArray() @IsString({ each: true }) exchanges?: string[];
   /** Online Apply member to route bids under — activates that onlineSeries row. */
   @IsOptional() @IsString() bidMember?: string;
 }

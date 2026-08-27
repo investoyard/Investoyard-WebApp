@@ -8,6 +8,8 @@ interface SendOpts {
   tenantId?: string;
   locale?: string;
   vars?: Record<string, any>;
+  /** operator test send — tagged in the delivery log, never a real event */
+  isTest?: boolean;
 }
 
 /**
@@ -38,6 +40,8 @@ export class MessagingService {
       tenantId: opts.tenantId,
       templateId: tpl?.dltTemplateId ?? undefined,
       senderId: tpl?.senderId ?? undefined,
+      templateKey: key,
+      isTest: opts.isTest,
     });
   }
 
@@ -46,7 +50,7 @@ export class MessagingService {
     const tpl = await this.templates.resolve('email', key, opts.tenantId, opts.locale);
     const subject = TemplateService.render(tpl?.subject, opts.vars) || key;
     const html = TemplateService.render(tpl?.bodyHtml, opts.vars);
-    return this.email.send({ to, subject, html, attachments: opts.attachments }, { tenantId: opts.tenantId });
+    return this.email.send({ to, subject, html, attachments: opts.attachments }, { tenantId: opts.tenantId, templateKey: key, isTest: opts.isTest });
   }
 }
 

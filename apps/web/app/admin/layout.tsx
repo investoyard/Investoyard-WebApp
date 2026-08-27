@@ -66,6 +66,7 @@ const NAV: NavNode[] = [
   { key: 'settings', label: 'System Settings', icon: 'settings', children: [
     { href: '/admin/integrations', label: 'Provider Keys', perm: 'providers.manage' },
     { href: '/admin/templates', label: 'Message Templates', perm: 'providers.manage' },
+    { href: '/admin/templates/log', label: 'Message Log', perm: 'providers.manage' },
     { href: '/admin/chatbot', label: 'Chatbot Flow', perm: 'providers.manage' },
     { href: '/admin/system', label: 'System Status', perm: 'dashboard.view' },
   ] },

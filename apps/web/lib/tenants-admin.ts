@@ -317,6 +317,8 @@ export interface IpoWrite {
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
   autoPollSubscription?: boolean;
+  /** which exchanges the issue lists on — chosen by staff, not inferred from the board */
+  exchanges?: string[];
   extra?: Record<string, any>;
 }
 /** Full record for the edit form (from GET /ipos/:id). */
@@ -327,6 +329,7 @@ export interface AdminIpoDetail {
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
   autoPollSubscription?: boolean; subscriptionAsOf?: string;
+  exchanges?: string[];
   extra?: Record<string, any>;
 }
 export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminIpoDetail>);
@@ -677,3 +680,26 @@ export const requestPartnerChanges = (id: string, note: string) =>
 export const rejectPartnerApplication = (id: string, note: string) =>
   authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/reject`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+
+/* -------------------------------------------------- message delivery log */
+export interface MessageLogRow {
+  id: string; channel: string; templateKey?: string | null;
+  recipient: string; recipientLast4?: string | null;
+  subject?: string | null; preview?: string | null;
+  status: 'sent' | 'failed' | 'dev'; provider?: string | null;
+  error?: string | null; isTest: boolean; createdAt: string;
+}
+export const fetchMessageLog = (f: { channel?: string; status?: string; q?: string; limit?: number } = {}) => {
+  const p = new URLSearchParams();
+  if (f.channel && f.channel !== 'all') p.set('channel', f.channel);
+  if (f.status && f.status !== 'all') p.set('status', f.status);
+  if (f.q) p.set('q', f.q);
+  p.set('limit', String(f.limit ?? 150));
+  return authed<{ total: number; rows: MessageLogRow[] }>(`${API}/admin/message-log?${p}`, { method: 'GET' });
+};
+/** Send one template to a named recipient; returns the provider's answer AND the rendered body. */
+export const sendTemplateTest = (body: { channel: string; key: string; to: string; tenantId?: string }) =>
+  authed<{ sent: boolean; dev?: boolean; error?: string; rendered?: string; subject?: string; dltTemplateId?: string | null; senderId?: string | null }>(
+    `${API}/admin/templates/test`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  );

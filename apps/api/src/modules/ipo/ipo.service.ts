@@ -291,7 +291,13 @@ export class IpoService {
       listingGainPct: dto.listingGainPct,
       reservations: dto.reservations,
       autoPollSubscription: (dto as UpdateIpoDto).autoPollSubscription,
-      ...(type ? { exchanges: type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'] } : {}),
+      // Staff choose the exchanges on the form; the board-based guess below is
+      // only a fallback for callers that do not send them (the Excel importer).
+      // It used to run unconditionally, so an SME issue on one platform was
+      // recorded as listing on both.
+      ...(Array.isArray((dto as any).exchanges) && (dto as any).exchanges.length
+        ? { exchanges: (dto as any).exchanges }
+        : type ? { exchanges: type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'] } : {}),
     };
     // Drop undefined so PATCH only touches provided fields.
     Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);

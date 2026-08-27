@@ -1,6 +1,7 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { ProviderConfigService, ProviderConfigModule } from './provider-config.service';
+import { MessageLogService } from './message-log.service';
 
 export interface EmailAttachment {
   filename: string;
@@ -28,13 +29,30 @@ export interface EmailMessage {
 export class EmailService {
   private readonly log = new Logger('Email');
 
-  constructor(private providers: ProviderConfigService) {}
+  constructor(
+    private providers: ProviderConfigService,
+    private mlog: MessageLogService,
+  ) {}
 
   async isEnabled(tenantId?: string): Promise<boolean> {
     return !!(await this.providers.effective('email', tenantId));
   }
 
-  async send(msg: EmailMessage, opts?: { tenantId?: string }): Promise<{ sent: boolean; dev?: boolean; error?: string }> {
+  /** Every email exits through here, so the delivery log cannot be bypassed. */
+  async send(msg: EmailMessage, opts?: { tenantId?: string; templateKey?: string; isTest?: boolean }): Promise<{ sent: boolean; dev?: boolean; error?: string }> {
+    const res = await this.deliver(msg, opts);
+    await this.mlog.record({
+      channel: 'email', to: msg.to, subject: msg.subject,
+      body: msg.text ?? msg.html,
+      status: res.sent ? 'sent' : res.dev ? 'dev' : 'failed',
+      tenantId: opts?.tenantId, templateKey: opts?.templateKey, isTest: opts?.isTest,
+      provider: 'smtp', error: res.error,
+      meta: msg.attachments?.length ? { attachments: msg.attachments.length } : undefined,
+    });
+    return res;
+  }
+
+  private async deliver(msg: EmailMessage, opts?: { tenantId?: string }): Promise<{ sent: boolean; dev?: boolean; error?: string }> {
     const cfg = await this.providers.effective('email', opts?.tenantId);
     if (!cfg) {
       this.log.log(`[dev] would email "${msg.subject}" → ${msg.to}${msg.attachments?.length ? ` (+${msg.attachments.length} attachment)` : ''}`);

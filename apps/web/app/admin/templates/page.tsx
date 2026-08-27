@@ -39,6 +39,8 @@ export default function TemplatesPage() {
   const [q, setQ] = useState('');
   const [missingOnly, setMissingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  // "Send test" target — proving a template works without waiting for a real event
+  const [test, setTest] = useState<{ channel: string; key: string; label: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   // content editor modal
@@ -237,6 +239,7 @@ export default function TemplatesPage() {
                 </div>
                 <div className="row" style={{ borderTop: '1px solid var(--border)', padding: '8px 10px', gap: 6, justifyContent: 'flex-end' }}>
                   <button className="btn btn-secondary btn-sm" onClick={() => openEdit(spec, 'en')}><Icon name="edit" size={13} /> Edit</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setTest({ channel: spec.channel, key: spec.key, label: spec.label })} title="Send this template to a number or address you choose"><Icon name="bolt" size={13} /> Test</button>
                   {hasAny && !(isPlatform && spec.system) && (
                     <button className="btn btn-secondary btn-sm" onClick={() => resetLocale(spec, 'en')} title={isPlatform ? 'Delete content' : 'Reset override'}>
                       {isPlatform ? 'Delete' : 'Reset'}
@@ -324,6 +327,67 @@ export default function TemplatesPage() {
         </Modal>
       )}
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
+      {test && <TestSendDialog spec={test} onClose={() => setTest(null)} />}
     </>
+  );
+}
+
+/**
+ * Send one template to a recipient the operator names.
+ *
+ * Shows the RENDERED body beside the provider's answer: a DLT rejection is
+ * almost always a text mismatch against the registered template, and seeing
+ * exactly what went out is the quickest way to spot it. Every test send is
+ * tagged `test` in the Message Log.
+ */
+function TestSendDialog({ spec, onClose }: { spec: { channel: string; key: string; label: string }; onClose: () => void }) {
+  const [to, setTo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const isEmail = spec.channel === 'email';
+
+  const send = async () => {
+    setBusy(true); setErr(null); setRes(null);
+    try { setRes(await api.sendTemplateTest({ channel: spec.channel, key: spec.key, to })); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={`Test — ${spec.label}`} sub={`${spec.channel.toUpperCase()} · ${spec.key}`} onClose={onClose}>
+      <div className="field">
+        <label>{isEmail ? 'Send to (email)' : 'Send to (mobile)'}</label>
+        <input className="input mono" value={to} onChange={(e) => setTo(e.target.value)}
+          placeholder={isEmail ? 'you@company.com' : spec.channel === 'whatsapp' ? '919876543210' : '9876543210'} />
+        <span className="hint">Placeholders are filled with sample values — OTP 123456 and the like.</span>
+      </div>
+      {err && <div className="banner warn" style={{ marginBottom: 12 }}>{err}</div>}
+      {res && (
+        <div className={`banner ${res.sent ? 'ok' : res.dev ? 'info' : 'warn'}`} style={{ marginBottom: 12, display: 'block' }}>
+          <b>
+            {res.sent ? 'Handed to the provider.'
+              : res.dev ? 'Not sent — no provider is configured for this channel, so it was only logged.'
+              : 'The provider refused it.'}
+          </b>
+          {res.error && <div style={{ marginTop: 6 }}>{res.error}</div>}
+          {res.dltTemplateId && (
+            <div className="mono" style={{ marginTop: 6, fontSize: 12 }}>
+              DLT template: {res.dltTemplateId}{res.senderId ? ` · sender ${res.senderId}` : ''}
+            </div>
+          )}
+          {res.rendered && (
+            <>
+              <div className="hint" style={{ marginTop: 8 }}>What was sent:</div>
+              <pre className="mono" style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '4px 0 0' }}>{res.rendered}</pre>
+            </>
+          )}
+        </div>
+      )}
+      <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+        <a className="btn btn-secondary" href="/admin/templates/log">Open Message Log</a>
+        <button className="btn" disabled={busy || !to.trim()} onClick={send}>{busy ? 'Sending…' : 'Send test'}</button>
+      </div>
+    </Modal>
   );
 }

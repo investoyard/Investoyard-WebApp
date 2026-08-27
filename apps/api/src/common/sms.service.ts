@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ProviderConfigService } from './provider-config.service';
+import { MessageLogService } from './message-log.service';
 
 /** Semantic template variables a caller can supply (mapped to provider template vars). */
 export interface SmsVars {
@@ -22,19 +23,43 @@ export interface SmsVars {
 export class SmsService {
   private readonly log = new Logger('SMS');
 
-  constructor(private providers: ProviderConfigService) {}
+  constructor(
+    private providers: ProviderConfigService,
+    private mlog: MessageLogService,
+  ) {}
 
   /** True when a real provider is configured for the tenant (admin config or env). */
   async isEnabled(tenantId?: string): Promise<boolean> {
     return !!(await this.providers.effective('sms', tenantId));
   }
 
+  /**
+   * Every SMS the system sends passes through here — including OTP, which
+   * calls this service directly rather than going via MessagingService. The
+   * delivery log is written on the way out so no route can skip it.
+   */
   async send(
     mobile: string,
     message: string,
     vars?: SmsVars,
-    opts?: { tenantId?: string; templateId?: string; senderId?: string },
+    opts?: { tenantId?: string; templateId?: string; senderId?: string; templateKey?: string; isTest?: boolean },
   ): Promise<{ sent: boolean; dev?: boolean; error?: string }> {
+    const res = await this.deliver(mobile, message, vars, opts);
+    await this.mlog.record({
+      channel: 'sms', to: mobile, body: message,
+      status: res.sent ? 'sent' : res.dev ? 'dev' : 'failed',
+      tenantId: opts?.tenantId, templateKey: opts?.templateKey, isTest: opts?.isTest,
+      provider: (res as any).provider, error: res.error,
+    });
+    return res;
+  }
+
+  private async deliver(
+    mobile: string,
+    message: string,
+    vars?: SmsVars,
+    opts?: { tenantId?: string; templateId?: string; senderId?: string },
+  ): Promise<{ sent: boolean; dev?: boolean; error?: string; provider?: string }> {
     const cfg = await this.providers.effective('sms', opts?.tenantId);
     if (!cfg) {
       this.log.log(`[dev] +91${mobile}: ${message}`);
