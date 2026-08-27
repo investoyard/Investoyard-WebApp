@@ -2655,14 +2655,14 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 /* identity */
 .hbi-ident { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .hbi-ident .ipologo { border-radius: 10px; flex: 0 0 auto; }
-.hbi-name { font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em;
+.hbi-name { font-family: var(--font-display); font-size: 20.5px; font-weight: 700; letter-spacing: -.02em;
   color: #1d1642; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hbi-meta { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 11.5px; color: #6d6790; }
+.hbi-meta { display: flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 12.5px; color: #6d6790; }
 .hbi-meta .sym { font-weight: 650; letter-spacing: .02em; }
 .hbi-board { font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border-radius: 5px;
   padding: 2px 6px; background: #E7E0FF; color: #5b46b8; }
 .hbi-board.sme { background: #FFEFC9; color: #8a6d1f; }
-.hbi-tag { font-size: 10.5px; font-weight: 750; border-radius: var(--pill); padding: 2px 9px;
+.hbi-tag { font-size: 11.5px; font-weight: 750; border-radius: var(--pill); padding: 2px 9px;
   background: #fff; border: 1px solid rgba(60,46,126,.14); color: #3b3370; }
 .hbi-tag.live { background: #DDF3E7; border-color: rgba(31,122,82,.22); color: #1f7a52; }
 .hbi-tag.closing { background: #FFE2DC; border-color: rgba(183,58,38,.22); color: #b73a26; }
@@ -2687,9 +2687,11 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
   background: #fff; border: 2px solid rgba(60,46,126,.22); }
 .hbi-step.done .dot { background: #4bbd85; border-color: #4bbd85; }
 .hbi-step.now .dot { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,203,50,.28); }
-.hbi-step b { font-size: 10.5px; font-weight: 750; color: #3b3370; }
-.hbi-step i { font-style: normal; font-size: 10.5px; color: #7b71a8; font-variant-numeric: tabular-nums; }
+.hbi-step b { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #8b83b0; }
+.hbi-step i { font-style: normal; font-size: 13px; font-weight: 700; color: #2b2160; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .hbi-step.now b { color: #8a6d1f; }
+.hbi-step.now i { color: #7a5f10; }
+.hbi-step:not(.done):not(.now) i { color: #9b93bd; font-weight: 650; }
 
 .hb-slide.hb-ipopastel .hb-ctas { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 14px; }
 .hb-slide.hb-ipopastel .hb-ctas .btn { flex: 0 0 auto; width: auto; padding: 9px 17px; font-size: 13px; }
@@ -2707,15 +2709,15 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .hbi-card.t-ret { --hbi-tone: #CBBFFF; }
 .hbi-card.t-shni { --hbi-tone: #FFD3A5; }
 .hbi-card.t-bhni { --hbi-tone: #A9E5C8; }
-.hbi-card .hd { display: flex; align-items: baseline; gap: 5px; font-size: 12.5px; font-weight: 800;
+.hbi-card .hd { display: flex; align-items: baseline; gap: 5px; font-size: 13.5px; font-weight: 800;
   color: #2b2160; padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid rgba(60,46,126,.09); }
-.hbi-card .hd i { font-style: normal; font-size: 9.5px; font-weight: 700; color: #7b71a8; }
+.hbi-card .hd i { font-style: normal; font-size: 10.5px; font-weight: 700; color: #7b71a8; }
 .hbi-card .row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 1.5px 0; }
-.hbi-card .row i { font-style: normal; font-size: 10px; color: #7b71a8; }
-.hbi-card .row b { font-size: 11.5px; font-weight: 750; color: #3b3370; font-variant-numeric: tabular-nums; }
+.hbi-card .row i { font-style: normal; font-size: 11px; color: #7b71a8; }
+.hbi-card .row b { font-size: 12.5px; font-weight: 750; color: #3b3370; font-variant-numeric: tabular-nums; }
 .hbi-card .row b.gain { color: #1f7a52; }
 .hbi-card .row b.na { color: #a8a2c4; font-weight: 650; }
-.hbi-note { font-size: 9.5px; line-height: 1.45; color: #857ead; }
+.hbi-note { font-size: 10.5px; line-height: 1.45; color: #857ead; }
 
 @media (max-width: 1180px) { .hb-slide.hb-ipopastel { grid-template-columns: minmax(260px, 320px) 1fr; gap: 18px; } }
 @media (max-width: 940px) {
@@ -2729,3 +2731,328 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .faq-sec .faq-acc { margin-top: 12px; }
 .faq-sec .faq-acc summary { font-size: 14px; }
 .faq-sec .faq-acc p { font-size: 13.5px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   /home2 CANDIDATE LAYOUT (under review — delete the loser after the decision)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── row 1: market bar — date · today's counts · the four hub links ── */
+.mkt-bar { display: flex; align-items: center; gap: 14px 18px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 11px 16px; box-shadow: var(--sh-xs); margin: 2px 0 14px; }
+.mkt-date { display: flex; flex-direction: column; line-height: 1.2; padding-right: 16px;
+  border-right: 1px solid var(--border); }
+.mkt-date i { font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-faint); }
+.mkt-date b { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+.mkt-pulses { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mkt-pulse { display: inline-flex; align-items: baseline; gap: 6px; border: 0; background: none; padding: 0;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; color: var(--text-muted); }
+.mkt-pulse:hover { color: var(--text); }
+.mkt-pulse.dim { opacity: .5; }
+.mkt-n { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; position: relative; padding-left: 12px; }
+/* the semantic dot sits with the number, not the label */
+.mkt-n::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%; }
+.mkt-n.d-pos::before { background: var(--pos); }
+.mkt-n.d-gold::before { background: var(--gold); }
+.mkt-n.d-brand::before { background: var(--brand-400); }
+.mkt-n.d-faint::before { background: var(--text-faint); }
+/* hubs push right on a wide bar and wrap under on a narrow one */
+.mkt-hubs { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-left: auto; }
+.mkt-hub { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--pill);
+  padding: 6px 12px; font-size: 12.5px; font-weight: 650; color: var(--text-muted);
+  background: var(--bg-2); transition: background .14s var(--ease), color .14s var(--ease); }
+.mkt-hub:hover { background: var(--brand-50); color: var(--brand); }
+.mkt-hub svg { opacity: .75; }
+.mkt-hub:hover svg { opacity: 1; }
+.mkt-sig { font-style: normal; font-size: 10.5px; font-weight: 800; border-radius: var(--pill);
+  padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.mkt-sig.gp { background: var(--pos-soft); color: var(--pos); }
+.mkt-sig.hot { background: var(--gold-50, #fdf4dc); color: #8a6d1f; }
+.mkt-sig.ev { background: var(--brand-100); color: var(--brand); }
+
+/* ── row 2: every filter on one line ── */
+.flt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.flt-seg { display: inline-flex; gap: 2px; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--pill); padding: 3px; }
+.flt-seg button { border: 0; background: none; cursor: pointer; font-family: inherit; font-size: 13px;
+  font-weight: 600; color: var(--text-muted); padding: 6px 13px; border-radius: var(--pill);
+  transition: background .14s var(--ease), color .14s var(--ease); }
+.flt-seg button:hover { color: var(--text); }
+.flt-seg button.on { background: var(--surface); color: var(--brand); box-shadow: var(--sh-xs); }
+.flt-search { flex: 1 1 240px; min-width: 180px; }
+.flt-search .input, .flt-search input { width: 100%; }
+.flt-view { margin-left: auto; }
+@media (max-width: 900px) {
+  .mkt-date { border-right: 0; padding-right: 0; }
+  .mkt-hubs { margin-left: 0; }
+  .flt-view { margin-left: 0; }
+}
+
+/* ── 2-up card grid (v2) ── */
+.ipo-list.two-up { grid-template-columns: 1fr; }
+@media (min-width: 860px) { .ipo-list.two-up { grid-template-columns: repeat(2, 1fr); } }
+
+/* ── v2 card tweaks ── */
+/* board badges go pastel — the solid indigo/gold pair shouted louder than the
+   status chip beside them, which is the badge that actually changes */
+.ipocard.v2 .ic-tag.mb { background: #E7E0FF; color: #4b3aa0; }
+.ipocard.v2 .ic-tag.sme { background: #FFEFC9; color: #8a6d1f; }
+/* the rotating third KPI */
+.ipocard.v2 .ic-rot .v, .ipocard.v2 .ic-rot .k { transition: opacity .22s var(--ease); }
+.ipocard.v2 .ic-rot.out .v, .ipocard.v2 .ic-rot.out .k { opacity: 0; }
+.ipocard.v2 .ic-rot .v.gain { color: var(--pos); }
+.ic-rotdots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: 1px; }
+.ic-rotdots b { width: 4px; height: 4px; border-radius: 50%; background: var(--brand-200); }
+.ic-rotdots b.on { background: var(--brand); }
+
+/* ── pastel banner: two headline figures at equal weight ── */
+.hbi-hero { display: flex; align-items: flex-start; gap: 28px; flex-wrap: wrap; margin-top: 13px; }
+.hbi-hero .fig { display: flex; flex-direction: column; gap: 1px; }
+.hbi-hero .fig i { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .09em;
+  text-transform: uppercase; color: #7b71a8; }
+.hbi-hero .fig b { font-family: var(--font-display); font-size: 29px; font-weight: 700;
+  letter-spacing: -.03em; color: #2b2160; line-height: 1.1; }
+/* the "Sh" unit rides small beside the count */
+.hbi-card .row b em { font-style: normal; font-size: 9.5px; font-weight: 700; color: #7b71a8; margin-left: 1px; }
+
+/* ── the two live hub chips: pastel skin + one small motion each ──
+   Only the chips carrying a live number animate. Allotment and Calendar stay
+   quiet on purpose — if every chip moves, none of them reads as urgent. */
+.mkt-hub.live { background: #E4F6EC; color: #1b7048; }
+.mkt-hub.live:hover { background: #D6F0E2; color: #14603c; }
+.mkt-hub.live .mkt-sig { background: rgba(27,112,72,.13); color: #1b7048; }
+/* a heartbeat, not a blink — the ring expands and fades, the dot never flashes
+   off, so it reads as "receiving" rather than "alerting" */
+.mkt-live { width: 7px; height: 7px; border-radius: 50%; background: #2fbd7e; flex: 0 0 auto;
+  animation: mkt-beat 2.1s var(--ease) infinite; }
+@keyframes mkt-beat {
+  0%   { box-shadow: 0 0 0 0 rgba(47,189,126,.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(47,189,126,0); }
+  100% { box-shadow: 0 0 0 0 rgba(47,189,126,0); }
+}
+.mkt-hub.prem { background: #FFF3D6; color: #856819; }
+.mkt-hub.prem:hover { background: #FFEBBE; color: #6f5511; }
+.mkt-hub.prem svg { color: #c2921c; opacity: 1; animation: mkt-tick 3.6s var(--ease) infinite; }
+/* the trend arrow lifts once every few seconds and settles — a premium ticking
+   up, held long enough between beats that it never becomes fidgety */
+@keyframes mkt-tick {
+  0%, 74%, 100% { transform: translateY(0); }
+  84%           { transform: translateY(-2.5px); }
+}
+/* the gain figure keeps semantic green — it IS a financial signal */
+.mkt-hub.prem .mkt-sig { background: rgba(27,112,72,.12); color: #1b7048; }
+@media (prefers-reduced-motion: reduce) {
+  .mkt-live, .mkt-hub.prem svg { animation: none; }
+}
+
+/* ── /home2: cards beside a rail ────────────────────────────────────────────
+   The rail is what earns the 2-up card grid: at full width two cards read
+   sparse, but with ~300px given to live instruments the page uses every pixel.
+   The table view drops the rail and spans full width — see the note in
+   IpoExplorer2. */
+.h2-grid { display: grid; grid-template-columns: minmax(0, 1fr) 304px; gap: 18px; align-items: start; }
+.h2-grid.full { grid-template-columns: minmax(0, 1fr); }
+.h2-main { min-width: 0; }
+.h2-side { display: flex; flex-direction: column; gap: 10px; position: sticky; top: calc(var(--header-h) + 14px); }
+/* the rail follows the reader down a long list, but never taller than the
+   viewport or it would trap its own overflow */
+@media (min-width: 981px) { .h2-side { max-height: calc(100vh - var(--header-h) - 28px); overflow: auto; scrollbar-width: none; } }
+.h2-side::-webkit-scrollbar { display: none; }
+
+
+/* ── today: an instrument panel, not a sentence ── */
+.sd-today { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--sh-xs); overflow: hidden; }
+.sd-th { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.sd-th i { font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--text-faint); }
+.sd-th b { font-size: 12.5px; font-weight: 700; letter-spacing: -.01em; }
+/* four columns, hairline-separated — the counts line up as a row of readings */
+.sd-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sd-count { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 11px 2px 12px;
+  border: 0; border-left: 1px solid var(--border); background: none; cursor: pointer; font-family: inherit;
+  transition: background .14s var(--ease); }
+.sd-count:first-child { border-left: 0; }
+.sd-count:hover { background: var(--bg-2); }
+.sd-count.dim { opacity: .45; }
+.sd-count span { font-size: 9px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-faint); }
+.sd-n { font-family: var(--font-display); font-size: 20px; font-weight: 700; letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums; line-height: 1; position: relative; padding-bottom: 5px; }
+/* the semantic colour reads as a short underline rather than a bullet — it
+   belongs to the number, and a rail of four dots would look like a legend */
+.sd-n::after { content: ''; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 14px; height: 2px; border-radius: 2px; }
+.sd-n.d-pos::after { background: var(--pos); }
+.sd-n.d-gold::after { background: var(--gold); }
+.sd-n.d-brand::after { background: var(--brand-400); }
+.sd-n.d-faint::after { background: var(--text-faint); }
+
+/* ── quiet destinations ── */
+.sd-links { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--sh-xs); overflow: hidden; }
+.sd-links a { display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-size: 13.5px;
+  font-weight: 600; color: var(--text); border-top: 1px solid var(--border); transition: background .14s var(--ease); }
+.sd-links a:first-child { border-top: 0; }
+.sd-links a:hover { background: var(--bg-2); color: var(--brand); }
+.sd-links a svg:first-child { color: var(--text-faint); }
+.sd-links a:hover svg:first-child { color: var(--brand); }
+.sd-links a svg:last-child { margin-left: auto; opacity: .45; }
+
+/* Below the split the rail moves ABOVE the cards: today's counts and the two
+   live readings are exactly what a phone reader wants before scrolling. */
+@media (max-width: 980px) {
+  .h2-grid { grid-template-columns: minmax(0, 1fr); }
+  .h2-side { position: static; max-height: none; order: -1;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .sd-today, .sd-links { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) { .h2-side { grid-template-columns: minmax(0, 1fr); } }
+
+/* three headline figures now — tighten the gap so they hold one line */
+.hbi-hero { gap: 22px; }
+
+/* Three headline figures are a tight fit once the left column narrows, and a
+   long issue size ("₹1,757 Cr") would push past the edge. Shrink the type
+   rather than let it wrap — a wrapped hero row costs ~49px and the slide has
+   no height to give. */
+.hbi-hero .fig b { white-space: nowrap; }
+@media (max-width: 1180px) {
+  .hbi-hero { gap: 16px; }
+  .hbi-hero .fig b { font-size: 24px; }
+  .hbi-hero .fig i { font-size: 9.5px; }
+}
+
+/* issue size sits a step below the band and lot — it frames the issue rather
+   than feeding the bid decision */
+.hbi-hero .fig.sm b { font-size: 21px; }
+@media (max-width: 1180px) { .hbi-hero .fig.sm b { font-size: 18px; } }
+
+/* ── /home2: the two filter groups, told apart by colour language ──
+   They filter different things, so they should not be two identical pill rows.
+   Status carries the semantic dots the cards' status chips use; Board fills
+   with the pastel tints the cards' board badges use. */
+
+/* status — a solid segmented control; the active option is the page's subject */
+.flt-status { display: inline-flex; gap: 2px; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--pill); padding: 3px; }
+/* explicit height: the board meter matches this exactly, and a padding-driven
+   height would drift the moment either font size changed */
+.flt-status button { display: inline-flex; align-items: center; gap: 6px; height: 32px; border: 0; background: none;
+  cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted);
+  padding: 0 14px; border-radius: var(--pill); transition: background .14s var(--ease), color .14s var(--ease); }
+.flt-status button i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.flt-status button i.d-pos { background: var(--pos); }
+.flt-status button i.d-gold { background: var(--gold); }
+.flt-status button i.d-faint { background: var(--text-faint); }
+.flt-status button:hover { color: var(--text); }
+.flt-status button.on { background: var(--brand); color: #fff; box-shadow: 0 4px 12px rgba(60,46,126,.22); }
+/* the dot stays legible on the indigo fill */
+.flt-status button.on i.d-pos { background: #7fe3ac; }
+.flt-status button.on i.d-gold { background: var(--gold); }
+.flt-status button.on i.d-faint { background: rgba(255,255,255,.6); }
+
+/* ── board: a segmented meter ──
+   Deliberately NOT pills. One bordered bar with hard dividers, a count under
+   each label and a coloured cap over the active segment — a different object
+   from the status track, so the two can never be mistaken for each other. */
+/* --r matches the search box exactly, so the two share an edge language. NOT a
+   full pill: the status track and the view toggle already are pills, and a
+   third would undo the whole point of making this a different object. */
+.brd-bar { display: inline-flex; height: 40px; border: 1px solid var(--border-2); border-radius: var(--r);
+  overflow: hidden; background: var(--surface); box-shadow: var(--sh-xs); }
+.brd-seg { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 100%;
+  padding: 0 14px; border: 0; border-left: 1px solid var(--border);
+  background: none; cursor: pointer; font-family: inherit;
+  transition: background .15s var(--ease), color .15s var(--ease); }
+.brd-seg:first-child { border-left: 0; }
+.brd-seg .l { font-size: 12.5px; font-weight: 650; color: var(--text-muted); letter-spacing: .01em; }
+/* the count rides as a badge beside the label rather than stacking under it,
+   which is what made this control taller than the status track */
+.brd-seg .n { font-size: 10.5px; font-weight: 800; line-height: 1; padding: 3px 7px; border-radius: var(--pill);
+  background: var(--bg-2); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.brd-seg:hover { background: var(--bg-2); }
+.brd-seg:hover .l { color: var(--text); }
+/* the cap: a 3px bar across the top of the active segment, in its board colour */
+.brd-seg::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: transparent; transition: background .15s var(--ease); }
+.brd-seg.on { background: var(--brand-50); }
+.brd-seg.on .l { color: var(--brand-700); font-weight: 750; }
+.brd-seg.on .n { background: var(--brand-100); color: var(--brand); }
+.brd-seg.b-all.on::before { background: var(--brand); }
+.brd-seg.b-mainboard.on { background: #F1EDFF; }
+.brd-seg.b-mainboard.on::before { background: #6b57c9; }
+.brd-seg.b-mainboard.on .l { color: #5b46b8; }
+.brd-seg.b-mainboard.on .n { background: #DCD1FF; color: #4b3aa0; }
+.brd-seg.b-sme.on { background: #FFF6E2; }
+.brd-seg.b-sme.on::before { background: #c2921c; }
+.brd-seg.b-sme.on .l { color: #97781f; }
+.brd-seg.b-sme.on .n { background: #FBE2AE; color: #7d6117; }
+/* a board with nothing in it stays clickable but says so */
+.brd-seg.empty .n, .brd-seg.empty .l { opacity: .42; }
+
+
+/* ── the two live links: compact action rows ──
+   Sized as buttons, not panels. The metric rides on the right when it exists
+   and simply isn't rendered when it doesn't, so an issue with no live data
+   costs one row instead of a large box showing a dash. */
+.sd-group { border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-xs); }
+.sd-btn { display: flex; align-items: center; gap: 9px; height: 48px; padding: 0 12px 0 14px;
+  font-size: 13.5px; font-weight: 700; letter-spacing: -.01em;
+  border-top: 1px solid rgba(23,102,63,.10); transition: background .15s var(--ease); }
+.sd-btn:first-child { border-top: 0; }
+.sd-btn .t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the live figure, in semantic green — it is a financial reading either way */
+.sd-btn .v { font-style: normal; font-size: 12px; font-weight: 800; border-radius: var(--pill);
+  padding: 2px 8px; background: rgba(27,112,72,.13); color: #1b7048; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; }
+.sd-btn > svg:last-child { flex: 0 0 auto; opacity: .5; transition: transform .15s var(--ease); }
+.sd-btn:hover > svg:last-child { transform: translateX(2px); opacity: .8; }
+.sd-btn.live { background: #E4F6EC; color: #17663f; }
+.sd-btn.live:hover { background: #D8F0E4; }
+.sd-btn.prem { background: #FFF3D6; color: #7d6117; }
+.sd-btn.prem:hover { background: #FFEDC4; }
+.sd-btn.prem > svg:first-child { color: #c2921c; animation: mkt-tick 3.6s var(--ease) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .sd-btn.prem > svg:first-child { animation: none; }
+  .sd-btn:hover > svg:last-child { transform: none; }
+}
+
+/* ── filter groups told apart by SHAPE as well as colour ──
+   Status is one grouped pill track; Board is separate square-cornered chips at
+   a smaller height. Different container, different silhouette — no labels
+   needed to tell them apart. */
+
+/* ── rail footer: the Android app teaser ──
+   The only promotional block on the page, so it sits last, stays pastel and
+   does NOT invite a click — the app is not published yet. Give it back its
+   affordance (an <a>, hover lift, chevron) on the day the listing goes live. */
+.sd-app { position: relative; overflow: hidden; min-height: 132px; padding: 14px 15px 15px;
+  border-radius: var(--r-lg); border: 1px solid #e2dcf5; cursor: default;
+  background: linear-gradient(135deg, #F3F0FF 0%, #EDE9FC 55%, #F7F3FF 100%); }
+.sd-app-copy { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start;
+  gap: 3px; max-width: 168px; }
+.sd-app-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: #6b57c9; }
+.sd-app-copy b { font-size: 14.5px; font-weight: 750; letter-spacing: -.015em; color: #2b2160; margin-top: 2px; }
+.sd-app-sub { font-size: 11.5px; line-height: 1.45; color: #6d6790; }
+.sd-app-chip { margin-top: 7px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: var(--pill); background: #FFE9B8; color: #7d6117; }
+/* the device bleeds off the bottom-right corner and tilts — reads as product
+   photography without needing a photograph */
+.sd-app-art { position: absolute; right: -16px; bottom: -30px; width: 96px; display: block; }
+.sd-app-phone { display: block; width: 100%; height: auto;
+  transform: rotate(-9deg); transform-origin: 50% 100%;
+  filter: drop-shadow(0 10px 18px rgba(36,28,78,.24)); }
+/* the icon sits ON the phone, upright against the tilt — that mismatch is what
+   makes it read as an icon resting on a screen rather than part of the drawing */
+.sd-app-icon { position: absolute; left: -22px; top: 6px; width: 46px; height: 46px;
+  border-radius: 13px; filter: drop-shadow(0 6px 14px rgba(36,28,78,.30)); }
+@media (max-width: 980px) {
+  .sd-app { min-height: 118px; }
+  .sd-app-art { right: 10px; bottom: -34px; }
+}

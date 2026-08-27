@@ -6,7 +6,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip, demandLabel } from '@/components/IpoCard';
 import { useTenant } from '@/components/TenantProvider';
-import { LABEL, titleCase } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName } from '@investoyard/shared-types';
 
 /**
  * Desktop comparison table — every issue on one sortable screen.
@@ -31,7 +31,8 @@ function issueValue(s?: string): number {
 /** Lifecycle order so "Status" sorts live-first rather than alphabetically. */
 const PHASE_RANK: Record<string, number> = { open: 0, upcoming: 1, closed: 2, listed: 3, withdrawn: 4 };
 
-export function IpoCompareTable({ ipos, lang = 'en' }: { ipos: IpoFull[]; lang?: string }) {
+/** @param shortNames drop the trailing "Limited" — the /home2 layout under review. */
+export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipos: IpoFull[]; lang?: string; shortNames?: boolean }) {
   const tenant = useTenant();
   const showGmp = tenant.flags.gmpEnabled;
   const q = lang !== 'en' ? `?lang=${lang}` : '';
@@ -108,7 +109,7 @@ export function IpoCompareTable({ ipos, lang = 'en' }: { ipos: IpoFull[]; lang?:
                   <a href={href}>
                     <IpoLogo logo={i.logo} name={i.name} size={30} />
                     <span className="ct-nm">
-                      <span className="t" title={titleCase(i.name)}>{titleCase(i.name)}</span>
+                      <span className="t" title={titleCase(i.name)}>{shortNames ? shortName(i.name) : titleCase(i.name)}</span>
                       <span className="s">
                         <span className={`ct-board ${i.type === 'sme' ? 'sme' : 'mb'}`}>{i.type === 'sme' ? 'SME' : 'Mainboard'}</span>
                         {i.symbol}

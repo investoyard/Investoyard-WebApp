@@ -64,6 +64,25 @@ export function titleCase(name?: string | null): string {
     .join(' ');
 }
 
+/**
+ * Title Case WITHOUT the trailing corporate suffix — for dense surfaces where
+ * width is scarce: cards, banner slides, comparison tables.
+ *
+ * Nearly every registrar name ends in "LIMITED", which costs a line of card
+ * width and tells the reader nothing they didn't assume. The full legal name
+ * stays on the IPO detail page, where identity (and SEO) matter.
+ *
+ * Only a TRAILING suffix is removed, so a company whose name merely contains
+ * the word ("Limited Liability Partners Ltd" → "Limited Liability Partners")
+ * keeps it. A name that is nothing but the suffix is returned unchanged.
+ */
+export function shortName(name?: string | null): string {
+  const full = titleCase(name);
+  if (!full) return '';
+  const cut = full.replace(/[\s,]+(?:(?:Pvt|Private)\.?\s+)?(?:Ltd|Limited)\.?$/i, '').trim();
+  return cut || full;
+}
+
 /* ── domain vocabulary ────────────────────────────────────────────────────── */
 
 /**

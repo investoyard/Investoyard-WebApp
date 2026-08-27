@@ -7,7 +7,7 @@ import { inr, priceBand } from '@/lib/format';
 import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { LABEL, demandWord, titleCase } from '@investoyard/shared-types';
+import { LABEL, demandWord, titleCase, shortName } from '@investoyard/shared-types';
 
 /**
  * Compact dynamic homepage banner — replaces the tall static hero.
@@ -36,8 +36,17 @@ function slideTag(ipo: IpoFull): { label: string; cls: string } {
   return { label: d != null ? `Opens in ${d}d` : 'Upcoming', cls: 'soon' };
 }
 
+/**
+ * "2026-09-01" → "1 Sep".
+ *
+ * Hand-formatted rather than toLocaleDateString: en-IN renders September as
+ * "Sept" — four letters where every other month is three — which made the
+ * lifecycle rail's date column look ragged. Parsing the ISO string directly is
+ * also deterministic, so the static export and the client always agree.
+ */
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
-  ? new Date(`${s}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—');
+  ? `${+s.slice(8, 10)} ${MON3[+s.slice(5, 7) - 1]}` : '—');
 
 /**
  * Live countdown to the close of bidding (3pm cut-off on the closing day).
@@ -609,7 +618,7 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
         <div className="hbi-ident">
           <IpoLogo logo={ipo.logo} name={ipo.name} size={40} />
           <div style={{ minWidth: 0 }}>
-            <div className="hbi-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</div>
+            <div className="hbi-name" title={titleCase(ipo.name)}>{shortName(ipo.name)}</div>
             <div className="hbi-meta">
               <span className={`hbi-board ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
               <span className="sym">{ipo.symbol}</span>
@@ -618,12 +627,24 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
           </div>
         </div>
 
-        {/* the price band leads — it is the number every visitor looks for first */}
+        {/* Two headline figures at equal weight: the price band and the lot
+            size. Min Application is derived from both and still sits on the
+            card, so it does not earn banner space. */}
         <div className="hbi-hero">
-          <span className="k">{LABEL.offerPrice}</span>
-          <b>{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</b>
-          <span className="pair"><i>{LABEL.lotSize}</i>{ipo.lotSize ?? '—'}</span>
-          <span className="pair"><i>{LABEL.minApplication}</i>{inr(ipo.minAmount)}</span>
+          <span className="fig">
+            <i>{LABEL.offerPrice}</i>
+            <b>{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</b>
+          </span>
+          <span className="fig">
+            <i>{LABEL.lotSize}</i>
+            <b>{ipo.lotSize ?? '—'}</b>
+          </span>
+          {/* the issue size is context, not a decision input like the band and
+              the lot — it sits a step down in the hierarchy */}
+          <span className="fig sm">
+            <i>{LABEL.issueSize}</i>
+            <b>{ipo.issueSize ?? '—'}</b>
+          </span>
         </div>
 
         <LifeRail ipo={ipo} />
@@ -646,9 +667,11 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
           {lanes.map((l) => (
             <div className={`hbi-card t-${l.tone}`} key={l.key}>
               <span className="hd">{l.key}{l.resv != null && <i>{l.resv}%</i>}</span>
-              <span className="row"><i>Shares</i><b>{nf(l.shares)}</b></span>
-              <span className="row"><i>Lots</i><b>{l.range}</b></span>
+              <span className="row"><i>Min Shares</i><b>{nf(l.shares)} <em>Sh</em></b></span>
+              {/* amount before the lot range — the money is the decision, the
+                  range is the constraint on it */}
               <span className="row"><i>Amount</i><b>₹{nf(l.amount)}</b></span>
+              <span className="row"><i>Lots</i><b>{l.range}</b></span>
               <span className="row"><i>For 1×</i><b className={l.forms == null ? 'na' : undefined}>{l.forms != null ? nf(l.forms) : '—'}</b></span>
               <span className="row"><i>Est. gain</i><b className={l.gain != null ? 'gain' : 'na'}>{l.gain != null ? `+${nf(l.gain)}` : '—'}</b></span>
             </div>

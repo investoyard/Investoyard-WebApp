@@ -10,9 +10,41 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName } from '@investoyard/shared-types';
 
 type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
+
+/**
+ * The third KPI tile, cycling Min Application → GMP → …
+ *
+ * Sir asked for one of the four tiles to carry GMP without adding a fifth, so
+ * this slot alternates instead of splitting the row. It degrades to a plain
+ * static tile whenever there is only one value to show — no GMP entered, or the
+ * tenant has GMP switched off — and holds still under prefers-reduced-motion,
+ * where a tile that changes under the reader is actively unhelpful.
+ */
+function RotatingSpec({ faces }: { faces: { k: string; v: string; gain?: boolean }[] }) {
+  const [i, setI] = useState(0);
+  const [fade, setFade] = useState(false);
+  useEffect(() => {
+    if (faces.length < 2) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => {
+      setFade(true);
+      // swap at the midpoint of the cross-fade so neither value is seen mid-flip
+      setTimeout(() => { setI((n) => (n + 1) % faces.length); setFade(false); }, 220);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [faces.length]);
+
+  const f = faces[Math.min(i, faces.length - 1)];
+  return (
+    <div className={`hi ic-rot${fade ? ' out' : ''}`}>
+      <span className="k">{f.k}{faces.length > 1 && <i className="ic-rotdots" aria-hidden>{faces.map((_, n) => <b key={n} className={n === i ? 'on' : ''} />)}</i>}</span>
+      <span className={`v mono${f.gain ? ' gain' : ''}`}>{f.v}</span>
+    </div>
+  );
+}
 
 /** ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe. */
 function fmtRange(open?: string, close?: string): string {
@@ -104,7 +136,13 @@ export function demandLabel(subX: number, sme: boolean): { label: string; cls: s
   return { label: 'exceptional demand', cls: 'd3' };
 }
 
-export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
+/**
+ * @param v2 the layout under review on /home2 — short names, light board
+ *           badges, "Exp. Premium" instead of "GMP", and a rotating third KPI.
+ *           Omitted everywhere else, so the live card is untouched while the
+ *           operator decides between the two.
+ */
+export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?: Lang; v2?: boolean }) {
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
@@ -142,17 +180,22 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
           key: 'gmp' as Topic,
           label: isListed
             ? <>Listed{listedGain != null ? <> <span className={`gmp-pill ${listedGain >= 0 ? 'gp' : 'gn'}`}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
-            : ipo.gmp != null ? <>GMP <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
+              : ipo.gmp != null
+              ? <>{v2 ? 'Exp. Premium' : 'GMP'} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
+              : (v2 ? 'Exp. Premium' : 'GMP'),
         }]
       : []),
   ];
 
   return (
-    <div className={`ipocard st-${ipo.status}`}>
+    <div className={`ipocard st-${ipo.status}${v2 ? ' v2' : ''}`}>
       <div className="ic-top">
         <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
         <div className="grow">
-          <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>{titleCase(ipo.name)}</a>
+          {/* the full legal name stays in the tooltip (and on the detail page) */}
+          <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>
+            {v2 ? shortName(ipo.name) : titleCase(ipo.name)}
+          </a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             {(() => { const c = statusChip(ipo); return (
@@ -179,7 +222,20 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
       <div className="ic-specs">
         <div><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span></div>
         <div className="hi"><span className="k">{LABEL.lotSize}</span><span className="v mono">{ipo.lotSize ?? '—'}</span></div>
-        <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
+        {v2 ? (
+          <RotatingSpec
+            faces={[
+              { k: LABEL.minApplication, v: inr(ipo.minAmount) },
+              // only joins the rotation when a real value exists — an empty face
+              // would blink a dash at the reader every four seconds
+              ...(tenant.flags.gmpEnabled && ipo.gmp != null
+                ? [{ k: 'Exp. Premium', v: `${ipo.gmp >= 0 ? '+' : ''}₹${ipo.gmp}`, gain: ipo.gmp >= 0 }]
+                : []),
+            ]}
+          />
+        ) : (
+          <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
+        )}
         <div><span className="k">{LABEL.issueSize}</span><span className="v mono">{ipo.issueSize ?? '—'}</span></div>
       </div>
 
