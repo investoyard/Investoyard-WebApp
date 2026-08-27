@@ -246,7 +246,7 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
           </button>
         ))}
       </div>
-      {open && <TopicPanel k={open} ipo={ipo} tr={tr} />}
+      {open && <TopicPanel k={open} ipo={ipo} tr={tr} v2={v2} />}
 
       <div className="ic-foot">
         {canApply && (
@@ -279,7 +279,7 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
 }
 
 /* ---- topic detail ---- */
-function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) => string }) {
+function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull; tr: (s: string) => string; v2?: boolean }) {
   // Listed issue → real listing performance replaces the grey-market panel.
   if (k === 'gmp' && ipo.status === 'listed') {
     const ex: any = (ipo as any).extra ?? {};
@@ -380,6 +380,22 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
                       ? <div className="lc-cell"><div className="k">Entry point</div><div className="v">{calc.crOrInr(g.min.amount)} <small>onward</small></div></div>
                       : <div className="lc-cell"><div className="k">Max · {g.max.lots} lots</div><div className="v">{g.max.shares.toLocaleString('en-IN')} <small>sh · {calc.crOrInr(g.max.amount)}</small></div></div>}
                   </div>
+                  {v2 && (() => {
+                    // Min/Max are PER APPLICATION; this is a count of applications
+                    // across the market, so it gets its own full-width line rather
+                    // than a third cell implying the three are comparable.
+                    const f = ipo.formsFor1x;
+                    const n = g.cat === 'Retail' ? f?.retail : g.cat === 'S-HNI' ? f?.sHni : f?.bHni;
+                    return (
+                      <div className={'lc-for1x' + (n == null ? ' na' : '')}
+                        title="Applications needed to fill this category once — derived from the issue's reservation table">
+                        <span className="k">For 1×</span>
+                        {n != null
+                          ? <span className="v"><b>{n.toLocaleString('en-IN')}</b> applications fill this category</span>
+                          : <span className="v">Needs the issue&apos;s reservation table</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

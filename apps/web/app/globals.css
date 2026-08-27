@@ -3056,3 +3056,18 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
   .sd-app { min-height: 118px; }
   .sd-app-art { right: 10px; bottom: -34px; }
 }
+
+/* ── /home2 lot panel: the "For 1×" line ──
+   Full width UNDER the Min/Max grid, not a third cell beside them: those two are
+   per-application figures, this is a count of applications across the market. A
+   third column would imply the three are comparable, and at ~106px it could
+   only fit the bare number anyway. */
+.lc-for1x { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; padding: 6px 10px;
+  border-radius: 8px; background: color-mix(in srgb, var(--ccolor) 9%, #fff);
+  font-size: 12px; line-height: 1.4; }
+.lc-for1x .k { flex: 0 0 auto; font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted); }
+.lc-for1x .v { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lc-for1x .v b { font-weight: 750; color: var(--text); }
+.lc-for1x.na { background: var(--bg-2); }
+.lc-for1x.na .v { color: var(--text-faint); font-style: italic; }
