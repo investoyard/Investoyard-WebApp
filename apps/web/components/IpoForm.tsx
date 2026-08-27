@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
@@ -10,6 +10,7 @@ import { RichText } from '@/components/ui/RichText';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
+import { computeIssue, CATEGORY_LABELS, type IssueInputs, type LegBasis } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -50,7 +51,13 @@ interface FormState {
   startBid: boolean; startPrint: boolean; // operator gates: apply/pre-apply + ASBA form printing
   categoryName: string; // IPO Category master name (drives type via its platform mapping)
   priceBandMin: string; priceBandMax: string;
-  retailDiscount: string; retailCutOff: string; ncdMaxSeries: string; maxAmtRetail: string; noOfApp: string;
+  retailDiscount: string; retailCutOff: string; ncdMaxSeries: string; maxAmtRetail: string;
+  /** applications RECEIVED — an operator observation. Not to be confused with
+   *  applications-for-1x, which the engine derives. Was `noOfApp`. */
+  applicationsReceived: string;
+  /** offer structure — drives every derived figure (spec §5 Steps 1-2) */
+  mechanism: string; regulationBasis: string;
+  freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
   bseListingPrice: string; nseListingPrice: string;
   registrar: string; registrarEmail: string; registrarPhone: string; registrarUrl: string;
   logoUrl: string; companyWebsite: string; companyPromoter: string;
@@ -71,7 +78,8 @@ const blankForm = (): FormState => ({
   startBid: false, startPrint: false, // OFF until the operator explicitly opens bidding/printing
   categoryName: '',
   priceBandMin: '', priceBandMax: '',
-  retailDiscount: '', retailCutOff: '', ncdMaxSeries: '', maxAmtRetail: '', noOfApp: '',
+  retailDiscount: '', retailCutOff: '', ncdMaxSeries: '', maxAmtRetail: '', applicationsReceived: '',
+  mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
   logoUrl: '', companyWebsite: '', companyPromoter: '',
@@ -131,7 +139,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : [],
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
-          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail), noOfApp: str(ex.noOfApp),
+          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail),
+          // `noOfApp` is the legacy name for the same operator observation
+          applicationsReceived: str(ex.applicationsReceived ?? ex.noOfApp),
+          mechanism: str(ex.mechanism) || 'book_built', regulationBasis: str(ex.regulationBasis),
+          freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
+          ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
           bseListingPrice: str(ex.bseListingPrice), nseListingPrice: str(ex.nseListingPrice),
           qibCloseDate: str(ex.qibCloseDate), dematDate: str(ex.dematDate),
           anchorDate: str(ex.anchorDate), refundDate: str(ex.refundDate),
@@ -219,7 +232,14 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     autoPollSubscription: form.autoPollSubscription,
     extra: {
       issueType: form.issueType, faceValue: form.faceValue, categoryName: form.categoryName,
-      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc, ncdMaxSeries: form.ncdMaxSeries, maxAmtRetail: form.maxAmtRetail, noOfApp: form.noOfApp,
+      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc, ncdMaxSeries: form.ncdMaxSeries, maxAmtRetail: form.maxAmtRetail,
+      applicationsReceived: form.applicationsReceived,
+      // mirrored under the old key while readers migrate — remove once
+      // nothing greps for `noOfApp` (web/lib/api.ts was the last one)
+      noOfApp: form.applicationsReceived,
+      mechanism: form.mechanism, regulationBasis: form.regulationBasis || undefined,
+      fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
+      ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
       bseListingPrice: form.bseListingPrice, nseListingPrice: form.nseListingPrice,
       openDate: form.openDate, closeDate: form.closeDate, qibCloseDate: form.qibCloseDate, dematDate: form.dematDate,
@@ -288,6 +308,82 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
 
   // Retail Cut Off is derived: price-band max − retail discount (discount 0 ⇒ equals max band).
+  /**
+   * The single derivation, recomputed on every keystroke.
+   *
+   * Share Count / Require for 1X / Category Remark are READ-ONLY projections of
+   * this — the legacy form let an operator type them beside the percentages they
+   * come from, and nothing reconciled the two. That is how three of six records
+   * ended up publishing wrong figures.
+   */
+  const derived = useMemo(() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
+    const reservation: Record<string, number> = {};
+    for (const r of RESV_ROWS) { const c = form.shareResv[r.key]; if (c?.on) { const v = n(c.pct); if (v > 0) reservation[r.key] = v; } }
+    const inputs: IssueInputs = {
+      board: form.type === 'sme' ? 'sme' : 'mainboard',
+      mechanism: form.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
+      regulationBasis: (form.regulationBasis || undefined) as any,
+      lotSize: n(form.lotSize),
+      priceFloor: n(form.priceBandMin),
+      priceCap: n(form.priceBandMax),
+      issueSizeCr: n(form.sharesSize?.total?.maxP) || undefined,
+      fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis as LegBasis, value: n(form.freshValue) },
+      ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis as LegBasis, value: n(form.ofsValue) },
+      reservation,
+      discounts: { retail: n(form.retailDiscount) },
+    };
+    return computeIssue(inputs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
+      form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
+      JSON.stringify(form.shareResv), JSON.stringify(form.sharesSize?.total)]);
+
+  /** derived row for a reservation key, or undefined when it cannot be computed */
+  const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
+
+  /**
+   * Blocking checks, evaluated inline. Deliberately the few our data can
+   * actually violate rather than the spec's full B01-B23 — each one here has
+   * been seen in a live record.
+   */
+  const issues = useMemo(() => {
+    const out: { code: string; msg: string; blocking: boolean }[] = [];
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
+    const on = RESV_ROWS.filter((r) => form.shareResv[r.key]?.on && n(form.shareResv[r.key].pct) > 0);
+    const total = on.reduce((a, r) => a + n(form.shareResv[r.key].pct), 0);
+    if (on.length && Math.abs(total - 100) > 0.01) {
+      out.push({ code: 'B-PCT', msg: `Reservation percentages total ${total}%, not 100%.`, blocking: true });
+    }
+    const big = n(form.shareResv.hni?.pct); const small = n(form.shareResv.hni2?.pct);
+    if (form.shareResv.hni?.on && form.shareResv.hni2?.on && big > 0 && small > 0 && small > big) {
+      out.push({ code: 'B-NII', msg: `HNI Big is ${big}% but Small is ${small}% — SEBI gives Big the larger two-thirds of the NII quota. Check they are not transposed.`, blocking: false });
+    }
+    const b = derived.rulePack.bounds;
+    const qib = n(form.shareResv.qib?.pct); const retail = n(form.shareResv.retail?.pct);
+    if (qib > 0 && b.qib?.max != null && qib > b.qib.max) {
+      out.push({ code: 'B-QIB', msg: `QIB is ${qib}% — ${derived.rulePack.label} caps it at ${b.qib.max}%.`, blocking: true });
+    }
+    if (qib > 0 && b.qib?.min != null && qib < b.qib.min) {
+      out.push({ code: 'B-QIB', msg: `QIB is ${qib}% — ${derived.rulePack.label} requires at least ${b.qib.min}%.`, blocking: true });
+    }
+    if (retail > 0 && b.retail?.min != null && retail < b.retail.min) {
+      out.push({ code: 'B-RET', msg: `Retail is ${retail}% — ${derived.rulePack.label} requires at least ${b.retail.min}%.`, blocking: true });
+    }
+    if (retail > 0 && b.retail?.max != null && retail > b.retail.max) {
+      out.push({ code: 'B-RET', msg: `Retail is ${retail}% — ${derived.rulePack.label} caps it at ${b.retail.max}%.`, blocking: true });
+    }
+    const sc = derived.primary;
+    if (sc) {
+      const sum = sc.categories.reduce((a: number, c: any) => a + c.shares, 0);
+      if (sum !== sc.netOfferShares) {
+        out.push({ code: 'B-SUM', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(form.shareResv), derived]);
+
   const retailCutOffCalc = (() => {
     const max = Number(form.priceBandMax);
     if (!Number.isFinite(max) || max <= 0) return '';
@@ -413,8 +509,52 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Retail Discount (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
                 <Field label="Retail Cut Off (₹)" hint="auto: max band − discount"><input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} /></Field>
                 <Field label="Max amt — Retail (₹)"><input className="input mono" value={form.maxAmtRetail} onChange={(e) => set({ maxAmtRetail: e.target.value })} /></Field>
-                <Field label="No. of App"><input className="input mono" value={form.noOfApp} onChange={(e) => set({ noOfApp: e.target.value.replace(/\D/g, '') })} /></Field>
+                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1x, which is derived">
+                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
+                </Field>
               </div>
+            </Panel>
+
+            <Panel title="Offer structure" desc="What is being offered, and under which regulation. These four inputs drive every derived figure below.">
+              <div className="form-grid">
+                <Field label="Mechanism">
+                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
+                    <option value="book_built">Book-built</option>
+                    <option value="fixed_price">Fixed price</option>
+                  </select>
+                </Field>
+                <Field label="Regulation basis" hint={`auto: ${derived.rulePack.label}`}>
+                  <select className="input" value={form.regulationBasis} onChange={(e) => set({ regulationBasis: e.target.value })}>
+                    <option value="">Auto — from the QIB %</option>
+                    <option value="icdr_6_1">ICDR 6(1) — QIB up to 50%</option>
+                    <option value="icdr_6_2">ICDR 6(2) — QIB at least 75%</option>
+                  </select>
+                </Field>
+                <Field label="Fresh issue" hint="new shares issued by the company">
+                  <div className="row" style={{ gap: 8 }}>
+                    <select className="input" style={{ width: 120 }} value={form.freshBasis} onChange={(e) => set({ freshBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.freshValue} disabled={form.freshBasis === 'none'}
+                      onChange={(e) => set({ freshValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+                <Field label="Offer for sale" hint="existing shares sold by shareholders">
+                  <div className="row" style={{ gap: 8 }}>
+                    <select className="input" style={{ width: 120 }} value={form.ofsBasis} onChange={(e) => set({ ofsBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.ofsValue} disabled={form.ofsBasis === 'none'}
+                      onChange={(e) => set({ ofsValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+              </div>
+              {form.freshBasis === 'none' && form.ofsBasis === 'none' && (
+                <p className="hint" style={{ marginTop: 6 }}>
+                  Until one of these is set, the public detail page shows a Fresh / OFS split
+                  <b> estimated at 85 / 15</b> rather than the real one.
+                </p>
+              )}
             </Panel>
 
             <Panel title="Important Dates">
@@ -499,6 +639,32 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             </Panel>
 
             <Panel title="Share Reservation" desc="Tick the categories that apply. HNI (Big) and HNI (Small) are separate quotas.">
+              {/* SEBI splits the NII quota two-thirds to bids above ₹10 L (Big) and
+                  one-third to ₹2–10 L (Small), so Big is ALWAYS the larger share.
+                  Three live records had the two transposed, which fed wrong
+                  "applications for 1×" figures to the public site — the numbers
+                  still add to 100%, so nothing else catches it. A warning, not a
+                  block: the operator may be entering a genuinely unusual issue. */}
+              {issues.length > 0 && (
+                <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {issues.map((v: { code: string; msg: string; blocking: boolean }) => (
+                    <div key={v.code + v.msg} className={`banner ${v.blocking ? 'warn' : 'info'}`}>
+                      <b>{v.blocking ? 'Fix before publishing' : 'Check'}:</b> {v.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* the derived total, so the operator can see the split resolve live */}
+              {derived.primary && (
+                <div className="rc-summary">
+                  <span><i>Net offer</i>{derived.primary.netOfferShares.toLocaleString('en-IN')} sh</span>
+                  <span><i>At</i>₹{derived.primary.price}</span>
+                  {derived.primary.residualTo && (
+                    <span><i>Residual</i>{derived.primary.residualLots} lot{derived.primary.residualLots === 1 ? '' : 's'} → {CATEGORY_LABELS[derived.primary.residualTo] ?? derived.primary.residualTo}</span>
+                  )}
+                  <span className="muted">{derived.rulePack.label}</span>
+                </div>
+              )}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table resv-table" style={{ width: '100%' }}>
                   <thead><tr><th style={{ width: 40 }} /><th>Category</th><th>Share(%)</th><th>Share Count</th><th>Category Remark</th><th>Require for 1X</th></tr></thead>
@@ -508,9 +674,25 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         <td style={{ textAlign: 'center' }}><input type="checkbox" checked={form.shareResv[r.key].on} onChange={(e) => setResv(r.key, { on: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} /></td>
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
                         <td><input className="input mono" value={form.shareResv[r.key].pct} onChange={(e) => setResv(r.key, { pct: e.target.value })} /></td>
-                        <td><input className="input mono" value={form.shareResv[r.key].count} onChange={(e) => setResv(r.key, { count: e.target.value })} /></td>
-                        <td><input className="input" value={form.shareResv[r.key].remark} onChange={(e) => setResv(r.key, { remark: e.target.value })} placeholder="RS.225.00 CR" /></td>
-                        <td><input className="input mono" value={form.shareResv[r.key].req1x} onChange={(e) => setResv(r.key, { req1x: e.target.value })} /></td>
+                        {/* Share Count · Category Remark · Require for 1X are now
+                            PROJECTIONS of the percentage beside them. They used to be
+                            typed by hand, which is how a record could publish a share
+                            count that disagreed with its own percentage. */}
+                        {(() => {
+                          const d = derivedRow(r.key);
+                          const dash = <span className="muted">—</span>;
+                          return (
+                            <>
+                              <td className="rc-derived">{d ? d.shares.toLocaleString('en-IN') : dash}</td>
+                              <td className="rc-derived">{d ? d.remark : dash}</td>
+                              <td className="rc-derived">
+                                {d?.appsFor1x != null
+                                  ? <>{d.appsFor1x.toLocaleString('en-IN')}<i title="Applications that can be allotted at 1x — capacity, not demand"> · {d.maxAllottees!.toLocaleString('en-IN')} allottees</i></>
+                                  : dash}
+                              </td>
+                            </>
+                          );
+                        })()}
                       </tr>
                     ))}
                   </tbody>

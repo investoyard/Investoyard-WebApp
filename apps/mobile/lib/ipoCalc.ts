@@ -1,7 +1,13 @@
-/** Derives the per-metric detail shown when an IPO card tile is expanded.
-    Copied from apps/web/lib/ipoCalc.ts — math identical; only the type source
-    differs (mobile builds IpoFull from the shared contract below). */
+/**
+ * Per-metric detail shown when an IPO card tile is expanded.
+ *
+ * The arithmetic is NO LONGER a copy of the web file — both now call
+ * computeIssue() from @investoyard/shared-types, so a category share count
+ * cannot differ between the two surfaces. Only the presentation types are
+ * local.
+ */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis, type IssueInputs } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -68,8 +74,38 @@ export function enrich(ipo: IpoDetail): IpoFull {
   };
 }
 
-const RETAIL_MAX = 200000;   // ≤ ₹2L Retail
-const SNII_MAX = 1000000;    // ₹2L–₹10L Small-HNI; above → Big-HNI
+/** Band thresholds come from the rule pack — never a literal here. */
+function packFor(ipo: IpoFull) {
+  const ex: any = (ipo as any).extra ?? {};
+  const qib = Number(String(ex.shareResv?.qib?.pct ?? '').replace(/[^\d.]/g, '')) || 0;
+  return rulePackFor(
+    ipo.type === 'sme' ? 'sme' : 'mainboard',
+    ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
+    ex.regulationBasis || inferRegulationBasis(qib),
+  );
+}
+
+/** Mirrors issueInputsFor() in apps/web/lib/ipoCalc.ts. */
+export function issueInputsFor(ipo: IpoFull): IssueInputs {
+  const ex: any = (ipo as any).extra ?? {};
+  const sr: any = ex.shareResv ?? {};
+  const pct = (k: string) => { const r = sr[k]; const v = Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')); return r?.on && Number.isFinite(v) ? v : 0; };
+  return {
+    board: ipo.type === 'sme' ? 'sme' : 'mainboard',
+    mechanism: ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
+    regulationBasis: ex.regulationBasis || undefined,
+    lotSize: ipo.lotSize,
+    priceFloor: ipo.priceBandMin,
+    priceCap: ipo.priceBandMax ?? ipo.priceBandMin,
+    issueSizeCr: parseIssueValue(ipo.issueSize) / 1e7 || undefined,
+    fresh: ex.fresh,
+    ofs: ex.ofs,
+    reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), other: pct('other') },
+    discounts: { retail: Number(ex.retailDiscount) || 0 },
+  };
+}
+
+export const derive = (ipo: IpoFull) => computeIssue(issueInputsFor(ipo));
 
 export function parseIssueValue(s?: string): number {
   if (!s) return 0;
@@ -88,8 +124,11 @@ export interface AppBand { cat: string; sub: string; lots: number; amount: numbe
 export function applicationBands(ipo: IpoFull): AppBand[] {
   const perLot = (ipo.lotSize ?? 0) * up(ipo);
   if (!perLot) return [];
-  const hni1 = Math.floor(RETAIL_MAX / perLot) + 1;
-  const hni2 = Math.floor(SNII_MAX / perLot) + 1;
+  const th = packFor(ipo).thresholds;
+  // one more lot than fits under the threshold — the bands are STRICT
+  const lotsAbove = (amt?: number) => (amt ? Math.floor(amt / perLot) + 1 : 1);
+  const hni1 = lotsAbove(th.hni2?.above);
+  const hni2 = lotsAbove(th.hni?.above);
   return [
     { cat: 'Retail', sub: 'upto ₹2 L', lots: 1, amount: perLot },
     { cat: 'HNI 1', sub: '₹2 L – ₹10 L', lots: hni1, amount: hni1 * perLot },
@@ -102,9 +141,10 @@ export function lotLadder(ipo: IpoFull): LotRow[] {
   const lot = ipo.lotSize ?? 0;
   const perLot = lot * up(ipo);
   if (!perLot) return [];
-  const rMax = Math.max(1, Math.floor(RETAIL_MAX / perLot));
+  const th = packFor(ipo).thresholds;
+  const rMax = Math.max(1, Math.floor((th.hni2?.above ?? 0) / perLot));
   const sMin = rMax + 1;
-  const sMax = Math.max(sMin, Math.floor(SNII_MAX / perLot));
+  const sMax = Math.max(sMin, Math.floor((th.hni?.above ?? 0) / perLot));
   const bMin = sMax + 1;
   const mk = (cat: string, sub: string, lots: number): LotRow => ({ cat, sub, lots, shares: lots * lot, amount: lots * perLot });
   return [
@@ -120,15 +160,15 @@ export interface ResRow { cat: string; pct: number; shares: number; amount: numb
 export function reservation(ipo: IpoFull): ResRow[] {
   const total = parseIssueValue(ipo.issueSize);
   if (!total) return [];
-  // The operator's Share Reservation table (admin form) is authoritative when filled.
-  const sr: any = (ipo as any).extra?.shareResv;
-  if (sr && typeof sr === 'object') {
-    const DEF: [string, string][] = [['qib', 'QIB'], ['hni', 'B-HNI'], ['hni2', 'S-HNI'], ['retail', 'Retail'], ['employee', 'Employee'], ['shareholder', 'Shareholder'], ['other', 'Other']];
-    const rows = DEF
-      .map(([k, label]) => ({ label, on: !!sr[k]?.on, pct: Number(String(sr[k]?.pct ?? '').replace(/[^\d.]/g, '')) || 0 }))
-      .filter((r) => r.on && r.pct > 0)
-      .map((r) => ({ cat: r.label, pct: r.pct, shares: Math.round(((total * r.pct) / 100) / (up(ipo) || 1)), amount: (total * r.pct) / 100 }));
-    if (rows.length) return rows;
+  /**
+   * Shares come from the ENGINE, which floors each category to a whole number
+   * of lots and gives the residual to one named category. This was
+   * Math.round(amount / price) — a count that was not a whole lot and could
+   * disagree with the same figure on web.
+   */
+  const d = derive(ipo);
+  if (d.primary?.categories.length) {
+    return d.primary.categories.map((c) => ({ cat: c.label, pct: c.pct, shares: c.shares, amount: c.amount }));
   }
   const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
   if (!rows.length) return [];

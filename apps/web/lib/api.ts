@@ -3,6 +3,8 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
+import { computeIssue } from '@investoyard/shared-types';
+import { issueInputsFor } from '@/lib/ipoCalc';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -289,8 +291,22 @@ function enrich(ipo: IpoDetail): IpoFull {
   const upper = ipo.priceBandMax ?? ipo.priceBandMin ?? 1;
   const lot = ipo.lotSize ?? 1;
   f.faceValue = 10;
-  f.freshIssue = `₹${Math.round(cr * (ipo.type === 'sme' ? 1 : 0.85))} Cr`;
-  if (ipo.type !== 'sme' && cr) f.offerForSale = `₹${Math.round(cr * 0.15)} Cr`;
+  /**
+   * Fresh issue / Offer for sale.
+   *
+   * These were an 85/15 GUESS printed on the public detail page as if it came
+   * from the RHP. Now shown only when the operator has actually entered the
+   * split — an absent figure is better than an invented one.
+   */
+  const legCr = (leg: any): number | undefined => {
+    if (!leg || leg.basis === 'none' || !leg.value) return undefined;
+    if (leg.basis === 'amount') return Number(leg.value);
+    return upper > 0 ? (Number(leg.value) * upper) / 1e7 : undefined;   // shares → ₹ Cr
+  };
+  const freshCr = legCr(exAll?.fresh);
+  const ofsCr = legCr(exAll?.ofs);
+  if (freshCr != null) f.freshIssue = `₹${Math.round(freshCr)} Cr`;
+  if (ofsCr != null) f.offerForSale = `₹${Math.round(ofsCr)} Cr`;
 
   /**
    * Applications required for 1× subscription — REAL data only.
@@ -315,11 +331,21 @@ function enrich(ipo: IpoDetail): IpoFull {
     const formsFor = (pct: number, lots: number): number | undefined =>
       pct > 0 && lots > 0 ? Math.max(1, Math.round((totalShares * pct / 100) / (lots * lot))) : undefined;
 
-    const retail = formsFor(pctOf('retail'), 1);                  // retail floor = 1 lot
-    const sHni = formsFor(pctOf('hni2'), minLots(200_000));        // first bid above ₹2L
-    const bHni = formsFor(pctOf('hni'), minLots(1_000_000));       // first bid above ₹10L
+    /**
+     * Applications for 1x, from the ONE shared engine.
+     *
+     * Replaces a local copy that used Math.round — which under-reported the
+     * figure whenever the division was not exact, since reaching 1x needs a
+     * whole extra application, not a rounded one.
+     */
+    // ONE mapper, shared with ipoCalc.ts — the public figures and the admin/card
+    // panels can no longer be derived from differently-shaped inputs.
+    const derived = computeIssue(issueInputsFor(ipo as any));
+    const catOf = (k: string) => derived.primary?.categories.find((c: any) => c.key === k);
+    const retail = catOf('retail')?.appsFor1x;
+    const sHni = catOf('hni2')?.appsFor1x;
+    const bHni = catOf('hni')?.appsFor1x;
     if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
-
     // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
     if (ipo.subscription?.length) {
       const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
@@ -335,7 +361,8 @@ function enrich(ipo: IpoDetail): IpoFull {
           apps: Math.round(r.forms * r.times), times: r2(r.times),
         }));
         // the operator's own figure wins over anything derived
-        const entered = Number(String(exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
+        // `noOfApp` is the legacy name for the same operator observation
+        const entered = Number(String(exAll?.applicationsReceived ?? exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
         f.totalApps = Number.isFinite(entered) && entered > 0
           ? entered
           : f.appWise.reduce((a, b) => a + b.apps, 0);
