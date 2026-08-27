@@ -6,6 +6,7 @@ import { MessagingService } from '../../common/messaging.service';
 import { tenantContext } from '../../common/tenant-context';
 import { WhatsappSessionService } from './whatsapp-session.service';
 import { WhatsappFlowService } from './whatsapp-flow.service';
+import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
 
 const DISCLAIMER = 'Grey-market data is unofficial and not investment advice.';
 
@@ -235,8 +236,8 @@ export class WhatsappJourneyService {
     }
     const lot = s.lotSize ?? 0, price = s.price ?? 0;
     const amount = s.lots * lot * price;
-    const atCutoff = amount <= 200000;
-    const category = amount <= 200000 ? 'Retail' : amount <= 1000000 ? 'sNII' : 'bNII';
+    const atCutoff = amount <= RETAIL_MAX_AMOUNT;
+    const category = amount <= RETAIL_MAX_AMOUNT ? 'Retail' : amount <= SNII_MAX_AMOUNT ? 'sNII' : 'bNII';
     const dto: any = {
       investorProfileId: s.profileId, ipoId: s.ipoId, category, lots: s.lots,
       atCutoff, bidPrice: atCutoff ? undefined : price, applyMethod: 'pdf',

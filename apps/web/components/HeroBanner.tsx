@@ -8,6 +8,7 @@ import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
 import { LABEL, demandWord, titleCase, shortName } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
 
 /**
  * Compact dynamic homepage banner — replaces the tall static hero.
@@ -544,9 +545,9 @@ function categoryLanes(ipo: IpoFull, showGmp: boolean): CategoryLane[] {
   if (perLot <= 0) return [];
 
   const pct = new Map(calc.reservation(ipo).filter((r) => r.pct > 0).map((r) => [r.cat, r.pct]));
-  const rMax = Math.max(1, Math.floor(200_000 / perLot));
+  const rMax = Math.max(1, Math.floor(RETAIL_MAX_AMOUNT / perLot));
   const sMin = rMax + 1;
-  const sMax = Math.max(sMin, Math.floor(1_000_000 / perLot));
+  const sMax = Math.max(sMin, Math.floor(SNII_MAX_AMOUNT / perLot));
   const bMin = sMax + 1;
 
   const row = (key: string, tone: string, resvKey: string, minLots: number, range: string, forms?: number): CategoryLane => ({

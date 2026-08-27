@@ -27,6 +27,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
 import { SuccessMoment } from '../../components/ui/Celebration';
 import { ApplyBidPicker, applyCategory, applyTabLabel, type ApplyChoice } from '../../components/BidControls';
+import { UPI_MANDATE_MAX } from '@investoyard/shared-types';
 
 /** Eligible for the UPI flow: own UPI on file and not a minor. */
 const upiReady = (p: ProfileRecord) => !!p.upiId && p.relationship !== 'child';
@@ -39,7 +40,7 @@ export default function ApplyScreen() {
   const { profiles } = useProfiles();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const [ipo, setIpo] = useState<IpoFull | null | undefined>(undefined);
-  const [upiCap, setUpiCap] = useState(500000);
+  const [upiCap, setUpiCap] = useState(UPI_MANDATE_MAX);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [master, setMaster] = useState<ApplyChoice | null>(null);
   const [overrides, setOverrides] = useState<Record<string, ApplyChoice>>({});

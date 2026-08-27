@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type { IpoDetail, ApplicationView, CreateApplicationInput, CreateBulkApplicationInput, ConsentNotice, ConsentView, NotificationView, ProfileView, Depository } from '@investoyard/shared-types';
 import { enrich, type IpoFull } from './ipoCalc';
+import { UPI_MANDATE_MAX } from '@investoyard/shared-types';
 
 /**
  * Resolve the API base URL.
@@ -251,7 +252,7 @@ export async function getUpiCap(): Promise<number> {
       if (Number.isFinite(cap) && cap > 0) return cap;
     }
   } catch {}
-  return 500000;
+  return UPI_MANDATE_MAX;
 }
 
 /** Prefilled ASBA form PDF (one application, or a merged family set) as base64. */

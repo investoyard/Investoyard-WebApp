@@ -16,6 +16,8 @@
  * at cut-off block the same amount; HNI must bid at price anyway).
  */
 
+import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT, UPI_MANDATE_MAX } from './issueRules';
+
 export type BidCategory = 'retail' | 'shni' | 'bhni' | 'shareholder';
 export type BidFormType = 'normal' | 'syndicate';
 
@@ -31,11 +33,12 @@ export interface BidRules {
   upiCap: number;
 }
 
+/* The defaults are the regulatory thresholds; a tenant may override them. */
 export const DEFAULT_BID_RULES: BidRules = {
-  retailCap: 200_000,
-  bhniAbove: 1_000_000,
-  syndicateAbove: 500_000,
-  upiCap: 500_000,
+  retailCap: RETAIL_MAX_AMOUNT,
+  bhniAbove: SNII_MAX_AMOUNT,
+  syndicateAbove: UPI_MANDATE_MAX,
+  upiCap: UPI_MANDATE_MAX,
 };
 
 /** One concrete bid size: lots → shares → exact ₹, with derived category + form. */

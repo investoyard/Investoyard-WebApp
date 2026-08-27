@@ -57,9 +57,35 @@ export interface RulePack {
   applicationThresholdBasis: 'cap' | 'floor' | 'final';
 }
 
-/** Retail is capped at ₹2,00,000; S-HNI sits between that and ₹10,00,000. */
-const RETAIL_MAX = 200_000;
-const SNII_MAX = 1_000_000;
+/*
+ * The rupee thresholds. THE only definition — every surface imports these.
+ *
+ * They used to be retyped at six sites (the apply service, the WhatsApp
+ * journey, IpoActions, HeroBanner, bidEngine and here), which meant a SEBI
+ * revision was a six-file hunt with no way to prove it was complete. Grep for
+ * `200_000` as well as `200000`: the underscore form hid two of the six.
+ */
+
+/** Retail ceiling -- VERIFY. Also the cut-off eligibility limit and the
+ *  shareholder-quota cap. A bid at or under this may use cut-off. */
+export const RETAIL_MAX_AMOUNT = 200_000;
+
+/** S-HNI ceiling -- VERIFY. A bid ABOVE this is B-HNI. Strict: the bands do
+ *  not overlap, so ₹10,00,000 exactly is still S-HNI. */
+export const SNII_MAX_AMOUNT = 1_000_000;
+
+/**
+ * UPI mandate ceiling -- VERIFY. Above this a bid must go through bank ASBA,
+ * which is also why it is the ASBA form split: `{SYMBOL}.pdf` for resident
+ * bids up to this, `{SYMBOL}_SA.pdf` for syndicate bids above it (spec §2.13).
+ *
+ * The one threshold here an operator may override per tenant (`bidEngine`'s
+ * `upiCap`); this is the default, not a hard limit.
+ */
+export const UPI_MANDATE_MAX = 500_000;
+
+const RETAIL_MAX = RETAIL_MAX_AMOUNT;
+const SNII_MAX = SNII_MAX_AMOUNT;
 
 const THRESHOLDS: Record<string, CategoryThreshold> = {
   retail: { upTo: RETAIL_MAX },

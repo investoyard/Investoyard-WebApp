@@ -14,9 +14,10 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
-const ASBA_RETAIL_LIMIT = 500000;
+const ASBA_RETAIL_LIMIT = UPI_MANDATE_MAX;
 
 /** Shared relations needed to fill an ASBA form for an application. */
 const ASBA_INCLUDE = {
@@ -149,15 +150,15 @@ export class ApplicationsService {
 
     if (!isPrint) {
       // SEBI: cut-off price is Retail-only (value at the ceiling must be ≤ ₹2,00,000).
-      if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+      if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException('Cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.');
       }
       // Shareholder reserved category is capped at ₹2,00,000.
-      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+      if (applicantType === ApplicantCategory.shareholder && amount > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException('Shareholder category applications are capped at ₹2,00,000.');
       }
       // UPI mandate is capped at ₹5,00,000; above that the bid must go via bank ASBA (pdf).
-      if (amount > 500000) {
+      if (amount > UPI_MANDATE_MAX) {
         throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
       }
     }
@@ -583,14 +584,14 @@ export class ApplicationsService {
       const qty = a.lots * ipo.lotSize;
       const unit = atCutoff ? Number(ipo.priceBandMax ?? 0) : (a.bidPrice as number);
       const amount = qty * unit;
-      if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+      if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException(`${who}: cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.`);
       }
-      if (amount > 500000) {
+      if (amount > UPI_MANDATE_MAX) {
         throw new BadRequestException(`${who}: amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).`);
       }
       // Shareholder reserved category is capped at ₹2,00,000.
-      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+      if (applicantType === ApplicantCategory.shareholder && amount > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException(`${who}: shareholder category applications are capped at ₹2,00,000.`);
       }
 
