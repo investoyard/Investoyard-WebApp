@@ -3109,6 +3109,24 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .ic-prem b.gp { color: #1b7048; }
 .ic-prem b.gn { color: var(--neg); }
 
+/* ── /home2 card: three specs on one row ──────────────────────────────────
+   The base .ic-specs is a 2x2 whose borders come from :nth-child(odd) and
+   :nth-child(-n+2). Both are reset here rather than edited in place, because
+   the live home's cards still render the 2x2. */
+.ipocard.v2 .ic-specs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ipocard.v2 .ic-specs > div { border-right: 1px solid var(--border); border-bottom: 0; }
+.ipocard.v2 .ic-specs > div:last-child { border-right: 0; }
+
+/* the premium, beside the dates. Amber echoes the Exp. Premium tile in the
+   strip; the figure stays semantic so the direction reads at a glance. */
+.ipocard.v2 .ic-keys { flex-wrap: wrap; justify-content: flex-start; }
+.ic-prem { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px;
+  background: #FFF3D6; border: 1px solid #F3DEA8; border-radius: var(--pill);
+  color: #7d6117; font-size: 11.5px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.ic-prem b { font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ic-prem b.gp { color: #1b7048; }
+.ic-prem b.gn { color: var(--neg); }
+
 /* ── /home2: market board under the banner ────────────────────────────────
    A different treatment of the rail's data, not the rail rotated — the rail
    stacks action ROWS, this reads as an exchange BOARD: one surface, hairline
@@ -3186,4 +3204,89 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .h2b-cell:nth-child(3n + 1) { border-left: 1px solid var(--border); }
   .h2b-cell:nth-child(2n + 1) { border-left: 0; }
   .h2b-cell:nth-child(n + 3) { border-top: 1px solid var(--border); }
+}
+
+/* ── /home2: market board under the banner ────────────────────────────────
+   Two zones on one surface, because the content is two different kinds of
+   thing. Readings are short and numeric and suit narrow cells; buttons need
+   room for icon + label + arrow. The first version put all nine in one
+   uniform row and starved the buttons — "Allotment" had ~98px for ~113px of
+   label. Splitting them fixes the clipping AND lets the buttons look like
+   buttons. Prefixed h2b- because globals.css is one sheet. */
+.h2b { position: relative; display: grid; grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--sh-xs); overflow: hidden; margin: 0 0 14px; }
+/* the two brand colours as one gesture — the whole ornament budget, spent once */
+.h2b::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 1;
+  background: linear-gradient(90deg, var(--brand) 0%, var(--brand-400) 45%, var(--gold) 100%); }
+
+/* zone 1 — the readings, on a shared baseline so they read in one sweep */
+.h2b-stats { display: grid; grid-template-columns: 1.18fr repeat(4, minmax(0, 1fr)); }
+.h2b-cell { display: flex; flex-direction: column; justify-content: center; gap: 5px;
+  padding: 14px 12px 15px; min-width: 0; text-align: left;
+  border: 0; border-left: 1px solid var(--border);
+  background: none; font-family: inherit; color: var(--text);
+  transition: background .15s var(--ease); }
+.h2b-cell:first-child { border-left: 0; }
+button.h2b-cell, a.h2b-cell { cursor: pointer; }
+button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
+
+.h2b-l { display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .09em; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2b-v { font-size: 23px; font-weight: 700; line-height: 1.04; letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums; color: var(--text); }
+/* the date is words, not a figure — it should not shout over the counts */
+.h2b-date { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.h2b-day { background: var(--brand-50); }
+.h2b-day .h2b-l { color: var(--brand-700); }
+.h2b-day .h2b-date { color: var(--brand); }
+
+.h2b-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.h2b-dot.d-pos { background: var(--pos); }
+.h2b-dot.d-gold { background: var(--gold-600); }
+.h2b-dot.d-brand { background: var(--brand-400); }
+.h2b-dot.d-faint { background: var(--text-faint); }
+/* a zero is information, so it stays legible — just quieter than a live count */
+.h2b-cnt.dim .h2b-v { color: var(--text-faint); }
+
+/* zone 2 — four real buttons, 2x2, each with room for its full label */
+.h2b-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  padding: 10px; border-left: 1px solid var(--border); align-content: center; }
+.h2b-btn { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+  font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--text);
+  transition: background .15s var(--ease), border-color .15s, color .15s; }
+.h2b-btn > svg:first-child { color: var(--brand-400); flex: 0 0 auto; }
+.h2b-btn > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.h2b-btn > svg:last-child { flex: 0 0 auto; opacity: .4; transition: transform .15s var(--ease), opacity .15s; }
+.h2b-btn:hover { border-color: var(--brand-200); color: var(--brand); }
+.h2b-btn:hover > svg:last-child { transform: translateX(2px); opacity: .85; }
+/* the two live pages keep their pastel skins so they read as instruments */
+.h2b-btn.live { background: #E4F6EC; border-color: #CDE9DA; color: #17663f; }
+.h2b-btn.live:hover { background: #D8F0E4; border-color: #B9DFCB; color: #125835; }
+.h2b-btn.prem { background: #FFF3D6; border-color: #F3DEA8; color: #7d6117; }
+.h2b-btn.prem:hover { background: #FFEDC4; border-color: #EBD292; color: #6b5313; }
+.h2b-btn.prem > svg:first-child { color: var(--gold-600); }
+
+/* Stack the zones before the buttons get too narrow for "Live Subscription";
+   four across is comfortable once they have the full width. */
+@media (max-width: 1080px) {
+  .h2b { grid-template-columns: minmax(0, 1fr); }
+  .h2b-acts { grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 860px) { .h2b-acts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .h2b-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .h2b-cell:nth-child(3n + 1) { border-left: 0; }
+  .h2b-cell:nth-child(n + 4) { border-top: 1px solid var(--border); }
+  .h2b-v { font-size: 20px; }
+}
+@media (max-width: 460px) {
+  .h2b-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .h2b-cell:nth-child(3n + 1) { border-left: 1px solid var(--border); }
+  .h2b-cell:nth-child(2n + 1) { border-left: 0; }
+  .h2b-cell:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .h2b-acts { grid-template-columns: minmax(0, 1fr); }
 }

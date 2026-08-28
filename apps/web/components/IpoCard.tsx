@@ -149,8 +149,10 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
           key: 'gmp' as Topic,
           label: isListed
             ? <>Listed{listedGain != null ? <> <span className={`gmp-pill ${listedGain >= 0 ? 'gp' : 'gn'}`}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
-              : ipo.gmp != null
-              ? <>{v2 ? 'Exp. Premium' : 'GMP'} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
+              // v1 keeps the % here because the chip is the only place its card
+              // shows GMP at all; on v2 the figure already sits beside the dates.
+              : ipo.gmp != null && !v2
+              ? <>GMP <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
               : (v2 ? 'Exp. Premium' : 'GMP'),
         }]
       : []),
@@ -182,13 +184,15 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
             Premium tile in the strip above, but the FIGURE keeps semantic
             green/red — a premium is a financial signal, and the direction has
             to survive the decorative colour. */}
-        {v2 && tenant.flags.gmpEnabled && ipo.gmp != null && (
+        {v2 && tenant.flags.gmpEnabled && ipo.gmp != null && !isListed && (
           <span className="ic-prem" title="Expected premium — grey-market, unofficial">
             Exp. Premium
             <b className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}₹{ipo.gmp}</b>
           </span>
         )}
-        {ipo.status === 'open' && <CloseHint ipo={ipo} />}
+        {/* v2 drops this: the CountdownDial at the top-right of the card is
+            the same reading, and the date row now also carries the premium. */}
+        {!v2 && ipo.status === 'open' && <CloseHint ipo={ipo} />}
         {subX != null
           ? (() => { const dm = demandLabel(subX, ipo.type === 'sme'); return (
               <span className={`ic-subx2 ${dm.cls}`}><b className="mono">{subX}×</b> {dm.label}</span>

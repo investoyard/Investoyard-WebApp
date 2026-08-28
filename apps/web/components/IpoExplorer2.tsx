@@ -25,9 +25,14 @@ const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffse
  *
  * The hub links are the point of the exercise: Live Subscription, Exp. Premium,
  * Allotment and Calendar are the most-visited pages, and reaching them via the
- * top menu is a wasted hop from the one page everybody lands on. Ours carry a
- * LIVE signal each — hottest subscription, top premium, events today — which a
- * plain link row cannot. They stay in the top menu as well for now.
+ * top menu is a wasted hop from the one page everybody lands on. They stay in
+ * the top menu as well for now.
+ *
+ * They carry NO figure. Each links to a page listing every issue, so one
+ * IPO's premium or subscription on the face of a button describes the wrong
+ * thing; the per-issue numbers belong on the cards, beside the issue they
+ * describe. The counts in the board are different — those really are
+ * set-level, so a figure is honest there.
  */
 export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
@@ -61,22 +66,6 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     allotment: (ipos as any[]).filter((i) => i.allotmentDate === today).length,
     listing: (ipos as any[]).filter((i) => i.listingDate === today).length,
   }), [ipos, today]);
-
-  /** Live signals for the hub chips — the same derivation the nav uses, taken
-   *  from the catalog already in hand rather than a second request. */
-  const sig = useMemo(() => {
-    const all = ipos as any[];
-    const open = all.filter((i) => i.status === 'open');
-    const gmps = all.filter((i) => i.status === 'open' || i.status === 'upcoming')
-      .map((i) => i.gmpPct ?? i.gmp).filter((n: any): n is number => n != null);
-    const xs = open.map((i) => i.subscriptionTimes).filter((n: any): n is number => n != null);
-    return {
-      topGmp: gmps.length ? Math.max(...gmps) : null,
-      hotX: xs.length ? Math.max(...xs) : null,
-      todayEvents: all.reduce((n, i) =>
-        n + [i.openDate, i.closeDate, i.allotmentDate, i.listingDate].filter((d) => d === today).length, 0),
-    };
-  }, [ipos, today]);
 
   /**
    * Everything matching the CURRENT status and search, before the board filter
@@ -120,26 +109,24 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
   ];
 
   /**
-   * The two chips carrying LIVE numbers get a pastel skin and one small motion
-   * each, so they read as instruments rather than links: subscription pulses
-   * like a heartbeat, the premium ticks upward. Allotment and Calendar are
-   * plain destinations and stay quiet — if everything animates, nothing does.
+   * The two live pages keep a pastel skin and one small motion each so they
+   * read as instruments rather than plain links: subscription pulses like a
+   * heartbeat, the premium ticks upward. Calendar and Allotment stay quiet —
+   * if everything animates, nothing does.
    */
   const hubs: {
     href: string; label: string; icon: 'chart' | 'trending';
-    sig?: string; skin: string; pulse?: boolean; note: string; empty: string; cta: string;
+    skin: string; pulse?: boolean; note: string; cta: string;
   }[] = [
     {
       href: `/subscription${q}`, label: 'Live Subscription', icon: 'chart',
-      sig: sig?.hotX != null ? `${sig.hotX}×` : undefined, skin: 'live', pulse: true,
-      note: 'Most subscribed, live', empty: 'No live demand yet',
+      skin: 'live', pulse: true, note: 'Live demand across every open issue',
       cta: 'See every issue',
     },
     ...(tenant.flags.gmpEnabled
       ? [{
           href: `/gmp${q}`, label: 'Exp. Premium', icon: 'trending' as const,
-          sig: sig?.topGmp != null && sig.topGmp > 0 ? `+${sig.topGmp}%` : undefined,
-          skin: 'prem', note: 'Highest on an open issue', empty: 'None on an open issue',
+          skin: 'prem', note: 'Expected premium across every open issue',
           cta: 'See all premiums',
         }]
       : []),
@@ -165,12 +152,13 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           surface: enough presence to hold the space under a 302px banner
           without becoming a second banner. */}
       <div className="h2b" role="group" aria-label="Market at a glance">
-        <div className="h2b-row">
+        {/* readings: short, numeric, and genuinely set-level — these ARE the
+            whole catalog's counts, so a figure is justified here */}
+        <div className="h2b-stats">
           <div className="h2b-cell h2b-day">
             <span className="h2b-l">Today</span>
             <b className="h2b-v h2b-date">{dateLabel}</b>
           </div>
-
           {/* counting a status is also a way to filter by it */}
           {pulses.map((p) => {
             const inner = (
@@ -184,27 +172,25 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
               ? <a key={p.label} className={cls} href={p.href} title={p.label}>{inner}</a>
               : <button key={p.label} type="button" className={cls} onClick={p.onClick} title={p.label}>{inner}</button>;
           })}
+        </div>
 
-          {/* the live readings — colour marks the FIGURE, never the container,
-              so the board stays one surface and the semantics stay honest */}
+        {/* actions: four buttons, shaped like buttons. No figure rides along —
+            these link to pages listing EVERY issue, so one IPO's premium or
+            subscription on the face of them would be describing the wrong
+            thing. The per-IPO numbers live on the cards, attached to the issue
+            they belong to. */}
+        <div className="h2b-acts">
           {hubs.filter((h) => h.skin).map((h) => (
-            <a key={h.href} className={`h2b-cell h2b-read ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
-              <span className="h2b-l">
-                {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={11} />}
-                {h.label}
-              </span>
-              {h.sig
-                ? <b className="h2b-v h2b-sig">{h.sig}</b>
-                : <b className="h2b-v h2b-none" title={h.empty}>—</b>}
+            <a key={h.href} className={`h2b-btn ${h.skin}`} href={h.href}>
+              {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={16} />}
+              <span>{h.label}</span>
+              <Icon name="arrow-right" size={13} />
             </a>
           ))}
-
-          {/* destinations deliberately break the label/figure rhythm: they are
-              actions, not readings, and should not be mistaken for one */}
-          <a className="h2b-cell h2b-go" href={`/calendar${q}`}>
+          <a className="h2b-btn" href={`/calendar${q}`}>
             <Icon name="calendar" size={16} /><span>IPO Calendar</span><Icon name="arrow-right" size={13} />
           </a>
-          <a className="h2b-cell h2b-go" href={`/allotment${q}`}>
+          <a className="h2b-btn" href={`/allotment${q}`}>
             <Icon name="receipt" size={16} /><span>Allotment</span><Icon name="arrow-right" size={13} />
           </a>
         </div>
@@ -292,10 +278,9 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
                 was reserving space for data that may not exist. */}
             <div className="sd-group">
               {hubs.filter((h) => h.skin).map((h) => (
-                <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
+                <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.note}>
                   {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
                   <span className="t">{h.label}</span>
-                  {h.sig && <em className="v">{h.sig}</em>}
                   <Icon name="chevron-right" size={15} />
                 </a>
               ))}
