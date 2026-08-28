@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoListItem } from '@/lib/api';
 import { IpoCard } from '@/components/IpoCard';
 import { IpoCompareTable } from '@/components/IpoCompareTable';
@@ -252,11 +252,10 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
         </div>
       </div>
 
-      {/* Full width, no rail. The four hub links and today's counts all live in
-          the board above, so a 304px column carrying only the app teaser would
-          have been a promo lane with 1,500px of nothing under it. The teaser
-          rides in the card grid instead. */}
-      <div className="h2-grid">
+      {/* Cards two-up beside a sticky rail; the comparison table takes the full
+          width — it is the dense view, and squeezing it only forces sideways
+          scrolling through the columns the reader came to compare. */}
+      <div className={`h2-grid${view === 'table' ? ' full' : ''}`}>
         <div className="h2-main">
           {filtered.length === 0 ? (
             <div className="empty">
@@ -267,25 +266,21 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           ) : view === 'table' ? (
             <IpoCompareTable ipos={filtered as any} lang={lang} shortNames />
           ) : (
-            /* Three-up now that the rail is gone: at 1116px that is ~360px a
-               card, closest to the ~397px they had beside a 304px rail. Two-up
-               at full width would blow them out to ~549px. */
-            <div className="ipo-list">
-              {filtered.map((i, n) => (
-                <Fragment key={i.id}>
-                  {/* the app card rides in the grid as an ordinary cell — same
-                      width and height as an IPO card, no column of its own.
-                      Slot 4 puts it under the first row rather than ahead of
-                      the most urgent issues; short lists get it last. */}
-                  {n === 3 && <AppTeaser />}
-                  <IpoCard ipo={i as any} lang={lang} v2 />
-                </Fragment>
-              ))}
-              {filtered.length < 4 && <AppTeaser />}
+            <div className="ipo-list two-up">
+              {filtered.map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
             </div>
           )}
         </div>
 
+        {/* The rail now holds ONE thing. Everything else it used to carry —
+            both hub buttons, both destination links, the Today counts — lives
+            in the board under the banner, so repeating it here was the same
+            four links twice on one screen. */}
+        {view !== 'table' && (
+          <aside className="h2-side" aria-label="Investoyard mobile app">
+            <AppTeaser />
+          </aside>
+        )}
       </div>
 
       {olderCount > 0 && (

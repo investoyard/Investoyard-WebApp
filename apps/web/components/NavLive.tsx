@@ -92,18 +92,16 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
    * No per-issue figure rides along; a count of today's events does, because a
    * count describes the whole set behind the link.
    */
+  /**
+   * The two MARKET pages sit beside "All IPOs" at the foot of the live column —
+   * they answer "what is the market doing", which is what that column is about.
+   * Allotment and Calendar are navigation, so they join Browse on the left.
+   */
   const hubs: {
-    href: string; label: string;
-    icon: 'trending' | 'chart' | 'receipt' | 'calendar';
-    sig?: React.ReactNode;
+    href: string; label: string; icon: 'trending' | 'chart'; sig?: React.ReactNode;
   }[] = [
     { href: '/gmp', label: 'GMP', icon: 'trending' },
     { href: '/subscription', label: 'Subscription', icon: 'chart' },
-    { href: '/allotment', label: 'Allotment', icon: 'receipt' },
-    {
-      href: '/calendar', label: 'Calendar', icon: 'calendar',
-      sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,
-    },
   ];
 
   const quick = [
@@ -111,6 +109,9 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
     { href: `/?f=upcoming${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'Upcoming', n: sig?.counts.upcoming },
     { href: `/?f=closed${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'Closed & listed', n: sig?.counts.postClose },
     { href: `/?board=sme${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'SME board', n: sig?.counts.sme },
+    // navigation rather than market data, so these belong beside the filters
+    { href: `/allotment${q}`, label: 'Allotment', n: undefined },
+    { href: `/calendar${q}`, label: 'Calendar', n: sig && sig.todayEvents > 0 ? sig.todayEvents : undefined },
   ];
 
   const ipoPanel = sig && (
@@ -193,10 +194,12 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             <a href={`/${q}`} className="nv-sheetlink">
               IPOs {sig && sig.liveCount > 0 && <span className="nv-sig live"><span className="nv-dot" />{sig.liveCount} live</span>}
             </a>
-            {/* The hubs left the desktop bar but STAY here: a phone has no
+            {/* All four left the desktop bar but STAY here: a phone has no
                 dropdown to find them in, and a sheet can afford the rows. */}
-            {hubs.map((hb) => (
-              <a key={hb.href} href={`${hb.href}${q}`} className="nv-sheetlink">{hb.label}{hb.sig}</a>
+            {[...hubs.map((hb) => ({ href: hb.href, label: hb.label })),
+              { href: '/allotment', label: 'Allotment' },
+              { href: '/calendar', label: 'Calendar' }].map((hb) => (
+              <a key={hb.href} href={`${hb.href}${q}`} className="nv-sheetlink">{hb.label}</a>
             ))}
             {items.map((it) => (
               <a key={it.href} href={`${it.href}${q}`} className="nv-sheetlink">{it.label}{it.sig}</a>

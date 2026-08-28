@@ -2882,7 +2882,7 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    sparse, but with ~300px given to live instruments the page uses every pixel.
    The table view drops the rail and spans full width — see the note in
    IpoExplorer2. */
-.h2-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
+.h2-grid { display: grid; grid-template-columns: minmax(0, 1fr) 304px; gap: 18px; align-items: start; }
 .h2-grid.full { grid-template-columns: minmax(0, 1fr); }
 .h2-main { min-width: 0; }
 .h2-side { display: flex; flex-direction: column; gap: 10px; position: sticky; top: calc(var(--header-h) + 14px); }
@@ -3054,34 +3054,37 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    The only promotional block on the page, so it sits last, stays pastel and
    does NOT invite a click — the app is not published yet. Give it back its
    affordance (an <a>, hover lift, chevron) on the day the listing goes live. */
-/* One cell of the card grid — same width as an IPO card, and stretched to
-   the row height so it never sits short beside one. .ipo-list is
-   align-items:start, so the stretch has to be asked for explicitly. */
-.ipo-list > .sd-app { align-self: stretch; }
-.sd-app { position: relative; overflow: hidden; height: 100%; min-height: 210px; padding: 16px 17px 17px;
+/* Rail card, sized to an IPO card (~280px) rather than the old 132px strip.
+   The extra height changes the composition rather than just stretching it:
+   copy sits at the top, the device is anchored to the bottom edge and bleeds
+   off it, which is what the height is FOR. */
+.sd-app { position: relative; overflow: hidden; min-height: 280px; padding: 17px 18px 0;
   border-radius: var(--r-lg); border: 1px solid #e2dcf5; cursor: default;
   background: linear-gradient(135deg, #F3F0FF 0%, #EDE9FC 55%, #F7F3FF 100%); }
 .sd-app-copy { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start;
-  gap: 3px; max-width: 168px; }
+  gap: 3px; max-width: 100%; }
 .sd-app-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px; font-weight: 800;
   letter-spacing: .1em; text-transform: uppercase; color: #6b57c9; }
 .sd-app-copy b { font-size: 14.5px; font-weight: 750; letter-spacing: -.015em; color: #2b2160; margin-top: 2px; }
 .sd-app-sub { font-size: 11.5px; line-height: 1.45; color: #6d6790; }
 .sd-app-chip { margin-top: 7px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
   padding: 4px 10px; border-radius: var(--pill); background: #FFE9B8; color: #7d6117; }
-/* the device bleeds off the bottom-right corner and tilts — reads as product
+/* the device rises from the bottom edge and bleeds off it — reads as product
    photography without needing a photograph */
-.sd-app-art { position: absolute; right: -16px; bottom: -30px; width: 96px; display: block; }
+.sd-app-art { position: absolute; left: 50%; bottom: -40px; width: 100px;
+  transform: translateX(-52%); display: block; }
 .sd-app-phone { display: block; width: 100%; height: auto;
-  transform: rotate(-9deg); transform-origin: 50% 100%;
+  transform: rotate(-7deg); transform-origin: 50% 100%;
   filter: drop-shadow(0 10px 18px rgba(36,28,78,.24)); }
 /* the icon sits ON the phone, upright against the tilt — that mismatch is what
    makes it read as an icon resting on a screen rather than part of the drawing */
-.sd-app-icon { position: absolute; left: -22px; top: 6px; width: 46px; height: 46px;
+.sd-app-icon { position: absolute; left: -26px; top: 2px; width: 50px; height: 50px;
   border-radius: 13px; filter: drop-shadow(0 6px 14px rgba(36,28,78,.30)); }
 @media (max-width: 980px) {
-  .sd-app { min-height: 118px; }
-  .sd-app-art { right: 10px; bottom: -34px; }
+  /* stacked above the cards on a phone: keep it short and put the device
+     back on the right, where a wide-but-short card wants it */
+  .sd-app { min-height: 132px; padding-bottom: 15px; }
+  .sd-app-art { left: auto; right: -10px; bottom: -30px; width: 92px; transform: none; }
 }
 
 /* ── /home2 lot panel: the "For 1×" line ──
