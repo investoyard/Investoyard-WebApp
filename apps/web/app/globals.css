@@ -1097,7 +1097,7 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .nv-qlink { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 550; color: var(--text); padding: 7px 9px; border-radius: 9px; }
 .nv-qlink:hover { background: var(--brand-50); color: var(--brand); }
 .nv-qlink b { font-size: 12px; color: var(--text-faint); font-weight: 600; }
-.nv-live { padding: 16px; min-width: 0; }
+.nv-live { padding: 16px; min-width: 0; display: flex; flex-direction: column; }
 .nv-ipo { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); }
 .nv-ipo:nth-of-type(1) { border-top: 0; }
 .nv-ipomain { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: inherit; }
@@ -1106,7 +1106,16 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .nv-ipo .ic-status { font-size: 10px; padding: 2.5px 8px; flex-shrink: 0; }
 .nv-mini { flex-shrink: 0; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--brand); border-radius: var(--pill); padding: 4px 11px; }
 .nv-mini.print { background: #fdebea; color: #b3372e; }
-.nv-all { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--brand); }
+.nv-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nv-hubs { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+.nv-hub { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: var(--pill);
+  font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap;
+  transition: background .14s var(--ease), color .14s; }
+.nv-hub:hover { background: var(--brand-50); color: var(--brand); }
+.nv-hub > svg { color: var(--text-faint); }
+.nv-hub:hover > svg { color: var(--brand); }
+.nv-all { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--brand); white-space: nowrap; }
 /* phone trigger + bottom sheet */
 .nv-mtrigger { display: none; align-items: center; gap: 6px; border: 1px solid var(--border-2); background: var(--surface); border-radius: var(--pill); padding: 7px 12px; cursor: pointer; color: var(--text); margin-left: auto; }
 .nv-sheetwrap { position: fixed; inset: 0; z-index: 80; background: rgba(20, 14, 50, .4); display: flex; align-items: flex-end; }
@@ -2873,7 +2882,7 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    sparse, but with ~300px given to live instruments the page uses every pixel.
    The table view drops the rail and spans full width — see the note in
    IpoExplorer2. */
-.h2-grid { display: grid; grid-template-columns: minmax(0, 1fr) 304px; gap: 18px; align-items: start; }
+.h2-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .h2-grid.full { grid-template-columns: minmax(0, 1fr); }
 .h2-main { min-width: 0; }
 .h2-side { display: flex; flex-direction: column; gap: 10px; position: sticky; top: calc(var(--header-h) + 14px); }
@@ -3045,7 +3054,11 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    The only promotional block on the page, so it sits last, stays pastel and
    does NOT invite a click — the app is not published yet. Give it back its
    affordance (an <a>, hover lift, chevron) on the day the listing goes live. */
-.sd-app { position: relative; overflow: hidden; min-height: 132px; padding: 14px 15px 15px;
+/* One cell of the card grid — same width as an IPO card, and stretched to
+   the row height so it never sits short beside one. .ipo-list is
+   align-items:start, so the stretch has to be asked for explicitly. */
+.ipo-list > .sd-app { align-self: stretch; }
+.sd-app { position: relative; overflow: hidden; height: 100%; min-height: 210px; padding: 16px 17px 17px;
   border-radius: var(--r-lg); border: 1px solid #e2dcf5; cursor: default;
   background: linear-gradient(135deg, #F3F0FF 0%, #EDE9FC 55%, #F7F3FF 100%); }
 .sd-app-copy { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start;

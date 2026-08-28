@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { getIpos, type IpoListItem } from '@/lib/api';
 import { IpoCard } from '@/components/IpoCard';
 import { IpoCompareTable } from '@/components/IpoCompareTable';
@@ -181,18 +181,21 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
             thing. The per-IPO numbers live on the cards, attached to the issue
             they belong to. */}
         <div className="h2b-acts">
-          {hubs.filter((h) => h.skin).map((h) => (
-            <a key={h.href} className={`h2b-btn ${h.skin}`} href={h.href}>
-              {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={16} />}
-              <span>{h.label}</span>
-            </a>
-          ))}
+          {/* Destinations first, instruments second — sir's order. It puts the
+              two plain buttons ahead of the two pastel ones, so the row reads
+              left-to-right as "where to go" then "what the market is doing". */}
           <a className="h2b-btn" href={`/calendar${q}`}>
             <Icon name="calendar" size={16} /><span>IPO Calendar</span>
           </a>
           <a className="h2b-btn" href={`/allotment${q}`}>
             <Icon name="receipt" size={16} /><span>Allotment</span>
           </a>
+          {hubs.filter((h) => h.skin).map((h) => (
+            <a key={h.href} className={`h2b-btn ${h.skin}`} href={h.href}>
+              {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={16} />}
+              <span>{h.label}</span>
+            </a>
+          ))}
         </div>
       </div>
 
@@ -249,10 +252,11 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
         </div>
       </div>
 
-      {/* Cards sit beside a rail; the comparison table takes the full width —
-          it is the dense view, and squeezing it only forces more sideways
-          scrolling through columns the reader came to compare. */}
-      <div className={`h2-grid${view === 'table' ? ' full' : ''}`}>
+      {/* Full width, no rail. The four hub links and today's counts all live in
+          the board above, so a 304px column carrying only the app teaser would
+          have been a promo lane with 1,500px of nothing under it. The teaser
+          rides in the card grid instead. */}
+      <div className="h2-grid">
         <div className="h2-main">
           {filtered.length === 0 ? (
             <div className="empty">
@@ -263,51 +267,25 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           ) : view === 'table' ? (
             <IpoCompareTable ipos={filtered as any} lang={lang} shortNames />
           ) : (
-            <div className="ipo-list two-up">
-              {filtered.map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
+            /* Three-up now that the rail is gone: at 1116px that is ~360px a
+               card, closest to the ~397px they had beside a 304px rail. Two-up
+               at full width would blow them out to ~549px. */
+            <div className="ipo-list">
+              {filtered.map((i, n) => (
+                <Fragment key={i.id}>
+                  {/* the app card rides in the grid as an ordinary cell — same
+                      width and height as an IPO card, no column of its own.
+                      Slot 4 puts it under the first row rather than ahead of
+                      the most urgent issues; short lists get it last. */}
+                  {n === 3 && <AppTeaser />}
+                  <IpoCard ipo={i as any} lang={lang} v2 />
+                </Fragment>
+              ))}
+              {filtered.length < 4 && <AppTeaser />}
             </div>
           )}
         </div>
 
-        {view !== 'table' && (
-          <aside className="h2-side" aria-label="Today at a glance">
-            {/* the two live instruments lead — biggest type on the rail */}
-            {/* Action rows, not stat panels. These are links whose job is to
-                get you to a page; the live number rides along when there is one
-                and costs no height when there isn't — a 30px figure reading "—"
-                was reserving space for data that may not exist. */}
-            <div className="sd-group">
-              {hubs.filter((h) => h.skin).map((h) => (
-                <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.note}>
-                  {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
-                  <span className="t">{h.label}</span>
-                  <Icon name="chevron-right" size={15} />
-                </a>
-              ))}
-            </div>
-
-            {/* today, as an instrument panel rather than a sentence */}
-            <div className="sd-today">
-              <span className="sd-th"><i>Today</i><b>{dateLabel}</b></span>
-              <div className="sd-counts">
-                {pulses.map((p) => {
-                  const inner = <><b className={`sd-n t-${p.dot}`}>{p.n}</b><span>{p.short}</span></>;
-                  return p.href
-                    ? <a key={p.label} className={`sd-count${p.n === 0 ? ' dim' : ''}`} href={p.href} title={p.label}>{inner}</a>
-                    : <button key={p.label} type="button" className={`sd-count${p.n === 0 ? ' dim' : ''}`} onClick={p.onClick} title={p.label}>{inner}</button>;
-                })}
-              </div>
-            </div>
-
-            {/* plain destinations, grouped and quiet */}
-            <div className="sd-links">
-              <a href={`/calendar${q}`}><Icon name="calendar" size={15} /> IPO Calendar <Icon name="arrow-right" size={13} /></a>
-              <a href={`/allotment${q}`}><Icon name="receipt" size={15} /> Allotment <Icon name="arrow-right" size={13} /></a>
-            </div>
-
-            <AppTeaser />
-          </aside>
-        )}
       </div>
 
       {olderCount > 0 && (

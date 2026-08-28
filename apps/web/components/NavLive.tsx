@@ -79,21 +79,31 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
 
   const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const items: { href: string; label: string; sig?: React.ReactNode }[] = [
-    // No figure on either of these. Both link to a page listing EVERY issue, so
-    // the highest premium or the hottest subscription is one company's number
-    // wearing a site-wide label — and a promoted "+18.5%" in the header, away
-    // from the issue it belongs to and from the GMP disclaimer, reads as a
-    // claim rather than as data. The per-issue numbers live on the cards.
-    { href: '/gmp', label: 'GMP' },
-    { href: '/subscription', label: 'Subscription' },
-    { href: '/allotment', label: 'Allotment' },
-    {
-      href: '/calendar', label: 'Calendar',
-      sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,
-    },
     { href: '/news', label: 'News' },
     { href: '/portfolio', label: 'Portfolio' },
     { href: '/account', label: 'Account' },
+  ];
+
+  /**
+   * The four research hubs. They left the top bar and live in the IPOs panel
+   * now — pinned to the BOTTOM of its right column, so their position does not
+   * drift with however many issues are live that day.
+   *
+   * No per-issue figure rides along; a count of today's events does, because a
+   * count describes the whole set behind the link.
+   */
+  const hubs: {
+    href: string; label: string;
+    icon: 'trending' | 'chart' | 'receipt' | 'calendar';
+    sig?: React.ReactNode;
+  }[] = [
+    { href: '/gmp', label: 'GMP', icon: 'trending' },
+    { href: '/subscription', label: 'Subscription', icon: 'chart' },
+    { href: '/allotment', label: 'Allotment', icon: 'receipt' },
+    {
+      href: '/calendar', label: 'Calendar', icon: 'calendar',
+      sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,
+    },
   ];
 
   const quick = [
@@ -133,7 +143,18 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             </div>
           );
         })}
-        <a className="nv-all" href={`/${q}#ipos`}>All IPOs <Icon name="arrow-right" size={13} /></a>
+        {/* Pinned to the BOTTOM of this column (margin-top:auto), so the row
+            sits in the same place whether four issues are live or none. */}
+        <div className="nv-foot">
+          <a className="nv-all" href={`/${q}#ipos`}>All IPOs <Icon name="arrow-right" size={13} /></a>
+          <div className="nv-hubs">
+            {hubs.map((hb) => (
+              <a key={hb.href} className="nv-hub" href={`${hb.href}${q}`}>
+                <Icon name={hb.icon} size={14} />{hb.label}{hb.sig}
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -172,6 +193,11 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             <a href={`/${q}`} className="nv-sheetlink">
               IPOs {sig && sig.liveCount > 0 && <span className="nv-sig live"><span className="nv-dot" />{sig.liveCount} live</span>}
             </a>
+            {/* The hubs left the desktop bar but STAY here: a phone has no
+                dropdown to find them in, and a sheet can afford the rows. */}
+            {hubs.map((hb) => (
+              <a key={hb.href} href={`${hb.href}${q}`} className="nv-sheetlink">{hb.label}{hb.sig}</a>
+            ))}
             {items.map((it) => (
               <a key={it.href} href={`${it.href}${q}`} className="nv-sheetlink">{it.label}{it.sig}</a>
             ))}
