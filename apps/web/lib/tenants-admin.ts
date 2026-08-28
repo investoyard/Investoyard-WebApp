@@ -703,3 +703,34 @@ export const sendTemplateTest = (body: { channel: string; key: string; to: strin
     `${API}/admin/templates/test`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
+
+/* ── GMP feed: link an IPO to its upstream row, then preview / run a sync ──
+   `preview` writes NOTHING — it reports what a sync would change and which
+   suggestions are still waiting on a human. Suggestions are never applied on
+   their own: the wrong company's GMP on an IPO is worse than none. */
+export interface GmpFeedChange {
+  symbol: string; from: string; filled: string[];
+  gmp?: number; skippedManual?: boolean;
+}
+export interface GmpFeedSuggestion {
+  symbol: string; ourName: string; theirName: string;
+  sourceId: string; gmp: number | null; datesAgree: boolean;
+}
+export interface GmpFeedLink {
+  symbol: string; ourName: string; theirName: string;
+  sourceId: string; gmp: number | null; autoGmp: boolean;
+}
+export interface GmpFeedReport {
+  dryRun: boolean; fetched: number;
+  changes: GmpFeedChange[]; linked: GmpFeedLink[];
+  suggestions: GmpFeedSuggestion[]; unmatched: string[];
+}
+export const fetchGmpFeedPreview = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/preview`, { method: 'GET' });
+export const runGmpFeedSync = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/sync`, { method: 'POST' });
+export const linkGmpFeed = (symbol: string, sourceId: string | null) =>
+  authed<{ ok: boolean; symbol?: string; sourceId?: string | null; error?: string }>(
+    `${API}/admin/gmp-feed/link?symbol=${encodeURIComponent(symbol)}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`,
+    { method: 'POST' },
+  );

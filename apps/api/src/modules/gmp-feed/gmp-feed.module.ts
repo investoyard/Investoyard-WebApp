@@ -231,6 +231,14 @@ export class GmpFeedService implements OnModuleInit {
     if (!dryRun && changes.length) this.log.log(`feed: updated ${changes.length} IPO(s)`);
     return {
       dryRun, fetched, changes,
+      // every confirmed link, not just the ones with something to write —
+      // otherwise a wrong link that happens to have no pending change is
+      // invisible on the screen, and cannot be undone
+      linked: linked.map((l) => ({
+        symbol: l.ipo.symbol, ourName: l.ipo.name, theirName: l.row.name,
+        sourceId: l.row.id, gmp: l.row.gmp,
+        autoGmp: ((l.ipo.extra as any) ?? {}).autoGmp !== false,
+      })),
       suggestions: suggested.map((s) => ({
         symbol: s.ipo.symbol, ourName: s.ipo.name, theirName: s.row.name,
         sourceId: s.row.id, gmp: s.row.gmp, datesAgree: s.datesAgree,

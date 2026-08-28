@@ -25,6 +25,7 @@ const NAV: NavNode[] = [
     { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.manage' },
     { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.manage' },
     { href: '/admin/catalog/gmp-log', label: 'GMP Log & Contributors' },
+    { href: '/admin/catalog/gmp-feed', label: 'GMP Feed' },
     { href: '/admin/masters/ipo-category', label: 'IPO Category' },
   ] },
   { key: 'applications', label: 'Applications', icon: 'list', href: '/admin/applications', perm: 'bids.view' },
