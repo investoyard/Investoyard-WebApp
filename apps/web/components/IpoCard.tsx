@@ -10,9 +10,9 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf } from '@investoyard/shared-types';
 
-type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
+export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
 
 /** ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe. */
@@ -248,7 +248,7 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
           </a>
         )}
         {!canApply && !canPrint && (
-          statusChip(ipo).cls === 'allot'
+          stageOf(ipo as any) === 'allotmentout'
             // allotment is out → the card's job changes: help the user check it
             ? <a className="btn ic-apply btn-allot" href={`/allotment${q}`}>{LABEL.checkAllotment} <Icon name="arrow-right" size={15} /></a>
             : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>
@@ -266,7 +266,7 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
 }
 
 /* ---- topic detail ---- */
-function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull; tr: (s: string) => string; v2?: boolean }) {
+export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull; tr: (s: string) => string; v2?: boolean }) {
   // Listed issue → real listing performance replaces the grey-market panel.
   if (k === 'gmp' && ipo.status === 'listed') {
     const ex: any = (ipo as any).extra ?? {};
