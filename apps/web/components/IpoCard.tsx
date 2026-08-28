@@ -14,37 +14,6 @@ import { LABEL, titleCase, shortName } from '@investoyard/shared-types';
 
 type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
-/**
- * The third KPI tile, cycling Min Application → GMP → …
- *
- * Sir asked for one of the four tiles to carry GMP without adding a fifth, so
- * this slot alternates instead of splitting the row. It degrades to a plain
- * static tile whenever there is only one value to show — no GMP entered, or the
- * tenant has GMP switched off — and holds still under prefers-reduced-motion,
- * where a tile that changes under the reader is actively unhelpful.
- */
-function RotatingSpec({ faces }: { faces: { k: string; v: string; gain?: boolean }[] }) {
-  const [i, setI] = useState(0);
-  const [fade, setFade] = useState(false);
-  useEffect(() => {
-    if (faces.length < 2) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const t = setInterval(() => {
-      setFade(true);
-      // swap at the midpoint of the cross-fade so neither value is seen mid-flip
-      setTimeout(() => { setI((n) => (n + 1) % faces.length); setFade(false); }, 220);
-    }, 4000);
-    return () => clearInterval(t);
-  }, [faces.length]);
-
-  const f = faces[Math.min(i, faces.length - 1)];
-  return (
-    <div className={`hi ic-rot${fade ? ' out' : ''}`}>
-      <span className="k">{f.k}{faces.length > 1 && <i className="ic-rotdots" aria-hidden>{faces.map((_, n) => <b key={n} className={n === i ? 'on' : ''} />)}</i>}</span>
-      <span className={`v mono${f.gain ? ' gain' : ''}`}>{f.v}</span>
-    </div>
-  );
-}
 
 /** ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe. */
 function fmtRange(open?: string, close?: string): string {
@@ -208,6 +177,17 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
 
       <div className="ic-keys">
         <span className="ic-dates"><Icon name="calendar" size={13} />{fmtRange(ipo.openDate, ipo.closeDate)}</span>
+        {/* Beside the dates, because "when" and "what it's worth today" are the
+            two things a reader checks first. Amber pill to echo the Exp.
+            Premium tile in the strip above, but the FIGURE keeps semantic
+            green/red — a premium is a financial signal, and the direction has
+            to survive the decorative colour. */}
+        {v2 && tenant.flags.gmpEnabled && ipo.gmp != null && (
+          <span className="ic-prem" title="Expected premium — grey-market, unofficial">
+            Exp. Premium
+            <b className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}₹{ipo.gmp}</b>
+          </span>
+        )}
         {ipo.status === 'open' && <CloseHint ipo={ipo} />}
         {subX != null
           ? (() => { const dm = demandLabel(subX, ipo.type === 'sme'); return (
@@ -219,21 +199,14 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
         <div className="ic-track"><span className={heat} style={{ width: `${Math.max(6, demandPct)}%` }} /></div>
       )}
 
+      {/* v2 runs the three specs on ONE row and drops Min Application: the
+          premium moved up beside the dates, and min application is one lot at
+          the band ceiling — derivable from the two cells beside it. v1 keeps
+          the 2x2 block. */}
       <div className="ic-specs">
         <div><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span></div>
         <div className="hi"><span className="k">{LABEL.lotSize}</span><span className="v mono">{ipo.lotSize ?? '—'}</span></div>
-        {v2 ? (
-          <RotatingSpec
-            faces={[
-              { k: LABEL.minApplication, v: inr(ipo.minAmount) },
-              // only joins the rotation when a real value exists — an empty face
-              // would blink a dash at the reader every four seconds
-              ...(tenant.flags.gmpEnabled && ipo.gmp != null
-                ? [{ k: 'Exp. Premium', v: `${ipo.gmp >= 0 ? '+' : ''}₹${ipo.gmp}`, gain: ipo.gmp >= 0 }]
-                : []),
-            ]}
-          />
-        ) : (
+        {!v2 && (
           <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
         )}
         <div><span className="k">{LABEL.issueSize}</span><span className="v mono">{ipo.issueSize ?? '—'}</span></div>

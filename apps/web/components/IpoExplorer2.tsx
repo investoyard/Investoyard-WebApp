@@ -149,6 +149,27 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     <section id="ipos">
       <GmpNotice />
 
+      {/* ── the hub strip, lifted out of the rail to sit under the banner ──
+          Same two groups, same skins, same markup — only the axis changes, so
+          the two live instruments stay loud and the two destinations stay
+          quiet. Full width they get ~4x the room they had at 304px. */}
+      <div className="h2-strip">
+        <div className="sd-group">
+          {hubs.filter((h) => h.skin).map((h) => (
+            <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
+              {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
+              <span className="t">{h.label}</span>
+              {h.sig && <em className="v">{h.sig}</em>}
+              <Icon name="chevron-right" size={15} />
+            </a>
+          ))}
+        </div>
+        <div className="sd-links">
+          <a href={`/calendar${q}`}><Icon name="calendar" size={15} /> IPO Calendar <Icon name="arrow-right" size={13} /></a>
+          <a href={`/allotment${q}`}><Icon name="receipt" size={15} /> Allotment <Icon name="arrow-right" size={13} /></a>
+        </div>
+      </div>
+
       {/* ── every filter on one line, full width above the split ── */}
       <div className="flt-bar">
         {/* Status is a pill TRACK carrying the same semantic dots as the cards'
@@ -224,21 +245,9 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
 
         {view !== 'table' && (
           <aside className="h2-side" aria-label="Today at a glance">
-            {/* the two live instruments lead — biggest type on the rail */}
-            {/* Action rows, not stat panels. These are links whose job is to
-                get you to a page; the live number rides along when there is one
-                and costs no height when there isn't — a 30px figure reading "—"
-                was reserving space for data that may not exist. */}
-            <div className="sd-group">
-              {hubs.filter((h) => h.skin).map((h) => (
-                <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
-                  {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
-                  <span className="t">{h.label}</span>
-                  {h.sig && <em className="v">{h.sig}</em>}
-                  <Icon name="chevron-right" size={15} />
-                </a>
-              ))}
-            </div>
+            {/* The hub group and the destination links now live in the strip
+                under the banner; repeating them here would be the same four
+                links twice on one screen. */}
 
             {/* today, as an instrument panel rather than a sentence */}
             <div className="sd-today">
@@ -251,12 +260,6 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
                     : <button key={p.label} type="button" className={`sd-count${p.n === 0 ? ' dim' : ''}`} onClick={p.onClick} title={p.label}>{inner}</button>;
                 })}
               </div>
-            </div>
-
-            {/* plain destinations, grouped and quiet */}
-            <div className="sd-links">
-              <a href={`/calendar${q}`}><Icon name="calendar" size={15} /> IPO Calendar <Icon name="arrow-right" size={13} /></a>
-              <a href={`/allotment${q}`}><Icon name="receipt" size={15} /> Allotment <Icon name="arrow-right" size={13} /></a>
             </div>
 
             <AppTeaser />
