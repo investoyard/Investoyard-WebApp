@@ -22,10 +22,12 @@ import { RemindBell } from '../components/RemindBell';
 interface Ev { date: string; label: string; tone: ChipTone; dot: string; ipo: IpoFull }
 
 const EVENTS: { field: 'openDate' | 'closeDate' | 'allotmentDate' | 'listingDate'; label: string; tone: ChipTone; dot: string }[] = [
+  // dot colours are the web tone values, so a date means the same colour on
+  // both surfaces: closing and allotment are both "act today" gold
   { field: 'openDate', label: 'Opens', tone: 'success', dot: '#2E9E5B' },
-  { field: 'closeDate', label: 'Closes', tone: 'warn', dot: '#E3A63C' },
-  { field: 'allotmentDate', label: 'Allotment', tone: 'brand', dot: '#6A5ACD' },
-  { field: 'listingDate', label: 'Listing', tone: 'neutral', dot: '#9BA1B0' },
+  { field: 'closeDate', label: 'Closes', tone: 'gold', dot: '#E6AD12' },
+  { field: 'allotmentDate', label: 'Allotment', tone: 'gold', dot: '#E6AD12' },
+  { field: 'listingDate', label: 'Listing', tone: 'listed', dot: '#9B7FD4' },
 ];
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 

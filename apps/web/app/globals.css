@@ -245,9 +245,9 @@ img, svg { vertical-align: middle; }
 .ic-tag { font-size: 11px; font-weight: 600; padding: 3px 11px; border-radius: var(--pill); letter-spacing: .01em; }
 .ic-tag.mb { color: #fff; background: var(--brand); }
 .ic-tag.sme { color: #4a3600; background: var(--gold); }
-.ic-dot { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); }
+.ic-dot { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
 .ic-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); }
-.ic-dot.open { color: var(--pos); } .ic-dot.upcoming { color: var(--brand); } .ic-dot.listed, .ic-dot.closed { color: var(--text-faint); }
+.ic-dot { color: var(--tone, var(--text-faint)); }
 .ic-dates { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--pill); color: var(--text); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; white-space: nowrap; }
 .ic-dates svg { color: var(--brand-400); }
 
@@ -515,12 +515,9 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); background: var(--bg-2); color: var(--text-muted); white-space: nowrap; }
 .chip.brand { background: var(--brand-50); color: var(--brand); }
 .chip.gold { background: var(--gold-50); color: var(--gold-600); }
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); background: var(--bg-2); color: var(--text-muted); }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
 .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); }
-.status.open { color: var(--pos); background: var(--pos-soft); }
-.status.upcoming { color: var(--brand); background: var(--brand-50); }
-.status.listed { color: var(--text-muted); }
-.status.closed, .status.withdrawn { color: var(--text-faint); }
+
 .pill-time { font-size: 12px; font-weight: 600; color: var(--brand); background: var(--brand-50); padding: 4px 11px; border-radius: var(--pill); }
 .pill-time.urgent { color: var(--neg); background: var(--neg-soft); }
 .badge-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--pos); background: var(--pos-soft); padding: 4px 11px; border-radius: var(--pill); }
@@ -1216,11 +1213,7 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .ts-item:hover .ts-lbl { color: var(--text); }
 .ts-item.dim { opacity: .42; }
 .ts-item.dim:hover { opacity: .7; }
-.ts-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.ts-dot.pos { background: var(--pos); }
-.ts-dot.gold { background: var(--gold-600); }
-.ts-dot.brand { background: var(--brand); }
-.ts-dot.faint { background: var(--text-faint); }
+.ts-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--tone, var(--text-faint)); }
 @media (max-width: 700px) {
   .today-strip { flex-wrap: wrap; row-gap: 12px; padding: 14px 16px; overflow: visible; }
   .ts-head { flex: 1 1 100%; margin-right: 0; display: flex; gap: 8px; align-items: baseline; }
@@ -1244,15 +1237,15 @@ a.ga-row:hover .ga-name { color: var(--brand); }
      --tone       the dot / solid fill
      --tone-soft  the chip background
      --tone-ink   the chip text */
-.t-live   { --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
+.t-live, .ic-dot.open, .status.open, .ph.live { --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
             --tone-solid: var(--pos);  --tone-on: #fff;      --tone-acc: rgba(60,200,130,.24); }
-.t-urgent { --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
+.t-urgent, .ph.allotment { --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
             --tone-solid: var(--gold); --tone-on: #4a3600;   --tone-acc: rgba(255,203,50,.26); }
-.t-soon   { --tone: var(--brand-400);  --tone-soft: var(--brand-50); --tone-ink: var(--brand);
+.t-soon, .ic-dot.upcoming, .status.upcoming, .ph.upcoming { --tone: var(--brand-400);  --tone-soft: var(--brand-50); --tone-ink: var(--brand);
             --tone-solid: var(--brand); --tone-on: #fff;     --tone-acc: rgba(117,101,189,.20); }
-.t-listed { --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: var(--text);
+.t-listed, .ic-dot.listed, .status.listed, .ph.listed { --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: var(--text);
             --tone-solid: #c9b8ea;     --tone-on: var(--text); --tone-acc: rgba(155,127,212,.22); }
-.t-quiet  { --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
+.t-quiet, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn { --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
             --tone-solid: var(--text-faint); --tone-on: #fff; --tone-acc: rgba(144,141,158,.16); }
 
 .ic-status { background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
@@ -1929,14 +1922,9 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .stat.grad .delta { color: rgba(255,255,255,.85) !important; }
 
 /* ---- IPO lifecycle phase chips (status auto-derived from the timeline) ---- */
-.ph { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); text-transform: capitalize; white-space: nowrap; }
+.ph { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); text-transform: capitalize; white-space: nowrap; background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
 .ph::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.ph.upcoming { background: var(--warn-soft); color: #9a6b00; }
-.ph.live { background: var(--pos-soft); color: var(--pos); }
-.ph.closed { background: var(--bg-2); color: var(--text-muted); }
-.ph.allotment { background: var(--brand-50); color: var(--brand); }
-.ph.listed { background: #eae6fb; color: #5b46b8; }
-.ph.withdrawn { background: var(--neg-soft); color: var(--neg); }
+
 
 /* ---- role permission cards with per-group select-all ---- */
 .perm-card { border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }

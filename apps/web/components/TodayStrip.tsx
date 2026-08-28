@@ -26,10 +26,10 @@ export function TodayStrip({ ipos: baked, langQuery = '' }: { ipos: IpoFull[]; l
 
   const dateLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
   const items: { n: number; label: string; dot: string; href: string }[] = [
-    { n: counts.open, label: 'Open now', dot: 'pos', href: '#ipos' },
-    { n: counts.closing, label: 'Closing today', dot: 'gold', href: '#ipos' },
-    { n: counts.allotment, label: 'Allotment today', dot: 'brand', href: `/portfolio${langQuery}` },
-    { n: counts.listing, label: 'Listing today', dot: 'faint', href: `/calendar${langQuery}` },
+    { n: counts.open, label: 'Open now', dot: 'live', href: '#ipos' },
+    { n: counts.closing, label: 'Closing today', dot: 'urgent', href: '#ipos' },
+    { n: counts.allotment, label: 'Allotment today', dot: 'urgent', href: `/portfolio${langQuery}` },
+    { n: counts.listing, label: 'Listing today', dot: 'listed', href: `/calendar${langQuery}` },
   ];
 
   return (
@@ -38,7 +38,7 @@ export function TodayStrip({ ipos: baked, langQuery = '' }: { ipos: IpoFull[]; l
       {items.map((it) => (
         <a key={it.label} href={it.href} className={`ts-item${it.n === 0 ? ' dim' : ''}`}>
           <b className="mono">{it.n}</b>
-          <span className="ts-lbl"><i className={`ts-dot ${it.dot}`} />{it.label}</span>
+          <span className="ts-lbl"><i className={`ts-dot t-${it.dot}`} />{it.label}</span>
         </a>
       ))}
     </section>

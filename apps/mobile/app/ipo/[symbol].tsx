@@ -30,8 +30,11 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
 
+/* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
+   listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
+   plain grey, which put this screen out of step with the cards and with web. */
 const STATUS_TONE: Record<string, ChipTone> = {
-  open: 'success', upcoming: 'warn', closed: 'neutral', listed: 'neutral', withdrawn: 'danger',
+  open: 'success', upcoming: 'brand', closed: 'neutral', listed: 'listed', withdrawn: 'neutral',
 };
 
 export default function IpoDetailScreen() {
