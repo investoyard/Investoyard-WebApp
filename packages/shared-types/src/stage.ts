@@ -122,3 +122,40 @@ export function isRecent(ipo: StageInput & { listingDate?: string; closeDate?: s
   const marker = ipo.listingDate ?? ipo.closeDate ?? '';
   return marker >= iso;
 }
+
+/**
+ * Stage → colour tone. The ONE status colour contract, shared by web and mobile.
+ *
+ * It lives here rather than in each surface's stylesheet because it had already
+ * drifted six ways: gold meant Closing Today on a card, Upcoming in the filter
+ * bar and Allotment Out on mobile; grey meant Upcoming on a card but Listing in
+ * the market board; and mobile painted Closing Today RED where web painted it
+ * gold. Web alone held four independent copies of the same four-colour dot
+ * palette.
+ *
+ * Five tones, each with one meaning:
+ *
+ *   live    green   — you can apply right now
+ *   urgent  gold    — act TODAY: the last day to apply, or an allotment to check
+ *   soon    indigo  — coming, nothing to do yet
+ *   listed  purple  — trading; the issue is history
+ *   quiet   grey    — waiting, with nothing for the investor to do
+ *
+ * Gold covering both Closing Today and Allotment Out is deliberate: they are
+ * the two states that need the investor TODAY, which is one meaning, not two.
+ */
+export type StageTone = 'live' | 'urgent' | 'soon' | 'listed' | 'quiet';
+
+export const STAGE_TONE: Record<Stage, StageTone> = {
+  opentoday: 'live',
+  live: 'live',
+  closingtoday: 'urgent',
+  allotmentout: 'urgent',
+  preapply: 'soon',
+  upcoming: 'soon',
+  listed: 'listed',
+  awaiting: 'quiet',
+  withdrawn: 'quiet',
+};
+
+export const toneOf = (ipo: StageInput): StageTone => STAGE_TONE[stageOf(ipo)];

@@ -1234,19 +1234,32 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .ic-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border-radius: var(--pill); padding: 3.5px 10px; white-space: nowrap; }
 .ic-status .pd { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: ic-pulse 1.7s var(--ease) infinite; }
 @keyframes ic-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
-.ic-status.live { background: var(--pos-soft); color: var(--pos); }
-.ic-status.opentoday { background: var(--pos); color: #fff; }
-.ic-status.closing { background: var(--gold); color: #4a3600; }
-.ic-status.preapply { background: var(--brand-50); color: var(--brand); }
-.ic-status.soon { background: var(--brand-50); color: var(--brand-700, var(--brand)); }
-.ic-status.upcoming { background: var(--bg-2); color: var(--text-muted); }
-/* theme-matched terminal states: Allotment out = gold tint (act now: check it),
-   Listed = solid brand indigo (on the board) — both distinct from grey Closed */
-.ic-status.allot { background: var(--gold-50); color: #8a6d1f; border: 1px solid #f0dfae; }
-/* Listed — light purple with near-black text (operator's pick): lavender is
-   brand-adjacent but clearly lighter than the solid indigo Mainboard tag */
-.ic-status.listed { background: #e2d9f6; color: var(--text); }
-.ic-status.closed { background: var(--bg-2); color: var(--text-muted); }
+/* ── status tones: ONE colour per meaning, every surface ────────────────────
+   Five tones, mapped from the stage by STAGE_TONE in shared-types/stage.ts.
+   Each class only sets variables; the dots, the chips and the filter tabs all
+   read the same three. Before this, four separate dot palettes and the chip
+   rules each named their own colours, and gold had drifted to three different
+   meanings across the page.
+
+     --tone       the dot / solid fill
+     --tone-soft  the chip background
+     --tone-ink   the chip text */
+.t-live   { --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
+            --tone-solid: var(--pos);  --tone-on: #fff;      --tone-acc: rgba(60,200,130,.24); }
+.t-urgent { --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
+            --tone-solid: var(--gold); --tone-on: #4a3600;   --tone-acc: rgba(255,203,50,.26); }
+.t-soon   { --tone: var(--brand-400);  --tone-soft: var(--brand-50); --tone-ink: var(--brand);
+            --tone-solid: var(--brand); --tone-on: #fff;     --tone-acc: rgba(117,101,189,.20); }
+.t-listed { --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: var(--text);
+            --tone-solid: #c9b8ea;     --tone-on: var(--text); --tone-acc: rgba(155,127,212,.22); }
+.t-quiet  { --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
+            --tone-solid: var(--text-faint); --tone-on: #fff; --tone-acc: rgba(144,141,158,.16); }
+
+.ic-status { background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
+/* Solid means TODAY — Open Today and Closing Today. Same tone as their ongoing
+   siblings (Live, Allotment Out), so the colour still carries one meaning; the
+   fill carries the urgency instead of a second hue. */
+.ic-status.solid { background: var(--tone-solid); color: var(--tone-on); }
 /* demand: bold × + plain-words label, calibrated per board */
 .ic-subx2 { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
 .ic-subx2 b { font-family: var(--font-display); font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
@@ -1280,9 +1293,7 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .hb-watermark { position: absolute; right: -34px; top: 50%; transform: translateY(-50%); width: 250px; height: 250px;
   object-fit: contain; opacity: .07; filter: grayscale(1) brightness(2.4); pointer-events: none; user-select: none; }
 /* stage accents so five slides never read alike */
-.hb-slide.acc-closing { --hb-acc: rgba(255,179,71,.30); }
-.hb-slide.acc-live { --hb-acc: rgba(60,200,130,.24); }
-.hb-slide.acc-soon { --hb-acc: rgba(255,203,50,.18); }
+.hb-slide[class*="t-"] { --hb-acc: var(--tone-acc); }
 .hb-slide.ipo > .hb-main, .hb-slide.ipo > .hb-live { position: relative; z-index: 1; }
 
 /* left column — specs strip in the product vocabulary */
@@ -1493,9 +1504,7 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .hb-meta { display: flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(255,255,255,.78);
   margin-top: 5px; min-width: 0; font-variant-numeric: tabular-nums; }
 .hb-tag { flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: var(--pill); padding: 5px 11px; }
-.hb-tag.live { background: var(--pos); color: #fff; }
-.hb-tag.closing { background: var(--gold); color: #4a3600; }
-.hb-tag.soon { background: rgba(255,255,255,.16); color: #fff; }
+.hb-tag { background: var(--tone-solid); color: var(--tone-on); }
 .hb-sub { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: rgba(255,255,255,.8); flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 /* dates keep their place but read as a highlighted chip, not muted text */
 .hb-dates { display: inline-flex; align-items: center; gap: 9px; margin-top: 15px; padding: 7px 14px;
@@ -2664,8 +2673,7 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .hbi-board.sme { background: #FFEFC9; color: #8a6d1f; }
 .hbi-tag { font-size: 11.5px; font-weight: 750; border-radius: var(--pill); padding: 2px 9px;
   background: #fff; border: 1px solid rgba(60,46,126,.14); color: #3b3370; }
-.hbi-tag.live { background: #DDF3E7; border-color: rgba(31,122,82,.22); color: #1f7a52; }
-.hbi-tag.closing { background: #FFE2DC; border-color: rgba(183,58,38,.22); color: #b73a26; }
+.hbi-tag { background: var(--tone-soft); border-color: color-mix(in srgb, var(--tone) 26%, transparent); color: var(--tone-ink); }
 .hbi-tag .hb-pulse { background: currentColor; }
 
 /* the price band leads */
@@ -2755,10 +2763,7 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 /* the semantic dot sits with the number, not the label */
 .mkt-n::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   width: 6px; height: 6px; border-radius: 50%; }
-.mkt-n.d-pos::before { background: var(--pos); }
-.mkt-n.d-gold::before { background: var(--gold); }
-.mkt-n.d-brand::before { background: var(--brand-400); }
-.mkt-n.d-faint::before { background: var(--text-faint); }
+.mkt-n[class*="t-"]::before { background: var(--tone); }
 /* hubs push right on a wide bar and wrap under on a narrow one */
 .mkt-hubs { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-left: auto; }
 .mkt-hub { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--pill);
@@ -2886,10 +2891,7 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    belongs to the number, and a rail of four dots would look like a legend */
 .sd-n::after { content: ''; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
   width: 14px; height: 2px; border-radius: 2px; }
-.sd-n.d-pos::after { background: var(--pos); }
-.sd-n.d-gold::after { background: var(--gold); }
-.sd-n.d-brand::after { background: var(--brand-400); }
-.sd-n.d-faint::after { background: var(--text-faint); }
+.sd-n[class*="t-"]::after { background: var(--tone); }
 
 /* ── quiet destinations ── */
 .sd-links { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
@@ -2945,15 +2947,14 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
   cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted);
   padding: 0 14px; border-radius: var(--pill); transition: background .14s var(--ease), color .14s var(--ease); }
 .flt-status button i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-.flt-status button i.d-pos { background: var(--pos); }
-.flt-status button i.d-gold { background: var(--gold); }
-.flt-status button i.d-faint { background: var(--text-faint); }
+.flt-status button i { background: var(--tone); }
 .flt-status button:hover { color: var(--text); }
 .flt-status button.on { background: var(--brand); color: #fff; box-shadow: 0 4px 12px rgba(60,46,126,.22); }
 /* the dot stays legible on the indigo fill */
-.flt-status button.on i.d-pos { background: #7fe3ac; }
-.flt-status button.on i.d-gold { background: var(--gold); }
-.flt-status button.on i.d-faint { background: rgba(255,255,255,.6); }
+/* An active tab is a solid indigo fill, so the dot goes white for every tone —
+   which tab you are on is already unmistakable; the dot only has to stay
+   visible against the fill. */
+.flt-status button.on i { background: #fff; }
 
 /* ── board: a segmented meter ──
    Deliberately NOT pills. One bordered bar with hard dividers, a count under
@@ -3145,10 +3146,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .h2b-date { font-size: 13px; font-weight: 700; letter-spacing: -.01em; color: var(--brand); white-space: nowrap; }
 
 .h2b-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-.h2b-dot.d-pos { background: var(--pos); }
-.h2b-dot.d-gold { background: var(--gold-600); }
-.h2b-dot.d-brand { background: var(--brand-400); }
-.h2b-dot.d-faint { background: var(--text-faint); }
+.h2b-dot { background: var(--tone); }
 /* a zero is information, so it stays legible — just quieter than a live count */
 .h2b-cnt.dim .h2b-v { color: var(--text-faint); }
 .h2b-cnt.dim .h2b-dot { opacity: .45; }

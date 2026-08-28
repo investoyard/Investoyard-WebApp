@@ -102,10 +102,10 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
   // `short` is the rail label — four columns in ~300px cannot carry
   // "Allotment today", and the full phrase stays in the title attribute.
   const pulses: { n: number; label: string; short: string; dot: string; onClick?: () => void; href?: string }[] = [
-    { n: counts.open, label: 'Open now', short: 'Open', dot: 'pos', onClick: () => { setStatus('open'); setQuery(''); } },
-    { n: counts.closing, label: 'Closing today', short: 'Closing', dot: 'gold', onClick: () => { setStatus('open'); setQuery(''); } },
-    { n: counts.allotment, label: 'Allotment today', short: 'Allotment', dot: 'brand', href: `/allotment${q}` },
-    { n: counts.listing, label: 'Listing today', short: 'Listing', dot: 'faint', href: `/calendar${q}` },
+    { n: counts.open, label: 'Open now', short: 'Open', dot: 'live', onClick: () => { setStatus('open'); setQuery(''); } },
+    { n: counts.closing, label: 'Closing today', short: 'Closing', dot: 'urgent', onClick: () => { setStatus('open'); setQuery(''); } },
+    { n: counts.allotment, label: 'Allotment today', short: 'Allotment', dot: 'urgent', href: `/allotment${q}` },
+    { n: counts.listing, label: 'Listing today', short: 'Listing', dot: 'listed', href: `/calendar${q}` },
   ];
 
   /**
@@ -163,7 +163,7 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           {pulses.map((p) => {
             const inner = (
               <>
-                <i className={`h2b-dot d-${p.dot}`} aria-hidden />
+                <i className={`h2b-dot t-${p.dot}`} aria-hidden />
                 <b className="h2b-v">{p.n}</b>
                 <span className="h2b-l">{p.short}</span>
               </>
@@ -204,12 +204,12 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
         <div className="flt-status" role="tablist" aria-label="IPO status">
           {([
             { k: 'all', label: 'All', dot: '' },
-            { k: 'open', label: 'Open', dot: 'pos' },
-            { k: 'upcoming', label: 'Upcoming', dot: 'gold' },
-            { k: 'closed', label: 'Closed', dot: 'faint' },
+            { k: 'open', label: 'Open', dot: 'live' },
+            { k: 'upcoming', label: 'Upcoming', dot: 'soon' },
+            { k: 'closed', label: 'Closed', dot: 'quiet' },
           ] as { k: StatusFilter; label: string; dot: string }[]).map((s) => (
             <button key={s.k} type="button" className={status === s.k ? 'on' : ''} onClick={() => setStatus(s.k)}>
-              {s.dot && <i className={`d-${s.dot}`} aria-hidden />}{s.label}
+              {s.dot && <i className={`t-${s.dot}`} aria-hidden />}{s.label}
             </button>
           ))}
         </div>
@@ -291,7 +291,7 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
               <span className="sd-th"><i>Today</i><b>{dateLabel}</b></span>
               <div className="sd-counts">
                 {pulses.map((p) => {
-                  const inner = <><b className={`sd-n d-${p.dot}`}>{p.n}</b><span>{p.short}</span></>;
+                  const inner = <><b className={`sd-n t-${p.dot}`}>{p.n}</b><span>{p.short}</span></>;
                   return p.href
                     ? <a key={p.label} className={`sd-count${p.n === 0 ? ' dim' : ''}`} href={p.href} title={p.label}>{inner}</a>
                     : <button key={p.label} type="button" className={`sd-count${p.n === 0 ? ' dim' : ''}`} onClick={p.onClick} title={p.label}>{inner}</button>;

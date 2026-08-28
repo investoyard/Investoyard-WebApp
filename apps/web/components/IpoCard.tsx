@@ -10,7 +10,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf } from '@investoyard/shared-types';
 
 type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -72,25 +72,35 @@ const daysFromToday = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
  * ONE time-aware status chip per card (calm & data-clear: a single precise
  * signal, never a badge pile). Live states carry a soft pulse dot.
  */
+/**
+ * The status chip's label and colour.
+ *
+ * `cls` is now a TONE from the shared stage map plus, for the two "today"
+ * states, a `solid` modifier — never a per-status colour invented here. Gold
+ * used to mean Closing Today on this chip, Upcoming in the filter bar and
+ * Allotment Out on mobile, because each surface picked its own.
+ */
 export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean } {
   const today = dayIso();
-  if (ipo.status === 'listed') return { label: 'Listed', cls: 'listed' };
-  if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: 'closed' };
+  const tone = `t-${toneOf(ipo as any)}`;
+  if (ipo.status === 'listed') return { label: 'Listed', cls: tone };
+  if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: tone };
   if (ipo.status === 'closed') {
     const ad = daysFromToday(ipo.allotmentDate);
-    if (ad != null && ad <= 0) return { label: 'Allotment Out', cls: 'allot' };
-    return { label: 'Awaiting Allotment', cls: 'closed' };
+    if (ad != null && ad <= 0) return { label: 'Allotment Out', cls: tone };
+    return { label: 'Awaiting Allotment', cls: tone };
   }
   if (ipo.status === 'open') {
-    if (ipo.closeDate === today) return { label: 'Closing Today', cls: 'closing', pulse: true };
-    if (ipo.openDate === today) return { label: 'Open Today', cls: 'opentoday', pulse: true };
-    return { label: 'Live', cls: 'live', pulse: true };
+    // solid fill = it is happening TODAY; the hue still says what kind of day
+    if (ipo.closeDate === today) return { label: 'Closing Today', cls: `${tone} solid`, pulse: true };
+    if (ipo.openDate === today) return { label: 'Open Today', cls: `${tone} solid`, pulse: true };
+    return { label: 'Live', cls: tone, pulse: true };
   }
-  if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: 'preapply' };
+  if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: tone };
   const od = daysFromToday(ipo.openDate);
-  if (od === 1) return { label: 'Opens Tomorrow', cls: 'soon' };
-  if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: 'soon' };
-  return { label: 'Upcoming', cls: 'upcoming' };
+  if (od === 1) return { label: 'Opens Tomorrow', cls: tone };
+  if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: tone };
+  return { label: 'Upcoming', cls: tone };
 }
 
 /**

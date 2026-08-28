@@ -25,16 +25,22 @@ function daysUntil(date?: string): number | null {
   return Math.round((new Date(`${date}T00:00:00`).getTime() - new Date(`${dayIso()}T00:00:00`).getTime()) / 86400000);
 }
 
-function slideTag(ipo: IpoFull): { label: string; cls: string } {
+/**
+ * Slide status tag. `cls` is a TONE from the shared stage map rather than a
+ * colour this file picks, so the dark and pastel slides cannot disagree about
+ * what a status looks like — the pastel one used to paint Closing today RED
+ * against the dark one's gold, the same status two slides apart.
+ */
+function slideTag(ipo: IpoFull): { label: string; cls: string; urgent?: boolean } {
   const today = dayIso();
   if (ipo.status === 'open') {
-    if (ipo.closeDate === today) return { label: 'Closing today', cls: 'closing' };
-    if (ipo.openDate === today) return { label: 'Open today', cls: 'live' };
-    return { label: 'Live', cls: 'live' };
+    if (ipo.closeDate === today) return { label: 'Closing today', cls: 't-urgent', urgent: true };
+    if (ipo.openDate === today) return { label: 'Open today', cls: 't-live' };
+    return { label: 'Live', cls: 't-live' };
   }
   const d = daysUntil(ipo.openDate);
-  if (d != null && d <= 1) return { label: d <= 0 ? 'Opens today' : 'Opens tomorrow', cls: 'soon' };
-  return { label: d != null ? `Opens in ${d}d` : 'Upcoming', cls: 'soon' };
+  if (d != null && d <= 1) return { label: d <= 0 ? 'Opens today' : 'Opens tomorrow', cls: 't-soon' };
+  return { label: d != null ? `Opens in ${d}d` : 'Upcoming', cls: 't-soon' };
 }
 
 /**
@@ -604,7 +610,7 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
   const tag = slideTag(ipo);
   const canApply = (ipo as any).extra?.startBid === true;
   const canPrint = (ipo as any).extra?.startPrint === true;
-  const closing = tag.cls === 'closing';
+  const closing = tag.urgent === true;
   const countdown = useCountdown(closing ? ipo.closeDate : undefined);
   const tenant = useTenant();
   const showGmp = tenant.flags.gmpEnabled && ipo.gmp != null;
@@ -697,7 +703,7 @@ function IpoSlide({ ipo, q, active }: { ipo: IpoFull; q: string; active: boolean
   const tag = slideTag(ipo);
   const canApply = (ipo as any).extra?.startBid === true;
   const canPrint = (ipo as any).extra?.startPrint === true;
-  const closing = tag.cls === 'closing';
+  const closing = tag.urgent === true;
   const countdown = useCountdown(closing ? ipo.closeDate : undefined);
 
   return (

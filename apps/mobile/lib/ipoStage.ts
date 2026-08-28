@@ -60,7 +60,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
 
   if (ipo.status === 'withdrawn') {
     return {
-      stage: 'withdrawn', label: 'Withdrawn', tone: 'danger', pulse: false,
+      stage: 'withdrawn', label: 'Withdrawn', tone: 'neutral', pulse: false,
       note: 'This issue was withdrawn by the company.',
       panels: ['timeline'], cta: { kind: 'details', label: 'View Details' },
     };
@@ -90,7 +90,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
       };
     }
     return {
-      stage: 'awaiting', label: 'Awaiting Allotment', tone: 'info', pulse: false,
+      stage: 'awaiting', label: 'Awaiting Allotment', tone: 'neutral', pulse: false,
       note: a != null ? `Allotment ${a === 0 ? 'today' : inDays(a)}` : 'Basis of allotment awaited',
       panels: ['sub', 'timeline'],
       cta: { kind: 'allotment', label: 'Check Allotment' },
@@ -105,7 +105,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
       ? { kind: 'apply' as CtaKind, label: 'Apply Now' }
       : { kind: 'remind' as CtaKind, label: 'Remind Me' };
     if (ipo.closeDate === today) {
-      return { stage: 'closingtoday', label: 'Closing Today', tone: 'danger', note: 'Last day to apply', ...base, cta };
+      return { stage: 'closingtoday', label: 'Closing Today', tone: 'gold', note: 'Last day to apply', ...base, cta };
     }
     if (ipo.openDate === today) {
       return {
@@ -133,7 +133,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
   return {
     stage: 'upcoming',
     label: o != null && o >= 0 && o <= 4 ? (o === 0 ? 'Opens Today' : o === 1 ? 'Opens Tomorrow' : `Opens in ${o}d`) : 'Upcoming',
-    tone: 'warn', pulse: false, note: openNote, panels,
+    tone: 'brand', pulse: false, note: openNote, panels,
     cta: { kind: 'remind', label: 'Remind Me' },
   };
 }

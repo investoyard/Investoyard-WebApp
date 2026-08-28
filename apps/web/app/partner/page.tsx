@@ -28,7 +28,7 @@ export default function PartnerLandingPage() {
     <div className="container fade-up" style={{ paddingTop: 8 }}>
       <section className="pk-hero">
         <div>
-          <span className="ic-status upcoming">Partner Programme</span>
+          <span className="ic-status t-soon">Partner Programme</span>
           <h1 style={{ margin: '12px 0 8px', maxWidth: '18ch' }}>Bring IPOs to your clients, without building any of it.</h1>
           <p className="muted" style={{ marginTop: 0, maxWidth: '58ch', fontSize: 15.5 }}>
             Investoyard runs the IPO stack — exchange rails, bidding, print forms, allotment and reporting. You bring

@@ -3,9 +3,15 @@ import { fonts, ui } from '../../lib/theme';
 
 export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed';
 
-/** Soft-tinted pill palette (fintech spec):
- *  success (open/positive) · warn (upcoming/pending) · neutral (closed/listed/mainboard)
- *  brand (SME/active) · danger (negative) · info (indigo informational). */
+/**
+ * Soft-tinted pill palette.
+ *
+ * For IPO STATUS the tone comes from STAGE_TONE in @investoyard/shared-types,
+ * so web and mobile paint the same stage the same colour:
+ *   success = live · gold = act today · brand = soon · listed = listed
+ *   neutral = quiet (awaiting, withdrawn)
+ * The rest (danger, warn, info) remain for non-status chips.
+ */
 const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   neutral: { bg: ui.slateTint, fg: ui.slate },
   brand: { bg: ui.indigoTint, fg: ui.indigo },
@@ -13,7 +19,7 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   danger: { bg: ui.redTint, fg: ui.red },
   warn: { bg: ui.amberTint, fg: ui.amber },
   info: { bg: ui.indigoTint, fg: ui.indigo },
-  /** brand-gold moment — reserved for the "Allotted" celebration state */
+  /** act TODAY — Closing Today and Allotment Out (see STAGE_TONE) */
   gold: { bg: '#FFF5D6', fg: '#8A6400' },
   /** listed issues — light purple with near-black ink (matches the web chip) */
   listed: { bg: '#E2D9F6', fg: '#241E3D' },
