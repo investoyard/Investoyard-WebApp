@@ -149,24 +149,64 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     <section id="ipos">
       <GmpNotice />
 
-      {/* ── the hub strip, lifted out of the rail to sit under the banner ──
-          Same two groups, same skins, same markup — only the axis changes, so
-          the two live instruments stay loud and the two destinations stay
-          quiet. Full width they get ~4x the room they had at 304px. */}
-      <div className="h2-strip">
-        <div className="sd-group">
+      {/* ── market board, under the banner ──────────────────────────────────
+          The rail keeps its own version of these readings; this is a DIFFERENT
+          treatment of the same data, not the rail turned sideways — otherwise
+          there would be nothing to choose between.
+
+          The device is an exchange board: one continuous surface, hairline
+          verticals, micro-caps labels over large tabular figures. It is the
+          house style ("calm & data-clear") speaking the subject's own
+          vocabulary, and it reads in one sweep because the numbers sit on a
+          shared baseline instead of in nine separate boxes.
+
+          The eye-catch is a single 2px line across the top — indigo resolving
+          into gold, the two brand colours as one gesture. One line, one
+          surface: enough presence to hold the space under a 302px banner
+          without becoming a second banner. */}
+      <div className="h2b" role="group" aria-label="Market at a glance">
+        <div className="h2b-row">
+          <div className="h2b-cell h2b-day">
+            <span className="h2b-l">Today</span>
+            <b className="h2b-v h2b-date">{dateLabel}</b>
+          </div>
+
+          {/* counting a status is also a way to filter by it */}
+          {pulses.map((p) => {
+            const inner = (
+              <>
+                <span className="h2b-l"><i className={`h2b-dot d-${p.dot}`} aria-hidden />{p.short}</span>
+                <b className="h2b-v">{p.n}</b>
+              </>
+            );
+            const cls = `h2b-cell h2b-cnt${p.n === 0 ? ' dim' : ''}`;
+            return p.href
+              ? <a key={p.label} className={cls} href={p.href} title={p.label}>{inner}</a>
+              : <button key={p.label} type="button" className={cls} onClick={p.onClick} title={p.label}>{inner}</button>;
+          })}
+
+          {/* the live readings — colour marks the FIGURE, never the container,
+              so the board stays one surface and the semantics stay honest */}
           {hubs.filter((h) => h.skin).map((h) => (
-            <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
-              {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
-              <span className="t">{h.label}</span>
-              {h.sig && <em className="v">{h.sig}</em>}
-              <Icon name="chevron-right" size={15} />
+            <a key={h.href} className={`h2b-cell h2b-read ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
+              <span className="h2b-l">
+                {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={11} />}
+                {h.label}
+              </span>
+              {h.sig
+                ? <b className="h2b-v h2b-sig">{h.sig}</b>
+                : <b className="h2b-v h2b-none" title={h.empty}>—</b>}
             </a>
           ))}
-        </div>
-        <div className="sd-links">
-          <a href={`/calendar${q}`}><Icon name="calendar" size={15} /> IPO Calendar <Icon name="arrow-right" size={13} /></a>
-          <a href={`/allotment${q}`}><Icon name="receipt" size={15} /> Allotment <Icon name="arrow-right" size={13} /></a>
+
+          {/* destinations deliberately break the label/figure rhythm: they are
+              actions, not readings, and should not be mistaken for one */}
+          <a className="h2b-cell h2b-go" href={`/calendar${q}`}>
+            <Icon name="calendar" size={16} /><span>IPO Calendar</span><Icon name="arrow-right" size={13} />
+          </a>
+          <a className="h2b-cell h2b-go" href={`/allotment${q}`}>
+            <Icon name="receipt" size={16} /><span>Allotment</span><Icon name="arrow-right" size={13} />
+          </a>
         </div>
       </div>
 
@@ -245,9 +285,21 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
 
         {view !== 'table' && (
           <aside className="h2-side" aria-label="Today at a glance">
-            {/* The hub group and the destination links now live in the strip
-                under the banner; repeating them here would be the same four
-                links twice on one screen. */}
+            {/* the two live instruments lead — biggest type on the rail */}
+            {/* Action rows, not stat panels. These are links whose job is to
+                get you to a page; the live number rides along when there is one
+                and costs no height when there isn't — a 30px figure reading "—"
+                was reserving space for data that may not exist. */}
+            <div className="sd-group">
+              {hubs.filter((h) => h.skin).map((h) => (
+                <a key={h.href} className={`sd-btn ${h.skin}`} href={h.href} title={h.sig ? h.note : h.empty}>
+                  {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={15} />}
+                  <span className="t">{h.label}</span>
+                  {h.sig && <em className="v">{h.sig}</em>}
+                  <Icon name="chevron-right" size={15} />
+                </a>
+              ))}
+            </div>
 
             {/* today, as an instrument panel rather than a sentence */}
             <div className="sd-today">
@@ -260,6 +312,12 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
                     : <button key={p.label} type="button" className={`sd-count${p.n === 0 ? ' dim' : ''}`} onClick={p.onClick} title={p.label}>{inner}</button>;
                 })}
               </div>
+            </div>
+
+            {/* plain destinations, grouped and quiet */}
+            <div className="sd-links">
+              <a href={`/calendar${q}`}><Icon name="calendar" size={15} /> IPO Calendar <Icon name="arrow-right" size={13} /></a>
+              <a href={`/allotment${q}`}><Icon name="receipt" size={15} /> Allotment <Icon name="arrow-right" size={13} /></a>
             </div>
 
             <AppTeaser />
