@@ -206,7 +206,7 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
             { k: 'all', label: 'All', dot: '' },
             { k: 'open', label: 'Open', dot: 'live' },
             { k: 'upcoming', label: 'Upcoming', dot: 'upcoming' },
-            { k: 'closed', label: 'Closed', dot: 'ended' },
+            { k: 'closed', label: 'Closed', dot: 'closing' },
           ] as { k: StatusFilter; label: string; dot: string }[]).map((s) => (
             <button key={s.k} type="button" className={status === s.k ? 'on' : ''} onClick={() => setStatus(s.k)}>
               {s.dot && <i className={`t-${s.dot}`} aria-hidden />}{s.label}

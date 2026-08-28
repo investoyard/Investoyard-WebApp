@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { fonts, ui } from '../../lib/theme';
 
-export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed' | 'ended';
+export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed' | 'closing';
 
 /**
  * Soft-tinted pill palette.
@@ -10,7 +10,7 @@ export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'in
  * which gives every status its OWN colour — no two statuses share one:
  *   success Live/Open Today · danger Closing Today · brand Upcoming/Pre Apply
  *   neutral Awaiting Allotment · gold Allotment Out · listed Listed
- *   ended Withdrawn / Closed
+ *   closing Closing Today / Closed / Withdrawn
  * warn and info remain for non-status chips.
  */
 const TONES: Record<ChipTone, { bg: string; fg: string }> = {
@@ -24,8 +24,9 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   gold: { bg: '#FFF5D6', fg: '#8A6400' },
   /** listed issues — light purple with near-black ink (matches the web chip) */
   listed: { bg: '#E2D9F6', fg: '#241E3D' },
-  /** finished and gone — muted clay, NOT the loss red (see STAGE_TONE) */
-  ended: { bg: '#FBEDE9', fg: '#9E4632' },
+  /** the CLOSE family — Closing Today, Closed, Withdrawn. Web's --neg /
+   *  --neg-soft exactly, because ui.red (#B3261E) is a different red. */
+  closing: { bg: '#FCEBE8', fg: '#D8412A' },
 };
 
 /** Status pill — 6px dot prefix, radius 999, 11/700, 4×10 padding. */

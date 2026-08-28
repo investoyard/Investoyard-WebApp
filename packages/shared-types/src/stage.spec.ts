@@ -24,7 +24,7 @@ describe('STAGE_TONE', () => {
       awaiting: 'awaiting',
       allotmentout: 'allotment',
       listed: 'listed',
-      withdrawn: 'ended',
+      withdrawn: 'closing',
     });
   });
 
@@ -37,14 +37,22 @@ describe('STAGE_TONE', () => {
     expect(Object.keys(STAGE_TONE).sort()).toEqual([...stages].sort());
   });
 
-  it('gives every status its OWN colour — only Open Today may share', () => {
-    // The rule this file exists to protect: a colour code, not a mood. Open
-    // Today shares Live's green because it IS Live on its first day, and the
-    // card separates them with a solid fill rather than a second colour.
+  it('gives every status its own colour, bar the two families', () => {
+    // A colour code, not a mood. Exactly two groups share: Open Today IS Live
+    // on day one, and Closing Today / Closed / Withdrawn are one event at
+    // different moments. Everything else owns its colour outright, and the
+    // card separates states inside a family with a solid fill.
     const byTone: Record<string, string[]> = {};
     for (const [stage, tone] of Object.entries(STAGE_TONE)) (byTone[tone] ??= []).push(stage);
     const shared = Object.entries(byTone).filter(([, stages]) => stages.length > 1);
-    expect(shared).toEqual([['live', ['opentoday', 'live']]]);
+    expect(shared).toEqual([
+      ['live', ['opentoday', 'live']],
+      ['closing', ['closingtoday', 'withdrawn']],
+    ]);
+  });
+
+  it('paints Closing and Closed the same — they are the same event', () => {
+    expect(STAGE_TONE.withdrawn).toBe(STAGE_TONE.closingtoday);
   });
 
   it('never lets Closing Today and Allotment Out share a colour', () => {
@@ -71,7 +79,7 @@ describe('toneOf', () => {
     expect(toneOf({ status: 'open', closeDate: today() })).toBe('closing');
     expect(toneOf({ status: 'open', openDate: today() })).toBe('live');
     expect(toneOf({ status: 'listed' })).toBe('listed');
-    expect(toneOf({ status: 'withdrawn' })).toBe('ended');
+    expect(toneOf({ status: 'withdrawn' })).toBe('closing');
   });
 
   it('agrees with stageOf for every input', () => {

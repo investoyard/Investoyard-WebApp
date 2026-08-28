@@ -133,20 +133,21 @@ export function isRecent(ipo: StageInput & { listingDate?: string; closeDate?: s
  * indistinguishable side by side in the Today row.
  *
  *   live       green   #12925a   Live / Open Today
- *   closing    red     #d8412a   Closing Today — the last day to apply
+ *   closing    red     #d8412a   Closing Today, Closed, Withdrawn — the close family
  *   preapply   indigo  #7565bd   Pre Apply
  *   upcoming   indigo  #3c2e7e   Upcoming / Opens in Nd
  *   awaiting   grey    #908d9e   Awaiting Allotment
  *   allotment  gold    #e6ad12   Allotment Out
  *   listed     purple  #9b7fd4   Listed
- *   ended      clay    #c4614a   Withdrawn, and anything labelled Closed
  *
- * Open Today shares Live's green because it is the same status on its first
- * day; the card separates them with a solid fill, not a second colour.
+ * Two FAMILIES share a colour, and only these two. Open Today is Live on its
+ * first day; Closing Today, Closed and Withdrawn are one event caught at
+ * different moments. Within a family the card separates states with a solid
+ * fill, never a second colour. Everything else owns its colour outright.
  */
 export type StageTone =
   | 'live' | 'closing' | 'preapply' | 'upcoming'
-  | 'awaiting' | 'allotment' | 'listed' | 'ended';
+  | 'awaiting' | 'allotment' | 'listed';
 
 export const STAGE_TONE: Record<Stage, StageTone> = {
   opentoday: 'live',
@@ -157,7 +158,7 @@ export const STAGE_TONE: Record<Stage, StageTone> = {
   awaiting: 'awaiting',
   allotmentout: 'allotment',
   listed: 'listed',
-  withdrawn: 'ended',
+  withdrawn: 'closing',
 };
 
 export const toneOf = (ipo: StageInput): StageTone => STAGE_TONE[stageOf(ipo)];

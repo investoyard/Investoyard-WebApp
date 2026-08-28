@@ -60,7 +60,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
 
   if (ipo.status === 'withdrawn') {
     return {
-      stage: 'withdrawn', label: 'Withdrawn', tone: 'ended', pulse: false,
+      stage: 'withdrawn', label: 'Withdrawn', tone: 'closing', pulse: false,
       note: 'This issue was withdrawn by the company.',
       panels: ['timeline'], cta: { kind: 'details', label: 'View Details' },
     };
@@ -105,7 +105,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
       ? { kind: 'apply' as CtaKind, label: 'Apply Now' }
       : { kind: 'remind' as CtaKind, label: 'Remind Me' };
     if (ipo.closeDate === today) {
-      return { stage: 'closingtoday', label: 'Closing Today', tone: 'danger', note: 'Last day to apply', ...base, cta };
+      return { stage: 'closingtoday', label: 'Closing Today', tone: 'closing', note: 'Last day to apply', ...base, cta };
     }
     if (ipo.openDate === today) {
       return {

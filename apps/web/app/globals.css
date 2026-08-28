@@ -1248,9 +1248,11 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .t-live, .ic-dot.open, .status.open, .ph.live {
             --tone: var(--pos);        --tone-soft: var(--pos-soft);  --tone-ink: var(--pos);
             --tone-solid: var(--pos);  --tone-on: #fff;        --tone-acc: rgba(60,200,130,.24); }
-/* the last day to apply — the most urgent thing on the page, and the only
-   status allowed to borrow the loss red */
-.t-closing {
+/* The CLOSE family — Closing Today, Closed and Withdrawn are one event at
+   different moments, so they carry one colour. The only status group allowed
+   to borrow the loss red: the last day to apply is the most urgent thing on
+   the page, and a closed issue is the same story finished. */
+.t-closing, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
             --tone: var(--neg);        --tone-soft: var(--neg-soft);  --tone-ink: var(--neg);
             --tone-solid: var(--neg);  --tone-on: #fff;        --tone-acc: rgba(216,65,42,.24); }
 .t-preapply {
@@ -1268,11 +1270,6 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
             --tone: #9b7fd4;           --tone-soft: #e2d9f6;          --tone-ink: #4a3a75;
             --tone-solid: #9b7fd4;     --tone-on: #241e3d;     --tone-acc: rgba(155,127,212,.22); }
-/* finished and gone — a MUTED clay beside Closing's saturated red, so the two
-   read as related weights of one idea rather than as a clash */
-.t-ended, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
-            --tone: #c4614a;           --tone-soft: #fbede9;          --tone-ink: #9e4632;
-            --tone-solid: #c4614a;     --tone-on: #fff;        --tone-acc: rgba(196,97,74,.20); }
 
 .ic-status { background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
 /* Solid means TODAY — Open Today and Closing Today. Same tone as their ongoing
@@ -1734,13 +1731,10 @@ a.ga-row:hover .ga-name { color: var(--brand); }
     --sh-md: 0 10px 28px rgba(0,0,0,.5); --sh-lg: 0 28px 64px rgba(0,0,0,.6);
     /* listed + ended carry literal colours, so they need a dark counterpart */
     --tone-listed-soft: #241f38; --tone-listed-ink: #c9b8ea;
-    --tone-ended-soft: #2a1614;  --tone-ended-ink: #f0a08c;
     --ring: 0 0 0 4px rgba(154, 140, 224, 0.22);
   }
   .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
     --tone-soft: var(--tone-listed-soft); --tone-ink: var(--tone-listed-ink); }
-  .t-ended, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
-    --tone-soft: var(--tone-ended-soft); --tone-ink: var(--tone-ended-ink); }
   body { background: radial-gradient(1200px 600px at 100% -200px, rgba(120,100,220,0.10), transparent 60%), var(--bg); }
   .header { background: rgba(12,11,18,0.7); }
   .btn-white { background: #fff; color: var(--brand-700); }
