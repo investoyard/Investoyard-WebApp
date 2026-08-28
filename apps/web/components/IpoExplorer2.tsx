@@ -156,15 +156,16 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
             whole catalog's counts, so a figure is justified here */}
         <div className="h2b-stats">
           <div className="h2b-cell h2b-day">
-            <span className="h2b-l">Today</span>
-            <b className="h2b-v h2b-date">{dateLabel}</b>
+            <Icon name="calendar" size={14} />
+            <b className="h2b-date">{dateLabel}</b>
           </div>
           {/* counting a status is also a way to filter by it */}
           {pulses.map((p) => {
             const inner = (
               <>
-                <span className="h2b-l"><i className={`h2b-dot d-${p.dot}`} aria-hidden />{p.short}</span>
+                <i className={`h2b-dot d-${p.dot}`} aria-hidden />
                 <b className="h2b-v">{p.n}</b>
+                <span className="h2b-l">{p.short}</span>
               </>
             );
             const cls = `h2b-cell h2b-cnt${p.n === 0 ? ' dim' : ''}`;
@@ -184,14 +185,13 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
             <a key={h.href} className={`h2b-btn ${h.skin}`} href={h.href}>
               {h.pulse ? <span className="mkt-live" aria-hidden /> : <Icon name={h.icon} size={16} />}
               <span>{h.label}</span>
-              <Icon name="arrow-right" size={13} />
             </a>
           ))}
           <a className="h2b-btn" href={`/calendar${q}`}>
-            <Icon name="calendar" size={16} /><span>IPO Calendar</span><Icon name="arrow-right" size={13} />
+            <Icon name="calendar" size={16} /><span>IPO Calendar</span>
           </a>
           <a className="h2b-btn" href={`/allotment${q}`}>
-            <Icon name="receipt" size={16} /><span>Allotment</span><Icon name="arrow-right" size={13} />
+            <Icon name="receipt" size={16} /><span>Allotment</span>
           </a>
         </div>
       </div>
