@@ -9,20 +9,22 @@ import { useTenant } from '@/components/TenantProvider';
 import { titleCase } from '@investoyard/shared-types';
 
 /**
- * Live navigation — the menu is itself an instrument ("data in the nav"):
- * each item carries a tiny real-time signal (live count, top GMP, hottest ×,
- * today's events), and IPOs opens ONE command panel — quick filters on the
- * left, the live issues with instant Apply/Print on the right — instead of a
- * dropdown link list. Signals stay muted unless something is genuinely live.
- * Phone: the same items in a bottom sheet, signals preserved.
+ * Live navigation — the menu carries a little real-time data, and IPOs opens
+ * ONE command panel (quick filters left, live issues with instant Apply/Print
+ * right) instead of a dropdown link list. Phone: the same items in a bottom
+ * sheet. Signals stay muted unless something is genuinely live.
+ *
+ * The only figures here are COUNTS — live issues, events today — because a
+ * count describes the whole set behind the link. GMP and Subscription used to
+ * carry the highest premium and the hottest × , which is one company's number
+ * wearing a site-wide label; those live on the cards, beside the issue they
+ * belong to and beside the GMP disclaimer.
  */
 
 const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 interface Signals {
   liveCount: number;
-  topGmp: number | null;
-  hotX: number | null;
   todayEvents: number;
   featured: IpoFull[];
   counts: { open: number; upcoming: number; postClose: number; sme: number };
@@ -32,8 +34,6 @@ function computeSignals(ipos: IpoFull[]): Signals {
   const today = dayIso();
   const open = ipos.filter((i) => i.status === 'open');
   const upcoming = ipos.filter((i) => i.status === 'upcoming');
-  const gmps = [...open, ...upcoming].map((i) => i.gmpPct ?? i.gmp).filter((n): n is number => n != null);
-  const xs = open.map((i) => i.subscriptionTimes).filter((n): n is number => n != null);
   const todayEvents = ipos.reduce((n, i) =>
     n + [i.openDate, i.closeDate, i.allotmentDate, i.listingDate].filter((d) => d === today).length, 0);
   const featured = [
@@ -43,8 +43,6 @@ function computeSignals(ipos: IpoFull[]): Signals {
   ].slice(0, 4);
   return {
     liveCount: open.length,
-    topGmp: gmps.length ? Math.max(...gmps) : null,
-    hotX: xs.length ? Math.max(...xs) : null,
     todayEvents,
     featured,
     counts: {
@@ -81,15 +79,13 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
 
   const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const items: { href: string; label: string; sig?: React.ReactNode }[] = [
-    {
-      href: '/gmp', label: 'GMP',
-      sig: tenant.flags.gmpEnabled && sig?.topGmp != null && sig.topGmp > 0
-        ? <span className="nv-sig gp">+{sig.topGmp}%</span> : undefined,
-    },
-    {
-      href: '/subscription', label: 'Subscription',
-      sig: sig?.hotX != null ? <span className="nv-sig hot">{sig.hotX}×</span> : undefined,
-    },
+    // No figure on either of these. Both link to a page listing EVERY issue, so
+    // the highest premium or the hottest subscription is one company's number
+    // wearing a site-wide label — and a promoted "+18.5%" in the header, away
+    // from the issue it belongs to and from the GMP disclaimer, reads as a
+    // claim rather than as data. The per-issue numbers live on the cards.
+    { href: '/gmp', label: 'GMP' },
+    { href: '/subscription', label: 'Subscription' },
     { href: '/allotment', label: 'Allotment' },
     {
       href: '/calendar', label: 'Calendar',
