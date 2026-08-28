@@ -24,7 +24,7 @@ describe('STAGE_TONE', () => {
       upcoming: 'soon',
       listed: 'listed',
       awaiting: 'quiet',
-      withdrawn: 'quiet',
+      withdrawn: 'ended',
     });
   });
 
@@ -55,7 +55,7 @@ describe('toneOf', () => {
     expect(toneOf({ status: 'open', closeDate: today() })).toBe('urgent');
     expect(toneOf({ status: 'open', openDate: today() })).toBe('live');
     expect(toneOf({ status: 'listed' })).toBe('listed');
-    expect(toneOf({ status: 'withdrawn' })).toBe('quiet');
+    expect(toneOf({ status: 'withdrawn' })).toBe('ended');
   });
 
   it('agrees with stageOf for every input', () => {

@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { fonts, ui } from '../../lib/theme';
 
-export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed';
+export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed' | 'ended';
 
 /**
  * Soft-tinted pill palette.
@@ -23,6 +23,8 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   gold: { bg: '#FFF5D6', fg: '#8A6400' },
   /** listed issues — light purple with near-black ink (matches the web chip) */
   listed: { bg: '#E2D9F6', fg: '#241E3D' },
+  /** finished and gone — muted clay, NOT the loss red (see STAGE_TONE) */
+  ended: { bg: '#FBEDE9', fg: '#9E4632' },
 };
 
 /** Status pill — 6px dot prefix, radius 999, 11/700, 4×10 padding. */

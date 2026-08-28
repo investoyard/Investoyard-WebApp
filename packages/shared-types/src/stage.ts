@@ -139,12 +139,13 @@ export function isRecent(ipo: StageInput & { listingDate?: string; closeDate?: s
  *   urgent  gold    — act TODAY: the last day to apply, or an allotment to check
  *   soon    indigo  — coming, nothing to do yet
  *   listed  purple  — trading; the issue is history
+ *   ended   clay    — finished and gone (withdrawn, and anything labelled Closed)
  *   quiet   grey    — waiting, with nothing for the investor to do
  *
  * Gold covering both Closing Today and Allotment Out is deliberate: they are
  * the two states that need the investor TODAY, which is one meaning, not two.
  */
-export type StageTone = 'live' | 'urgent' | 'soon' | 'listed' | 'quiet';
+export type StageTone = 'live' | 'urgent' | 'soon' | 'listed' | 'ended' | 'quiet';
 
 export const STAGE_TONE: Record<Stage, StageTone> = {
   opentoday: 'live',
@@ -155,7 +156,7 @@ export const STAGE_TONE: Record<Stage, StageTone> = {
   upcoming: 'soon',
   listed: 'listed',
   awaiting: 'quiet',
-  withdrawn: 'quiet',
+  withdrawn: 'ended',
 };
 
 export const toneOf = (ipo: StageInput): StageTone => STAGE_TONE[stageOf(ipo)];

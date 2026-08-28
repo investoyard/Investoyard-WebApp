@@ -34,7 +34,7 @@ import { RemindBell } from '../../components/RemindBell';
    listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
    plain grey, which put this screen out of step with the cards and with web. */
 const STATUS_TONE: Record<string, ChipTone> = {
-  open: 'success', upcoming: 'brand', closed: 'neutral', listed: 'listed', withdrawn: 'neutral',
+  open: 'success', upcoming: 'brand', closed: 'ended', listed: 'listed', withdrawn: 'ended',
 };
 
 export default function IpoDetailScreen() {

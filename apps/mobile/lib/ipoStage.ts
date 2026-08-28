@@ -60,7 +60,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
 
   if (ipo.status === 'withdrawn') {
     return {
-      stage: 'withdrawn', label: 'Withdrawn', tone: 'neutral', pulse: false,
+      stage: 'withdrawn', label: 'Withdrawn', tone: 'ended', pulse: false,
       note: 'This issue was withdrawn by the company.',
       panels: ['timeline'], cta: { kind: 'details', label: 'View Details' },
     };

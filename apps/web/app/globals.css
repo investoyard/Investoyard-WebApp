@@ -1237,15 +1237,31 @@ a.ga-row:hover .ga-name { color: var(--brand); }
      --tone       the dot / solid fill
      --tone-soft  the chip background
      --tone-ink   the chip text */
-.t-live, .ic-dot.open, .status.open, .ph.live { --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
-            --tone-solid: var(--pos);  --tone-on: #fff;      --tone-acc: rgba(60,200,130,.24); }
-.t-urgent, .ph.allotment { --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
-            --tone-solid: var(--gold); --tone-on: #4a3600;   --tone-acc: rgba(255,203,50,.26); }
-.t-soon, .ic-dot.upcoming, .status.upcoming, .ph.upcoming { --tone: var(--brand-400);  --tone-soft: var(--brand-50); --tone-ink: var(--brand);
-            --tone-solid: var(--brand); --tone-on: #fff;     --tone-acc: rgba(117,101,189,.20); }
-.t-listed, .ic-dot.listed, .status.listed, .ph.listed { --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: var(--text);
-            --tone-solid: #c9b8ea;     --tone-on: var(--text); --tone-acc: rgba(155,127,212,.22); }
-.t-quiet, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn { --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
+/* --tone (the dot) and --tone-solid (a filled chip) are the SAME colour in
+   every tone. They were not: urgent's dot was --gold-600 while its solid chip
+   was --gold, so "Closing" in the today row and "Closing Today" on a card were
+   two different golds. A dot and a chip of the same status must not disagree. */
+.t-live, .ic-dot.open, .status.open, .ph.live {
+            --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
+            --tone-solid: var(--pos);  --tone-on: #fff;       --tone-acc: rgba(60,200,130,.24); }
+.t-urgent, .ph.allotment {
+            --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
+            --tone-solid: var(--gold-600); --tone-on: #3d2c00;  --tone-acc: rgba(230,173,18,.26); }
+.t-soon, .ic-dot.upcoming, .status.upcoming, .ph.upcoming {
+            --tone: var(--brand);      --tone-soft: var(--brand-50); --tone-ink: var(--brand);
+            --tone-solid: var(--brand); --tone-on: #fff;      --tone-acc: rgba(60,46,126,.20); }
+.t-listed, .ic-dot.listed, .status.listed, .ph.listed {
+            --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: #4a3a75;
+            --tone-solid: #9b7fd4;     --tone-on: #241e3d;   --tone-acc: rgba(155,127,212,.22); }
+/* Finished and gone. A muted CLAY, deliberately not the loss red (--neg
+   #d8412a): a closed issue is over, not a loss, and on a financial page red
+   has a meaning it must keep. Awaiting Allotment stays quiet grey — it is
+   still in progress, and clay there would read as something gone wrong. */
+.t-ended, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
+            --tone: #c4614a;           --tone-soft: #fbede9;         --tone-ink: #9e4632;
+            --tone-solid: #c4614a;     --tone-on: #fff;      --tone-acc: rgba(196,97,74,.20); }
+.t-quiet, .ic-dot.closed {
+            --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
             --tone-solid: var(--text-faint); --tone-on: #fff; --tone-acc: rgba(144,141,158,.16); }
 
 .ic-status { background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
@@ -1706,8 +1722,15 @@ a.ga-row:hover .ga-name { color: var(--brand); }
     --pos: #3fcf80; --pos-soft: #11261a; --neg: #f4715f; --neg-soft: #2a1614;
     --warn: #e6b53e; --warn-soft: #261f10;
     --sh-md: 0 10px 28px rgba(0,0,0,.5); --sh-lg: 0 28px 64px rgba(0,0,0,.6);
+    /* listed + ended carry literal colours, so they need a dark counterpart */
+    --tone-listed-soft: #241f38; --tone-listed-ink: #c9b8ea;
+    --tone-ended-soft: #2a1614;  --tone-ended-ink: #f0a08c;
     --ring: 0 0 0 4px rgba(154, 140, 224, 0.22);
   }
+  .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
+    --tone-soft: var(--tone-listed-soft); --tone-ink: var(--tone-listed-ink); }
+  .t-ended, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
+    --tone-soft: var(--tone-ended-soft); --tone-ink: var(--tone-ended-ink); }
   body { background: radial-gradient(1200px 600px at 100% -200px, rgba(120,100,220,0.10), transparent 60%), var(--bg); }
   .header { background: rgba(12,11,18,0.7); }
   .btn-white { background: #fff; color: var(--brand-700); }
