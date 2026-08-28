@@ -3,25 +3,42 @@ import { useEffect, useState } from 'react';
 import { getConsumerToken, grantConsent } from '@/lib/consumer-api';
 
 /**
- * One-time GMP awareness dialog (compliance): shown the first time a visitor
- * opens a screen that displays grey-market figures. Acceptance is stored
- * locally and, when signed in, recorded as a 'gmp_disclaimer' consent (gmp-v2).
+ * DAILY GMP awareness dialog (compliance): shown on the first screen carrying
+ * grey-market figures each day. Acceptance is stored locally and, when signed
+ * in, recorded as a 'gmp_disclaimer' consent (gmp-v2).
+ *
+ * Daily rather than once-ever by the operator's decision, and it is the safer
+ * reading: GMP is unofficial and unregulated, so a disclaimer someone clicked
+ * through months ago is thin protection. The stored value is the DATE of the
+ * last acceptance, not a flag — one key that gets overwritten, rather than a
+ * new key every day quietly filling localStorage.
+ *
  * Original Investoyard wording (operator-approved).
  */
 const VERSION = 'gmp-v2';
 const KEY = `iy.gmpConsent.${VERSION}`;
 
+/** local YYYY-MM-DD — a day boundary the reader would recognise, not UTC's */
+const today = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
 export function GmpNotice() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    try { if (!localStorage.getItem(KEY)) setShow(true); } catch { /* ignore */ }
+    // read in an effect, never in render: the date makes this non-deterministic
+    // and it would mismatch the statically exported HTML on hydration
+    try { if (localStorage.getItem(KEY) !== today()) setShow(true); } catch { setShow(true); }
   }, []);
 
   if (!show) return null;
 
   const accept = () => {
-    try { localStorage.setItem(KEY, new Date().toISOString()); } catch { /* ignore */ }
+    try { localStorage.setItem(KEY, today()); } catch { /* private mode — this session only */ }
+    // every acknowledgement is recorded, not just the first: for a disclaimer
+    // the evidence that matters is that they re-accepted TODAY
     if (getConsumerToken()) grantConsent('gmp_disclaimer', VERSION).catch(() => { /* local consent stands */ });
     setShow(false);
   };

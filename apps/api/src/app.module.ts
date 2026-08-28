@@ -34,6 +34,7 @@ import { PostsModule } from './modules/posts/posts.module';
 import { AllotmentModule } from './modules/allotment/allotment.module';
 import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
 import { GmpEntryModule } from './modules/gmp-entry/gmp-entry.module';
+import { GmpFeedModule } from './modules/gmp-feed/gmp-feed.module';
 import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
 import { MessageLogApiModule } from './modules/message-log/message-log.module';
 
@@ -70,6 +71,7 @@ import { MessageLogApiModule } from './modules/message-log/message-log.module';
     AllotmentModule,
     IpoImportModule,
     GmpEntryModule,
+    GmpFeedModule,
     PartnerOnboardingModule,
     MessageLogApiModule,
   ],
