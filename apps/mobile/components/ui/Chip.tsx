@@ -7,10 +7,11 @@ export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'in
  * Soft-tinted pill palette.
  *
  * For IPO STATUS the tone comes from STAGE_TONE in @investoyard/shared-types,
- * so web and mobile paint the same stage the same colour:
- *   success = live · gold = act today · brand = soon · listed = listed
- *   neutral = quiet (awaiting, withdrawn)
- * The rest (danger, warn, info) remain for non-status chips.
+ * which gives every status its OWN colour — no two statuses share one:
+ *   success Live/Open Today · danger Closing Today · brand Upcoming/Pre Apply
+ *   neutral Awaiting Allotment · gold Allotment Out · listed Listed
+ *   ended Withdrawn / Closed
+ * warn and info remain for non-status chips.
  */
 const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   neutral: { bg: ui.slateTint, fg: ui.slate },

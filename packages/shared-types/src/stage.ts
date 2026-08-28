@@ -124,38 +124,39 @@ export function isRecent(ipo: StageInput & { listingDate?: string; closeDate?: s
 }
 
 /**
- * Stage → colour tone. The ONE status colour contract, shared by web and mobile.
+ * Stage → colour. ONE colour per status, shared by web and mobile.
  *
- * It lives here rather than in each surface's stylesheet because it had already
- * drifted six ways: gold meant Closing Today on a card, Upcoming in the filter
- * bar and Allotment Out on mobile; grey meant Upcoming on a card but Listing in
- * the market board; and mobile painted Closing Today RED where web painted it
- * gold. Web alone held four independent copies of the same four-colour dot
- * palette.
+ * A colour code, not a mood: each status owns a colour and no two statuses
+ * share one, so the same status is the same swatch on every screen. An earlier
+ * version grouped statuses by what they MEANT — Closing Today and Allotment
+ * Out were both "act today", so both gold — which left two different statuses
+ * indistinguishable side by side in the Today row.
  *
- * Five tones, each with one meaning:
+ *   live       green   #12925a   Live / Open Today
+ *   closing    red     #d8412a   Closing Today — the last day to apply
+ *   preapply   indigo  #7565bd   Pre Apply
+ *   upcoming   indigo  #3c2e7e   Upcoming / Opens in Nd
+ *   awaiting   grey    #908d9e   Awaiting Allotment
+ *   allotment  gold    #e6ad12   Allotment Out
+ *   listed     purple  #9b7fd4   Listed
+ *   ended      clay    #c4614a   Withdrawn, and anything labelled Closed
  *
- *   live    green   — you can apply right now
- *   urgent  gold    — act TODAY: the last day to apply, or an allotment to check
- *   soon    indigo  — coming, nothing to do yet
- *   listed  purple  — trading; the issue is history
- *   ended   clay    — finished and gone (withdrawn, and anything labelled Closed)
- *   quiet   grey    — waiting, with nothing for the investor to do
- *
- * Gold covering both Closing Today and Allotment Out is deliberate: they are
- * the two states that need the investor TODAY, which is one meaning, not two.
+ * Open Today shares Live's green because it is the same status on its first
+ * day; the card separates them with a solid fill, not a second colour.
  */
-export type StageTone = 'live' | 'urgent' | 'soon' | 'listed' | 'ended' | 'quiet';
+export type StageTone =
+  | 'live' | 'closing' | 'preapply' | 'upcoming'
+  | 'awaiting' | 'allotment' | 'listed' | 'ended';
 
 export const STAGE_TONE: Record<Stage, StageTone> = {
   opentoday: 'live',
   live: 'live',
-  closingtoday: 'urgent',
-  allotmentout: 'urgent',
-  preapply: 'soon',
-  upcoming: 'soon',
+  closingtoday: 'closing',
+  preapply: 'preapply',
+  upcoming: 'upcoming',
+  awaiting: 'awaiting',
+  allotmentout: 'allotment',
   listed: 'listed',
-  awaiting: 'quiet',
   withdrawn: 'ended',
 };
 

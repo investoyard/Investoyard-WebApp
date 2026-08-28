@@ -105,7 +105,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
       ? { kind: 'apply' as CtaKind, label: 'Apply Now' }
       : { kind: 'remind' as CtaKind, label: 'Remind Me' };
     if (ipo.closeDate === today) {
-      return { stage: 'closingtoday', label: 'Closing Today', tone: 'gold', note: 'Last day to apply', ...base, cta };
+      return { stage: 'closingtoday', label: 'Closing Today', tone: 'danger', note: 'Last day to apply', ...base, cta };
     }
     if (ipo.openDate === today) {
       return {

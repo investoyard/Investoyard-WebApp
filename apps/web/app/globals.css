@@ -1237,32 +1237,42 @@ a.ga-row:hover .ga-name { color: var(--brand); }
      --tone       the dot / solid fill
      --tone-soft  the chip background
      --tone-ink   the chip text */
-/* --tone (the dot) and --tone-solid (a filled chip) are the SAME colour in
-   every tone. They were not: urgent's dot was --gold-600 while its solid chip
-   was --gold, so "Closing" in the today row and "Closing Today" on a card were
-   two different golds. A dot and a chip of the same status must not disagree. */
+/* ── status colours: ONE per status, every surface ─────────────────────────
+   A colour code. No two statuses share a colour, so the same status is the
+   same swatch on a card, in the Today row, in the filter bar and in admin.
+   Mapped from the stage by STAGE_TONE in shared-types/stage.ts.
+
+   --tone and --tone-solid are always the SAME colour; a dot and a filled chip
+   of one status must never disagree. Raw status/phase class names are aliases
+   on these rules, so a colour value exists in exactly one place. */
 .t-live, .ic-dot.open, .status.open, .ph.live {
-            --tone: var(--pos);        --tone-soft: var(--pos-soft); --tone-ink: var(--pos);
-            --tone-solid: var(--pos);  --tone-on: #fff;       --tone-acc: rgba(60,200,130,.24); }
-.t-urgent, .ph.allotment {
-            --tone: var(--gold-600);   --tone-soft: var(--gold-50);  --tone-ink: #8a6d1f;
-            --tone-solid: var(--gold-600); --tone-on: #3d2c00;  --tone-acc: rgba(230,173,18,.26); }
-.t-soon, .ic-dot.upcoming, .status.upcoming, .ph.upcoming {
-            --tone: var(--brand);      --tone-soft: var(--brand-50); --tone-ink: var(--brand);
-            --tone-solid: var(--brand); --tone-on: #fff;      --tone-acc: rgba(60,46,126,.20); }
+            --tone: var(--pos);        --tone-soft: var(--pos-soft);  --tone-ink: var(--pos);
+            --tone-solid: var(--pos);  --tone-on: #fff;        --tone-acc: rgba(60,200,130,.24); }
+/* the last day to apply — the most urgent thing on the page, and the only
+   status allowed to borrow the loss red */
+.t-closing {
+            --tone: var(--neg);        --tone-soft: var(--neg-soft);  --tone-ink: var(--neg);
+            --tone-solid: var(--neg);  --tone-on: #fff;        --tone-acc: rgba(216,65,42,.24); }
+.t-preapply {
+            --tone: var(--brand-400);  --tone-soft: var(--brand-50);  --tone-ink: var(--brand-400);
+            --tone-solid: var(--brand-400); --tone-on: #fff;   --tone-acc: rgba(117,101,189,.20); }
+.t-upcoming, .ic-dot.upcoming, .status.upcoming, .ph.upcoming {
+            --tone: var(--brand);      --tone-soft: var(--brand-50);  --tone-ink: var(--brand);
+            --tone-solid: var(--brand); --tone-on: #fff;       --tone-acc: rgba(60,46,126,.20); }
+.t-awaiting {
+            --tone: var(--text-faint); --tone-soft: var(--bg-2);      --tone-ink: var(--text-muted);
+            --tone-solid: var(--text-faint); --tone-on: #fff;  --tone-acc: rgba(144,141,158,.16); }
+.t-allotment, .ph.allotment {
+            --tone: var(--gold-600);   --tone-soft: var(--gold-50);   --tone-ink: #8a6d1f;
+            --tone-solid: var(--gold-600); --tone-on: #3d2c00; --tone-acc: rgba(230,173,18,.26); }
 .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
-            --tone: #9b7fd4;           --tone-soft: #e2d9f6;         --tone-ink: #4a3a75;
-            --tone-solid: #9b7fd4;     --tone-on: #241e3d;   --tone-acc: rgba(155,127,212,.22); }
-/* Finished and gone. A muted CLAY, deliberately not the loss red (--neg
-   #d8412a): a closed issue is over, not a loss, and on a financial page red
-   has a meaning it must keep. Awaiting Allotment stays quiet grey — it is
-   still in progress, and clay there would read as something gone wrong. */
-.t-ended, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
-            --tone: #c4614a;           --tone-soft: #fbede9;         --tone-ink: #9e4632;
-            --tone-solid: #c4614a;     --tone-on: #fff;      --tone-acc: rgba(196,97,74,.20); }
-.t-quiet, .ic-dot.closed {
-            --tone: var(--text-faint); --tone-soft: var(--bg-2);     --tone-ink: var(--text-muted);
-            --tone-solid: var(--text-faint); --tone-on: #fff; --tone-acc: rgba(144,141,158,.16); }
+            --tone: #9b7fd4;           --tone-soft: #e2d9f6;          --tone-ink: #4a3a75;
+            --tone-solid: #9b7fd4;     --tone-on: #241e3d;     --tone-acc: rgba(155,127,212,.22); }
+/* finished and gone — a MUTED clay beside Closing's saturated red, so the two
+   read as related weights of one idea rather than as a clash */
+.t-ended, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
+            --tone: #c4614a;           --tone-soft: #fbede9;          --tone-ink: #9e4632;
+            --tone-solid: #c4614a;     --tone-on: #fff;        --tone-acc: rgba(196,97,74,.20); }
 
 .ic-status { background: var(--tone-soft, var(--bg-2)); color: var(--tone-ink, var(--text-muted)); }
 /* Solid means TODAY — Open Today and Closing Today. Same tone as their ongoing
@@ -1729,7 +1739,7 @@ a.ga-row:hover .ga-name { color: var(--brand); }
   }
   .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
     --tone-soft: var(--tone-listed-soft); --tone-ink: var(--tone-listed-ink); }
-  .t-ended, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
+  .t-ended, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
     --tone-soft: var(--tone-ended-soft); --tone-ink: var(--tone-ended-ink); }
   body { background: radial-gradient(1200px 600px at 100% -200px, rgba(120,100,220,0.10), transparent 60%), var(--bg); }
   .header { background: rgba(12,11,18,0.7); }

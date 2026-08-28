@@ -103,8 +103,8 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
   // "Allotment today", and the full phrase stays in the title attribute.
   const pulses: { n: number; label: string; short: string; dot: string; onClick?: () => void; href?: string }[] = [
     { n: counts.open, label: 'Open now', short: 'Open', dot: 'live', onClick: () => { setStatus('open'); setQuery(''); } },
-    { n: counts.closing, label: 'Closing today', short: 'Closing', dot: 'urgent', onClick: () => { setStatus('open'); setQuery(''); } },
-    { n: counts.allotment, label: 'Allotment today', short: 'Allotment', dot: 'urgent', href: `/allotment${q}` },
+    { n: counts.closing, label: 'Closing today', short: 'Closing', dot: 'closing', onClick: () => { setStatus('open'); setQuery(''); } },
+    { n: counts.allotment, label: 'Allotment today', short: 'Allotment', dot: 'allotment', href: `/allotment${q}` },
     { n: counts.listing, label: 'Listing today', short: 'Listing', dot: 'listed', href: `/calendar${q}` },
   ];
 
@@ -205,7 +205,7 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           {([
             { k: 'all', label: 'All', dot: '' },
             { k: 'open', label: 'Open', dot: 'live' },
-            { k: 'upcoming', label: 'Upcoming', dot: 'soon' },
+            { k: 'upcoming', label: 'Upcoming', dot: 'upcoming' },
             { k: 'closed', label: 'Closed', dot: 'ended' },
           ] as { k: StatusFilter; label: string; dot: string }[]).map((s) => (
             <button key={s.k} type="button" className={status === s.k ? 'on' : ''} onClick={() => setStatus(s.k)}>

@@ -27,8 +27,8 @@ export function TodayStrip({ ipos: baked, langQuery = '' }: { ipos: IpoFull[]; l
   const dateLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
   const items: { n: number; label: string; dot: string; href: string }[] = [
     { n: counts.open, label: 'Open now', dot: 'live', href: '#ipos' },
-    { n: counts.closing, label: 'Closing today', dot: 'urgent', href: '#ipos' },
-    { n: counts.allotment, label: 'Allotment today', dot: 'urgent', href: `/portfolio${langQuery}` },
+    { n: counts.closing, label: 'Closing today', dot: 'closing', href: '#ipos' },
+    { n: counts.allotment, label: 'Allotment today', dot: 'allotment', href: `/portfolio${langQuery}` },
     { n: counts.listing, label: 'Listing today', dot: 'listed', href: `/calendar${langQuery}` },
   ];
 

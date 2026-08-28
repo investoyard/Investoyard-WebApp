@@ -18,12 +18,12 @@ describe('STAGE_TONE', () => {
     expect(STAGE_TONE).toEqual({
       opentoday: 'live',
       live: 'live',
-      closingtoday: 'urgent',
-      allotmentout: 'urgent',
-      preapply: 'soon',
-      upcoming: 'soon',
+      closingtoday: 'closing',
+      preapply: 'preapply',
+      upcoming: 'upcoming',
+      awaiting: 'awaiting',
+      allotmentout: 'allotment',
       listed: 'listed',
-      awaiting: 'quiet',
       withdrawn: 'ended',
     });
   });
@@ -37,22 +37,38 @@ describe('STAGE_TONE', () => {
     expect(Object.keys(STAGE_TONE).sort()).toEqual([...stages].sort());
   });
 
-  it('reserves gold for the two states that need the investor TODAY', () => {
-    const urgent = Object.entries(STAGE_TONE).filter(([, t]) => t === 'urgent').map(([s]) => s);
-    expect(urgent.sort()).toEqual(['allotmentout', 'closingtoday']);
+  it('gives every status its OWN colour — only Open Today may share', () => {
+    // The rule this file exists to protect: a colour code, not a mood. Open
+    // Today shares Live's green because it IS Live on its first day, and the
+    // card separates them with a solid fill rather than a second colour.
+    const byTone: Record<string, string[]> = {};
+    for (const [stage, tone] of Object.entries(STAGE_TONE)) (byTone[tone] ??= []).push(stage);
+    const shared = Object.entries(byTone).filter(([, stages]) => stages.length > 1);
+    expect(shared).toEqual([['live', ['opentoday', 'live']]]);
   });
 
-  it('never paints an upcoming issue with the urgent tone', () => {
-    // the original defect: gold meant Closing Today on a card and Upcoming in
-    // the filter bar, on the same screen
-    expect(STAGE_TONE.upcoming).not.toBe('urgent');
-    expect(STAGE_TONE.upcoming).toBe(STAGE_TONE.preapply);
+  it('never lets Closing Today and Allotment Out share a colour', () => {
+    // the defect that survived two rounds: both were 'urgent' gold, so the
+    // Today row showed two different statuses in the same swatch
+    expect(STAGE_TONE.closingtoday).not.toBe(STAGE_TONE.allotmentout);
+  });
+
+  it('keeps the four Today-row events visually distinct', () => {
+    // Open · Closing · Allotment · Listing sit side by side in one row
+    const row = [STAGE_TONE.live, STAGE_TONE.closingtoday, STAGE_TONE.allotmentout, STAGE_TONE.listed];
+    expect(new Set(row).size).toBe(4);
+  });
+
+  it('never paints an upcoming issue with the closing colour', () => {
+    // the first defect sir reported: gold meant Closing Today on a card and
+    // Upcoming in the filter bar, on the same screen
+    expect(STAGE_TONE.upcoming).not.toBe(STAGE_TONE.closingtoday);
   });
 });
 
 describe('toneOf', () => {
   it('reads the tone straight off a live record', () => {
-    expect(toneOf({ status: 'open', closeDate: today() })).toBe('urgent');
+    expect(toneOf({ status: 'open', closeDate: today() })).toBe('closing');
     expect(toneOf({ status: 'open', openDate: today() })).toBe('live');
     expect(toneOf({ status: 'listed' })).toBe('listed');
     expect(toneOf({ status: 'withdrawn' })).toBe('ended');

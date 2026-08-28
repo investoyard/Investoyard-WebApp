@@ -34,13 +34,13 @@ function daysUntil(date?: string): number | null {
 function slideTag(ipo: IpoFull): { label: string; cls: string; urgent?: boolean } {
   const today = dayIso();
   if (ipo.status === 'open') {
-    if (ipo.closeDate === today) return { label: 'Closing today', cls: 't-urgent', urgent: true };
+    if (ipo.closeDate === today) return { label: 'Closing today', cls: 't-closing', urgent: true };
     if (ipo.openDate === today) return { label: 'Open today', cls: 't-live' };
     return { label: 'Live', cls: 't-live' };
   }
   const d = daysUntil(ipo.openDate);
-  if (d != null && d <= 1) return { label: d <= 0 ? 'Opens today' : 'Opens tomorrow', cls: 't-soon' };
-  return { label: d != null ? `Opens in ${d}d` : 'Upcoming', cls: 't-soon' };
+  if (d != null && d <= 1) return { label: d <= 0 ? 'Opens today' : 'Opens tomorrow', cls: 't-upcoming' };
+  return { label: d != null ? `Opens in ${d}d` : 'Upcoming', cls: 't-upcoming' };
 }
 
 /**

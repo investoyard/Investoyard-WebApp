@@ -123,7 +123,7 @@ export function GmpEntryBoard() {
                           </span>
                         </a>
                       </td>
-                      <td><span className={`ic-status ${r.status === 'open' ? 't-live' : 't-soon'}`}>{r.status === 'open' ? 'Live' : 'Upcoming'}</span></td>
+                      <td><span className={`ic-status ${r.status === 'open' ? 't-live' : 't-upcoming'}`}>{r.status === 'open' ? 'Live' : 'Upcoming'}</span></td>
                       <td className="r mono">{priceBand(r.priceBandMin, r.priceBandMax)}</td>
                       <td className="r mono">
                         {r.currentGmp != null ? (
