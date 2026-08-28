@@ -3228,11 +3228,17 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .ct-row.on .ct-exp svg { transform: rotate(90deg); color: var(--brand); }
 
 .ct-detail > td { padding: 0 !important; background: var(--brand-50); border-bottom: 1px solid var(--border); }
-/* The table scrolls sideways. A colSpan cell is as wide as the whole table, so
-   without this the panel's content sits off-screen the moment the reader has
-   scrolled right to read the later columns. Pinned to the viewport's left edge
-   instead, the way a frozen column behaves. */
-.ct-detail-in { position: sticky; left: 0; width: min(100%, calc(100vw - 44px));
+/* The table scrolls sideways. A colSpan cell is as wide as the WHOLE TABLE, so
+   without pinning, the panel's content sits off-screen the moment the reader
+   has scrolled right to reach the later columns.
+
+   Its width has to match the visible scroll window — which is neither 100%
+   (that is the table, wider) nor 100vw (the monitor, wider still on anything
+   above 1160px). It is the container's content box: --maxw less its 22px
+   padding either side, less the wrap's 1px borders. Getting this wrong is what
+   cut the third panel off on the right. */
+.ct-detail-in { position: sticky; left: 0;
+  width: min(100%, calc(100vw - 46px), calc(var(--maxw) - 46px));
   padding: 14px 16px 16px; display: grid; gap: 10px; }
 .ct-detail-in .ic-panel { margin: 0; }
 .ct-detail-cta { justify-self: start; display: inline-flex; align-items: center; gap: 6px;
@@ -3244,4 +3250,8 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
      900px-wide one, and the reader is here to compare */
   .ct-detail-in { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
   .ct-detail-cta { grid-column: 1 / -1; }
+}
+/* the container's side padding halves here, so the usable width moves with it */
+@media (max-width: 560px) {
+  .ct-detail-in { width: min(100%, calc(100vw - 30px)); padding: 12px 13px 14px; }
 }

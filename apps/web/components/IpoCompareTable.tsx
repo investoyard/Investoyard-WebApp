@@ -174,8 +174,10 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipo
                     <div className="ct-detail-in">
                       {/* only what the ROW does not already carry — price band,
                           lot, size, GMP and subscription are two inches above */}
+                      {/* v2 carries the "For 1×" line in the lot ladder, which is a
+                          /home2 addition — shortNames is this table's v2 flag. */}
                       {(['reservation', 'lot', 'timeline'] as const).map((k) => (
-                        <TopicPanel key={k} k={k} ipo={i} tr={(x: string) => x} />
+                        <TopicPanel key={k} k={k} ipo={i} tr={(x: string) => x} v2={shortNames} />
                       ))}
                       <a className="ct-detail-cta" href={href}>
                         View full details <Icon name="arrow-right" size={14} />
