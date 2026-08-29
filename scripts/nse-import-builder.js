@@ -53,6 +53,54 @@ const fact = (list, ...names) => {
   return '';
 };
 
+/**
+ * Final category-wise subscription from NSE's `activeCat` table.
+ *
+ * Row conventions, measured across 2016-2024 on both boards:
+ *   - the first row is a HEADER (srNo === 'Sr.No.') — skip it
+ *   - top-level categories carry an integer srNo: 1 QIB · 2 NII · 3 Retail · 4 reserved
+ *   - '2.1' / '2.2' are the bNII (>₹10L) / sNII (>₹2L) split, present only from 2022
+ *   - '1(a)', '2(b)' … are sub-details of the row above — skip
+ *   - the trailing row has an EMPTY srNo and holds the totals
+ *
+ * Categories are matched by NAME rather than position: an issue with a
+ * shareholder quota but no employee quota still puts it at srNo 4.
+ *
+ * Returns nothing when the offered column totals zero — many SME issues report
+ * every category as 0 offered, which makes `noOfTotalMeant` a meaningless 0.00.
+ * Writing those as a real 0× subscription would be a lie, not a gap.
+ */
+function subscriptionOf(activeCat) {
+  const L = (activeCat && activeCat.dataList) || [];
+  if (!L.length) return null;
+  const out = {};
+  let totalTimes = null, totalOffered = null;
+
+  for (const c of L) {
+    const sr = String(c.srNo ?? '').trim();
+    if (sr === 'Sr.No.') continue;
+    const times = numOf(c.noOfTotalMeant);
+    if (!sr) {                                   // the totals row
+      totalTimes = times;
+      totalOffered = numOf(c.noOfShareOffered);
+      continue;
+    }
+    if (sr.includes('(')) continue;              // a lettered sub-row
+    if (times == null) continue;
+    const name = String(c.category || '').toLowerCase();
+    if (sr === '2.1') out.bnii = times;
+    else if (sr === '2.2') out.snii = times;
+    else if (name.includes('qualified institutional')) out.qib = times;
+    else if (name.includes('non institutional')) out.nii = times;
+    else if (name.includes('retail')) out.retail = times;
+    else if (name.includes('employee')) out.employee = times;
+    else if (name.includes('shareholder') || name.includes('policyholder')) out.shareholder = times;
+  }
+  if (!totalOffered || totalTimes == null || totalTimes <= 0) return null;
+  out.total = totalTimes;
+  return Object.keys(out).length > 1 ? out : null;
+}
+
 /** "Rs.938 to Rs.988" / "Rs. 750 to Rs. 788 per Equity Share" → [938, 988] */
 const band = (s) => {
   const nums = String(s || '').replace(/,/g, '').match(/\d+(\.\d+)?/g);
@@ -101,14 +149,17 @@ const parseSize = (raw) => {
   const out = [];
   let done = 0, noDetail = 0;
   for (const r of wanted) {
-    let L = [];
+    let L = [], D = null;
     try {
       const res = await fetch(
         `https://www.nseindia.com/api/ipo-detail?symbol=${encodeURIComponent(r.symbol)}&series=${r.securityType}`,
         { headers: H, signal: AbortSignal.timeout(20000) });
-      if (res.ok) { const d = await res.json(); L = (d && d.issueInfo && d.issueInfo.dataList) || []; }
+      if (res.ok) { D = await res.json(); L = (D && D.issueInfo && D.issueInfo.dataList) || []; }
     } catch { /* falls through as a detail-less row */ }
     if (!L.length) noDetail++;
+
+    const meta = (D && D.metaInfo) || {};
+    const sub = subscriptionOf(D && D.activeCat);
 
     const [pmin, pmax] = band(fact(L, 'price range') || r.priceRange);
     const sizeText = fact(L, 'issue size');
@@ -136,6 +187,13 @@ const parseSize = (raw) => {
       issuePrice: numOf(r.issuePrice),
       rhp: fact(L, 'red herring prospectus'),
       sizeText,
+      // NSE's own security master — more reliable than anything in the fact list
+      isin: meta.isin || '',
+      sector: meta.industry || '',
+      // metaInfo.listingDate is ISO already and is present on rows where the
+      // past-issues list still shows a placeholder '-'
+      metaListing: /^\d{4}-\d{2}-\d{2}$/.test(String(meta.listingDate || '')) ? meta.listingDate : '',
+      sub,
     });
 
     if (++done % 25 === 0) console.log(`  …${done}/${wanted.length}`);
@@ -144,23 +202,27 @@ const parseSize = (raw) => {
 
   /* ── build the sheet in the importer's exact shape ── */
   const headers = [
-    'Symbol *', 'Company name *', 'Board *', 'Exchanges * (comma-sep)', 'ISIN', 'Logo URL',
+    'Symbol *', 'Company name *', 'Board *', 'Exchanges * (comma-sep)', 'ISIN', 'Sector / Industry', 'Logo URL',
     'Issue type *', 'Face value (₹)', 'Price band min (₹) *', 'Price band max (₹) *',
     'Lot size (shares) *', 'Min amount (₹)', 'Total issue size (₹ Cr) *',
     'Fresh issue (₹ Cr)', 'Fresh issue (shares)', 'OFS portion (₹ Cr)', 'OFS portion (shares)',
     'QIB reservation (%)', 'NII reservation (%)', 'Retail reservation (%)',
+    'QIB (×)', 'NII total (×)', 'bNII (×)', 'sNII (×)', 'Retail (×)', 'Employee (×)', 'Shareholder (×)', 'Total (×)',
     'Open date *', 'Close date *', 'Listing date',
-    'Lead managers (comma-sep)', 'Registrar', 'Objects of the issue',
+    'Lead managers (comma-sep)', 'Registrar', 'Objects of the issue', 'RHP URL',
   ];
-  const bands = ['Identity', '', '', '', '', '', 'Issue structure', '', '', '', '', '', '', '', '', '', '',
-                 'Reservation (from RHP — NOT in NSE data)', '', '', 'Timetable', '', '',
-                 'Intermediaries', '', 'Documents'];
-  const example = ['EXAMPLE', 'Example Industries Limited', 'Mainboard', 'NSE', '', '',
+  const bands = ['Identity', '', '', '', '', '', '', 'Issue structure', '', '', '', '', '', '', '', '', '', '',
+                 'Reservation (from RHP — NOT in NSE data)', '', '',
+                 'Final subscription (NSE activeCat)', '', '', '', '', '', '', '',
+                 'Timetable', '', '',
+                 'Intermediaries', '', 'Documents', ''];
+  const example = ['EXAMPLE', 'Example Industries Limited', 'Mainboard', 'NSE', '', 'Pharmaceuticals', '',
     'Book-built', 10, 100, 105, 100, 10500, 250, 200, '', 50, '', '', '', '',
-    '2026-01-01', '2026-01-03', '2026-01-08', 'Example Capital', 'Example Registrar', ''];
+    '', '', '', '', '', '', '', '',
+    '2026-01-01', '2026-01-03', '2026-01-08', 'Example Capital', 'Example Registrar', '', ''];
 
   const rows = out.map((o) => [
-    o.symbol, o.name, o.board, o.exchanges, '', '',
+    o.symbol, o.name, o.board, o.exchanges, o.isin, o.sector, '',
     o.issueType, o.faceValue, o.pmin, o.pmax,
     o.lot, o.minAmount,
     (() => {
@@ -173,9 +235,15 @@ const parseSize = (raw) => {
       return t > 0 ? Math.round(t * 100) / 100 : null;
     })(),
     o.freshCr, o.freshSh, o.ofsCr, o.ofsSh,
-    '', '', '',                                   // reservations: from the RHP, never guessed
-    o.openDate, o.closeDate, o.listingDate,
-    o.leads, o.registrar, '',
+    // Reservations stay blank. NSE's activeCat DOES carry shares-offered per
+    // category, but those are NET OF ANCHOR: a plain 50/15/35 issue with a 60%
+    // anchor reads back as 28.57/21.43/50, which would fail the ICDR checks in
+    // computeIssue() and publish a wrong table. The RHP is the only honest source.
+    '', '', '',
+    ...['qib', 'nii', 'bnii', 'snii', 'retail', 'employee', 'shareholder', 'total']
+      .map((k) => (o.sub && o.sub[k] != null ? Math.round(o.sub[k] * 100) / 100 : '')),
+    o.openDate, o.closeDate, o.listingDate || o.metaListing,
+    o.leads, o.registrar, '', o.rhp,
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([bands, headers, example, ...rows]);

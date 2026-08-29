@@ -279,7 +279,7 @@ export class IpoImportService {
   }
 
   /** Write the previewed rows into the catalog. Idempotent: the preview is consumed. */
-  async commit(id: string): Promise<{ created: number; financials: number; anchors: number; peers: number }> {
+  async commit(id: string): Promise<{ created: number; subscriptions: number; financials: number; anchors: number; peers: number }> {
     const dataFile = join(PREVIEW_DIR, `${id}.json`);
     if (!existsSync(dataFile)) throw new NotFoundException('Import preview expired — upload the workbook again.');
     const { toCreate, financials, anchors, peers } = JSON.parse(readFileSync(dataFile, 'utf8')) as {
@@ -294,7 +294,7 @@ export class IpoImportService {
     for (const p of peers) peersBySymbol.set(p.symbol, [...(peersBySymbol.get(p.symbol) ?? []), p]);
 
     const today = new Date().toISOString().slice(0, 10);
-    let created = 0;
+    let created = 0, subs = 0;
     for (const p of toCreate) {
       // status derives from the dates the sheet carries
       const status = p.listingDate && p.listingDate <= today ? 'listed'
@@ -319,7 +319,7 @@ export class IpoImportService {
       if (pr?.length) extra.peers = pr.map((x) => ({ name: x.name, pe: x.pe, eps: x.eps, ronw: x.ronw }));
 
       try {
-        await this.prisma.ipo.create({
+        const row = await this.prisma.ipo.create({
           data: {
             symbol: p.symbol,
             name: p.name,
@@ -353,14 +353,30 @@ export class IpoImportService {
           },
         });
         created++;
+
+        // Final subscription belongs in the IpoSubscription relation, not only in
+        // `extra.finalSub`. Every consumer — the detail page, the Subscription hub,
+        // the card's Subscribed stat — reads the relation, so a figure parked in
+        // extra alone renders nowhere. `asOf` is the close date: these are final
+        // numbers for a finished issue, not a reading taken today.
+        const fs = extra.finalSub as Record<string, number> | undefined;
+        if (fs) {
+          const asOf = p.closeDate ? new Date(`${p.closeDate}T00:00:00Z`) : new Date();
+          // bNII/sNII stay out — they are not in the rendered category vocabulary
+          // and would surface as raw "BNII"/"SNII" rows. They remain in extra.
+          const data = ['qib', 'nii', 'retail', 'employee', 'shareholder', 'total']
+            .filter((k) => typeof fs[k] === 'number' && Number.isFinite(fs[k]))
+            .map((k) => ({ ipoId: row.id, category: k, timesSubscribed: new Prisma.Decimal(fs[k]), asOf }));
+          if (data.length) { await this.prisma.ipoSubscription.createMany({ data }); subs += data.length; }
+        }
       } catch (e: any) {
-        this.log.warn(`row ${p.row} (${p.symbol}): ${String(e?.message ?? e).slice(0, 120)}`);
+        this.log.warn(`row ${p.row} (${p.symbol}): ${String(e?.message ?? e).slice(0, 300)}`);
       }
     }
 
     for (const f of [dataFile, join(PREVIEW_DIR, `${id}.meta.json`)]) { try { unlinkSync(f); } catch { /* ignore */ } }
     this.log.log(`import ${id} committed: ${created} IPOs created`);
-    return { created, financials: financials.length, anchors: anchors.length, peers: peers.length };
+    return { created, subscriptions: subs, financials: financials.length, anchors: anchors.length, peers: peers.length };
   }
 
   /** Publish / hide catalog rows on the public site. */
