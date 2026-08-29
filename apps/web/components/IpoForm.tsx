@@ -78,7 +78,7 @@ interface FormState {
   /** anchor as a % of the QIB quota — the input B09 checks against the rule pack */
   anchorPct: string;
   /** off-the-top reservations, taken before the category split */
-  cvEmployee: string; cvShareholder: string;
+  cvEmployee: string; cvShareholder: string; cvMarketMaker: string;
   freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
   bseListingPrice: string; nseListingPrice: string;
   registrar: string; registrarEmail: string; registrarPhone: string; registrarUrl: string;
@@ -104,7 +104,7 @@ const blankForm = (): FormState => ({
   mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
   exNse: true, exBse: true, issueSizeCr: '',
   tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '', anchorPct: '',
-  cvEmployee: '', cvShareholder: '',
+  cvEmployee: '', cvShareholder: '', cvMarketMaker: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
   logoUrl: '', companyWebsite: '', companyPromoter: '',
@@ -175,6 +175,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           shareholderDiscount: str(ex.shareholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
           anchorPct: str(ex.anchorPct),
           cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
+          cvMarketMaker: str(ex.carveouts?.marketmaker),
           freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
           ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
           bseListingPrice: str(ex.bseListingPrice), nseListingPrice: str(ex.nseListingPrice),
@@ -288,7 +289,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
       shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
       anchorPct: form.anchorPct,
-      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder },
+      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, marketmaker: form.cvMarketMaker },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
@@ -392,7 +393,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       carveouts: [
         { key: 'employee', basis: 'amount' as const, value: n(form.cvEmployee) },
         { key: 'shareholder', basis: 'amount' as const, value: n(form.cvShareholder) },
+        { key: 'marketmaker', basis: 'amount' as const, value: n(form.cvMarketMaker) },
       ].filter((c) => c.value > 0),
+      // the datetime-local fields carry a time; the rules only want the day
+      dates: {
+        open: form.openDate.slice(0, 10) || undefined,
+        close: form.closeDate.slice(0, 10) || undefined,
+        allotment: form.allotmentDate.slice(0, 10) || undefined,
+        refund: form.refundDate.slice(0, 10) || undefined,
+        demat: form.dematDate.slice(0, 10) || undefined,
+        listing: form.listingDate.slice(0, 10) || undefined,
+      },
       finalIssuePrice: n(form.finalIssuePrice) || undefined,
       anchor: n(form.anchorPct) > 0 ? { pctOfQib: n(form.anchorPct) } : undefined,
     };
@@ -400,7 +411,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.anchorPct, form.finalIssuePrice,
+      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.cvMarketMaker, form.anchorPct, form.finalIssuePrice,
+      form.openDate, form.closeDate, form.allotmentDate, form.refundDate, form.dematDate, form.listingDate,
       JSON.stringify(form.shareResv)]);
 
   /**
@@ -776,6 +788,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Shareholder (₹ Cr)">
                   <input className="input mono" value={form.cvShareholder} onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
                 </Field>
+                {/* Mainboard issues have no market maker, so the field only
+                    appears where it is required — and where leaving it empty
+                    is a blocking fault (B18). */}
+                {form.type === 'sme' && (
+                  <Field label="Market maker (₹ Cr)" required
+                    hint={`SME issues must reserve at least ${derived.rulePack.marketMakerMinPct}% of the issue`}>
+                    <input className="input mono" value={form.cvMarketMaker} onChange={(e) => set({ cvMarketMaker: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </Field>
+                )}
               </div>
             </Panel>
 

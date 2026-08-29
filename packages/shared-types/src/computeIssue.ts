@@ -57,6 +57,15 @@ export interface IssueInputs {
   anchor?: { pctOfQib?: number; mfPct?: number };
   /** which category absorbs the floor-to-lot residual (default: the largest) */
   residualTo?: string;
+  /** ISO yyyy-mm-dd. Optional: the date rules simply stay quiet without them. */
+  dates?: {
+    open?: string;
+    close?: string;
+    allotment?: string;
+    refund?: string;
+    demat?: string;
+    listing?: string;
+  };
 }
 
 export interface CategoryResult {
@@ -199,7 +208,11 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
     const amount = r.shares * price;
 
     let minLots: number | undefined;
-    if (th && lotValue > 0) minLots = th.above ? lotsAbove(th.above, lotValue) : 1;
+    // the rupee band and the lot floor are BOTH minimums — take the larger.
+    // SME retail is two lots (post-2024) and no rupee band expresses that.
+    if (th && lotValue > 0) {
+      minLots = Math.max(th.minLots ?? 1, th.above ? lotsAbove(th.above, lotValue) : 1);
+    }
     // QIB bids are not expressed in retail-style minimum applications
     if (r.key === 'qib') minLots = undefined;
 
@@ -348,6 +361,71 @@ function validateInputs(inp: IssueInputs, pack: RulePack, mechanism: Mechanism):
     }
   }
 
+  /* ── B08 / B11 / B12 / B13: price band and the calendar ── */
+  const d = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`) : null);
+  const floorP = num(inp.priceFloor), capP = num(inp.priceCap);
+  if (mechanism === 'book_built' && floorP > 0 && capP > 0) {
+    if (capP < floorP) {
+      out.push({ code: 'B08', severity: 'blocking', field: 'priceCap',
+        message: `Price band is ₹${floorP}–₹${capP}: the cap is below the floor.` });
+    } else if (capP / floorP > 1.2 + 1e-9) {
+      // ICDR caps the band at 20% of the floor
+      out.push({ code: 'B08', severity: 'blocking', field: 'priceCap',
+        message: `Price band ₹${floorP}–₹${capP} is ${Math.round(((capP / floorP) - 1) * 1000) / 10}% wide — the cap may not exceed the floor by more than 20%.` });
+    }
+  }
+
+  const dt = inp.dates ?? {};
+  const open = d(dt.open), close = d(dt.close), allot = d(dt.allotment);
+  const refund = d(dt.refund), demat = d(dt.demat), listing = d(dt.listing);
+
+  // B13 — the lifecycle only ever moves forwards
+  const chain: [string, Date | null][] = [
+    ['Open', open], ['Close', close], ['Basis of allotment', allot],
+    ['Refund', refund], ['Demat credit', demat], ['Listing', listing],
+  ];
+  const known = chain.filter(([, v]) => v) as [string, Date][];
+  for (let i = 1; i < known.length; i++) {
+    if (known[i][1] < known[i - 1][1]) {
+      out.push({ code: 'B13', severity: 'blocking', field: 'dates',
+        message: `${known[i][0]} is before ${known[i - 1][0]}. The dates have to run in order.` });
+      break;
+    }
+  }
+
+  /*
+   * B11 / B12 count WEEKDAYS, not working days — there is no exchange-holiday
+   * calendar in the product yet (spec §2.9 asks for one). A holiday inside the
+   * window shifts the real answer by a day, so both are WARNINGS: a wrong
+   * blocking rule would stop an operator entering a perfectly valid issue.
+   */
+  const weekdaysBetween = (a: Date, b: Date): number => {
+    let n = 0;
+    const cur = new Date(a.getTime());
+    while (cur < b) {
+      cur.setUTCDate(cur.getUTCDate() + 1);
+      const wd = cur.getUTCDay();
+      if (wd !== 0 && wd !== 6) n++;
+    }
+    return n;
+  };
+  if (open && close && close >= open) {
+    const days = weekdaysBetween(open, close) + 1; // inclusive of both ends
+    const { min, max } = pack.biddingDays;
+    if (days < min || days > max) {
+      out.push({ code: 'B11', severity: 'warning', field: 'dates',
+        message: `Bidding runs ${days} weekday${days === 1 ? '' : 's'}; the window should be ${min}–${max} working days. Exchange holidays are not counted here.` });
+    }
+  }
+  if (close && listing && listing > close) {
+    const n = weekdaysBetween(close, listing);
+    const want = pack.listingWorkingDaysAfterClose;
+    if (n !== want) {
+      out.push({ code: 'B12', severity: 'warning', field: 'dates',
+        message: `Listing is ${n} weekday${n === 1 ? '' : 's'} after close; SEBI requires T+${want}. Exchange holidays are not counted here.` });
+    }
+  }
+
   /* ── B09 / B10: anchor ── */
   const anchorPct = num(inp.anchor?.pctOfQib);
   if (anchorPct > 0) {
@@ -399,9 +477,41 @@ export function computeIssue(inp: IssueInputs): IssueDerived {
     ?? (pack.applicationThresholdBasis === 'floor' ? scenarios.floor : scenarios.cap)
     ?? scenarios.cap ?? scenarios.floor;
 
+  const issues = validateInputs(inp, pack, mechanism);
+
+  /*
+   * B18 — SME must reserve a market-maker portion. Checked HERE rather than in
+   * validateInputs because a carve-out entered in ₹ Cr only becomes a
+   * percentage once the offer has resolved at a price.
+   */
+  if (primary && pack.marketMakerMinPct > 0) {
+    const mmShares = (inp.carveouts ?? [])
+      .filter((c) => /market/i.test(c.key))
+      .reduce((a, c) => {
+        const v = num(c.value);
+        if (v <= 0) return a;
+        const lot = num(inp.lotSize);
+        return a + (c.basis === 'shares' ? floorToLot(v, lot)
+          : c.basis === 'pct_of_offer' ? floorToLot((primary.totalOfferShares * v) / 100, lot)
+          : floorToLot((v * CR) / primary.price, lot));
+      }, 0);
+    const pct = primary.totalOfferShares > 0 ? (mmShares / primary.totalOfferShares) * 100 : 0;
+    if (mmShares <= 0) {
+      issues.push({
+        code: 'B18', severity: 'blocking', field: 'carveouts.marketmaker',
+        message: `An SME issue must reserve a market-maker portion of at least ${pack.marketMakerMinPct}% of the issue. None is entered.`,
+      });
+    } else if (pct + 1e-9 < pack.marketMakerMinPct) {
+      issues.push({
+        code: 'B18', severity: 'blocking', field: 'carveouts.marketmaker',
+        message: `Market maker is ${Math.round(pct * 100) / 100}% of the issue — an SME issue needs at least ${pack.marketMakerMinPct}%.`,
+      });
+    }
+  }
+
   return {
     rulePack: pack, regulationBasis: basis, scenarios, primary,
     empty: !primary,
-    issues: validateInputs(inp, pack, mechanism),
+    issues,
   };
 }

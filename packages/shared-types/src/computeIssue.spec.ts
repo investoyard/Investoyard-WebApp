@@ -310,3 +310,103 @@ describe('computeIssue — B02 category bounds', () => {
     expect(computeIssue(MVELECTRO).issues).toEqual([]);
   });
 });
+
+/**
+ * SME two-lot retail minimum, and the date / market-maker rules.
+ *
+ * The SME case is a REGRESSION test: the engine used to return one lot for SME
+ * retail while apps/api's Min Application used two, so one issue reported two
+ * different minimums to two different screens.
+ */
+describe('computeIssue — SME differs from Mainboard', () => {
+  const base = {
+    mechanism: 'book_built' as const, lotSize: 1_000,
+    priceFloor: 100, priceCap: 100,
+    ofs: { basis: 'shares' as const, value: 1_000_000 },
+    // carries both HNI rows, so the last case can prove the rupee bands are
+    // untouched and only the retail lot floor moves
+    reservation: { retail: 50, hni: 20, hni2: 10, qib: 20 },
+  };
+  const retailOf = (board: 'mainboard' | 'sme') =>
+    computeIssue({ ...base, board }).primary!.categories.find((c) => c.key === 'retail')!;
+
+  it('asks SME retail for TWO lots and Mainboard for one', () => {
+    expect(retailOf('mainboard').minLots).toBe(1);
+    expect(retailOf('sme').minLots).toBe(2);
+  });
+
+  it('agrees with the API rule: minApp = lot x (sme ? 2 : 1) x price', () => {
+    for (const board of ['mainboard', 'sme'] as const) {
+      const r = retailOf(board);
+      expect(r.minAppAmount).toBe(1_000 * (board === 'sme' ? 2 : 1) * 100);
+    }
+  });
+
+  it('halves the SME forms-for-1x, because each form is twice the size', () => {
+    expect(retailOf('sme').appsFor1x).toBe(retailOf('mainboard').appsFor1x! / 2);
+  });
+
+  it('leaves the rupee bands alone — only the lot floor differs', () => {
+    const m = computeIssue({ ...base, board: 'mainboard' }).primary!;
+    const s = computeIssue({ ...base, board: 'sme' }).primary!;
+    for (const k of ['hni', 'hni2']) {
+      expect(s.categories.find((c) => c.key === k)!.minLots)
+        .toBe(m.categories.find((c) => c.key === k)!.minLots);
+    }
+  });
+});
+
+describe('computeIssue — price band and calendar', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+
+  it('B08 — the cap may not exceed the floor by more than 20%', () => {
+    expect(find(computeIssue({ ...MVELECTRO, priceFloor: 400, priceCap: 480 }), 'B08')).toHaveLength(0);
+    const wide = computeIssue({ ...MVELECTRO, priceFloor: 400, priceCap: 500 });
+    expect(find(wide, 'B08')[0]?.severity).toBe('blocking');
+    const inverted = computeIssue({ ...MVELECTRO, priceFloor: 425, priceCap: 400 });
+    expect(find(inverted, 'B08')[0]?.message).toMatch(/cap is below the floor/);
+  });
+
+  it('B13 — milestone dates only ever move forwards', () => {
+    const ok = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', allotment: '2026-08-04', listing: '2026-08-06' } });
+    expect(find(ok, 'B13')).toHaveLength(0);
+    const back = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', listing: '2026-08-01' } });
+    expect(find(back, 'B13')[0]?.severity).toBe('blocking');
+  });
+
+  it('B11 / B12 warn rather than block — exchange holidays are not modelled', () => {
+    // Thu 30 Jul → Mon 3 Aug is 3 weekdays: inside the 3–10 window
+    const r = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', listing: '2026-08-06' } });
+    for (const c of [...find(r, 'B11'), ...find(r, 'B12')]) expect(c.severity).toBe('warning');
+  });
+
+  it('says nothing at all when no dates are given', () => {
+    const r = computeIssue(MVELECTRO);
+    expect([...find(r, 'B11'), ...find(r, 'B12'), ...find(r, 'B13')]).toHaveLength(0);
+  });
+});
+
+describe('computeIssue — B18 SME market maker', () => {
+  const sme = {
+    board: 'sme' as const, mechanism: 'book_built' as const, lotSize: 100,
+    priceFloor: 100, priceCap: 100,
+    ofs: { basis: 'shares' as const, value: 1_000_000 },
+    reservation: { retail: 50, hni: 35, qib: 15 },
+  };
+  const b18 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'B18');
+
+  it('blocks an SME issue with no market-maker carve-out', () => {
+    expect(b18(sme)[0]?.severity).toBe('blocking');
+    expect(b18(sme)[0]?.message).toMatch(/at least 5%/);
+  });
+
+  it('blocks one that is under the floor, and accepts one that meets it', () => {
+    // 1,000,000 shares at ₹100 = ₹10 Cr, so 5% = ₹0.5 Cr
+    expect(b18({ ...sme, carveouts: [{ key: 'marketmaker', basis: 'amount', value: 0.3 }] })[0]?.severity).toBe('blocking');
+    expect(b18({ ...sme, carveouts: [{ key: 'marketmaker', basis: 'amount', value: 0.5 }] })).toHaveLength(0);
+  });
+
+  it('never asks a Mainboard issue for one', () => {
+    expect(b18({ ...sme, board: 'mainboard' })).toHaveLength(0);
+  });
+});

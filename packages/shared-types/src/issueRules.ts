@@ -21,6 +21,14 @@ export interface CategoryThreshold {
   above?: number;
   /** informational ceiling; not enforced by the engine */
   upTo?: number;
+  /**
+   * Floor on the number of LOTS, independent of any rupee threshold -- VERIFY.
+   *
+   * SME retail is two lots post-2024, which no rupee band expresses. Without
+   * this the engine returned one lot for SME while the API's Min Application
+   * used two, so the same issue reported two different minimums.
+   */
+  minLots?: number;
 }
 
 /** A floor and/or ceiling on one category's share of the net offer. */
@@ -52,6 +60,13 @@ export interface RulePack {
   mfPctOfNetQib: number;
   /** anchor may take at most this share of QIB -- VERIFY */
   anchorMaxPctOfQib: number;
+  /** SME must reserve at least this share of the issue for the market maker -- VERIFY.
+   *  0 on Mainboard, which has no market maker. */
+  marketMakerMinPct: number;
+  /** the bidding window, in WORKING days -- VERIFY */
+  biddingDays: { min: number; max: number };
+  /** T+n listing after close, in working days -- VERIFY */
+  listingWorkingDaysAfterClose: number;
   thresholds: Record<string, CategoryThreshold>;
   /** which price scenario the minimum application is quoted at */
   applicationThresholdBasis: 'cap' | 'floor' | 'final';
@@ -108,6 +123,16 @@ const THRESHOLDS: Record<string, CategoryThreshold> = {
   other: {},
 };
 
+/**
+ * SME differs from Mainboard in one place that matters here: a retail
+ * application is TWO lots, not one (SEBI, post-2024). The rupee bands are the
+ * same, so this is the only override.
+ */
+const SME_THRESHOLDS: Record<string, CategoryThreshold> = {
+  ...THRESHOLDS,
+  retail: { ...THRESHOLDS.retail, minLots: 2 },
+};
+
 export const RULE_PACKS: Record<string, RulePack> = {
   'mainboard/book_built/icdr_6_1': {
     label: 'Mainboard · book-built · ICDR 6(1)',
@@ -115,6 +140,9 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
+    marketMakerMinPct: 0,
+    biddingDays: { min: 3, max: 10 },
+    listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,
     applicationThresholdBasis: 'cap',
   },
@@ -124,6 +152,9 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
+    marketMakerMinPct: 0,
+    biddingDays: { min: 3, max: 10 },
+    listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,
     applicationThresholdBasis: 'cap',
   },
@@ -133,6 +164,9 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
+    marketMakerMinPct: 0,
+    biddingDays: { min: 3, max: 10 },
+    listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,
     applicationThresholdBasis: 'final',
   },
@@ -142,7 +176,10 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 60,
-    thresholds: THRESHOLDS,
+    marketMakerMinPct: 5,
+    biddingDays: { min: 3, max: 10 },
+    listingWorkingDaysAfterClose: 3,
+    thresholds: SME_THRESHOLDS,
     applicationThresholdBasis: 'cap',
   },
   'sme/fixed_price/icdr_6_1': {
@@ -151,7 +188,10 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
-    thresholds: THRESHOLDS,
+    marketMakerMinPct: 5,
+    biddingDays: { min: 3, max: 10 },
+    listingWorkingDaysAfterClose: 3,
+    thresholds: SME_THRESHOLDS,
     applicationThresholdBasis: 'final',
   },
 };
