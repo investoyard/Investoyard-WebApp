@@ -5,6 +5,7 @@
  * number here, the fixture is right.
  */
 import { computeIssue, floorToLot, IssueInputs } from './computeIssue';
+import { isTradingHoliday } from './holidays';
 
 const MVELECTRO: IssueInputs = {
   board: 'mainboard',
@@ -441,5 +442,57 @@ describe('computeIssue — the two mutual-fund figures', () => {
 
   it('reports no anchor at all when none is configured', () => {
     expect(computeIssue({ ...MVELECTRO, anchor: undefined }).primary!.anchor).toBeUndefined();
+  });
+});
+
+/**
+ * B11 / B12 with the real NSE equity calendar.
+ *
+ * Holidays are why these were warnings before: counting weekends alone makes a
+ * legitimate T+4 look wrong. They block only where the calendar covers the
+ * dates, and say so where it does not.
+ */
+describe('computeIssue — NSE trading calendar', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+  const withDates = (dates: any) => computeIssue({ ...MVELECTRO, dates });
+
+  it('knows Republic Day is not a trading day', () => {
+    expect(isTradingHoliday('2026-01-26')).toBe(true);   // Republic Day
+    expect(isTradingHoliday('2026-01-27')).toBe(false);  // the Tuesday after
+    expect(isTradingHoliday('2026-01-24')).toBe(true);   // a Saturday
+  });
+
+  it('counts a holiday out of the listing window, so T+3 still passes', () => {
+    // close Wed 2026-03-18 → Holi falls Tue 2026-03-03, outside this window
+    expect(find(withDates({ close: '2026-03-18', listing: '2026-03-23' }), 'B12')).toHaveLength(0);
+  });
+
+  it('lets SEVEN calendar days be a trading-day T+3 across two holidays', () => {
+    // Close Mon 30 Mar. Tue 31st is Mahavir Jayanti and Fri 3 Apr is Good
+    // Friday, so the three trading days are Wed 1, Thu 2 and Mon 6 April —
+    // a whole week on the calendar, and exactly on time. Counting weekdays
+    // alone would have called this T+5 and flagged a correct issue.
+    expect(find(withDates({ close: '2026-03-30', listing: '2026-04-06' }), 'B12')).toHaveLength(0);
+    expect(find(withDates({ close: '2026-03-30', listing: '2026-04-02' }), 'B12')[0]?.message)
+      .toMatch(/2 trading days/);
+  });
+
+  it('BLOCKS inside the covered years rather than warning', () => {
+    const bad = find(withDates({ close: '2026-03-18', listing: '2026-03-27' }), 'B12');
+    expect(bad[0]?.severity).toBe('blocking');
+    expect(bad[0]?.message).toMatch(/trading day/);
+  });
+
+  it('drops back to a warning outside the calendar, and says why', () => {
+    const far = find(withDates({ close: '2031-03-18', listing: '2031-03-27' }), 'B12');
+    expect(far[0]?.severity).toBe('warning');
+    expect(far[0]?.message).toMatch(/counted on weekends alone/);
+  });
+
+  it('measures the bidding window in trading days too', () => {
+    // Fri 2026-05-01 is Maharashtra Day, so Thu 30 Apr → Mon 4 May is 2 days
+    const r = find(withDates({ open: '2026-04-30', close: '2026-05-04' }), 'B11');
+    expect(r[0]?.severity).toBe('blocking');
+    expect(r[0]?.message).toMatch(/2 trading days/);
   });
 });

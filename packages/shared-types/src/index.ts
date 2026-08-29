@@ -11,6 +11,7 @@ export * from './format';
 export * from './issueRules';
 export * from './computeIssue';
 export * from './stage';
+export * from './holidays';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';

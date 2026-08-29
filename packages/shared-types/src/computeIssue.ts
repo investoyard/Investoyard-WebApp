@@ -20,6 +20,7 @@ import {
   Board, Mechanism, RegulationBasis, RulePack,
   inferRegulationBasis, rulePackFor,
 } from './issueRules';
+import { isTradingHoliday, holidaysCover, HOLIDAY_YEARS } from './holidays';
 
 export type LegBasis = 'amount' | 'shares' | 'none';
 export type CarveoutBasis = 'amount' | 'shares' | 'pct_of_offer';
@@ -404,35 +405,43 @@ function validateInputs(inp: IssueInputs, pack: RulePack, mechanism: Mechanism):
   }
 
   /*
-   * B11 / B12 count WEEKDAYS, not working days — there is no exchange-holiday
-   * calendar in the product yet (spec §2.9 asks for one). A holiday inside the
-   * window shifts the real answer by a day, so both are WARNINGS: a wrong
-   * blocking rule would stop an operator entering a perfectly valid issue.
+   * B11 / B12 count real TRADING days — weekends and the NSE equity holiday
+   * list, which is why holidays.ts exists.
+   *
+   * They only BLOCK where the calendar actually covers the dates. Outside its
+   * years we would be counting weekends alone, and a blocking rule that is
+   * guessing stops an operator entering a perfectly valid issue — so out there
+   * the same finding is a warning that says why.
    */
-  const weekdaysBetween = (a: Date, b: Date): number => {
+  const tradingDaysBetween = (a: Date, b: Date): number => {
     let n = 0;
     const cur = new Date(a.getTime());
     while (cur < b) {
       cur.setUTCDate(cur.getUTCDate() + 1);
-      const wd = cur.getUTCDay();
-      if (wd !== 0 && wd !== 6) n++;
+      if (!isTradingHoliday(cur.toISOString().slice(0, 10))) n++;
     }
     return n;
   };
+  const covered = (...ds: (Date | null)[]) =>
+    holidaysCover(...ds.filter(Boolean).map((d) => (d as Date).toISOString().slice(0, 10)));
+  const outsideNote = ` The NSE holiday calendar covers ${HOLIDAY_YEARS.join(', ')}, so this window is counted on weekends alone.`;
+
   if (open && close && close >= open) {
-    const days = weekdaysBetween(open, close) + 1; // inclusive of both ends
+    const days = tradingDaysBetween(open, close) + 1; // inclusive of both ends
     const { min, max } = pack.biddingDays;
     if (days < min || days > max) {
-      out.push({ code: 'B11', severity: 'warning', field: 'dates',
-        message: `Bidding runs ${days} weekday${days === 1 ? '' : 's'}; the window should be ${min}–${max} working days. Exchange holidays are not counted here.` });
+      const sure = covered(open, close);
+      out.push({ code: 'B11', severity: sure ? 'blocking' : 'warning', field: 'dates',
+        message: `Bidding runs ${days} trading day${days === 1 ? '' : 's'}; the window must be ${min}–${max}.${sure ? '' : outsideNote}` });
     }
   }
   if (close && listing && listing > close) {
-    const n = weekdaysBetween(close, listing);
+    const n = tradingDaysBetween(close, listing);
     const want = pack.listingWorkingDaysAfterClose;
     if (n !== want) {
-      out.push({ code: 'B12', severity: 'warning', field: 'dates',
-        message: `Listing is ${n} weekday${n === 1 ? '' : 's'} after close; SEBI requires T+${want}. Exchange holidays are not counted here.` });
+      const sure = covered(close, listing);
+      out.push({ code: 'B12', severity: sure ? 'blocking' : 'warning', field: 'dates',
+        message: `Listing is ${n} trading day${n === 1 ? '' : 's'} after close; SEBI requires T+${want}.${sure ? '' : outsideNote}` });
     }
   }
 

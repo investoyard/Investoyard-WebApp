@@ -1229,9 +1229,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
               {issues.some((v: { blocking: boolean }) => v.blocking) && (
                 <div className="banner warn" style={{ fontSize: 13, marginTop: 12 }}>
-                  This issue has blocking checks outstanding. Nothing stops you saving — the
-                  status machine that would gate publishing on them is not built yet — but the
-                  figures it publishes will be wrong until they are fixed.
+                  This issue has blocking checks outstanding. These three toggles stay under
+                  your control by design — nothing here overrides you — but the figures this
+                  issue publishes will be wrong until the checks above are fixed.
                 </div>
               )}
             </Panel>
