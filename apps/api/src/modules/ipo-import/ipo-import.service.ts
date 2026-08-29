@@ -334,7 +334,10 @@ export class IpoImportService {
             priceBandMax: p.priceBandMax ?? null,
             lotSize: p.lotSize ?? null,
             minAmount: p.minAmount ?? null,
-            issueSize: p.issueSizeCr != null ? `₹${p.issueSizeCr} Cr` : null,
+            // `issueSize` is a Decimal column holding RUPEES; the sheet gives crore.
+            // Multiply through Decimal, not floating point — 135.73 * 1e7 in JS is
+            // 1357300000.0000002, and the column would take the error verbatim.
+            issueSize: p.issueSizeCr != null ? new Prisma.Decimal(p.issueSizeCr).mul(1e7) : null,
             openDate: p.openDate ? new Date(`${p.openDate}T00:00:00Z`) : null,
             closeDate: p.closeDate ? new Date(`${p.closeDate}T00:00:00Z`) : null,
             allotmentDate: p.allotmentDate ? new Date(`${p.allotmentDate}T00:00:00Z`) : null,
