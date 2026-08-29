@@ -93,7 +93,13 @@ export interface ScenarioResult {
   carveoutShares: number;
   netOfferShares: number;
   categories: CategoryResult[];
-  anchor?: { shares: number; netQibShares: number; mfShares: number };
+  /**
+   * Spec §5 Step 4 derives TWO mutual-fund figures and they are not the same:
+   * a third of the ANCHOR book, and 5% of the post-anchor QIB book. The old
+   * field was called `mfShares` and carried only the second, which is exactly
+   * the kind of name that gets read as the other one.
+   */
+  anchor?: { shares: number; netQibShares: number; anchorMfShares: number; qibMfShares: number };
   residualLots: number;
   residualTo?: string;
 }
@@ -238,10 +244,14 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
   if (qib && inp.anchor?.pctOfQib) {
     const anchorShares = floorToLot((qib.shares * num(inp.anchor.pctOfQib)) / 100, lot);
     const netQibShares = qib.shares - anchorShares;
+    const anchorMfPct = inp.anchor.mfPct != null ? num(inp.anchor.mfPct) : pack.anchorMfPct;
     anchor = {
       shares: anchorShares,
       netQibShares,
-      mfShares: floorToLot((netQibShares * pack.mfPctOfNetQib) / 100, lot),
+      // a third of the anchor book goes to domestic mutual funds …
+      anchorMfShares: floorToLot((anchorShares * anchorMfPct) / 100, lot),
+      // … and 5% of what is left of QIB after the anchor is taken out
+      qibMfShares: floorToLot((netQibShares * pack.mfPctOfNetQib) / 100, lot),
     };
   }
 

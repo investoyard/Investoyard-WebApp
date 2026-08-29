@@ -60,6 +60,12 @@ export interface RulePack {
   mfPctOfNetQib: number;
   /** anchor may take at most this share of QIB -- VERIFY */
   anchorMaxPctOfQib: number;
+  /**
+   * Share of the ANCHOR book reserved for domestic mutual funds -- VERIFY.
+   * A different number from mfPctOfNetQib, which is the MF slice of the
+   * post-anchor QIB book. Spec §5 Step 4 derives both, separately.
+   */
+  anchorMfPct: number;
   /** SME must reserve at least this share of the issue for the market maker -- VERIFY.
    *  0 on Mainboard, which has no market maker. */
   marketMakerMinPct: number;
@@ -140,6 +146,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
+    anchorMfPct: 33.33,
     marketMakerMinPct: 0,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
@@ -152,6 +159,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 5,
     anchorMaxPctOfQib: 60,
+    anchorMfPct: 33.33,
     marketMakerMinPct: 0,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
@@ -164,6 +172,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
+    anchorMfPct: 0,
     marketMakerMinPct: 0,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
@@ -176,6 +185,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 60,
+    anchorMfPct: 33.33,
     marketMakerMinPct: 5,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
@@ -188,6 +198,7 @@ export const RULE_PACKS: Record<string, RulePack> = {
     niiSplit: { big: 2, small: 1 },
     mfPctOfNetQib: 0,
     anchorMaxPctOfQib: 0,
+    anchorMfPct: 0,
     marketMakerMinPct: 5,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,

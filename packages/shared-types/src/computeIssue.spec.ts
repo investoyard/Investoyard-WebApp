@@ -410,3 +410,36 @@ describe('computeIssue — B18 SME market maker', () => {
     expect(b18({ ...sme, board: 'mainboard' })).toHaveLength(0);
   });
 });
+
+/**
+ * Spec §5 Step 4 derives TWO mutual-fund figures and they are different
+ * numbers. The old field carried only one of them under the name `mfShares`.
+ */
+describe('computeIssue — the two mutual-fund figures', () => {
+  const r = computeIssue(MVELECTRO).primary!.anchor!;
+
+  it('gives a third of the ANCHOR book to mutual funds', () => {
+    // 3,070,608 anchor shares x 33.33%, floored to the 34-share lot
+    expect(r.anchorMfShares).toBe(floorToLot(3_070_608 * 0.3333, 34));
+  });
+
+  it('gives 5% of the POST-ANCHOR qib book to mutual funds', () => {
+    expect(r.qibMfShares).toBe(floorToLot(2_047_072 * 0.05, 34));
+  });
+
+  it('keeps them distinct — the whole reason both exist', () => {
+    expect(r.anchorMfShares).not.toBe(r.qibMfShares);
+    expect(r.anchorMfShares).toBeGreaterThan(r.qibMfShares);
+  });
+
+  it('lets the RHP override the anchor MF share', () => {
+    const custom = computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 60, mfPct: 50 } }).primary!.anchor!;
+    expect(custom.anchorMfShares).toBe(floorToLot(3_070_608 * 0.5, 34));
+    // the QIB figure is driven by the rule pack, not the RHP, so it holds
+    expect(custom.qibMfShares).toBe(r.qibMfShares);
+  });
+
+  it('reports no anchor at all when none is configured', () => {
+    expect(computeIssue({ ...MVELECTRO, anchor: undefined }).primary!.anchor).toBeUndefined();
+  });
+});

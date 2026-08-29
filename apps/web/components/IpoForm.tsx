@@ -79,6 +79,14 @@ interface FormState {
   anchorPct: string;
   /** off-the-top reservations, taken before the category split */
   cvEmployee: string; cvShareholder: string; cvMarketMaker: string;
+  /** per-applicant employee caps, ₹ — the RHP states both */
+  empMaxPerApplicant: string; empInitialPerApplicant: string;
+  /** anchor detail beyond the % of QIB */
+  anchorMfPct: string; lockin1Pct: string; lockin1Days: string; lockin2Days: string;
+  /** the withdrawal trigger, % of the fresh issue */
+  minSubscriptionPct: string;
+  /** SEBI's UPI mandate confirmation deadline */
+  upiMandateCutoff: string;
   freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
   bseListingPrice: string; nseListingPrice: string;
   registrar: string; registrarEmail: string; registrarPhone: string; registrarUrl: string;
@@ -105,6 +113,9 @@ const blankForm = (): FormState => ({
   exNse: true, exBse: true, issueSizeCr: '',
   tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '', anchorPct: '',
   cvEmployee: '', cvShareholder: '', cvMarketMaker: '',
+  empMaxPerApplicant: '', empInitialPerApplicant: '',
+  anchorMfPct: '', lockin1Pct: '', lockin1Days: '', lockin2Days: '',
+  minSubscriptionPct: '', upiMandateCutoff: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
   logoUrl: '', companyWebsite: '', companyPromoter: '',
@@ -176,6 +187,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           anchorPct: str(ex.anchorPct),
           cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
           cvMarketMaker: str(ex.carveouts?.marketmaker),
+          empMaxPerApplicant: str(ex.empMaxPerApplicant), empInitialPerApplicant: str(ex.empInitialPerApplicant),
+          anchorMfPct: str(ex.anchorMfPct), lockin1Pct: str(ex.lockin1Pct),
+          lockin1Days: str(ex.lockin1Days), lockin2Days: str(ex.lockin2Days),
+          minSubscriptionPct: str(ex.minSubscriptionPct), upiMandateCutoff: str(ex.upiMandateCutoff),
           freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
           ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
           bseListingPrice: str(ex.bseListingPrice), nseListingPrice: str(ex.nseListingPrice),
@@ -289,6 +304,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
       shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
       anchorPct: form.anchorPct,
+      anchorMfPct: form.anchorMfPct, lockin1Pct: form.lockin1Pct,
+      lockin1Days: form.lockin1Days, lockin2Days: form.lockin2Days,
+      empMaxPerApplicant: form.empMaxPerApplicant, empInitialPerApplicant: form.empInitialPerApplicant,
+      minSubscriptionPct: form.minSubscriptionPct, upiMandateCutoff: form.upiMandateCutoff,
       carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, marketmaker: form.cvMarketMaker },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
@@ -405,13 +424,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         listing: form.listingDate.slice(0, 10) || undefined,
       },
       finalIssuePrice: n(form.finalIssuePrice) || undefined,
-      anchor: n(form.anchorPct) > 0 ? { pctOfQib: n(form.anchorPct) } : undefined,
+      anchor: n(form.anchorPct) > 0
+        ? { pctOfQib: n(form.anchorPct), mfPct: n(form.anchorMfPct) || undefined }
+        : undefined,
     };
     return computeIssue(inputs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.cvMarketMaker, form.anchorPct, form.finalIssuePrice,
+      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.cvMarketMaker, form.anchorPct, form.anchorMfPct, form.finalIssuePrice,
       form.openDate, form.closeDate, form.allotmentDate, form.refundDate, form.dematDate, form.listingDate,
       JSON.stringify(form.shareResv)]);
 
@@ -780,10 +801,27 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 )}
               </div>
             </Panel>
+            <Panel title="Minimum subscription" desc="Below this the issue must be withdrawn and every application refunded.">
+              <div className="form-grid">
+                <Field label="Minimum subscription (% of fresh issue)" hint="90% under ICDR unless the RHP says otherwise">
+                  <input className="input mono" value={form.minSubscriptionPct} placeholder="90"
+                    onChange={(e) => set({ minSubscriptionPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+              </div>
+            </Panel>
             <Panel title="Carve-outs" desc="Shares set aside off the top, before the category split — enter ₹ Cr. A quota exists because shares are reserved for it.">
               <div className="form-grid">
                 <Field label="Employee (₹ Cr)">
                   <input className="input mono" value={form.cvEmployee} onChange={(e) => set({ cvEmployee: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                {/* Both are per-APPLICANT rupee caps from the RHP, not sizes of
+                    the quota: an employee may bid up to the max, of which only
+                    the initial amount is allotted before any scale-down. */}
+                <Field label="Employee cap per applicant (₹)" hint="RHP states it; ₹5,00,000 is the usual ceiling">
+                  <input className="input mono" value={form.empMaxPerApplicant} onChange={(e) => set({ empMaxPerApplicant: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                <Field label="Employee initial allotment cap (₹)" hint="usually ₹2,00,000">
+                  <input className="input mono" value={form.empInitialPerApplicant} onChange={(e) => set({ empInitialPerApplicant: e.target.value.replace(/[^\d]/g, '') })} />
                 </Field>
                 <Field label="Shareholder (₹ Cr)">
                   <input className="input mono" value={form.cvShareholder} onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
@@ -900,6 +938,24 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                     value={derived.primary?.anchor ? derived.primary.anchor.netQibShares.toLocaleString('en-IN') : ''} />
                 </Field>
+                <Field label="MF share of anchor (%)" hint={`${derived.rulePack.anchorMfPct}% by default — a third of the anchor book`}>
+                  <input className="input mono" value={form.anchorMfPct} placeholder={String(derived.rulePack.anchorMfPct)}
+                    onChange={(e) => set({ anchorMfPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                {/* Two DIFFERENT mutual-fund figures, which is why both are
+                    shown: a third of the anchor book, and 5% of what is left of
+                    QIB once the anchor is taken out. */}
+                <Field label="Anchor MF shares" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.anchorMfShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                <Field label="QIB MF shares (post-anchor)" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.qibMfShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                <Field label="Lock-in tranche 1 (%)" hint="usually 50%"><input className="input mono" value={form.lockin1Pct} placeholder="50" onChange={(e) => set({ lockin1Pct: e.target.value.replace(/[^\d.]/g, '') })} /></Field>
+                <Field label="Tranche 1 lock-in (days)" hint="usually 30"><input className="input mono" value={form.lockin1Days} placeholder="30" onChange={(e) => set({ lockin1Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
+                <Field label="Tranche 2 lock-in (days)" hint="usually 90"><input className="input mono" value={form.lockin2Days} placeholder="90" onChange={(e) => set({ lockin2Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
               </div>
             </Panel>
           </div>
@@ -918,6 +974,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Refund date"><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
                 <Field label="Demat credit"><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
                 <Field label="Listing date"><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
+                {/* The deadline that actually bites on the last day: a mandate
+                    not confirmed by the cut-off is not a valid application. */}
+                <Field label="UPI mandate cut-off (date & time)" hint="last moment an investor can confirm the mandate">
+                  <input type="datetime-local" className="input mono" value={form.upiMandateCutoff} onChange={(e) => set({ upiMandateCutoff: e.target.value })} />
+                </Field>
               </div>
             </Panel>
           </div>
