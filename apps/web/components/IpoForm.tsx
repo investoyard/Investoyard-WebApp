@@ -15,13 +15,22 @@ import { computeIssue, CATEGORY_LABELS, type IssueInputs, type LegBasis } from '
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
 const ISSUE_TYPES = ['IPO', 'FPO', 'Rights Issue', 'OFS'] as const;
+/**
+ * Tabs in the order of docs/ipo-entry-spec.md §8: each one depends only on the
+ * tabs before it. That is not housekeeping — the reservation split cannot be
+ * derived without lot size and a price, so Pricing HAS to precede Offer, and
+ * bid windows depend on whether there is an anchor round, so Timeline follows
+ * it. Identity, dates and three intermediary blocks used to share tab 1.
+ */
 const TABS: { key: string; label: string; icon: IconName }[] = [
   { key: 'basic', label: 'Issue Setup', icon: 'box' },
   { key: 'pricing', label: 'Pricing', icon: 'rupee' },
   { key: 'offer', label: 'Offer & Reservation', icon: 'chart' },
+  { key: 'timeline', label: 'Timeline', icon: 'calendar' },
+  { key: 'parties', label: 'Intermediaries', icon: 'users' },
   { key: 'company', label: 'About Company', icon: 'globe' },
   { key: 'docs', label: 'Documents', icon: 'doc' },
-  { key: 'series', label: 'Application Series', icon: 'list' },
+  { key: 'review', label: 'Review & Publish', icon: 'check' },
 ];
 // Shares Size Info rows
 const SZ_ROWS: { key: string; label: string; extra?: boolean }[] = [
@@ -275,7 +284,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       // nothing greps for `noOfApp` (web/lib/api.ts was the last one)
       noOfApp: form.applicationsReceived,
       mechanism: form.mechanism, regulationBasis: form.regulationBasis || undefined,
-      issueSizeCr: form.issueSizeCr,
+      issueSizeCr: legSumCr || form.issueSizeCr,
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
       shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
       anchorPct: form.anchorPct,
@@ -296,7 +305,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       startBid: form.startBid, startPrint: form.startPrint,
       // only the tick and the percentage; every other column is derived on read
       shareResv: Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: form.shareResv[r.key].on, pct: form.shareResv[r.key].pct }])),
-      resvRemarks: form.resvRemarks,
+      resvRemarks: offerRemark || form.resvRemarks,
     },
   });
 
@@ -394,8 +403,62 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.anchorPct, form.finalIssuePrice,
       JSON.stringify(form.shareResv)]);
 
+  /**
+   * Why the derivation is empty, in the operator's words.
+   *
+   * computeIssue needs a lot size, a price and an offer size; without them it
+   * returns nothing and every derived cell used to fall back to a dash with no
+   * explanation. Naming the missing input is the difference between a form that
+   * looks broken and one that is telling you what it still needs.
+   */
+  const derivedBlockedWhy = (() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const missing: string[] = [];
+    if (!n(form.lotSize)) missing.push('Lot Size');
+    if (!n(form.priceBandMax) && !n(form.priceBandMin) && !n(form.finalIssuePrice)) missing.push('a price');
+    if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') missing.push('the offer size (Fresh / OFS, or the total)');
+    if (!missing.length) return 'Enter at least one reservation percentage to see the split.';
+    return `Add ${missing.join(' and ')} on the Pricing and Offer tabs — share counts, amounts and forms-for-1x are all derived from them.`;
+  })();
+
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
+
+  /** The reservation table's Total row — percentages, shares and rupees. */
+  const resvTotals = (() => {
+    const cats = derived.primary?.categories ?? [];
+    const pct = cats.reduce((a: number, c: any) => a + c.pct, 0);
+    return {
+      pct: Math.round(pct * 1000) / 1000,
+      shares: cats.reduce((a: number, c: any) => a + c.shares, 0),
+      amount: cats.reduce((a: number, c: any) => a + c.amount, 0),
+    };
+  })();
+
+  /**
+   * The RHP's own sentence, generated rather than typed.
+   *
+   * Every input for it is already on this tab, so asking an operator to retype
+   * it in prose is asking for a fourth place the offer can disagree with
+   * itself. A SHARES leg is quoted in shares and an AMOUNT leg in ₹ Cr,
+   * because that is the number the prospectus actually commits to.
+   */
+  const offerRemark = (() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const leg = (basis: string, v: string) => {
+      const val = n(v);
+      if (basis === 'none' || !val) return null;
+      return basis === 'amount'
+        ? `up to ₹${val.toLocaleString('en-IN')} Cr`
+        : `up to ${val.toLocaleString('en-IN')} equity shares`;
+    };
+    const fresh = leg(form.freshBasis, form.freshValue);
+    const ofs = leg(form.ofsBasis, form.ofsValue);
+    const parts: string[] = [];
+    if (fresh) parts.push(`Fresh Issue of ${fresh}`);
+    if (ofs) parts.push(`Offer for Sale of ${ofs}`);
+    return parts.length ? `${parts.join(' and ')}.` : '';
+  })();
 
   /**
    * Blocking checks shown inline — all of them from the ENGINE now.
@@ -582,62 +645,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 come first (spec §8). */}
 
 
-            <Panel title="Important Dates">
-              <div className="form-grid">
-                <Field label="Anchor date (date & time)" hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
-                <Field label="Issue Open (date & time)"><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
-                <Field label="Issue Close (date & time)"><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
-                <Field label="Issue Close — QIB (date & time)" hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
-                <Field label="Basis of allotment"><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
-                <Field label="Refund date"><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
-                <Field label="Demat credit"><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
-                <Field label="Listing date"><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
-              </div>
-            </Panel>
-
-            {/* IPO Partner | Syndicate / Lead Managers — side by side */}
-            <div className="form-cols" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-              <div className="fcol">
-                <Panel title="IPO Partner" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ partners: [...form.partners, { member: syndicate[0], exchange: '' }] })}><Icon name="plus" size={13} /> Add</button>}>
-                  {!syndicate.length ? <div className="banner info" style={{ fontSize: 13 }}>Add members in <b>Masters → Lead Managers</b> first.</div> :
-                    form.partners.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No partners yet. Click <b>Add</b>.</div> :
-                    <div className="lead-list">
-                      {form.partners.map((p, i) => (
-                        <div className="lead-row" key={i} style={{ gridTemplateColumns: '1fr auto' }}>
-                          <select className="input" value={p.member} onChange={(e) => setPartner(i, { member: e.target.value })}>{Array.from(new Set([...syndicate, p.member].filter(Boolean))).map((m) => <option key={m} value={m}>{m}</option>)}</select>
-                          <button type="button" className="icon-btn danger" onClick={() => set({ partners: form.partners.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
-                        </div>
-                      ))}
-                    </div>}
-                </Panel>
-              </div>
-              <div className="fcol">
-                <Panel title="Syndicate / Lead Managers" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ leads: [...form.leads, syndicate[0]] })}><Icon name="plus" size={13} /> Add</button>}>
-                  {!syndicate.length ? <div className="banner info" style={{ fontSize: 13 }}>Add members in <b>Masters → Lead Managers</b> first.</div> :
-                    form.leads.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No lead managers yet. Click <b>Add</b>.</div> :
-                    <div className="lead-list">
-                      {form.leads.map((name, i) => (
-                        <div className="lead-row" key={i} style={{ gridTemplateColumns: '1fr auto' }}>
-                          <select className="input" value={name} onChange={(e) => set({ leads: form.leads.map((m, x) => (x === i ? e.target.value : m)) })}>{Array.from(new Set([...syndicate, name].filter(Boolean))).map((m) => <option key={m} value={m}>{m}</option>)}</select>
-                          <button type="button" className="icon-btn danger" onClick={() => set({ leads: form.leads.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
-                        </div>
-                      ))}
-                    </div>}
-                </Panel>
-              </div>
-              <div className="fcol">
-                <Panel title="Registrar Information">
-                  {registrarMasters.length ? (
-                    <select className="input" value={form.registrar} onChange={(e) => pickRegistrar(e.target.value)}>
-                      <option value="">— select registrar —</option>
-                      {Array.from(new Set([...registrarMasters.map((r) => r.name), ...(form.registrar ? [form.registrar] : [])])).map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  ) : (
-                    <div className="banner info" style={{ fontSize: 13 }}>Add registrars in <b>Masters → Registrars</b> first.</div>
-                  )}
-                </Panel>
-              </div>
-            </div>
           </div>
         )}
 
@@ -738,15 +745,27 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 they are computed from; they are now the derived panel below.
                 Its NCD / IND / HNI columns were debt-issue fields that belong on
                 an NCD form, not here. */}
-            <Panel title="Offer size" desc="The total on offer. Fresh and OFS above split it; enter the total the RHP states.">
+            {/* ONE issue size, not two.
+                This panel used to show a typed "Total issue size" beside a
+                derived "Fresh + OFS", with nothing saying which was
+                authoritative — and the typed one carried a placeholder of 290,
+                which read as a computed total for every issue that was not
+                MVELECTRO. Enter the legs and the total is derived from them;
+                the manual box appears only when there are no legs to derive
+                from, which is how the legacy records were entered. */}
+            <Panel title="Offer size" desc="Derived from the Fresh Issue and Offer for Sale legs above.">
               <div className="form-grid">
-                <Field label="Total issue size (₹ Cr)" required>
-                  <input className="input mono" value={form.issueSizeCr}
-                    onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
-                </Field>
-                <Field label="Fresh + OFS" hint="derived from the two legs above">
-                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
-                </Field>
+                {legSumCr ? (
+                  <Field label="Total issue size (₹ Cr)" hint="derived from the two legs above">
+                    <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
+                  </Field>
+                ) : (
+                  <Field label="Total issue size (₹ Cr)" required
+                    hint="no Fresh / OFS legs entered — enter the total the RHP states">
+                    <input className="input mono" value={form.issueSizeCr}
+                      onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </Field>
+                )}
               </div>
             </Panel>
             <Panel title="Carve-outs" desc="Shares set aside off the top, before the category split — enter ₹ Cr. A quota exists because shares are reserved for it.">
@@ -789,7 +808,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               )}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table resv-table" style={{ width: '100%' }}>
-                  <thead><tr><th style={{ width: 40 }} /><th>Category</th><th>Share(%)</th><th>Share Count</th><th>Category Remark</th><th>Require for 1X</th></tr></thead>
+                  <thead><tr><th style={{ width: 40 }} /><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
                   <tbody>
                     {RESV_ROWS.map((r) => (
                       <tr key={r.key} className={form.shareResv[r.key].on ? 'row-on' : ''}>
@@ -805,9 +824,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           const dash = <span className="muted">—</span>;
                           return (
                             <>
-                              <td className="rc-derived">{d ? d.shares.toLocaleString('en-IN') : dash}</td>
-                              <td className="rc-derived">{d ? d.remark : dash}</td>
-                              <td className="rc-derived">
+                              <td className="rc-derived r">{d ? d.shares.toLocaleString('en-IN') : dash}</td>
+                              <td className="rc-derived r">{d ? `₹${(d.amount / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">
                                 {d?.appsFor1x != null
                                   ? <>{d.appsFor1x.toLocaleString('en-IN')}<i title="Applications that can be allotted at 1x — capacity, not demand"> · {d.maxAllottees!.toLocaleString('en-IN')} allottees</i></>
                                   : dash}
@@ -817,11 +836,32 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         })()}
                       </tr>
                     ))}
+                    {/* The total is the check an operator actually runs: does the
+                        split add back up to the offer? Reading it off four rows
+                        by eye is exactly how a 100.691% table shipped. */}
+                    {derived.primary && (
+                      <tr className="resv-total">
+                        <td />
+                        <td style={{ fontWeight: 700 }}>Total</td>
+                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.pct}</td>
+                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.shares.toLocaleString('en-IN')}</td>
+                        <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.amount / 1e7).toFixed(2)} Cr</td>
+                        <td />
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              {!derived.primary && (
+                <div className="banner info" style={{ fontSize: 13, marginTop: 12 }}>{derivedBlockedWhy}</div>
+              )}
+              {/* Generated from the offer legs, not typed. It is the RHP's own
+                  sentence and every input for it is already on this tab. */}
               <div className="form-grid one" style={{ marginTop: 12 }}>
-                <Field label="Remarks"><input className="input" value={form.resvRemarks} onChange={(e) => set({ resvRemarks: e.target.value })} placeholder="Fresh Issue of Equity Shares of up to Rs. 400 Cr and Offer for Sale…" /></Field>
+                <Field label="Remarks" hint="derived from the offer structure">
+                  <input className="input" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={offerRemark} placeholder="Enter the Fresh Issue / Offer for Sale legs above" />
+                </Field>
               </div>
             </Panel>
 
@@ -841,6 +881,73 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 </Field>
               </div>
             </Panel>
+          </div>
+        )}
+
+        {/* ================= Timeline ================= */}
+        {tab === 'timeline' && (
+          <div className="fstack">
+            <Panel title="Important Dates">
+              <div className="form-grid">
+                <Field label="Anchor date (date & time)" hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
+                <Field label="Issue Open (date & time)"><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
+                <Field label="Issue Close (date & time)"><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
+                <Field label="Issue Close — QIB (date & time)" hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
+                <Field label="Basis of allotment"><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
+                <Field label="Refund date"><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
+                <Field label="Demat credit"><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
+                <Field label="Listing date"><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
+              </div>
+            </Panel>
+          </div>
+        )}
+
+        {/* ================= Intermediaries ================= */}
+        {tab === 'parties' && (
+          <div className="fstack">
+            {/* IPO Partner | Syndicate / Lead Managers — side by side */}
+            <div className="form-cols" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+              <div className="fcol">
+                <Panel title="IPO Partner" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ partners: [...form.partners, { member: syndicate[0], exchange: '' }] })}><Icon name="plus" size={13} /> Add</button>}>
+                  {!syndicate.length ? <div className="banner info" style={{ fontSize: 13 }}>Add members in <b>Masters → Lead Managers</b> first.</div> :
+                    form.partners.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No partners yet. Click <b>Add</b>.</div> :
+                    <div className="lead-list">
+                      {form.partners.map((p, i) => (
+                        <div className="lead-row" key={i} style={{ gridTemplateColumns: '1fr auto' }}>
+                          <select className="input" value={p.member} onChange={(e) => setPartner(i, { member: e.target.value })}>{Array.from(new Set([...syndicate, p.member].filter(Boolean))).map((m) => <option key={m} value={m}>{m}</option>)}</select>
+                          <button type="button" className="icon-btn danger" onClick={() => set({ partners: form.partners.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
+                        </div>
+                      ))}
+                    </div>}
+                </Panel>
+              </div>
+              <div className="fcol">
+                <Panel title="Syndicate / Lead Managers" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ leads: [...form.leads, syndicate[0]] })}><Icon name="plus" size={13} /> Add</button>}>
+                  {!syndicate.length ? <div className="banner info" style={{ fontSize: 13 }}>Add members in <b>Masters → Lead Managers</b> first.</div> :
+                    form.leads.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No lead managers yet. Click <b>Add</b>.</div> :
+                    <div className="lead-list">
+                      {form.leads.map((name, i) => (
+                        <div className="lead-row" key={i} style={{ gridTemplateColumns: '1fr auto' }}>
+                          <select className="input" value={name} onChange={(e) => set({ leads: form.leads.map((m, x) => (x === i ? e.target.value : m)) })}>{Array.from(new Set([...syndicate, name].filter(Boolean))).map((m) => <option key={m} value={m}>{m}</option>)}</select>
+                          <button type="button" className="icon-btn danger" onClick={() => set({ leads: form.leads.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
+                        </div>
+                      ))}
+                    </div>}
+                </Panel>
+              </div>
+              <div className="fcol">
+                <Panel title="Registrar Information">
+                  {registrarMasters.length ? (
+                    <select className="input" value={form.registrar} onChange={(e) => pickRegistrar(e.target.value)}>
+                      <option value="">— select registrar —</option>
+                      {Array.from(new Set([...registrarMasters.map((r) => r.name), ...(form.registrar ? [form.registrar] : [])])).map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  ) : (
+                    <div className="banner info" style={{ fontSize: 13 }}>Add registrars in <b>Masters → Registrars</b> first.</div>
+                  )}
+                </Panel>
+              </div>
+            </div>
           </div>
         )}
 
@@ -964,10 +1071,88 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         })()}
 
         {/* ================= IPO Application Series ================= */}
-        {tab === 'series' && (
+        {tab === 'docs' && (
           <div className="fstack">
             {seriesPanel('Application Series — PDF Printing', 'Ranges per syndicate member; the active one is used for prefilled-ASBA PDF printing.', 'pdfSeries', 'pdfActive')}
             {seriesPanel('Application Series — Online Apply', 'Ranges per syndicate member; the active one is used for online applications.', 'onlineSeries', 'onlineActive')}
+          </div>
+        )}
+
+        {/* ================= Review & Publish ================= */}
+        {tab === 'review' && (
+          <div className="fstack">
+            {/* Every blocking rule in one place. They surface inline on their
+                own tabs too, but a rule you have to go looking for is a rule
+                that gets missed — this is the last screen before Save. */}
+            <Panel title="Checks" desc="Blocking items must be fixed before this issue is fit to publish. Warnings are worth a look but do not stop you.">
+              {issues.length === 0 ? (
+                <div className="banner ok" style={{ fontSize: 13.5, margin: 0 }}>
+                  <b>All checks pass.</b> Nothing is blocking publication.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {issues.map((v: { code: string; msg: string; blocking: boolean }) => (
+                    <div key={v.code + v.msg} className={`banner ${v.blocking ? 'warn' : 'info'}`} style={{ fontSize: 13.5 }}>
+                      <b>{v.code}</b> · {v.blocking ? 'Blocking' : 'Warning'} — {v.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            <Panel title="The issue" desc="What this record says, read back. Everything below is derived — if a figure looks wrong, the input behind it is wrong.">
+              <div className="form-grid">
+                <Field label="Issue"><input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={`${form.symbol || '—'} · ${form.name || '—'}`} /></Field>
+                <Field label="Board & mechanism"><input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={`${form.type === 'sme' ? 'SME' : 'Mainboard'} · ${form.mechanism === 'fixed_price' ? 'Fixed price' : 'Book-built'}`} /></Field>
+                <Field label="Rule pack" hint="selected by board + mechanism + regulation basis">
+                  <input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={derived.rulePack.label} />
+                </Field>
+              </div>
+              {derived.primary ? (
+                <>
+                  <div className="rc-summary" style={{ marginTop: 12 }}>
+                    <span><i>At</i>₹{derived.primary.price}</span>
+                    <span><i>Total offer</i>{derived.primary.totalOfferShares.toLocaleString('en-IN')} sh</span>
+                    <span><i>Net offer</i>{derived.primary.netOfferShares.toLocaleString('en-IN')} sh</span>
+                    <span><i>Issue size</i>₹{(derived.primary.totalOfferAmount / 1e7).toFixed(2)} Cr</span>
+                    {derived.primary.anchor && <span><i>Anchor</i>{derived.primary.anchor.shares.toLocaleString('en-IN')} sh</span>}
+                  </div>
+                  <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                    <table className="table" style={{ width: '100%' }}>
+                      <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
+                      <tbody>
+                        {derived.primary.categories.map((c: any) => (
+                          <tr key={c.key}>
+                            <td style={{ fontWeight: 600 }}>{c.label}</td>
+                            <td className="r mono">{c.pct}</td>
+                            <td className="r mono">{c.shares.toLocaleString('en-IN')}</td>
+                            <td className="r mono">₹{(c.amount / 1e7).toFixed(2)} Cr</td>
+                            <td className="r mono">{c.appsFor1x != null ? c.appsFor1x.toLocaleString('en-IN') : <span className="muted">—</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="banner info" style={{ fontSize: 13, marginTop: 12 }}>{derivedBlockedWhy}</div>
+              )}
+            </Panel>
+
+            <Panel title="Publishing" desc="Whether the issue is visible, and which flows are open on it.">
+              <div className="form-grid">
+                <Field label="Visible on the site"><div style={{ paddingTop: 3 }}><Toggle on={isActive} onChange={(v) => set({ status: v ? 'upcoming' : 'withdrawn' })} /></div></Field>
+                <Field label="Apply (UPI)"><div style={{ paddingTop: 3 }}><Toggle on={form.startBid} onChange={(v) => set({ startBid: v })} /></div></Field>
+                <Field label="Print forms"><div style={{ paddingTop: 3 }}><Toggle on={form.startPrint} onChange={(v) => set({ startPrint: v })} /></div></Field>
+              </div>
+              {issues.some((v: { blocking: boolean }) => v.blocking) && (
+                <div className="banner warn" style={{ fontSize: 13, marginTop: 12 }}>
+                  This issue has blocking checks outstanding. Nothing stops you saving — the
+                  status machine that would gate publishing on them is not built yet — but the
+                  figures it publishes will be wrong until they are fixed.
+                </div>
+              )}
+            </Panel>
           </div>
         )}
 

@@ -3255,3 +3255,6 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 @media (max-width: 560px) {
   .ct-detail-in { width: min(100%, calc(100vw - 30px)); padding: 12px 13px 14px; }
 }
+
+/* the reservation table's Total row — the check an operator actually runs */
+.resv-table tr.resv-total td { border-top: 2px solid var(--border-2); background: var(--bg-2); }
