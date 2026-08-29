@@ -742,7 +742,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               <div className="form-grid">
                 <Field label="Total issue size (₹ Cr)" required>
                   <input className="input mono" value={form.issueSizeCr}
-                    onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} placeholder="290" />
+                    onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
                 </Field>
                 <Field label="Fresh + OFS" hint="derived from the two legs above">
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
