@@ -61,17 +61,32 @@ const band = (s) => {
   return [Number(nums[0]), Number(nums[1])];
 };
 
-/** pull "Fresh Issue ... ₹X Cr" / "Offer for Sale ... N shares" out of the prose */
-const legs = (text) => {
-  const t = String(text || '');
-  const cr = (re) => { const m = re.exec(t); return m ? Number(String(m[1]).replace(/,/g, '')) : null; };
-  return {
-    freshCr: cr(/fresh\s+issue[^₹\d]{0,40}(?:₹|rs\.?)\s*([\d,]+(?:\.\d+)?)\s*cr/i),
-    ofsCr: cr(/offer\s+for\s+sale[^₹\d]{0,40}(?:₹|rs\.?)\s*([\d,]+(?:\.\d+)?)\s*cr/i),
-    freshSh: cr(/fresh\s+issue[^\d]{0,40}([\d,]{5,})\s*(?:equity\s*)?shares/i),
-    ofsSh: cr(/offer\s+for\s+sale[^\d]{0,40}([\d,]{5,})\s*(?:equity\s*)?shares/i),
+/**
+ * NSE writes the issue size as prose, in three units and two shapes. Two things
+ * make it delicate: amounts are in MILLIONS (10 million = 1 crore), and each leg
+ * is trailed by a parenthetical naming the anchor or employee portion whose
+ * numbers must not be mistaken for the leg itself. The first version of this
+ * parsed 0% by looking for "Cr".
+ */
+const parseSize = (raw) => {
+  const t = String(raw || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ');
+  const cut = t.search(/offer\s+for\s+sale/i);
+  const freshPart = cut >= 0 ? t.slice(0, cut) : t;
+  const ofsPart = cut >= 0 ? t.slice(cut) : '';
+  const leg = (part) => {
+    if (!part) return { cr: null, shares: null };
+    const n = (s) => Number(String(s).replace(/,/g, ''));
+    let m;
+    if ((m = /(?:rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)\s*million/i.exec(part))) return { cr: n(m[1]) / 10, shares: null };
+    if ((m = /(?:rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:crore|cr\b)/i.exec(part))) return { cr: n(m[1]), shares: null };
+    if ((m = /(?:rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:lakh|lac)/i.exec(part))) return { cr: n(m[1]) / 100, shares: null };
+    if ((m = /([\d,]{5,})\s*(?:\w+\s+){0,2}(?:equity\s*)?shares/i.exec(part))) return { cr: null, shares: n(m[1]) };
+    return { cr: null, shares: null };
   };
+  const f = leg(freshPart), o = leg(ofsPart);
+  return { freshCr: f.cr, freshSh: f.shares, ofsCr: o.cr, ofsSh: o.shares };
 };
+
 
 (async () => {
   console.log('fetching NSE past-issues list…');
@@ -97,7 +112,7 @@ const legs = (text) => {
 
     const [pmin, pmax] = band(fact(L, 'price range') || r.priceRange);
     const sizeText = fact(L, 'issue size');
-    const lg = legs(sizeText);
+    const lg = parseSize(sizeText);
     const lot = numOf(fact(L, 'lot size', 'bid lot', 'minimum order quantity'));
 
     out.push({
@@ -148,7 +163,15 @@ const legs = (text) => {
     o.symbol, o.name, o.board, o.exchanges, '', '',
     o.issueType, o.faceValue, o.pmin, o.pmax,
     o.lot, o.minAmount,
-    (o.freshCr != null && o.ofsCr != null) ? o.freshCr + o.ofsCr : (o.freshCr ?? o.ofsCr ?? null),
+    (() => {
+      // A share-denominated leg becomes rupees at the CAP price — the same
+      // convention the prospectus uses when it quotes the issue size at the
+      // upper band. Most SME issues quote shares, so without this the total
+      // is blank for two rows in three.
+      const legCr = (cr, sh) => (cr != null ? cr : (sh != null && o.pmax ? (sh * o.pmax) / 1e7 : null));
+      const t = (legCr(o.freshCr, o.freshSh) ?? 0) + (legCr(o.ofsCr, o.ofsSh) ?? 0);
+      return t > 0 ? Math.round(t * 100) / 100 : null;
+    })(),
     o.freshCr, o.freshSh, o.ofsCr, o.ofsSh,
     '', '', '',                                   // reservations: from the RHP, never guessed
     o.openDate, o.closeDate, o.listingDate,
