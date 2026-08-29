@@ -71,13 +71,24 @@ export class IpoService {
    * front-site page load and the mobile app. Admin surfaces pass includeCatalogOnly.
    * `limit` is capped so this endpoint can never return an unbounded payload.
    */
-  async list(f: { type?: string; status?: string; q?: string; limit?: number; offset?: number; includeCatalogOnly?: boolean }) {
+  async list(f: {
+    type?: string; status?: string; q?: string; limit?: number; offset?: number;
+    includeCatalogOnly?: boolean; from?: string; to?: string;
+  }) {
     const take = Math.min(Math.max(1, f.limit ?? 500), 2000);
     const rows = await this.prisma.ipo.findMany({
       where: {
         type: f.type as any,
         status: f.status as any,
         name: f.q ? { contains: f.q, mode: 'insensitive' } : undefined,
+        // A window on the CLOSE date. The catalog is about to go from twelve
+        // rows to a couple of thousand, and every caller that only wants a
+        // slice should be able to say so in the query rather than downloading
+        // the lot and filtering in the browser.
+        ...(f.from || f.to
+          ? { closeDate: { ...(f.from ? { gte: new Date(`${f.from}T00:00:00Z`) } : {}),
+                           ...(f.to ? { lte: new Date(`${f.to}T23:59:59Z`) } : {}) } }
+          : {}),
         ...(f.includeCatalogOnly ? {} : { hidden: false }),
       },
       include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
@@ -86,6 +97,88 @@ export class IpoService {
       skip: f.offset && f.offset > 0 ? f.offset : undefined,
     });
     return rows.map(toDetail);
+  }
+
+  /**
+   * The archive: finished issues, filtered and PAGED on the server.
+   *
+   * The page used to pull the whole catalog and filter it in the browser,
+   * which was fine at twelve rows and is not at two thousand. It needs three
+   * things the plain list cannot give it — a total for "showing 50 of N", the
+   * set of years that actually have issues for the dropdown, and a page of
+   * rows — so it gets its own endpoint rather than three round trips.
+   *
+   * Issues are filed under listing date, falling back to close then open: an
+   * investor looking for "March 2026" means when it listed.
+   */
+  async archive(f: { year?: string; month?: string; type?: string; q?: string; page?: number; perPage?: number }) {
+    /*
+     * "Finished" is a question about DATES, not about the status column.
+     *
+     * Ipo.status is dead in the database — every row reads 'upcoming' and the
+     * real status is derived at read time by effectiveStatus(). Filtering on
+     * the stored value returns nothing at all, which is exactly what the first
+     * version of this did. Only 'withdrawn' is ever written meaningfully.
+     */
+    const now = new Date();
+    const finished: any = {
+      OR: [
+        { status: 'withdrawn' as any },
+        { listingDate: { lt: now } },
+        { AND: [{ listingDate: null }, { closeDate: { lt: now } }] },
+      ],
+    };
+
+    // Every clause goes in one AND list. Prisma cannot express
+    // COALESCE(listing, close) in a where, so each date test carries its own
+    // fallback, and stacking them as separate ORs at the top level would let
+    // them satisfy each other instead of all having to hold.
+    const clauses: any[] = [finished];
+    if (f.type && f.type !== 'all') clauses.push({ type: f.type as any });
+    if (f.q) {
+      clauses.push({ OR: [
+        { name: { contains: f.q, mode: 'insensitive' } },
+        { symbol: { contains: f.q, mode: 'insensitive' } },
+      ] });
+    }
+    if (f.year && f.year !== 'all') {
+      const mm = f.month && f.month !== 'all' ? f.month.padStart(2, '0') : null;
+      const start = new Date(`${f.year}-${mm ?? '01'}-01T00:00:00Z`);
+      const end = mm
+        ? new Date(Date.UTC(Number(f.year), Number(mm), 0, 23, 59, 59))
+        : new Date(`${f.year}-12-31T23:59:59Z`);
+      clauses.push({ OR: [
+        { listingDate: { gte: start, lte: end } },
+        { AND: [{ listingDate: null }, { closeDate: { gte: start, lte: end } }] },
+      ] });
+    }
+    const where: any = { hidden: false, AND: clauses };
+
+    const perPage = Math.min(Math.max(1, f.perPage ?? 50), 200);
+    const page = Math.max(1, f.page ?? 1);
+
+    const [total, rows, yearRows] = await Promise.all([
+      this.prisma.ipo.count({ where }),
+      this.prisma.ipo.findMany({
+        where,
+        include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        orderBy: [{ listingDate: 'desc' }, { closeDate: 'desc' }],
+        take: perPage,
+        skip: (page - 1) * perPage,
+      }),
+      // the dropdown must only offer years that have something in them, and on
+      // the SAME definition of finished the rows use
+      this.prisma.ipo.findMany({
+        where: { hidden: false, AND: [finished] },
+        select: { listingDate: true, closeDate: true, openDate: true },
+      }),
+    ]);
+
+    const years = [...new Set(yearRows
+      .map((r) => (r.listingDate ?? r.closeDate ?? r.openDate)?.toISOString().slice(0, 4))
+      .filter(Boolean) as string[])].sort((a, b) => b.localeCompare(a));
+
+    return { rows: rows.map(toDetail), total, page, perPage, years };
   }
 
   async get(id: string) {

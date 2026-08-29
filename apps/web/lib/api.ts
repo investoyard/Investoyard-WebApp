@@ -431,6 +431,29 @@ export async function getBanners(): Promise<BannerView[]> {
   return safeGet<BannerView[]>('/banners', []);
 }
 
+/**
+ * The archive's page of finished issues — filtered, sorted and counted on the
+ * SERVER. It used to pull the whole catalog and filter in the browser, which
+ * was fine at twelve rows and is not at two thousand.
+ */
+export interface ArchivePage { rows: IpoFull[]; total: number; page: number; perPage: number; years: string[] }
+export async function getArchive(q: {
+  year?: string; month?: string; board?: string; q?: string; page?: number; perPage?: number;
+}): Promise<ArchivePage> {
+  const sp = new URLSearchParams();
+  if (q.year && q.year !== 'all') sp.set('year', q.year);
+  if (q.month && q.month !== 'all') sp.set('month', q.month);
+  if (q.board && q.board !== 'all') sp.set('board', q.board);
+  if (q.q && q.q.trim()) sp.set('q', q.q.trim());
+  if (q.page) sp.set('page', String(q.page));
+  if (q.perPage) sp.set('perPage', String(q.perPage));
+  const empty: ArchivePage = { rows: [], total: 0, page: 1, perPage: 50, years: [] };
+  const r = await safeGet<{ rows: IpoDetail[]; total: number; page: number; perPage: number; years: string[] } | null>(
+    `/ipos/archive?${sp.toString()}`, null);
+  if (!r) return empty;
+  return { ...r, rows: (r.rows ?? []).map(enrich) };
+}
+
 export async function getIpos(): Promise<IpoListItem[]> {
   // API returns IpoDetail[] (mapped to the shared contract); enrich each into a full card.
   // On any failure safeGet returns the base MOCK, which is enriched the same way.
