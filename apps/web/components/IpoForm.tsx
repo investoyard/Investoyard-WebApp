@@ -354,8 +354,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     api.fetchMaster('ipo-categories').then((r) => setCategoryMasters(r.filter((x) => x.active))).catch(() => {});
   }, []);
 
-  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
-  if (loading) return <Loader />;
   const phase = ipoPhase({ status: form.status, openDate: form.openDate, closeDate: form.closeDate, allotmentDate: form.allotmentDate, listingDate: form.listingDate });
 
   const issueTypeOptions = issueTypeMasters.length ? issueTypeMasters.map((t) => t.name) : [...ISSUE_TYPES];
@@ -583,6 +581,22 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       </Panel>
     );
   };
+
+  /*
+   * Both guards live HERE, below every hook, and must stay below them.
+   *
+   * They used to sit above the two useMemo calls (`derived` and `issues`).
+   * `loading` starts as `editing`, so opening an existing IPO returned <Loader/>
+   * on the first render — those two hooks never ran. When the fetch resolved and
+   * loading flipped false, the next render reached them, React counted more
+   * hooks than the render before, and the whole screen died with error #310
+   * ("Rendered more hooks than during the previous render").
+   *
+   * It only ever hit Edit: on /catalog/new `editing` is false, so the first
+   * render already runs every hook and the counts match.
+   */
+  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
+  if (loading) return <Loader />;
 
   return (
     <div className="ipo-form">
