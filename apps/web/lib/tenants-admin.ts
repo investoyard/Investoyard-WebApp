@@ -713,10 +713,13 @@ export interface GmpFeedChange {
   gmp?: number; skippedManual?: boolean;
 }
 export interface GmpFeedSuggestion {
+  status?: string; gmpPct?: number | null;
   symbol: string; ourName: string; theirName: string;
   sourceId: string; gmp: number | null; datesAgree: boolean;
 }
 export interface GmpFeedLink {
+  /** the feed's own lifecycle stage: Upcoming | Open | Closing today | Closed | Listing pending | Listed */
+  status?: string; gmpPct?: number | null;
   symbol: string; ourName: string; theirName: string;
   sourceId: string; gmp: number | null; autoGmp: boolean;
 }

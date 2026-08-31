@@ -34,6 +34,11 @@ interface FeedRow {
   name: string;
   gmp: number | null;
   gmpPct: number | null;
+  /** the day-range the feed shows beside the premium */
+  gmpLow: number | null;
+  gmpHigh: number | null;
+  /** Upcoming | Open | Closing today | Closed | Listing pending | Listed */
+  status: string;
   price: string | null;
   lot: number | null;
   sizeCr: number | null;
@@ -44,11 +49,59 @@ interface FeedRow {
   category: string;
 }
 
-/** "&#8377;125.00 Cr" → 125 ; also strips any tags the cell carries */
+/** The feed writes rupees as `&#8377;` and ampersands as `&amp;`. Decode once. */
+const decode = (v: unknown): string => String(v ?? '')
+  .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+  .replace(/&amp;/g, '&')
+  .replace(/&nbsp;/g, ' ');
+
+/** tags out, entities decoded, whitespace collapsed */
+const text = (v: unknown): string => decode(v).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** "&#8377;125.00 Cr" → 125 */
 const num = (v: unknown): number | null => {
-  const s = String(v ?? '').replace(/<[^>]*>/g, '').replace(/&#\d+;/g, '');
-  const m = s.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+  const m = text(v).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
   return m ? Number(m[0]) : null;
+};
+
+/**
+ * The GMP cell, which is the only place the real premium appears.
+ *
+ *   ₹<b>50</b> (60.98%)<br><small><b>46 ↓ / 63 ↑</b></small>
+ *
+ * `~max_gmp1` looks like the obvious field and is NOT the premium — it is the
+ * day's HIGH. Measured across a full page: it equalled the high on every row
+ * where the two differed, and never equalled the shown value alone. It agreed
+ * with the shown GMP on 8 of 23 rows, purely because the premium happened to be
+ * at its high, which is how reading it went unnoticed. It overstated ESDS as
+ * ₹372 against a real ₹310, and Purple Style Labs as ₹34 against ₹3.
+ *
+ * The giveaway was already in our own data: `~gmp_percent_calc` matches the
+ * DISPLAYED gmp on every row, so the percentage we stored never reconciled with
+ * the premium we stored beside it.
+ *
+ * A premium of "--" means not known. It arrives as `~max_gmp1 = "0"`, so
+ * reading that field also published a confident ₹0 for issues with no GMP yet.
+ */
+function parseGmpCell(html: unknown): { gmp: number | null; pct: number | null; low: number | null; high: number | null } {
+  const raw = String(html ?? '');
+  const bolds = [...raw.matchAll(/<b>(.*?)<\/b>/gi)].map((m) => decode(m[1]).trim());
+  const shown = bolds[0] ?? '';
+  const pct = decode(raw).match(/\(\s*(-?[\d.]+)\s*%\s*\)/);
+  const range = (bolds[1] ?? '').match(/(-?[\d.]+)\s*↓\s*\/\s*(-?[\d.]+)\s*↑/);
+  const n = (x?: string) => { const v = Number(String(x ?? '').replace(/,/g, '')); return Number.isFinite(v) ? v : null; };
+  return {
+    gmp: /^-+$/.test(shown) || shown === '' ? null : n(shown),
+    pct: pct ? n(pct[1]) : null,
+    low: range ? n(range[1]) : null,
+    high: range ? n(range[2]) : null,
+  };
+}
+
+/** `~ipo_status1` — the lifecycle stage the feed reports for a row. */
+const FEED_STATUS: Record<string, string> = {
+  U: 'Upcoming', O: 'Open', CT: 'Closing today', C: 'Closed',
+  LP: 'Listing pending', LN: 'Listed',
 };
 
 const iso = (v: unknown): string | undefined =>
@@ -155,14 +208,19 @@ export class GmpFeedService implements OnModuleInit {
       const body: any = await res.json();
       const rows: any[] = Array.isArray(body?.reportTableData) ? body.reportTableData : [];
       for (const r of rows) {
+        const cell = parseGmpCell(r['GMP']);
         const id = String(r['~id'] ?? '').trim();
         const name = String(r['~ipo_name'] ?? '').trim();
         if (!id || !name) continue;
         out.push({
           id, name,
-          gmp: num(r['~max_gmp1']),
-          gmpPct: num(r['~gmp_percent_calc']),
-          price: String(r['Price (₹)'] ?? '').replace(/<[^>]*>/g, '').trim() || null,
+          gmp: cell.gmp,
+          // the feed's own percentage agrees with the SHOWN gmp, so it is kept
+          gmpPct: cell.pct ?? num(r['~gmp_percent_calc']),
+          gmpLow: cell.low,
+          gmpHigh: cell.high,
+          status: FEED_STATUS[String(r['~ipo_status1'] ?? '').trim()] ?? '',
+          price: text(r['Price (₹)']) || null,
           lot: num(r['Lot']),
           sizeCr: num(r['IPO Size']),
           openDate: iso(r['~Srt_Open']),
@@ -304,12 +362,12 @@ export class GmpFeedService implements OnModuleInit {
       // invisible on the screen, and cannot be undone
       linked: linked.map((l) => ({
         symbol: l.ipo.symbol, ourName: l.ipo.name, theirName: l.row.name,
-        sourceId: l.row.id, gmp: l.row.gmp,
+        sourceId: l.row.id, gmp: l.row.gmp, gmpPct: l.row.gmpPct, status: l.row.status,
         autoGmp: ((l.ipo.extra as any) ?? {}).autoGmp !== false,
       })),
       suggestions: suggested.map((s) => ({
         symbol: s.ipo.symbol, ourName: s.ipo.name, theirName: s.row.name,
-        sourceId: s.row.id, gmp: s.row.gmp, datesAgree: s.datesAgree,
+        sourceId: s.row.id, gmp: s.row.gmp, gmpPct: s.row.gmpPct, status: s.row.status, datesAgree: s.datesAgree,
       })),
       unmatched,
     };

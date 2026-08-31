@@ -208,7 +208,7 @@ export default function GmpFeedPage() {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>
-              <thead><tr><th>Our IPO</th><th>Their row</th><th className="r">GMP</th><th /></tr></thead>
+              <thead><tr><th>Our IPO</th><th>Their row</th><th>Stage</th><th className="r">GMP</th><th /></tr></thead>
               <tbody>
                 {rep.linked.map((l) => (
                   <tr key={l.symbol}>
@@ -220,7 +220,11 @@ export default function GmpFeedPage() {
                       {l.theirName}
                       <div className="muted mono" style={{ fontSize: 11.5 }}>id {l.sourceId}</div>
                     </td>
-                    <td className="r mono">{l.gmp != null ? `₹${l.gmp}` : '—'}</td>
+                    <td>{l.status ? <span className="st mut">{l.status}</span> : <span className="muted">—</span>}</td>
+                    <td className="r mono">
+                      {l.gmp != null ? `₹${l.gmp}` : '—'}
+                      {l.gmp != null && l.gmpPct != null && <div className="muted" style={{ fontSize: 11 }}>{l.gmpPct}%</div>}
+                    </td>
                     <td className="r">
                       {canManage && (
                         <button className="btn btn-secondary btn-sm" disabled={busy === l.symbol}
@@ -254,7 +258,7 @@ export default function GmpFeedPage() {
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>
               <thead>
-                <tr><th>Our IPO</th><th>Their row</th><th>Corroboration</th><th className="r">GMP</th><th /></tr>
+                <tr><th>Our IPO</th><th>Their row</th><th>Stage</th><th>Corroboration</th><th className="r">GMP</th><th /></tr>
               </thead>
               <tbody>
                 {rep.suggestions.map((s) => (
@@ -267,12 +271,16 @@ export default function GmpFeedPage() {
                       {s.theirName}
                       <div className="muted mono" style={{ fontSize: 11.5 }}>id {s.sourceId}</div>
                     </td>
+                    <td>{s.status ? <span className="st mut">{s.status}</span> : <span className="muted">—</span>}</td>
                     <td>
                       {s.datesAgree
                         ? <span className="st ok">Dates agree</span>
                         : <span className="st warn">Name only</span>}
                     </td>
-                    <td className="r mono">{s.gmp != null ? `₹${s.gmp}` : '—'}</td>
+                    <td className="r mono">
+                      {s.gmp != null ? `₹${s.gmp}` : '—'}
+                      {s.gmp != null && s.gmpPct != null && <div className="muted" style={{ fontSize: 11 }}>{s.gmpPct}%</div>}
+                    </td>
                     <td className="r">
                       {canManage && (
                         <button className="btn btn-sm" disabled={busy === s.symbol}
