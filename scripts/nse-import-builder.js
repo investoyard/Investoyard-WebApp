@@ -53,6 +53,14 @@ const fact = (list, ...names) => {
   return '';
 };
 
+/** An ISO date, but only if it lands within `days` after `after`. Else ''. */
+function closeWithin(value, after, days) {
+  const v = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || !after) return '';
+  const gap = (Date.parse(v) - Date.parse(after)) / 864e5;
+  return gap >= 0 && gap <= days ? v : '';
+}
+
 /**
  * Final category-wise subscription from NSE's `activeCat` table.
  *
@@ -86,7 +94,10 @@ function subscriptionOf(activeCat) {
       continue;
     }
     if (sr.includes('(')) continue;              // a lettered sub-row
-    if (times == null) continue;
+    // 0x means the category was either not offered or drew no bids. Neither is
+    // worth a rendered row, and "QIB 0x" on an SME that has no QIB portion reads
+    // as a real figure rather than an absence.
+    if (times == null || times <= 0) continue;
     const name = String(c.category || '').toLowerCase();
     if (sr === '2.1') out.bnii = times;
     else if (sr === '2.2') out.snii = times;
@@ -190,9 +201,13 @@ const parseSize = (raw) => {
       // NSE's own security master — more reliable than anything in the fact list
       isin: meta.isin || '',
       sector: meta.industry || '',
-      // metaInfo.listingDate is ISO already and is present on rows where the
-      // past-issues list still shows a placeholder '-'
-      metaListing: /^\d{4}-\d{2}-\d{2}$/.test(String(meta.listingDate || '')) ? meta.listingDate : '',
+      // metaInfo.listingDate is the SECURITY's listing date, NOT the IPO's. For a
+      // fresh IPO they are the same day; for an FPO or an SME that later migrated
+      // to the mainboard they are years apart — RUCHISOYA's 2022 FPO reports 2003,
+      // AGROPHOS's 2016 SME issue reports its 2019 migration. Measured over 891
+      // dated rows the real gap after close is 3-14 days and the next value in the
+      // whole distribution is 864, so this only fills genuinely fresh listings.
+      metaListing: closeWithin(meta.listingDate, iso(r.ipoEndDate), 30),
       sub,
     });
 
