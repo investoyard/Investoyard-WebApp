@@ -139,3 +139,45 @@ export function demandWord(subX: number, sme: boolean): string {
   if (subX < th[2]) return 'Strong demand';
   return 'Exceptional demand';
 }
+
+/**
+ * Exchange platform names.
+ *
+ * The DATABASE stores the platform's real name; every SURFACE shows the name
+ * investors recognise. NSE's SME platform is officially **NSE Emerge**, but
+ * "NSE SME" is what the general investor reads without pausing — so the record
+ * stays accurate and the label stays familiar (operator decision, 2026-08-31).
+ * BSE's platform is genuinely called BSE SME, so it needs no translation.
+ *
+ * Before this existed the literal 'NSE SME' was retyped at six sites while the
+ * admin form labelled the same toggle 'NSE Emerge' — the form and the site
+ * disagreed about what an issue was listed on. Write through EXCHANGES, render
+ * through exchangeLabel(), and never hand-type either string again.
+ */
+export const EXCHANGES = {
+  nse: 'NSE',
+  bse: 'BSE',
+  /** stored value for NSE's SME platform — displayed as 'NSE SME' */
+  nseSme: 'NSE Emerge',
+  bseSme: 'BSE SME',
+} as const;
+
+/** The exchange list an issue is stored with, given its board. */
+export function exchangesFor(sme: boolean, nse: boolean, bse: boolean): string[] {
+  const out: string[] = [];
+  if (nse) out.push(sme ? EXCHANGES.nseSme : EXCHANGES.nse);
+  if (bse) out.push(sme ? EXCHANGES.bseSme : EXCHANGES.bse);
+  return out;
+}
+
+/** Stored exchange value → the label shown to investors. Idempotent: a legacy
+ *  row still holding 'NSE SME' passes through unchanged. */
+export function exchangeLabel(v: string): string {
+  const s = String(v ?? '').trim();
+  return s === EXCHANGES.nseSme ? 'NSE SME' : s;
+}
+
+/** A stored exchange list, joined for display. */
+export function exchangeLabels(list?: readonly string[] | null, sep = ' · '): string {
+  return (list ?? []).map(exchangeLabel).filter(Boolean).join(sep);
+}

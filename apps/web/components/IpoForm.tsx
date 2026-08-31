@@ -10,7 +10,7 @@ import { RichText } from '@/components/ui/RichText';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, type IssueInputs, type LegBasis } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, type IssueInputs, type LegBasis } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -264,11 +264,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
 
   /** SME lists on NSE Emerge / BSE SME; mainboard on the main boards. */
   const exchangeList = (): string[] => {
-    const sme = form.type === 'sme';
-    const out: string[] = [];
-    if (form.exNse) out.push(sme ? 'NSE SME' : 'NSE');
-    if (form.exBse) out.push(sme ? 'BSE SME' : 'BSE');
-    return out;
+    // stores 'NSE Emerge' for SME; the screen shows it as 'NSE SME'
+    return exchangesFor(form.type === 'sme', form.exNse, form.exBse);
   };
 
   const payload = (): api.IpoWrite => ({
@@ -652,7 +649,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                       The API used to write ['NSE','BSE'] for every mainboard issue
                       and both SME platforms for every SME one, so an issue on a
                       single platform was recorded as listing on two. */}
-                  <Field label={form.type === 'sme' ? 'NSE Emerge' : 'NSE'} hint="listed on this exchange">
+                  <Field label={form.type === 'sme' ? 'NSE SME' : 'NSE'} hint="listed on this exchange">
                     <div style={{ paddingTop: 3 }}><Toggle on={form.exNse} onChange={(v) => set({ exNse: v })} /></div>
                   </Field>
                   <Field label={form.type === 'sme' ? 'BSE SME' : 'BSE'} hint={form.type === 'sme' ? 'SME usually lists on ONE platform' : 'listed on this exchange'}>

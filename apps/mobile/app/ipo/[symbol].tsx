@@ -29,6 +29,7 @@ import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
+import { exchangeLabels } from '@investoyard/shared-types';
 
 /* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
    listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
@@ -99,7 +100,11 @@ export default function IpoDetailScreen() {
   const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
     ? ex.leads
     : ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial'];
-  const exchanges = ipo.type === 'sme' ? 'NSE SME · BSE SME' : 'NSE · BSE';
+  // What the issue ACTUALLY lists on, shown in the investor's vocabulary
+  // ('NSE Emerge' is stored, 'NSE SME' is displayed). Falls back to ONE SME
+  // platform rather than claiming both, which is what this line used to do.
+  const exchanges = exchangeLabels((ipo as any).exchanges)
+    || (ipo.type === 'sme' ? 'NSE SME' : 'NSE · BSE');
   const aboutParas = stripHtml(typeof ex.companyDescription === 'string' && ex.companyDescription.trim() ? ex.companyDescription : ipo.about);
   const objectParas = stripHtml(ipo.objectsOfIssue);
   const finParas = stripHtml(typeof ex.companyFinancials === 'string' ? ex.companyFinancials : undefined);

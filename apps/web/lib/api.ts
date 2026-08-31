@@ -3,7 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { computeIssue } from '@investoyard/shared-types';
+import { computeIssue, EXCHANGES, exchangeLabels } from '@investoyard/shared-types';
 import { issueInputsFor } from '@/lib/ipoCalc';
 export type { IpoListItem, IpoDetail };
 
@@ -269,7 +269,12 @@ function enrich(ipo: IpoDetail): IpoFull {
     logo: (ipo as any).logoUrl ?? (ipo as any).logo, // API sends logoUrl; cards/hero read `logo`
     subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
     leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),
-    exchanges: ipo.type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'],
+    // The API now sends what the issue ACTUALLY lists on. Only guess when it
+    // is absent, and guess ONE SME platform — assuming both is what made every
+    // SME issue read as "NSE SME · BSE SME" regardless of the truth.
+    exchanges: Array.isArray((ipo as any).exchanges) && (ipo as any).exchanges.length
+      ? (ipo as any).exchanges
+      : (ipo.type === 'sme' ? [EXCHANGES.nseSme] : [EXCHANGES.nse, EXCHANGES.bse]),
   };
   // REAL data wins; synthesized series/anchors are for seed/demo rows ONLY
   // (live rows always carry an `extra` object — never show fabricated data there).
@@ -396,7 +401,7 @@ function enrich(ipo: IpoDetail): IpoFull {
     { q: `What is the minimum investment in the ${ipo.name} IPO?`, a: `One lot of ${lot} shares — ₹${(ipo.minAmount ?? 0).toLocaleString('en-IN')} at the upper price band of ₹${upper}.` },
     { q: 'How many bids can I place?', a: 'Up to 3 bids per application. Retail applications are capped at ₹2,00,000; above that you must apply in the HNI category.' },
     { q: 'When are the funds debited?', a: 'Funds are blocked via a UPI mandate at application and debited only on allotment. If shares are not allotted, the block is released automatically.' },
-    { q: 'When will the shares list?', a: `Tentative listing on ${ipo.listingDate ?? 'the listing date'} on ${ipo.type === 'sme' ? 'NSE SME / BSE SME' : 'NSE & BSE'}.` },
+    { q: 'When will the shares list?', a: `Tentative listing on ${ipo.listingDate ?? 'the listing date'} on ${exchangeLabels(f.exchanges, ' / ') || (ipo.type === 'sme' ? 'NSE SME' : 'NSE & BSE')}.` },
   ];
   return f;
 }

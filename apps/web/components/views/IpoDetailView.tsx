@@ -12,7 +12,7 @@ import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase } from '@investoyard/shared-types';
+import { LABEL, titleCase, exchangeLabels } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -87,7 +87,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
           <div className="ic-meta" style={{ marginTop: 8 }}>
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
-            {ipo.exchanges && <span className="hero-ex">{ipo.exchanges.join(' · ')}</span>}
+            {ipo.exchanges && <span className="hero-ex">{exchangeLabels(ipo.exchanges)}</span>}
           </div>
           <div className="ic-dates" style={{ marginTop: 9 }}><Icon name="calendar" size={13} />{fmtDate(ipo.openDate)} – {fmtDate(ipo.closeDate)}</div>
         </div>

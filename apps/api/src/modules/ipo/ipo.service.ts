@@ -4,6 +4,7 @@ import { RailService } from '../rail/rail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { CreateIpoDto, UpdateIpoDto } from './ipo.dto';
+import { EXCHANGES } from '@investoyard/shared-types';
 
 const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice.';
 
@@ -38,6 +39,12 @@ function toDetail(ipo: any) {
     issueSize: crStr(ipo.issueSize),
     issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e7) : undefined, // raw ₹cr for admin edit
     registrar: ipo.registrar ?? undefined,
+    // The exchanges an issue ACTUALLY lists on. This was never sent, so the web
+    // fell back to inventing both SME platforms for every SME issue — which is
+    // how a single-platform issue came to display as "NSE SME · BSE SME".
+    exchanges: Array.isArray(ipo.exchanges) && ipo.exchanges.length
+      ? ipo.exchanges
+      : (Array.isArray(ipo.extra?.exchanges) && ipo.extra.exchanges.length ? ipo.extra.exchanges : undefined),
     isin: ipo.isin ?? undefined,
     logoUrl: ipo.logoUrl ?? undefined,
     objectsOfIssue: ipo.objectsOfIssue ?? undefined,
@@ -395,7 +402,9 @@ export class IpoService {
       // recorded as listing on both.
       ...(Array.isArray((dto as any).exchanges) && (dto as any).exchanges.length
         ? { exchanges: (dto as any).exchanges }
-        : type ? { exchanges: type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'] } : {}),
+        // A conservative guess: SME issues usually list on ONE platform, so
+        // assuming both is the very fault this fallback used to introduce.
+        : type ? { exchanges: type === 'sme' ? [EXCHANGES.nseSme] : [EXCHANGES.nse, EXCHANGES.bse] } : {}),
     };
     // Drop undefined so PATCH only touches provided fields.
     Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);

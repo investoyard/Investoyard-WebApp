@@ -181,7 +181,7 @@ const parseSize = (raw) => {
       symbol: r.symbol,
       name: clean(r.company),
       board: r.securityType === 'SME' ? 'SME' : 'Mainboard',
-      exchanges: r.securityType === 'SME' ? 'NSE SME' : 'NSE',
+      exchanges: r.securityType === 'SME' ? 'NSE Emerge' : 'NSE', // stored name; shown as 'NSE SME'
       faceValue: numOf(fact(L, 'face value')),
       issueType: fact(L, 'issue type') || 'Book-built',
       pmin, pmax,
