@@ -102,14 +102,15 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>
-              <thead><tr><th>Name</th><th>Code</th><th>Contact</th><th>Email / Phone</th><th>City</th>{withUrl && <th>Allotment URL</th>}<th>Status</th><th /></tr></thead>
+              <thead><tr><th>Name</th><th>Code</th><th className="r">IPOs</th><th>Contact</th><th>Email / Phone</th><th>City</th>{withUrl && <th>Allotment URL</th>}<th>Status</th><th /></tr></thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={withUrl ? 8 : 7} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
+                  <tr><td colSpan={withUrl ? 9 : 8} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
                 ) : slice.map((r) => (
                   <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
                     <td>{r.name}</td>
                     <td className="mono">{r.shortCode}</td>
+                      <td className="r mono">{r.ipoCount != null ? r.ipoCount.toLocaleString('en-IN') : <span className="muted">—</span>}</td>
                     <td>{r.contactPerson || '—'}{r.mobile ? <div className="muted mono" style={{ fontSize: 11 }}>{r.mobile}</div> : null}</td>
                     <td style={{ fontSize: 13 }}>{r.email || '—'}{r.phone ? <div className="muted mono" style={{ fontSize: 11 }}>{r.phone}</div> : null}</td>
                     <td>{r.city || '—'}</td>

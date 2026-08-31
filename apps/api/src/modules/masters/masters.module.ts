@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { resolveMaster } from '@investoyard/shared-types';
 import { BULK_KINDS, columnsFor, keyOf, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
 
 /**
@@ -92,11 +93,30 @@ export class MastersController {
 
   @Get(':kind')
   @RequirePermissions('ipos.view')
-  list(@Param('kind') kind: string) {
-    return this.repo(kind).findMany({
+  async list(@Param('kind') kind: string) {
+    const rows = await this.repo(kind).findMany({
       orderBy: { name: 'asc' },
       ...(kind === 'issue-types' ? { include: { category: true } } : {}),
     });
+
+    /*
+     * How many IPOs each intermediary actually handled.
+     *
+     * IPOs snapshot these by NAME, so the count cannot be a join — it comes
+     * from resolveMaster(), which knows that Link Intime is MUFG and Karvy is
+     * KFin. Without it a registrar that renamed reads as zero while 218 issues
+     * point at its old name.
+     */
+    if (kind !== 'registrars' && kind !== 'lead-managers') return rows;
+    const ipos: { registrar: string | null; leads: any }[] = await this.prisma.$queryRawUnsafe(
+      `SELECT registrar, extra->'leads' AS leads FROM "Ipo"`);
+    const counts = new Map<string, number>();
+    const bump = (m: any) => { if (m) counts.set(m.id, (counts.get(m.id) ?? 0) + 1); };
+    for (const i of ipos) {
+      if (kind === 'registrars') bump(resolveMaster(i.registrar, rows as any));
+      else for (const l of Array.isArray(i.leads) ? i.leads : []) bump(resolveMaster(l, rows as any));
+    }
+    return rows.map((r: any) => ({ ...r, ipoCount: counts.get(r.id) ?? 0 }));
   }
 
   @Post(':kind')

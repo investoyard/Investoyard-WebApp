@@ -447,6 +447,8 @@ export interface MasterRow {
   gstin?: string | null; address1?: string | null; address2?: string | null;
   city?: string | null; state?: string | null; pincode?: string | null;
   allotmentUrl?: string | null; // registrars only
+  /** how many IPOs resolve to this row — registrars and lead managers only */
+  ipoCount?: number;
   baseType?: string;            // ipo-categories: 'mainboard' | 'sme'
   categoryId?: string | null;   // issue-types → IpoCategoryMaster
   category?: MasterRow | null;  // issue-types (joined)

@@ -188,3 +188,4 @@ export interface CreateApplicationInput {
   dataSharingConsent: boolean;
   consentNoticeVersion?: string;
 }
+export * from './masterMatch';
