@@ -734,3 +734,57 @@ export const linkGmpFeed = (symbol: string, sourceId: string | null) =>
     `${API}/admin/gmp-feed/link?symbol=${encodeURIComponent(symbol)}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`,
     { method: 'POST' },
   );
+
+/** The GMP feed's source URL — operator-editable so a changed upstream report
+ *  is a settings edit rather than a deploy. */
+export const fetchGmpFeedConfig = () =>
+  authed<{ url: string | null; usingDefault: boolean }>(`${API}/admin/gmp-feed/config`, { method: 'GET' });
+export const saveGmpFeedConfig = (url: string) =>
+  authed<{ url: string | null }>(`${API}/admin/gmp-feed/config`, {
+    // authed() does not set a content type; without this Nest never parses the
+    // body and the save would silently clear the URL instead of storing it
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+
+/* ── masters: bulk upload ────────────────────────────────────────────────── */
+
+export interface MasterBulkRow { row: number; data: Record<string, any> }
+export interface MasterBulkPreview {
+  columns: string[];
+  counts: { parsed: number; toCreate: number; skipped: number; invalid: number };
+  toCreate: MasterBulkRow[];
+  skipped: { row: number; key: string; reason: string }[];
+  invalid: { row: number; errors: string[] }[];
+}
+
+/** Step 1 — upload and validate. Writes nothing. */
+export async function parseMasterBulk(kind: MasterKind, file: File): Promise<MasterBulkPreview> {
+  const fd = new FormData();
+  fd.append('file', file);
+  // no Content-Type header: the browser must set the multipart boundary itself
+  const res = await fetch(`${API}/admin/masters/${kind}/bulk/parse`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await adminToken()}` }, body: fd,
+  });
+  return j<MasterBulkPreview>(res);
+}
+
+/** Step 2 — write the rows the operator just approved. */
+export const commitMasterBulk = (kind: MasterKind, rows: MasterBulkRow[]) =>
+  authed<{ created: number; skipped: number; failed: { key: string; error: string }[] }>(
+    `${API}/admin/masters/${kind}/bulk`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) },
+  );
+
+/** The blank template. Auth-guarded, so it is fetched and saved rather than linked. */
+export async function downloadMasterTemplate(kind: MasterKind): Promise<void> {
+  const res = await fetch(`${API}/admin/masters/${kind}/bulk/template`, {
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = `${kind}-template.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -4,6 +4,7 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { Loader } from '@/components/ui/Loader';
@@ -15,7 +16,7 @@ import * as api from '@/lib/tenants-admin';
  * `extra` renders the kind-specific field (platform type / category link) inside the modal
  * and its value in the list's middle column.
  */
-export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraCell, embedded }: {
+export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraCell, embedded, bulk }: {
   kind: api.MasterKind;
   title: string;
   sub: string;
@@ -24,6 +25,8 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   extraCell?: (row: api.MasterRow) => React.ReactNode;
   /** render without the page header (for tabbed hosting) — the Add button moves into the card head */
   embedded?: boolean;
+  /** offer a spreadsheet upload alongside ＋ Add */
+  bulk?: boolean;
 }) {
   const me = useOperator();
   const [rows, setRows] = useState<api.MasterRow[] | null>(null);
@@ -69,7 +72,12 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
     <>
       {!embedded && (
         <PageHead title={title} sub={sub}
-          actions={canManage ? <button className="btn" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button> : undefined} />
+          actions={canManage ? (
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {bulk && <MasterBulkUpload kind={kind} onDone={load} />}
+              <button className="btn" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button>
+            </div>
+          ) : undefined} />
       )}
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {!rows ? <Loader /> : (

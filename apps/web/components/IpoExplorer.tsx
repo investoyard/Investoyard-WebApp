@@ -9,6 +9,8 @@ import { makeT, Lang } from '@investoyard/i18n';
 import { compareForList, isRecent } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
+/** Cards rendered before "View more". 84 issues in one grid is a wall, not a list. */
+const PAGE = 30;
 
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed'; // 'closed' = post-close phase (closed + listed)
@@ -60,6 +62,10 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
    * which is what keeps this page usable once the full catalog is published.
    * Ordering is the shared stage order — closing today first, listed last.
    */
+  const [shown, setShown] = useState(PAGE);
+  // a filter or search change starts the list again from the top
+  useEffect(() => { setShown(PAGE); }, [query, type, status]);
+
   const { filtered, olderCount } = useMemo(() => {
     const ql = query.trim().toLowerCase();
     const matches = (ipos as any[]).filter((i) => {
@@ -117,16 +123,28 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
           <p className="muted">Try clearing the search or switching filters.</p>
         </div>
       ) : view === 'table' ? (
-        <IpoCompareTable ipos={filtered as any} lang={lang} />
+        <IpoCompareTable ipos={filtered.slice(0, shown) as any} lang={lang} />
       ) : (
         <div className="ipo-list">
-          {filtered.map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}
+          {filtered.slice(0, shown).map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}
         </div>
       )}
 
-      {olderCount > 0 && (
+      {filtered.length > shown && (
+        <div className="more-row">
+          <button className="btn btn-secondary more-btn" onClick={() => setShown((n) => n + PAGE)}>
+            View more
+            <span className="muted">{Math.min(PAGE, filtered.length - shown)} of {(filtered.length - shown).toLocaleString('en-IN')} left</span>
+            <Icon name="chevron-down" size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* the archive is offered only once there is nothing left to reveal here —
+          two competing "there is more" affordances at once just splits attention */}
+      {filtered.length <= shown && olderCount > 0 && (
         <div className="archive-cta">
-          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} aren&apos;t shown here.</span>
+          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} are in the archive.</span>
           <a className="btn btn-secondary btn-sm" href="/ipos/archive">Browse IPO archive <Icon name="arrow-right" size={14} /></a>
         </div>
       )}

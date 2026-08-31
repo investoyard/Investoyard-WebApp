@@ -30,6 +30,7 @@ export default function AnchorsPage() {
         </>
       )}
       extraCell={(r) => (r.type ? <span className="pill">{r.type}</span> : <span className="muted">—</span>)}
+      bulk
     />
   );
 }

@@ -1,10 +1,12 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { BULK_KINDS, columnsFor, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
 
 /**
  * Masters — Lead Managers (syndicate members) + Registrars.
@@ -108,6 +110,91 @@ export class MastersController {
       if (e?.code === 'P2002') throw new ConflictException(ORG_KINDS.has(kind) ? 'That short code is already in use.' : 'That name already exists.');
       throw e;
     }
+  }
+
+  /* ── bulk upload ────────────────────────────────────────────────────────
+     Registered ABOVE the ':kind/:id' routes: Nest matches in declaration order
+     and 'registrars/bulk' would otherwise be read as the id 'bulk'.        */
+
+  private assertBulk(kind: string) {
+    if (!BULK_KINDS.has(kind)) throw new BadRequestException(`Bulk upload is not available for '${kind}'.`);
+  }
+
+  /** A blank workbook with the right headers. */
+  @Get(':kind/bulk/template')
+  @RequirePermissions('ipos.view')
+  template(@Param('kind') kind: string, @Res() res: any) {
+    this.assertBulk(kind);
+    const buf = templateBuffer(kind);
+    res.setHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('content-disposition', `attachment; filename="${kind}-template.xlsx"`);
+    res.send(buf);
+  }
+
+  /** Step 1 — parse and validate. Writes NOTHING. */
+  @Post(':kind/bulk/parse')
+  @RequirePermissions('ipos.manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async bulkParse(@Param('kind') kind: string, @UploadedFile() file: any) {
+    this.assertBulk(kind);
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    const { rows, headerMissing } = parseSheet(file.buffer, kind);
+    if (headerMissing.length) {
+      throw new BadRequestException(`The sheet is missing required column(s): ${headerMissing.join(', ')}.`);
+    }
+
+    const uf = uniqueFieldFor(kind);
+    const valid = rows.filter((r) => !r.errors.length);
+    const keys = valid.map((r) => String(r.data[uf] ?? '')).filter(Boolean);
+    const existing = keys.length
+      ? await this.repo(kind).findMany({ where: { [uf]: { in: keys } }, select: { [uf]: true } })
+      : [];
+    const taken = new Set(existing.map((e: any) => String(e[uf])));
+
+    // a key repeated inside the sheet is a duplicate after its first appearance
+    const seen = new Set<string>();
+    const toCreate: any[] = [], skipped: any[] = [];
+    for (const r of valid) {
+      const k = String(r.data[uf] ?? '');
+      if (taken.has(k)) { skipped.push({ row: r.row, key: k, reason: 'Already in the list' }); continue; }
+      if (seen.has(k)) { skipped.push({ row: r.row, key: k, reason: 'Duplicate row in this sheet' }); continue; }
+      seen.add(k);
+      toCreate.push(r);
+    }
+    return {
+      columns: columnsFor(kind).map((c) => c.header),
+      counts: { parsed: rows.length, toCreate: toCreate.length, skipped: skipped.length, invalid: rows.length - valid.length },
+      toCreate: toCreate.slice(0, 500),
+      skipped: skipped.slice(0, 200),
+      invalid: rows.filter((r) => r.errors.length).slice(0, 200).map((r) => ({ row: r.row, errors: r.errors })),
+    };
+  }
+
+  /** Step 2 — write the rows the operator just saw. Existing keys are skipped. */
+  @Post(':kind/bulk')
+  @RequirePermissions('ipos.manage')
+  async bulkCommit(@Param('kind') kind: string, @Body() body: { rows?: { data: Record<string, any> }[] }) {
+    this.assertBulk(kind);
+    const incoming = Array.isArray(body?.rows) ? body.rows : [];
+    if (!incoming.length) throw new BadRequestException('Nothing to import.');
+
+    const uf = uniqueFieldFor(kind);
+    let created = 0, skipped = 0;
+    const failed: { key: string; error: string }[] = [];
+    for (const r of incoming) {
+      const data = this.clean(kind, r?.data ?? {});
+      if (!data.name) { skipped++; continue; }
+      try {
+        // re-checked at write time, not just at preview: the list can move
+        // between the two steps, and P2002 is caught below regardless
+        await this.repo(kind).create({ data });
+        created++;
+      } catch (e: any) {
+        if (e?.code === 'P2002') skipped++;
+        else failed.push({ key: String(data[uf] ?? data.name), error: String(e?.message ?? e).slice(0, 120) });
+      }
+    }
+    return { created, skipped, failed };
   }
 
   @Patch(':kind/:id')

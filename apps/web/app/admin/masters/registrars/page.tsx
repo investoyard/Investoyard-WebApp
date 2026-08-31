@@ -8,6 +8,7 @@ export default function RegistrarsPage() {
       title="Registrars"
       sub="Registrar & transfer agents (KFin, Link Intime, …) — feed the IPO form's Registrar dropdown. Deactivate to hide from new IPOs."
       withUrl
+      bulk
     />
   );
 }

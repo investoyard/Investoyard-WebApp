@@ -37,6 +37,9 @@ const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffse
 export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const tenant = useTenant();
+  // /home2 runs a two-up grid in a narrower column, so it pages smaller than /
+  const PAGE = 20;
+  const [shown, setShown] = useState(PAGE);
   const [query, setQuery] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -73,6 +76,8 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
    * means four SME issues in what you are looking at right now, not four in the
    * whole catalog. Filtering by board then narrows this same set.
    */
+  useEffect(() => { setShown(PAGE); }, [query, type, status]);
+
   const { filtered, olderCount, boardCounts } = useMemo(() => {
     const ql = query.trim().toLowerCase();
     const matches = (ipos as any[]).filter((i) => {
@@ -264,10 +269,19 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
               <p className="muted">Try clearing the search or switching filters.</p>
             </div>
           ) : view === 'table' ? (
-            <IpoCompareTable ipos={filtered as any} lang={lang} shortNames />
+            <IpoCompareTable ipos={filtered.slice(0, shown) as any} lang={lang} shortNames />
           ) : (
             <div className="ipo-list two-up">
-              {filtered.map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
+              {filtered.slice(0, shown).map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
+            </div>
+          )}
+          {filtered.length > shown && (
+            <div className="more-row">
+              <button className="btn btn-secondary more-btn" onClick={() => setShown((n) => n + PAGE)}>
+                View more
+                <span className="muted">{Math.min(PAGE, filtered.length - shown)} of {(filtered.length - shown).toLocaleString('en-IN')} left</span>
+                <Icon name="chevron-down" size={16} />
+              </button>
             </div>
           )}
         </div>
@@ -283,9 +297,9 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
         )}
       </div>
 
-      {olderCount > 0 && (
+      {filtered.length <= shown && olderCount > 0 && (
         <div className="archive-cta">
-          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} aren&apos;t shown here.</span>
+          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} are in the archive.</span>
           <a className="btn btn-secondary btn-sm" href="/ipos/archive">Browse IPO archive <Icon name="arrow-right" size={14} /></a>
         </div>
       )}

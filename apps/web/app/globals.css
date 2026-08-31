@@ -176,12 +176,6 @@ img, svg { vertical-align: middle; }
   margin-top: 22px; padding: 14px 18px; background: var(--bg-2); border: 1px solid var(--border);
   border-radius: var(--r-lg); font-size: 13.5px; color: var(--text-muted); }
 .archive-cta b { color: var(--text); }
-.arch-filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px; }
-.arch-filters .af { display: flex; flex-direction: column; gap: 6px; min-width: 140px; }
-.arch-filters .af.grow { flex: 1 1 220px; min-width: 200px; }
-.arch-filters label { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
-.arch-filters .search { margin: 0; }
-.arch-reset { align-self: flex-end; }
 .arch-count { font-size: 13.5px; color: var(--text-muted); margin-bottom: 10px; }
 .arch-count b { color: var(--text); font-size: 15px; }
 .arch-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; font-size: 13px; }
@@ -3258,3 +3252,50 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 
 /* the reservation table's Total row — the check an operator actually runs */
 .resv-table tr.resv-total td { border-top: 2px solid var(--border-2); background: var(--bg-2); }
+
+/* "View more" — reveals the next page of cards in place.
+   Prefixed-ish and checked against globals before adding: `.more-row` and
+   `.more-btn` had no existing definition. The button is deliberately wide and
+   centred so it reads as the end of the list rather than a stray control. */
+.more-row { display: flex; justify-content: center; margin-top: 22px; }
+.more-btn { display: inline-flex; align-items: center; gap: 10px; padding: 12px 26px; font-size: 14px; font-weight: 600; }
+.more-btn .muted { font-weight: 500; font-size: 12.5px; }
+.more-btn svg { transition: transform .15s var(--ease); }
+.more-btn:hover svg { transform: translateY(2px); }
+
+/* Archive filter bar — its OWN namespace.
+   The previous markup reused the global `.search`, which sets
+   `flex: 1 1 280px; min-width: 220px` from another part of this sheet and is
+   wider than the wrapper reserved for it, so the row wrapped earlier than
+   intended and left the controls stranded on two lines. Every class here is
+   `arf-` prefixed and was grepped against globals before being added.
+   One grid: search takes the slack, the three selects are fixed and equal,
+   and every control shares a baseline so the labels line up. */
+.arf { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(130px, 1fr)) auto;
+  gap: 12px; align-items: end; margin-bottom: 18px; }
+.arf-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.arf-f label { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+/* the icon sits inside the field, so the input carries the left padding */
+.arf-search { position: relative; display: block; }
+.arf-search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
+.arf-search .input { padding-left: 40px; }
+.arf-act .btn { height: 45px; }        /* matches .input: 12px padding + text + border */
+@media (max-width: 860px) {
+  .arf { grid-template-columns: 1fr 1fr; }
+  .arf-grow { grid-column: 1 / -1; }
+  .arf-act { grid-column: 1 / -1; }
+}
+
+/* GMP feed — source URL row and the four stat tiles.
+   `gf-` prefixed and grepped against globals before adding. */
+.gf-url { display: flex; gap: 10px; align-items: center; }
+.gf-url .input { flex: 1 1 auto; min-width: 0; font-size: 12.5px; }
+.gf-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.gf-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--sh-xs); }
+.gf-stat b { font-size: 22px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.gf-stat span { font-size: 12px; color: var(--text-muted); }
+@media (max-width: 780px) {
+  .gf-stats { grid-template-columns: repeat(2, 1fr); }
+  .gf-url { flex-wrap: wrap; }
+}

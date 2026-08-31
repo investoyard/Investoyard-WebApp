@@ -53,22 +53,29 @@ export function IpoArchive() {
 
   return (
     <section className="arch">
-      <div className="arch-filters">
-        <div className="af">
+      <div className="arf">
+        <div className="arf-f arf-grow">
+          <label htmlFor="af-q">Search</label>
+          <div className="arf-search">
+            <Icon name="search" size={16} />
+            <input id="af-q" className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Company or symbol…" />
+          </div>
+        </div>
+        <div className="arf-f">
           <label htmlFor="af-year">Year</label>
           <select id="af-year" className="input" value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="all">All years</option>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <div className="af">
+        <div className="arf-f">
           <label htmlFor="af-month">Month</label>
           <select id="af-month" className="input" value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="all">All months</option>
             {MONTHS.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
           </select>
         </div>
-        <div className="af">
+        <div className="arf-f">
           <label htmlFor="af-board">Board</label>
           <select id="af-board" className="input" value={board} onChange={(e) => setBoard(e.target.value as any)}>
             <option value="all">Mainboard &amp; SME</option>
@@ -76,14 +83,11 @@ export function IpoArchive() {
             <option value="sme">SME</option>
           </select>
         </div>
-        <div className="af grow">
-          <label htmlFor="af-q">Search</label>
-          <div className="search">
-            <Icon name="search" size={16} />
-            <input id="af-q" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Company or symbol…" />
+        {filtersOn && (
+          <div className="arf-f arf-act">
+            <button className="btn btn-ghost" onClick={reset}>Clear</button>
           </div>
-        </div>
-        {filtersOn && <button className="btn btn-ghost btn-sm arch-reset" onClick={reset}>Clear</button>}
+        )}
       </div>
 
       {data === null ? (

@@ -9,7 +9,9 @@ export const metadata = {
 export default function IpoArchivePage() {
   return (
     <div className="container fade-up" style={{ paddingTop: 8 }}>
-      <h1 style={{ marginBottom: 6 }}>IPO Archive</h1>
+      {/* the site's existing back-link pattern, same as the detail and news pages */}
+      <a href="/#ipos" className="back-link">← All IPOs</a>
+      <h1 style={{ marginBottom: 6, marginTop: 10 }}>IPO Archive</h1>
       <p className="lead-p" style={{ marginTop: 0 }}>
         Every issue that has closed or listed — filter by year, month and board. The
         {' '}<a className="linklike" href="/#ipos">main list</a> carries what&apos;s open now and the last six months.

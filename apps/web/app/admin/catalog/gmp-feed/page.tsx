@@ -28,12 +28,31 @@ export default function GmpFeedPage() {
   const [rep, setRep] = useState<api.GmpFeedReport | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [feedUrl, setFeedUrl] = useState('');
+  const [savedUrl, setSavedUrl] = useState<string | null>(null);
+  const [savingUrl, setSavingUrl] = useState(false);
 
   const load = useCallback(() => {
     setErr(null);
     api.fetchGmpFeedPreview().then(setRep).catch((e) => { setErr(String(e?.message ?? e)); setRep(null); });
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.fetchGmpFeedConfig()
+      .then((c) => { setSavedUrl(c.url); setFeedUrl(c.url ?? ''); })
+      .catch(() => { /* the page still works on the built-in default */ });
+  }, []);
+
+  const saveUrl = async () => {
+    setSavingUrl(true);
+    try {
+      const r = await api.saveGmpFeedConfig(feedUrl.trim());
+      setSavedUrl(r.url);
+      toast(r.url ? 'Source URL saved' : 'Reverted to the built-in default', 'ok');
+      load();
+    } catch (e: any) { toast(String(e?.message ?? e), 'err'); }
+    finally { setSavingUrl(false); }
+  };
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
@@ -71,18 +90,42 @@ export default function GmpFeedPage() {
 
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
 
+      {/* Where the rows come from. Editable because the upstream report id and
+          month are part of the URL — when they change this should be a settings
+          edit, not a deploy. */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head">
+          <h3>Source</h3>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            {savedUrl ? 'Custom URL' : 'Using the built-in default'} · the page number and cache-buster are set per request
+          </span>
+        </div>
+        <div className="gf-url">
+          <input className="input mono" value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)}
+            placeholder="https://…/report/data-read/331/1/8/2026/2026-27/0/all?search=&v=13-49" spellCheck={false} />
+          <button className="btn btn-secondary" onClick={saveUrl}
+            disabled={savingUrl || !canManage || feedUrl.trim() === (savedUrl ?? '')}>
+            {savingUrl ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div className="gf-stats">
+        <div className="gf-stat"><b>{rep ? rep.fetched : '—'}</b><span>Rows in the feed</span></div>
+        <div className="gf-stat"><b>{rep ? rep.linked.length : '—'}</b><span>Linked IPOs</span></div>
+        <div className="gf-stat"><b>{rep ? rep.suggestions.length : '—'}</b><span>Awaiting your review</span></div>
+        <div className="gf-stat"><b>{rep ? rep.changes.length : '—'}</b><span>Pending changes</span></div>
+      </div>
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <b style={{ fontSize: 14 }}>{rep ? `${rep.fetched} rows in the feed` : 'Loading the feed…'}</b>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-              Existing figures are never overwritten — only empty fields are filled, and a
-              value entered by a person today always wins.
-            </div>
+          <div className="muted" style={{ fontSize: 12.5, maxWidth: 520 }}>
+            Existing figures are never overwritten — only empty fields are filled, and a
+            value entered by a person today always wins.
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={!!busy}>
-              <Icon name="refresh" size={14} /> Refresh preview
+              <Icon name="refresh" size={14} /> Refresh
             </button>
             {canManage && (
               <button className="btn btn-sm" onClick={sync} disabled={!!busy || !rep?.changes.length}>
@@ -213,23 +256,6 @@ export default function GmpFeedPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="card-head"><h3>Not in the feed</h3></div>
-        {!rep ? <Loader /> : rep.unmatched.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Every IPO in the catalog was found.</p>
-        ) : (
-          <>
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              {rep.unmatched.map((s) => <span key={s} className="st mut">{s}</span>)}
-            </div>
-            <p className="muted" style={{ fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>
-              Usually because the issue has already listed and dropped off the current month&apos;s
-              report, or its name is spelled differently upstream. These stay on manual GMP entry.
-            </p>
-          </>
         )}
       </div>
     </>

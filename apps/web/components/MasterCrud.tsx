@@ -4,6 +4,7 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { Loader } from '@/components/ui/Loader';
@@ -16,7 +17,11 @@ const blank = (): Partial<api.MasterRow> => ({
 });
 
 /** Shared list + add/edit + activate/deactivate CRUD for the Lead Managers / Registrars masters. */
-export function MasterCrud({ kind, title, sub, withUrl }: { kind: api.MasterKind; title: string; sub: string; withUrl?: boolean }) {
+export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
+  kind: api.MasterKind; title: string; sub: string; withUrl?: boolean;
+  /** offer a spreadsheet upload alongside ＋ Add — only where loading many rows at once is realistic */
+  bulk?: boolean;
+}) {
   const me = useOperator();
   const [rows, setRows] = useState<api.MasterRow[] | null>(null);
   const [modal, setModal] = useState<null | { id?: string; form: Partial<api.MasterRow> }>(null);
@@ -76,7 +81,12 @@ export function MasterCrud({ kind, title, sub, withUrl }: { kind: api.MasterKind
     <>
       <PageHead
         title={title} sub={sub}
-        actions={canManage ? <button className="btn" onClick={() => { setModalErr(null); setModal({ form: blank() }); }}>＋ Add</button> : undefined}
+        actions={canManage ? (
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {bulk && <MasterBulkUpload kind={kind} onDone={load} />}
+            <button className="btn" onClick={() => { setModalErr(null); setModal({ form: blank() }); }}>＋ Add</button>
+          </div>
+        ) : undefined}
       />
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {msg && <div className="banner ok" style={{ marginBottom: 14 }}>{msg}</div>}

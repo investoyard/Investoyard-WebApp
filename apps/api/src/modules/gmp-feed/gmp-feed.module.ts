@@ -1,4 +1,4 @@
-import { Controller, Get, Injectable, Logger, Module, OnModuleInit, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Injectable, Logger, Module, OnModuleInit, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
@@ -78,6 +78,59 @@ export class GmpFeedService implements OnModuleInit {
 
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
+  /**
+   * The feed URL the operator set, if any. Stored in ProviderConfig alongside
+   * the SMS/email integrations rather than in a new table — it is exactly that
+   * shape: non-secret third-party config for the platform tenant.
+   *
+   * Cached for a minute. The poller runs every 30 minutes and a preview is a
+   * handful of pages, so this costs one query per run, not one per page.
+   */
+  private cfgUrl: string | null = null;
+  private cfgAt = 0;
+  async storedUrl(): Promise<string | null> {
+    if (Date.now() - this.cfgAt < 60_000) return this.cfgUrl;
+    const row = await this.prisma.providerConfig
+      .findUnique({ where: { tenantId_provider: { tenantId: 't-platform', provider: 'gmpfeed' } } })
+      .catch(() => null);
+    const u = String((row?.settings as any)?.url ?? '').trim();
+    this.cfgUrl = u || null;
+    this.cfgAt = Date.now();
+    return this.cfgUrl;
+  }
+
+  async setUrl(url: string): Promise<{ url: string | null }> {
+    const clean = String(url ?? '').trim();
+    if (clean && !/^https:\/\/[^\s]+\/data-read\/\d+\/\d+\//.test(clean)) {
+      throw new BadRequestException('That does not look like a report data-read URL.');
+    }
+    await this.prisma.providerConfig.upsert({
+      where: { tenantId_provider: { tenantId: 't-platform', provider: 'gmpfeed' } },
+      update: { settings: { url: clean } as any, enabled: !!clean },
+      create: { tenantId: 't-platform', provider: 'gmpfeed', enabled: !!clean, settings: { url: clean } as any },
+    });
+    this.cfgUrl = clean || null;
+    this.cfgAt = Date.now();
+    return { url: this.cfgUrl };
+  }
+
+  /**
+   * Turn a saved URL into the URL for one page.
+   *
+   * Only two things vary: the page segment (`/data-read/{report}/{page}/…`) and
+   * the upstream cache-buster `v`. `v` is rewritten to the current HH-MM even
+   * though the operator pasted one — a saved URL would otherwise pin whatever
+   * snapshot was live the day it was pasted. Month, year and financial year are
+   * left EXACTLY as given: the operator maintains those, which is the whole
+   * point of making this editable.
+   */
+  private pageUrl(base: string, page: number, when = new Date()): string {
+    let u = base.replace(/(\/data-read\/\d+\/)\d+(\/)/, `$1${page}$2`);
+    const v = `${String(when.getHours()).padStart(2, '0')}-${String(when.getMinutes()).padStart(2, '0')}`;
+    u = /[?&]v=/.test(u) ? u.replace(/([?&]v=)[^&]*/, `$1${v}`) : u + (u.includes('?') ? '&' : '?') + `v=${v}`;
+    return u;
+  }
+
   /** The report is per calendar month; the financial year runs April–March. */
   private url(page = 1, when = new Date()): string {
     const y = when.getFullYear();
@@ -92,8 +145,9 @@ export class GmpFeedService implements OnModuleInit {
   /** Every row for the current month, across pages. */
   async fetchRows(): Promise<FeedRow[]> {
     const out: FeedRow[] = [];
+    const base = await this.storedUrl();
     for (let page = 1; page <= 10; page++) {
-      const res = await fetch(this.url(page), {
+      const res = await fetch(base ? this.pageUrl(base, page) : this.url(page), {
         headers: { accept: 'application/json', 'user-agent': 'Investoyard/1.0' },
         signal: AbortSignal.timeout(20_000),
       });
@@ -276,6 +330,20 @@ export class GmpFeedController {
   @RequirePermissions('ipos.manage')
   link(@Query('symbol') symbol: string, @Query('sourceId') sourceId?: string) {
     return this.feed.link(symbol, sourceId || null);
+  }
+
+  /** The source URL, so the operator can see and change where rows come from. */
+  @Get('config')
+  @RequirePermissions('ipos.manage')
+  async config() {
+    const url = await this.feed.storedUrl();
+    return { url, usingDefault: !url };
+  }
+
+  @Post('config')
+  @RequirePermissions('ipos.manage')
+  saveConfig(@Body() body: { url?: string }) {
+    return this.feed.setUrl(body?.url ?? '');
   }
 }
 
