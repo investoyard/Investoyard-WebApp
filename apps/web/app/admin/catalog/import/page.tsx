@@ -4,6 +4,8 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
+import { Tabs } from '@/components/ui/Tabs';
+import { CatalogUpdatePanel } from '@/components/CatalogUpdatePanel';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import { Toasts, useToast } from '@/components/ui/Toast';
@@ -96,9 +98,11 @@ export default function ImportCatalogPage() {
     <div style={{ maxWidth: 1100 }}>
       <Toasts toasts={toasts} />
       <PageHead
-        title="Import IPOs from Excel"
-        sub="Upload the filled Investoyard data-entry workbook. The file is validated first — nothing is written until you confirm. Symbols already in the catalog are skipped, so live IPOs are never overwritten."
+        title="Excel Import & Update"
+        sub="Two jobs, two tabs — and they are opposites. Adding skips symbols already in the catalog so live IPOs are never overwritten; updating only ever touches rows that already exist and never creates one."
       />
+      <Tabs tabs={[
+        { key: 'add', label: 'Add new IPOs', content: (<>
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {done && (
         <div className="banner" style={{ marginBottom: 14, background: 'var(--pos-soft)' }}>
@@ -229,6 +233,9 @@ export default function ImportCatalogPage() {
           </div></div>
         </>
       )}
+        </>) },
+        { key: 'update', label: 'Update existing', content: <CatalogUpdatePanel canManage={canManage} /> },
+      ]} />
     </div>
   );
 }

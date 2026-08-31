@@ -11,6 +11,7 @@ import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import { IpoImportService } from './ipo-import.service';
+import { CatalogUpdateService } from './catalog-update.service';
 
 const TMP_DIR = join(UPLOAD_DIR, 'ipo-import-tmp');
 if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
@@ -20,7 +21,7 @@ const ALLOWED = new Set(['.xlsx', '.xlsm', '.xls']);
 @Controller('admin/ipo-import')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class IpoImportController {
-  constructor(private readonly svc: IpoImportService) {}
+  constructor(private readonly svc: IpoImportService, private readonly upd: CatalogUpdateService) {}
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
   @Post()
@@ -58,6 +59,27 @@ export class IpoImportController {
     return this.svc.commit(id);
   }
 
+  /* ── catalog UPDATE: fill gaps on rows that already exist ────────────────
+     The import above deliberately SKIPS existing symbols so it can never modify
+     live data. Filling gaps is the opposite job, so it gets its own pair of
+     endpoints with the same preview-then-confirm contract.                  */
+
+  /** Diff the reviewed workbook against the catalog. Writes nothing. */
+  @Post('update/preview')
+  @RequirePermissions('ipos.manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  async updatePreview(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    return this.upd.preview(file.buffer);
+  }
+
+  /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */
+  @Post('update/commit/:id')
+  @RequirePermissions('ipos.manage')
+  applyUpdate(@Param('id') id: string, @Body() body: { approve?: string[] }) {
+    return this.upd.commit(id, body?.approve ?? []);
+  }
+
   @Get('pending')
   @RequirePermissions('ipos.view')
   async pending() {
@@ -87,6 +109,6 @@ export class IpoImportController {
 @Module({
   imports: [JwtModule.register({})],
   controllers: [IpoImportController],
-  providers: [IpoImportService, PrismaService, JwtAuthGuard, PermissionsGuard],
+  providers: [IpoImportService, CatalogUpdateService, PrismaService, JwtAuthGuard, PermissionsGuard],
 })
 export class IpoImportModule {}

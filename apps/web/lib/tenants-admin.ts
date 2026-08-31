@@ -792,3 +792,33 @@ export async function downloadMasterTemplate(kind: MasterKind): Promise<void> {
 /** Pull live GMP now — appends a timestamped reading per linked IPO. */
 export const refreshGmpFeed = () =>
   authed<GmpFeedReport>(`${API}/admin/gmp-feed/refresh-gmp`, { method: 'POST' });
+
+/* ── catalog UPDATE: fill gaps on IPOs that already exist ─────────────────── */
+
+export interface CatalogCellChange { symbol: string; field: string; from: string; to: string }
+export interface CatalogUpdatePreview {
+  id: string;
+  counts: { rows: number; matched: number; unknown: number; fills: number; conflicts: number; ipos: number };
+  fillsByField: { field: string; count: number }[];
+  fillSample: CatalogCellChange[];
+  conflicts: CatalogCellChange[];
+  unknown: string[];
+}
+
+/** Step 1 — diff the reviewed workbook against the catalog. Writes nothing. */
+export async function previewCatalogUpdate(file: File): Promise<CatalogUpdatePreview> {
+  const fd = new FormData();
+  fd.append('file', file);
+  // no Content-Type: the browser must set the multipart boundary itself
+  const res = await fetch(`${API}/admin/ipo-import/update/preview`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await adminToken()}` }, body: fd,
+  });
+  return j<CatalogUpdatePreview>(res);
+}
+
+/** Step 2 — apply every fill plus the approved conflicts, keyed "SYMBOL|Field". */
+export const commitCatalogUpdate = (id: string, approve: string[]) =>
+  authed<{ ipos: number; cells: number; skippedConflicts: number; failed: { symbol: string; error: string }[] }>(
+    `${API}/admin/ipo-import/update/commit/${id}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approve }) },
+  );
