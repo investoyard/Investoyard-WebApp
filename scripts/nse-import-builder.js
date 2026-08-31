@@ -42,7 +42,17 @@ const iso = (v) => {
   return mm ? `${m[3]}-${mm}-${m[1].padStart(2, '0')}` : '';
 };
 const numOf = (s) => { const m = String(s ?? '').replace(/,/g, '').match(/-?\d+(\.\d+)?/); return m ? Number(m[0]) : null; };
-const clean = (s) => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+/**
+ * NSE wraps some fact values in quotes, and those quotes travelled all the way
+ * into stored lead-manager names ("\"JM Financial Limited"), where they stopped
+ * 524 values from ever matching the master list. Strip them here, at the edge.
+ */
+const clean = (s) => String(s ?? '')
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/[“”]/g, '"')
+  .replace(/\s+/g, ' ')
+  .replace(/^\s*"+|"+\s*$/g, '')
+  .trim();
 
 /** the same fact carries different titles on the two boards */
 const fact = (list, ...names) => {
