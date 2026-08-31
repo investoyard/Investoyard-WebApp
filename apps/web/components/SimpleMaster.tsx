@@ -8,6 +8,7 @@ import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { Loader } from '@/components/ui/Loader';
+import { usePagination } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
@@ -35,12 +36,20 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [modalErr, setModalErr] = useState<string | null>(null);
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     try { setRows(await api.fetchMaster(kind)); setErr(null); }
     catch (e: any) { setErr(String(e?.message ?? e)); setRows([]); }
   }, [kind]);
   useEffect(() => { load(); }, [load]);
+
+  // Search across the name and whatever the extra column holds (anchor type,
+  // handle, …) so one box covers the whole row the operator can see.
+  const filtered = (rows ?? []).filter((r) =>
+    !q.trim() || `${r.name} ${r.type ?? ''} ${r.notes ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()));
+  // a HOOK, so it runs before the guards below — see React #310
+  const { slice, node: pager } = usePagination(filtered, 25);
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
@@ -84,14 +93,15 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
         <div className="card">
           <div className="card-head">
             <span className="t">{title} <span className="count-badge">{rows.length}</span></span>
+            <input className="input" style={{ width: 220 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
             {embedded && canManage && <button className="btn btn-sm" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button>}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>
               <thead><tr><th>Name</th>{extraLabel && <th>{extraLabel}</th>}<th>Status</th><th /></tr></thead>
               <tbody>
-                {rows.length === 0 ? <tr><td colSpan={extraLabel ? 4 : 3} className="muted" style={{ padding: 14 }}>None yet — click ＋ Add.</td></tr> :
-                  rows.map((r) => (
+                {filtered.length === 0 ? <tr><td colSpan={extraLabel ? 4 : 3} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr> :
+                  slice.map((r) => (
                     <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
                       <td>{r.name}</td>
                       {extraCell && <td>{extraCell(r)}</td>}
@@ -109,6 +119,7 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
               </tbody>
             </table>
           </div>
+          {pager}
         </div>
       )}
 

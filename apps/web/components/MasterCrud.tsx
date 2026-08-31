@@ -8,6 +8,7 @@ import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { Loader } from '@/components/ui/Loader';
+import { usePagination } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
@@ -37,6 +38,12 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
     catch (e: any) { setErr(String(e?.message ?? e)); setRows([]); }
   }, [kind]);
   useEffect(() => { load(); }, [load]);
+
+  const filtered = (rows ?? []).filter((r) =>
+    !q.trim() || `${r.name} ${r.shortCode} ${r.city ?? ''} ${r.email ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()));
+  // usePagination is a HOOK, so it runs BEFORE the guards below. A hook after
+  // an early return changes the hook count between renders — React #310.
+  const { slice, node: pager } = usePagination(filtered, 25);
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
@@ -74,9 +81,6 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
     });
   };
 
-  const filtered = (rows ?? []).filter((r) =>
-    !q.trim() || `${r.name} ${r.shortCode} ${r.city ?? ''} ${r.email ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()));
-
   return (
     <>
       <PageHead
@@ -102,7 +106,7 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={withUrl ? 8 : 7} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
-                ) : filtered.map((r) => (
+                ) : slice.map((r) => (
                   <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
                     <td>{r.name}</td>
                     <td className="mono">{r.shortCode}</td>
@@ -124,6 +128,7 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
               </tbody>
             </table>
           </div>
+          {pager}
         </div>
       )}
 
