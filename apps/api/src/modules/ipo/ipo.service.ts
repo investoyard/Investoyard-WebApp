@@ -92,7 +92,12 @@ export class IpoService {
         ...(f.includeCatalogOnly ? {} : { hidden: false }),
       },
       include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
-      orderBy: { closeDate: 'asc' },
+      // NEWEST first, and it has to be. `take` defaults to 500, so the sort
+      // decides which 500 of the catalog a caller gets — not merely their order.
+      // Ascending was harmless at twelve rows; at 1,207 it returned Jan-2016 to
+      // Mar-2023 and cut off every live and upcoming issue, so the site listed
+      // nothing current. Nulls last keeps undated rows from taking the top slots.
+      orderBy: [{ closeDate: { sort: 'desc', nulls: 'last' } }, { openDate: { sort: 'desc', nulls: 'last' } }],
       take,
       skip: f.offset && f.offset > 0 ? f.offset : undefined,
     });
