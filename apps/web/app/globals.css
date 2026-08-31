@@ -144,8 +144,16 @@ img, svg { vertical-align: middle; }
 .ct-nm .t { font-weight: 650; color: var(--text); line-height: 1.25; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ct-name a:hover .t { color: var(--brand); }
 .ct-nm .s { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-faint); margin-top: 3px; letter-spacing: .02em; }
-.ct-board { font-size: 9.5px; font-weight: 800; letter-spacing: .05em; border-radius: 5px; padding: 1.5px 5px; background: var(--bg-2); color: var(--text-muted); }
-.ct-board.sme { background: var(--brand-50); color: var(--brand); }
+/* Board badge — the SAME colour code as the home cards' .ic-tag: Mainboard
+   indigo, SME gold. It used to be grey/brand-50 here, so the two surfaces
+   disagreed about what a board looks like. Smaller and tighter than .ic-tag
+   because a table row is denser than a card, but the hues are identical. */
+.ct-board { font-size: 9.5px; font-weight: 800; letter-spacing: .05em; border-radius: 5px; padding: 1.5px 5px; }
+.ct-board.mb { background: var(--brand); color: #fff; }
+.ct-board.sme { background: var(--gold); color: #4a3600; }
+/* the close date sits beside the symbol on the archive variant */
+.ct-closes { color: var(--text-muted); }
+.ct-closes::before { content: '·'; margin: 0 6px; opacity: .6; }
 .ct-gmp { display: inline-flex; flex-direction: column; align-items: flex-end; font-weight: 700; line-height: 1.2; }
 .ct-gmp.up { color: var(--pos); }
 .ct-gmp.down { color: var(--neg); }
@@ -172,10 +180,6 @@ img, svg { vertical-align: middle; }
   position: sticky; bottom: 12px; box-shadow: var(--sh-sm); }
 
 /* ===================== IPO ARCHIVE (year / month / board) ===================== */
-.archive-cta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center;
-  margin-top: 22px; padding: 14px 18px; background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: var(--r-lg); font-size: 13.5px; color: var(--text-muted); }
-.archive-cta b { color: var(--text); }
 .arch-count { font-size: 13.5px; color: var(--text-muted); margin-bottom: 10px; }
 .arch-count b { color: var(--text); font-size: 15px; }
 .arch-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; font-size: 13px; }
@@ -3290,12 +3294,19 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    `gf-` prefixed and grepped against globals before adding. */
 .gf-url { display: flex; gap: 10px; align-items: center; }
 .gf-url .input { flex: 1 1 auto; min-width: 0; font-size: 12.5px; }
-.gf-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.gf-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--sh-xs); }
-.gf-stat b { font-size: 22px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.gf-stat span { font-size: 12px; color: var(--text-muted); }
 @media (max-width: 780px) {
-  .gf-stats { grid-template-columns: repeat(2, 1fr); }
   .gf-url { flex-wrap: wrap; }
 }
+
+/* Masters bulk upload — numbered steps inside the dialog.
+   `mbu-` prefixed and grepped against globals before adding. */
+.mbu-step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.mbu-n { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--brand-50);
+  color: var(--brand); font-size: 12px; font-weight: 700; display: inline-flex;
+  align-items: center; justify-content: center; margin-top: 1px; }
+.mbu-t { font-size: 13px; font-weight: 600; margin-bottom: 7px; }
+.mbu-counts { display: flex; gap: 18px; margin-top: 14px; font-size: 13px; flex-wrap: wrap; }
+.mbu-counts b { font-size: 15px; }
+.mbu-counts .bad { color: var(--neg, #d8412a); }
+.mbu-list { margin-top: 10px; max-height: 150px; overflow-y: auto; }
+.mbu-bad { font-size: 12.5px; color: var(--neg, #d8412a); padding: 2px 0; }

@@ -22,6 +22,11 @@ import * as api from '@/lib/tenants-admin';
  * should be able to see what a third-party feed is about to do to the catalog
  * before it does it, without reading a log.
  */
+/** Same shape as the tiles on Overview and Live Reports — one stat pattern, not a second. */
+function Stat({ icon, n, l, cls }: { icon: Parameters<typeof Icon>[0]['name']; n: string; l: string; cls?: string }) {
+  return <div className={`stat ${cls ?? ''}`}><span className="ic"><Icon name={icon} size={20} /></span><div className="n">{n}</div><div className="l">{l}</div></div>;
+}
+
 export default function GmpFeedPage() {
   const me = useOperator();
   const { toasts, push: toast } = useToast();
@@ -69,6 +74,20 @@ export default function GmpFeedPage() {
     finally { setBusy(null); }
   };
 
+  /** Refresh = pull live GMP and record it. Readings are appended with their own
+      timestamp, so a value that moves all day leaves a history rather than
+      overwriting itself; the catalog fields still wait for Apply. */
+  const refreshGmp = async () => {
+    setBusy('gmp');
+    try {
+      const r = await api.refreshGmpFeed();
+      const n = r.changes.filter((c) => c.gmp != null).length;
+      toast(n ? `GMP updated for ${n} IPO${n === 1 ? '' : 's'}` : 'No GMP change since the last reading', 'ok');
+      load();
+    } catch (e: any) { toast(String(e?.message ?? e), 'err'); }
+    finally { setBusy(null); }
+  };
+
   const sync = async () => {
     setBusy('*');
     try {
@@ -100,7 +119,8 @@ export default function GmpFeedPage() {
             {savedUrl ? 'Custom URL' : 'Using the built-in default'} · the page number and cache-buster are set per request
           </span>
         </div>
-        <div className="gf-url">
+        {/* `.card > .card-pad` supplies the inset — admin `.card` is padding:0 */}
+        <div className="card-pad gf-url">
           <input className="input mono" value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)}
             placeholder="https://…/report/data-read/331/1/8/2026/2026-27/0/all?search=&v=13-49" spellCheck={false} />
           <button className="btn btn-secondary" onClick={saveUrl}
@@ -110,22 +130,25 @@ export default function GmpFeedPage() {
         </div>
       </div>
 
-      <div className="gf-stats">
-        <div className="gf-stat"><b>{rep ? rep.fetched : '—'}</b><span>Rows in the feed</span></div>
-        <div className="gf-stat"><b>{rep ? rep.linked.length : '—'}</b><span>Linked IPOs</span></div>
-        <div className="gf-stat"><b>{rep ? rep.suggestions.length : '—'}</b><span>Awaiting your review</span></div>
-        <div className="gf-stat"><b>{rep ? rep.changes.length : '—'}</b><span>Pending changes</span></div>
+      <div className="stat-grid" style={{ marginBottom: 16 }}>
+        <Stat icon="layers" n={rep ? String(rep.fetched) : '—'} l="Rows in the feed" />
+        <Stat icon="check" n={rep ? String(rep.linked.length) : "—"} l="Linked IPOs" cls="a-blue" />
+        <Stat icon="search" n={rep ? String(rep.suggestions.length) : '—'} l="Awaiting your review" cls="a-gold" />
+        <Stat icon="refresh" n={rep ? String(rep.changes.length) : '—'} l="Pending changes" cls="a-green" />
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="card-pad row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div className="muted" style={{ fontSize: 12.5, maxWidth: 520 }}>
-            Existing figures are never overwritten — only empty fields are filled, and a
-            value entered by a person today always wins.
+            <b>Refresh GMP now</b> fetches the live premium and records it against each
+            linked IPO, timestamped — GMP moves through the day, so readings are kept as a
+            history rather than overwriting each other. Everything else (dates, lot size,
+            issue size) only ever FILLS a blank field and waits for Apply; a value entered
+            by a person today is never replaced by the feed.
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={load} disabled={!!busy}>
-              <Icon name="refresh" size={14} /> Refresh
+            <button className="btn btn-secondary btn-sm" onClick={refreshGmp} disabled={!!busy || !canManage}>
+              <Icon name="refresh" size={14} /> {busy === 'gmp' ? 'Fetching…' : 'Refresh GMP now'}
             </button>
             {canManage && (
               <button className="btn btn-sm" onClick={sync} disabled={!!busy || !rep?.changes.length}>
@@ -139,6 +162,9 @@ export default function GmpFeedPage() {
       {/* what a sync WOULD do — linked IPOs only */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head"><h3>Pending changes</h3></div>
+        {/* admin `.card` is padding:0 — the body has to sit in `.card-pad` or it
+            renders flush against the card's edges */}
+        <div className="card-pad">
         {!rep ? <Loader /> : rep.changes.length === 0 ? (
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>
             Nothing to apply. Changes appear here once an IPO below is linked and the feed has
@@ -164,6 +190,7 @@ export default function GmpFeedPage() {
             </table>
           </div>
         )}
+        </div>
       </div>
 
       {/* every confirmed link, whether or not it has anything pending — a wrong
@@ -173,6 +200,7 @@ export default function GmpFeedPage() {
           <h3>Linked</h3>
           <span className="muted" style={{ fontSize: 12.5 }}>These poll by id. Unlink to stop the feed touching an IPO.</span>
         </div>
+        <div className="card-pad">
         {!rep ? <Loader /> : rep.linked.length === 0 ? (
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>
             Nothing linked yet — the feed is doing nothing until something is.
@@ -207,6 +235,7 @@ export default function GmpFeedPage() {
             </table>
           </div>
         )}
+        </div>
       </div>
 
       {/* the one human decision on this page */}
@@ -218,6 +247,7 @@ export default function GmpFeedPage() {
             check the rest against the feed before linking.
           </span>
         </div>
+        <div className="card-pad">
         {!rep ? <Loader /> : rep.suggestions.length === 0 ? (
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>No unlinked matches in this month&apos;s report.</p>
         ) : (
@@ -257,6 +287,7 @@ export default function GmpFeedPage() {
             </table>
           </div>
         )}
+        </div>
       </div>
     </>
   );

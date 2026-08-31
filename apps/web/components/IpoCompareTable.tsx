@@ -33,8 +33,16 @@ function issueValue(s?: string): number {
 /** Lifecycle order so "Status" sorts live-first rather than alphabetically. */
 const PHASE_RANK: Record<string, number> = { open: 0, upcoming: 1, closed: 2, listed: 3, withdrawn: 4 };
 
-/** @param shortNames drop the trailing "Limited" — the /home2 layout under review. */
-export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipos: IpoFull[]; lang?: string; shortNames?: boolean }) {
+/**
+ * @param shortNames drop the trailing "Limited" — the /home2 layout under review.
+ * @param archive    the /ipos/archive variant: short names always, and the close
+ *   date moves under the company name beside the symbol instead of taking its
+ *   own column. Carrying it in both places would just say the same thing twice.
+ */
+export function IpoCompareTable({ ipos, lang = 'en', shortNames = false, archive = false }: {
+  ipos: IpoFull[]; lang?: string; shortNames?: boolean; archive?: boolean;
+}) {
+  const brief = shortNames || archive;
   const tenant = useTenant();
   const showGmp = tenant.flags.gmpEnabled;
   const q = lang !== 'en' ? `?lang=${lang}` : '';
@@ -96,7 +104,7 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipo
             <Th k="size" align="right">{LABEL.issueSize}</Th>
             {showGmp && <Th k="gmp" align="right">{LABEL.gmp}</Th>}
             <Th k="sub" align="right">{LABEL.subscribed}</Th>
-            <Th k="close">Closes</Th>
+            {!archive && <Th k="close">Closes</Th>}
             <th className="ct-th" />
             <th className="ct-th" />
           </tr>
@@ -121,10 +129,13 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipo
                   <a href={href} onClick={(e) => e.stopPropagation()}>
                     <IpoLogo logo={i.logo} name={i.name} size={30} />
                     <span className="ct-nm">
-                      <span className="t" title={titleCase(i.name)}>{shortNames ? shortName(i.name) : titleCase(i.name)}</span>
+                      <span className="t" title={titleCase(i.name)}>{brief ? shortName(i.name) : titleCase(i.name)}</span>
                       <span className="s">
                         <span className={`ct-board ${i.type === 'sme' ? 'sme' : 'mb'}`}>{i.type === 'sme' ? 'SME' : 'Mainboard'}</span>
                         {i.symbol}
+                        {archive && i.closeDate && (
+                          <span className="ct-closes">Closes {new Date(`${i.closeDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        )}
                       </span>
                     </span>
                   </a>
@@ -148,7 +159,7 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipo
                     <span className={`ct-sub ${dm?.cls ?? ''}`}>{subX}×<em>{dm?.label}</em></span>
                   ) : <span className="muted">—</span>}
                 </td>
-                <td className="mono ct-date">{i.closeDate ? new Date(`${i.closeDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}</td>
+                {!archive && <td className="mono ct-date">{i.closeDate ? new Date(`${i.closeDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}</td>}
                 <td className="r">
                   {canApply ? (
                     <a className="ct-cta" href={`/apply/${i.symbol}${q}`}>
@@ -170,7 +181,7 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false }: { ipo
                       is pinned to the left edge of the viewport — otherwise its
                       content sits off-screen whenever the reader has scrolled
                       right to reach the later columns. */}
-                  <td colSpan={showGmp ? 10 : 9}>
+                  <td colSpan={(showGmp ? 10 : 9) - (archive ? 1 : 0)}>
                     <div className="ct-detail-in">
                       {/* only what the ROW does not already carry — price band,
                           lot, size, GMP and subscription are two inches above */}

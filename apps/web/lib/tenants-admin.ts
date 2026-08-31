@@ -788,3 +788,7 @@ export async function downloadMasterTemplate(kind: MasterKind): Promise<void> {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+/** Pull live GMP now — appends a timestamped reading per linked IPO. */
+export const refreshGmpFeed = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/refresh-gmp`, { method: 'POST' });

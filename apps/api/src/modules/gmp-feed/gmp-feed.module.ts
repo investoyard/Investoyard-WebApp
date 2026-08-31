@@ -225,7 +225,17 @@ export class GmpFeedService implements OnModuleInit {
    * preview renders — nobody should have to read the logs to find out what a
    * third-party feed is about to do to the catalog.
    */
-  async sync(dryRun = true) {
+  /**
+   * @param gmpOnly write the GMP readings and nothing else.
+   *
+   * GMP is a live number that moves through the day, so it is not the same kind
+   * of data as a lot size or a close date. Readings are APPENDED with their own
+   * timestamp and never overwrite each other — the answer to \"it changes every
+   * minute\" is to record when each value was true, not to fight it. Catalog
+   * fields stay on the preview-then-apply path, where a wrong value would sit
+   * on the record until someone noticed.
+   */
+  async sync(dryRun = true, gmpOnly = false) {
     const { linked, suggested, unmatched, fetched } = await this.match();
     // only operator-confirmed links are ever written; suggestions are shown
     const pairs = linked;
@@ -265,6 +275,7 @@ export class GmpFeedService implements OnModuleInit {
       if (dryRun) continue;
 
       const ops: any[] = [];
+      const ops0: any[] = [];
       if (writeGmp) {
         const today = new Date().toISOString().slice(0, 10);
         const nextExtra: any = { ...ex };
@@ -274,12 +285,15 @@ export class GmpFeedService implements OnModuleInit {
         nextExtra.gmpLog = [...glog.filter((x: any) => x?.d !== today),
                             { d: today, gmp: row.gmp, pct: row.gmpPct }].slice(-30);
         Object.assign(data, { extra: nextExtra });
+        // gmpOnly still needs the log written — it is part of the reading, not a field-fill
+        if (gmpOnly) ops0.push(this.prisma.ipo.update({ where: { id: ipo.id }, data: { extra: nextExtra } as any }));
         ops.push(this.prisma.ipoGmp.create({
           data: { ipoId: ipo.id, value: row.gmp!, trend: 'flat', source: 'feed', submittedByName: 'Auto · feed' },
         }));
       }
-      if (Object.keys(data).length) ops.push(this.prisma.ipo.update({ where: { id: ipo.id }, data: data as any }));
-      if (ops.length) await this.prisma.$transaction(ops);
+      if (!gmpOnly && Object.keys(data).length) ops.push(this.prisma.ipo.update({ where: { id: ipo.id }, data: data as any }));
+      const all = [...ops0, ...ops];
+      if (all.length) await this.prisma.$transaction(all);
     }
 
     if (!dryRun && changes.length) this.log.log(`feed: updated ${changes.length} IPO(s)`);
@@ -325,6 +339,15 @@ export class GmpFeedController {
   @Post('sync')
   @RequirePermissions('ipos.manage')
   run() { return this.feed.sync(false); }
+
+  /**
+   * Pull the live GMP now. Writes the READINGS only — each is appended with its
+   * own timestamp, so a number that moves through the day builds a history
+   * instead of overwriting itself. Catalog fields still go through Apply.
+   */
+  @Post('refresh-gmp')
+  @RequirePermissions('ipos.manage')
+  refreshGmp() { return this.feed.sync(false, true); }
 
   @Post('link')
   @RequirePermissions('ipos.manage')

@@ -275,15 +275,22 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
               {filtered.slice(0, shown).map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
             </div>
           )}
-          {filtered.length > shown && (
-            <div className="more-row">
-              <button className="btn btn-secondary more-btn" onClick={() => setShown((n) => n + PAGE)}>
-                View more
-                <span className="muted">{Math.min(PAGE, filtered.length - shown)} of {(filtered.length - shown).toLocaleString('en-IN')} left</span>
-                <Icon name="chevron-down" size={16} />
-              </button>
-            </div>
+          {(filtered.length > shown || olderCount > 0) && (
+        <div className="more-row">
+          {filtered.length > shown ? (
+            <button className="btn btn-secondary more-btn" onClick={() => setShown((v) => v + PAGE)}>
+              View more
+              <span className="muted">{(filtered.length - shown).toLocaleString('en-IN')} left</span>
+              <Icon name="chevron-down" size={16} />
+            </button>
+          ) : (
+            <a className="btn btn-secondary more-btn" href="/ipos/archive">
+              Browse all
+              <Icon name="arrow-right" size={16} />
+            </a>
           )}
+        </div>
+      )}
         </div>
 
         {/* The rail now holds ONE thing. Everything else it used to carry —
@@ -296,13 +303,6 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           </aside>
         )}
       </div>
-
-      {filtered.length <= shown && olderCount > 0 && (
-        <div className="archive-cta">
-          <span><b>{olderCount.toLocaleString('en-IN')}</b> older {olderCount === 1 ? 'issue' : 'issues'} are in the archive.</span>
-          <a className="btn btn-secondary btn-sm" href="/ipos/archive">Browse IPO archive <Icon name="arrow-right" size={14} /></a>
-        </div>
-      )}
     </section>
   );
 }

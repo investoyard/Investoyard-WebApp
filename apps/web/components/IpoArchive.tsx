@@ -111,7 +111,7 @@ export function IpoArchive() {
             {year !== 'all' && <> in {month !== 'all' ? `${MONTHS[+month - 1]} ` : ''}{year}</>}
             {total > PER_PAGE && <span className="muted"> · showing {shown.length} of {total.toLocaleString('en-IN')}</span>}
           </div>
-          <IpoCompareTable ipos={shown as any} />
+          <IpoCompareTable ipos={shown as any} archive />
           {pages > 1 && (
             <div className="arch-pager">
               <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>‹ Prev</button>
