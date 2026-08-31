@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { BULK_KINDS, columnsFor, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
+import { BULK_KINDS, columnsFor, keyOf, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
 
 /**
  * Masters — Lead Managers (syndicate members) + Registrars.
@@ -103,7 +103,8 @@ export class MastersController {
   @RequirePermissions('ipos.manage')
   async create(@Param('kind') kind: string, @Body() dto: MasterDto) {
     if (!dto.name?.trim()) throw new BadRequestException('Name is required.');
-    if (ORG_KINDS.has(kind) && !dto.shortCode?.trim()) throw new BadRequestException('Name and short code are required.');
+    // a lead manager is not always published with a short code; a registrar is
+    if (kind === 'registrars' && !dto.shortCode?.trim()) throw new BadRequestException('Name and short code are required.');
     try {
       return await this.repo(kind).create({ data: this.clean(kind, dto as any) });
     } catch (e: any) {
@@ -145,17 +146,26 @@ export class MastersController {
 
     const uf = uniqueFieldFor(kind);
     const valid = rows.filter((r) => !r.errors.length);
-    const keys = valid.map((r) => String(r.data[uf] ?? '')).filter(Boolean);
+    // keyOf falls back to the name when a row carries no short code
+    const keys = valid.map((r) => keyOf(kind, r.data)).filter(Boolean);
+    // a codeless row is identified by name, so both columns are checked
     const existing = keys.length
-      ? await this.repo(kind).findMany({ where: { [uf]: { in: keys } }, select: { [uf]: true } })
+      ? await this.repo(kind).findMany({
+          where: { OR: [{ [uf]: { in: keys } }, { name: { in: keys } }] },
+          select: { [uf]: true, name: true },
+        })
       : [];
-    const taken = new Set(existing.map((e: any) => String(e[uf])));
+    const taken = new Set<string>();
+    for (const e of existing as any[]) {
+      if (e[uf]) taken.add(String(e[uf]));
+      if (e.name) taken.add(String(e.name));
+    }
 
     // a key repeated inside the sheet is a duplicate after its first appearance
     const seen = new Set<string>();
     const toCreate: any[] = [], skipped: any[] = [];
     for (const r of valid) {
-      const k = String(r.data[uf] ?? '');
+      const k = keyOf(kind, r.data);
       if (taken.has(k)) { skipped.push({ row: r.row, key: k, reason: 'Already in the list' }); continue; }
       if (seen.has(k)) { skipped.push({ row: r.row, key: k, reason: 'Duplicate row in this sheet' }); continue; }
       seen.add(k);

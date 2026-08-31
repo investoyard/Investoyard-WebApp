@@ -31,9 +31,12 @@ export function columnsFor(kind: string): BulkColumn[] {
       { header: 'Active (Y/N)', field: 'active', bool: true },
     ];
   }
+  // A lead manager is not always published with a short code; a registrar always
+  // is. Requiring it on both blocked real syndicate members from loading at all.
+  const codeRequired = kind === 'registrars';
   const org: BulkColumn[] = [
     { header: 'Name *', field: 'name', required: true },
-    { header: 'Short code *', field: 'shortCode', required: true },
+    { header: codeRequired ? 'Short code *' : 'Short code', field: 'shortCode', required: codeRequired },
     { header: 'Contact person', field: 'contactPerson' },
     { header: 'Mobile', field: 'mobile' },
     { header: 'Email', field: 'email' },
@@ -50,9 +53,20 @@ export function columnsFor(kind: string): BulkColumn[] {
   return org;
 }
 
-/** The field the database makes unique — what "already exists" actually means. */
+/**
+ * The field the database makes unique — what "already exists" actually means.
+ * Anchors are unique on name. The org kinds are unique on shortCode, but a lead
+ * manager may not have one, so a codeless row is matched on its name instead.
+ */
 export const uniqueFieldFor = (kind: string): 'shortCode' | 'name' =>
   (kind === 'anchors' ? 'name' : 'shortCode');
+
+/** The value that identifies one parsed row, given its kind. */
+export const keyOf = (kind: string, data: Record<string, any>): string => {
+  const uf = uniqueFieldFor(kind);
+  const v = String(data[uf] ?? '').trim();
+  return v || String(data.name ?? '').trim();
+};
 
 export interface ParsedRow {
   row: number;
@@ -124,7 +138,9 @@ export function templateBuffer(kind: string): Buffer {
   const example: Record<string, any> = {};
   for (const c of cols) example[c.header] = '';
   example['Name *'] = kind === 'anchors' ? 'Example Mutual Fund' : 'Example Services Private Limited';
-  if (kind !== 'anchors') example['Short code *'] = 'EXAMPLE';
+  // the short-code header is starred only where it is required, so find it by field
+  const codeCol = cols.find((c) => c.field === 'shortCode');
+  if (codeCol) example[codeCol.header] = 'EXAMPLE';
   if (kind === 'anchors') example['Type'] = 'Mutual Fund';
   example['Active (Y/N)'] = 'Y';
   const ws = XLSX.utils.json_to_sheet([example], { header: cols.map((c) => c.header) });

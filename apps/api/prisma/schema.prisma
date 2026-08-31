@@ -290,7 +290,11 @@ model IssueTypeMaster {
 model LeadManager {
   id            String   @id @default(uuid())
   name          String
-  shortCode     String   @unique
+  /// Optional: a lead manager is not always published with a short code, and
+  /// blocking the row on one meant real syndicate members could not be loaded.
+  /// Postgres allows many NULLs under a UNIQUE index, so codeless rows coexist.
+  /// Registrar keeps its code required — that one is always available.
+  shortCode     String?  @unique
   contactPerson String?
   mobile        String?
   email         String?
