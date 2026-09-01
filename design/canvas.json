@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",           "title": "GMP Accuracy",     "x": 0,    "y": 0,    "w": 1080, "h": 1350, "print": "fixed" },
+    { "file": "NeverShow.dc.html",      "title": "Never Show",       "x": 1200, "y": 0,    "w": 1080, "h": 1350, "print": "fixed" },
+    { "file": "CardDetail.dc.html",     "title": "Card Detail",      "x": 2400, "y": 0,    "w": 1080, "h": 1350, "print": "fixed" },
+    { "file": "FamilyProfiles.dc.html", "title": "Four PANs",        "x": 0,    "y": 1500, "w": 1080, "h": 1350, "print": "fixed" },
+    { "file": "AllotmentCheck.dc.html", "title": "Allotment Check",  "x": 1200, "y": 1500, "w": 1080, "h": 1350, "print": "fixed" },
+    { "file": "StageCtas.dc.html",      "title": "One CTA Per Stage","x": 2400, "y": 1500, "w": 1080, "h": 1350, "print": "fixed" }
+  ],
+  "annotations": [
+    { "id": "placeholder-data", "x": 0, "y": -210, "w": 700, "text": "Company names and figures are placeholders — swap in real IPO data before anything goes out.\n\nColours, type and spacing are lifted from the live app tokens (globals.css + mobile theme.ts), so these match the product exactly." }
+  ],
+  "launch": { "view": "canvas" }
+}
