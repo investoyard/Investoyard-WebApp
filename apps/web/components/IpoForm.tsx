@@ -22,14 +22,32 @@ const ISSUE_TYPES = ['IPO', 'FPO', 'Rights Issue', 'OFS'] as const;
  * bid windows depend on whether there is an anchor round, so Timeline follows
  * it. Identity, dates and three intermediary blocks used to share tab 1.
  */
-const TABS: { key: string; label: string; icon: IconName }[] = [
+/**
+ * The tab order is the ORDER OF WORK, not the running order of the offer
+ * document.
+ *
+ * Everything an issue needs before it can take an application or print a form
+ * comes first — Issue Setup through Documents. What only comes into existence
+ * later sits behind that and is marked `later`: the company write-up, which
+ * fills the public detail page and blocks nothing, and the figures the
+ * registrar and the exchanges publish once the issue has listed. An operator
+ * entering a live issue can stop at Documents and know the record is fit to
+ * open bidding on.
+ *
+ * `Anchor` is its own tab because its data used to sit in two places — the
+ * portion on Offer & Reservation, the investor roster over on About Company —
+ * so the roster could not be checked against the total it came out of.
+ */
+const TABS: { key: string; label: string; icon: IconName; later?: boolean }[] = [
   { key: 'basic', label: 'Issue Setup', icon: 'box' },
   { key: 'pricing', label: 'Pricing', icon: 'rupee' },
   { key: 'offer', label: 'Offer & Reservation', icon: 'chart' },
+  { key: 'anchor', label: 'Anchor', icon: 'star' },
   { key: 'timeline', label: 'Timeline', icon: 'calendar' },
   { key: 'parties', label: 'Intermediaries', icon: 'users' },
-  { key: 'company', label: 'About Company', icon: 'globe' },
   { key: 'docs', label: 'Documents', icon: 'doc' },
+  { key: 'company', label: 'About Company', icon: 'globe', later: true },
+  { key: 'afterlisting', label: 'After Listing', icon: 'trending', later: true },
   { key: 'review', label: 'Review & Publish', icon: 'check' },
 ];
 // Shares Size Info rows
@@ -99,7 +117,21 @@ interface FormState {
   shareResv: Record<string, Resv>; resvRemarks: string;
   asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
   asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
-  anchors: { name: string; amount: string }[]; // picked from the Anchor Investors master, ₹ amount per IPO
+  /**
+   * Anchor book as allotted, from the anchor intimation. `shares` and `pct`
+   * come off the document beside the amount; the three are cross-checked
+   * against each other and against `anchorShares` in the panel.
+   */
+  anchors: { name: string; shares: string; pct: string; amount: string }[];
+  /**
+   * Total offer in SHARES as the offer document states it. Authoritative —
+   * see the `totalShares` note on IssueInputs.
+   */
+  totalShares: string;
+  /** anchor book as allotted: the portion in shares and the price it struck */
+  anchorShares: string; anchorPrice: string;
+  /** the bank that warehouses UPI mandates for this issue */
+  sponsorBank: string;
 }
 const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
@@ -128,6 +160,7 @@ const blankForm = (): FormState => ({
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
   anchors: [],
+  totalShares: '', anchorShares: '', anchorPrice: '', sponsorBank: '',
 });
 const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
@@ -170,9 +203,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           asbaSingle: str((d.documents ?? []).find((x) => x.type === 'asba_form_single')?.url),
           asbaShareholder: str((d.documents ?? []).find((x) => x.type === 'asba_form_shareholder')?.url),
           asbaResidentName: str(ex.asbaNames?.resident), asbaSyndicateName: str(ex.asbaNames?.syndicate), asbaSingleName: str(ex.asbaNames?.single), asbaShareholderName: str(ex.asbaNames?.shareholder),
+          // legacy rows carry name + amount only; the two new columns read blank
           anchors: Array.isArray(ex.anchors)
-            ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? ''), amount: String(a?.amount ?? '') }))
+            ? ex.anchors.map((a: any) => ({
+                name: String(a?.name ?? ''), shares: str(a?.shares),
+                pct: str(a?.pct), amount: String(a?.amount ?? ''),
+              }))
             : [],
+          totalShares: str(ex.totalShares), anchorShares: str(ex.anchorShares),
+          anchorPrice: str(ex.anchorPrice), sponsorBank: str(ex.sponsorBank),
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
           retailDiscount: str(ex.retailDiscount),
@@ -318,7 +357,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
       asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName, shareholder: form.asbaShareholderName },
       // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
-      anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), amount: a.amount.trim() })),
+      anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({
+        name: a.name.trim(), shares: a.shares.trim(), pct: a.pct.trim(), amount: a.amount.trim(),
+      })),
+      // stated share counts — inputs, not derivations (see the note in IssueInputs)
+      totalShares: form.totalShares, anchorShares: form.anchorShares,
+      anchorPrice: form.anchorPrice, sponsorBank: form.sponsorBank,
       startBid: form.startBid, startPrint: form.startPrint,
       // only the tick and the percentage; every other column is derived on read
       shareResv: Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: form.shareResv[r.key].on, pct: form.shareResv[r.key].pct }])),
@@ -396,6 +440,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       priceFloor: n(form.priceBandMin),
       priceCap: n(form.priceBandMax),
       issueSizeCr: n(form.issueSizeCr) || undefined,
+      totalShares: n(form.totalShares) || undefined,
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis as LegBasis, value: n(form.freshValue) },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis as LegBasis, value: n(form.ofsValue) },
       reservation,
@@ -419,17 +464,57 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         listing: form.listingDate.slice(0, 10) || undefined,
       },
       finalIssuePrice: n(form.finalIssuePrice) || undefined,
-      anchor: n(form.anchorPct) > 0
-        ? { pctOfQib: n(form.anchorPct), mfPct: n(form.anchorMfPct) || undefined }
+      anchor: n(form.anchorPct) > 0 || n(form.anchorShares) > 0
+        ? {
+            pctOfQib: n(form.anchorPct) || undefined,
+            mfPct: n(form.anchorMfPct) || undefined,
+            shares: n(form.anchorShares) || undefined,
+            price: n(form.anchorPrice) || undefined,
+          }
         : undefined,
     };
     return computeIssue(inputs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      form.issueSizeCr, form.cvEmployee, form.cvShareholder, form.cvMarketMaker, form.anchorPct, form.anchorMfPct, form.finalIssuePrice,
+      form.issueSizeCr, form.totalShares, form.cvEmployee, form.cvShareholder, form.cvMarketMaker,
+      form.anchorPct, form.anchorMfPct, form.anchorShares, form.anchorPrice, form.finalIssuePrice,
       form.openDate, form.closeDate, form.allotmentDate, form.refundDate, form.dematDate, form.listingDate,
       JSON.stringify(form.shareResv)]);
+
+  /**
+   * The anchor roster against the portion it was allotted out of.
+   *
+   * This is the check that makes typing the per-investor counts worth doing:
+   * the intimation lists every investor and states the total, so the rows have
+   * a right answer and a mistyped digit shows up immediately. Percentages are
+   * only tallied when every row carries one — a partially filled column would
+   * always read as short.
+   */
+  const anchorRoster = useMemo(() => {
+    const rows = form.anchors.filter((a) => a.name.trim());
+    const counted = rows.filter((a) => a.shares.trim());
+    if (!counted.length) return null;
+    const shares = counted.reduce((t, a) => t + (Number(a.shares) || 0), 0);
+    const total = Number(form.anchorShares) || 0;
+    const parts = [`${counted.length} of ${rows.length} investor${rows.length === 1 ? '' : 's'} priced — ${shares.toLocaleString('en-IN')} shares`];
+    let ok = true;
+    if (total > 0) {
+      const diff = shares - total;
+      if (diff === 0) parts.push(`matching the ${total.toLocaleString('en-IN')} allotted`);
+      else {
+        ok = false;
+        parts.push(`${Math.abs(diff).toLocaleString('en-IN')} ${diff > 0 ? 'over' : 'short of'} the ${total.toLocaleString('en-IN')} allotted`);
+      }
+    }
+    if (rows.length && rows.every((a) => a.pct.trim())) {
+      const pct = rows.reduce((t, a) => t + (Number(a.pct) || 0), 0);
+      // the intimation rounds each row to two decimals, so the column rarely
+      // lands on exactly 100 — half a point of drift is the document's, not ours
+      if (Math.abs(pct - 100) > 0.5) { ok = false; parts.push(`percentages total ${pct.toFixed(2)}%, not 100%`); }
+    }
+    return { ok, text: parts.join(' · ') };
+  }, [JSON.stringify(form.anchors), form.anchorShares]);
 
   /**
    * Why the derivation is empty, in the operator's words.
@@ -448,6 +533,58 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     if (!missing.length) return 'Enter at least one reservation percentage to see the split.';
     return `Add ${missing.join(' and ')} on the Pricing and Offer tabs — share counts, amounts and forms-for-1x are all derived from them.`;
   })();
+
+  /**
+   * What each tab is still missing, keyed by tab.
+   *
+   * The complaint about this screen has always been its length, and length is
+   * only a problem when you cannot see where you stand in it. A tab that still
+   * owes something carries a count; a tab that is done carries a tick. The two
+   * `later` tabs are excluded on purpose — they are not gaps, they are work
+   * that does not exist yet, and counting them would make a record that is
+   * ready to open bidding look unfinished.
+   *
+   * These are ENTRY prerequisites for taking an application and printing a
+   * form. The regulatory checks stay where they were, on Review & Publish —
+   * this is "have you typed it in", not "is it legal".
+   */
+  const tabGaps = useMemo(() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const g: Record<string, string[]> = { basic: [], pricing: [], offer: [], anchor: [], timeline: [], parties: [], docs: [] };
+
+    if (!form.symbol.trim()) g.basic.push('Symbol');
+    if (!form.name.trim()) g.basic.push('IPO name');
+    if (!form.exNse && !form.exBse) g.basic.push('at least one exchange');
+
+    if (!n(form.lotSize)) g.pricing.push('Lot size');
+    if (!n(form.priceBandMin) && !n(form.finalIssuePrice)) g.pricing.push('a price');
+    if (!n(form.faceValue)) g.pricing.push('Face value');
+
+    if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') g.offer.push('the offer size');
+    if (!RESV_ROWS.some((r) => form.shareResv[r.key]?.on && n(form.shareResv[r.key].pct) > 0)) g.offer.push('the reservation split');
+
+    // the anchor portion is optional — an issue may simply not have one — so
+    // this tab only complains once the operator has started filling it in
+    if (n(form.anchorShares) > 0 && !n(form.anchorPrice)) g.anchor.push('the allocation price');
+    if (form.anchors.length > 0 && !n(form.anchorPct) && !n(form.anchorShares)) g.anchor.push('the anchor portion');
+
+    if (!form.openDate) g.timeline.push('Open date');
+    if (!form.closeDate) g.timeline.push('Close date');
+
+    if (!form.registrar.trim()) g.parties.push('Registrar');
+    if (!form.leads.length) g.parties.push('Lead manager');
+
+    // printing is a first-class flow here, and it cannot run without a blank
+    if (form.startPrint && !form.asbaResident && !form.asbaSingle) g.docs.push('a blank ASBA form');
+
+    return g;
+  }, [form.symbol, form.name, form.exNse, form.exBse, form.lotSize, form.priceBandMin, form.finalIssuePrice,
+      form.faceValue, form.issueSizeCr, form.freshBasis, form.ofsBasis, form.anchorPct, form.anchorShares,
+      form.anchorPrice, form.anchors.length, form.openDate, form.closeDate, form.registrar, form.leads.length,
+      form.startPrint, form.asbaResident, form.asbaSingle, JSON.stringify(form.shareResv)]);
+
+  /** How many entry prerequisites are still outstanding across the whole form. */
+  const gapsLeft = Object.values(tabGaps).reduce((a, v) => a + v.length, 0);
 
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
@@ -615,13 +752,43 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {savedMsg && <div className="banner ok" style={{ marginBottom: 14 }}>{savedMsg}</div>}
 
+      {/* Where the record stands, in one line, before the tabs rather than
+          after them — an operator should not have to reach Review & Publish to
+          find out whether the thing can open bidding. */}
+      <div className={`iform-state ${gapsLeft ? 'off' : 'ok'}`}>
+        <Icon name={gapsLeft ? 'dot' : 'check'} size={14} />
+        {gapsLeft === 0 ? (
+          <span>Ready to open bidding and print forms. <b>About Company</b> and <b>After Listing</b> can be filled in later.</span>
+        ) : (
+          <span>
+            <b>{gapsLeft}</b> {gapsLeft === 1 ? 'entry is' : 'entries are'} still needed before this issue can take an application or print a form —{' '}
+            {TABS.filter((t) => tabGaps[t.key]?.length).map((t, i, arr) => (
+              <span key={t.key}>
+                <button type="button" className="iform-jump" onClick={() => setTab(t.key)}>{t.label}</button>
+                {i < arr.length - 1 ? ', ' : ''}
+              </span>
+            ))}.
+          </span>
+        )}
+      </div>
+
       <div className="card"><div className="card-pad" style={{ paddingBottom: 20 }}>
         <div className="iform-tabs" role="tablist">
-          {TABS.map((t) => (
-            <button key={t.key} role="tab" aria-selected={tab === t.key} className={`iform-tab${tab === t.key ? ' on' : ''}`} onClick={() => setTab(t.key)}>
-              <span className="ic"><Icon name={t.icon} size={16} /></span>{t.label}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const gaps = tabGaps[t.key];
+            const done = gaps != null && gaps.length === 0;
+            return (
+              <button key={t.key} role="tab" aria-selected={tab === t.key}
+                className={`iform-tab${tab === t.key ? ' on' : ''}${t.later ? ' later' : ''}`}
+                title={gaps?.length ? `Still needed: ${gaps.join(', ')}` : t.later ? 'Not needed to open bidding or print forms' : undefined}
+                onClick={() => setTab(t.key)}>
+                <span className="ic"><Icon name={t.icon} size={16} /></span>{t.label}
+                {gaps?.length ? <span className="iform-gap">{gaps.length}</span> : null}
+                {done && <span className="iform-ok" aria-label="complete"><Icon name="check" size={12} /></span>}
+                {t.later && <span className="iform-later">later</span>}
+              </button>
+            );
+          })}
         </div>
 
         {/* ================= Basic Details ================= */}
@@ -730,15 +897,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-            <Panel title="After the issue" desc="Filled once the registrar and the exchanges publish. Not needed to open bidding.">
-              <div className="form-grid">
-                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which is derived on the next tab">
-                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
-                </Field>
-                <Field label="NSE listing price (₹)"><input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} /></Field>
-                <Field label="BSE listing price (₹)"><input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} /></Field>
-              </div>
-            </Panel>
           </div>
         )}
         {tab === 'offer' && (
@@ -808,6 +966,21 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     hint="no Fresh / OFS legs entered — enter the total the RHP states">
                     <input className="input mono" value={form.issueSizeCr}
                       onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </Field>
+                )}
+                {/* The count the offer document actually prints, and the one
+                    every category divides out of. A ₹ total only approximates
+                    it — it is rounded to two decimals in Cr, and the price is
+                    a guess until the issue prices. */}
+                <Field label="Total issue size (shares)"
+                  hint="as the offer document states it — this figure wins over the ₹ total">
+                  <input className="input mono" value={form.totalShares} placeholder="1,76,47,058"
+                    onChange={(e) => set({ totalShares: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                {form.totalShares && derived.primary && (
+                  <Field label="Implied at this price" hint="derived — the ₹ value of the stated count">
+                    <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                      value={`₹${((Number(form.totalShares) * derived.primary.price) / 1e7).toFixed(2)} Cr @ ₹${derived.primary.price}`} />
                   </Field>
                 )}
               </div>
@@ -935,19 +1108,44 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-            <Panel title="Anchor" desc="A sub-allocation of the QIB quota, not a category of its own — which is why it is not a row in the table above.">
+          </div>
+        )}
+
+        {/* ================= Anchor ================= */}
+        {tab === 'anchor' && (
+          <div className="fstack">
+            <Panel title="Anchor portion" desc="A sub-allocation of the QIB quota, not a category of its own — which is why it is not a row in the reservation table.">
               <div className="form-grid">
                 <Field label="Anchor (% of QIB)" hint={`${derived.rulePack.label} caps this at ${derived.rulePack.anchorMaxPctOfQib ?? '—'}%`}>
                   <input className="input mono" value={form.anchorPct} placeholder="60"
                     onChange={(e) => set({ anchorPct: e.target.value.replace(/[^\d.]/g, '') })} />
                 </Field>
-                <Field label="Anchor shares" hint="derived">
+                <Field label="Anchor shares reserved" hint="derived — the portion, at the price above">
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                     value={derived.primary?.anchor ? derived.primary.anchor.shares.toLocaleString('en-IN') : ''} />
                 </Field>
                 <Field label="Net QIB after anchor" hint="derived">
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                     value={derived.primary?.anchor ? derived.primary.anchor.netQibShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                {/* The book as ALLOTTED, off the anchor intimation. Two inputs
+                    and not one, because the count only means anything beside
+                    the price it struck: the reserved portion is fixed in ₹, so
+                    ESDS reserves 52,94,116 at ₹408 and allots 50,34,964 at
+                    ₹429 — the same ₹216 Cr. Comparing the counts alone reads
+                    as a 4.9% shortfall that is not there. */}
+                <Field label="Anchor shares allotted" hint="anchor intimation — what the book actually took">
+                  <input className="input mono" value={form.anchorShares} placeholder="50,34,964"
+                    onChange={(e) => set({ anchorShares: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                <Field label="Anchor allocation price (₹)" hint="the price the anchor book struck — need not be the issue price">
+                  <input className="input mono" value={form.anchorPrice} placeholder="429"
+                    onChange={(e) => set({ anchorPrice: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                <Field label="Anchor amount allotted" hint="derived — shares × allocation price">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor?.allocatedAmount
+                      ? `₹${(derived.primary.anchor.allocatedAmount / 1e7).toFixed(2)} Cr` : ''} />
                 </Field>
                 <Field label="MF share of anchor (%)" hint={`${derived.rulePack.anchorMfPct}% by default — a third of the anchor book`}>
                   <input className="input mono" value={form.anchorMfPct} placeholder={String(derived.rulePack.anchorMfPct)}
@@ -969,6 +1167,55 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Tranche 2 lock-in (days)" hint="usually 90"><input className="input mono" value={form.lockin2Days} placeholder="90" onChange={(e) => set({ lockin2Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
               </div>
             </Panel>
+
+            {/* Sits directly under the portion it is allotted out of: the tally
+                below compares the two, which it could not do while the roster
+                lived over on About Company. */}
+            <Panel title="Anchor investors" desc="From the anchor intimation. Pick the name from the Anchor Investors master, then enter what that investor was allotted. Shown on the public detail page.">
+              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4 }}>
+                <select
+                  className="input" style={{ maxWidth: 340 }} value=""
+                  onChange={(e) => {
+                    const n = e.target.value;
+                    if (n && !form.anchors.some((a) => a.name === n)) set({ anchors: [...form.anchors, { name: n, shares: '', pct: '', amount: '' }] });
+                  }}
+                >
+                  <option value="">+ Add anchor…</option>
+                  {anchorOpts.filter((o) => o.active && !form.anchors.some((a) => a.name === o.name)).map((o) => (
+                    <option key={o.id} value={o.name}>{o.name}{o.type ? ` — ${o.type}` : ''}</option>
+                  ))}
+                </select>
+                {anchorOpts.length === 0 && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>Master empty — add rows in Masters → Anchor Investors.</span>}
+              </div>
+              {form.anchors.length > 0 && (
+                <div className="anchor-row anchor-head">
+                  <span className="anchor-name">Investor</span>
+                  <span>Shares</span><span>% of portion</span><span>Amount</span><span />
+                </div>
+              )}
+              {form.anchors.map((a, i) => {
+                const upd = (patch: Partial<typeof a>) =>
+                  set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+                return (
+                  <div className="anchor-row" key={a.name}>
+                    <span className="anchor-name">{a.name}</span>
+                    <input className="input mono" placeholder="10,25,644" value={a.shares}
+                      onChange={(e) => upd({ shares: e.target.value.replace(/[^\d]/g, '') })} />
+                    <input className="input mono" placeholder="20.37" value={a.pct}
+                      onChange={(e) => upd({ pct: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <input className="input mono" placeholder="₹44.00 Cr" value={a.amount}
+                      onChange={(e) => upd({ amount: e.target.value })} />
+                    <button type="button" className="icon-btn danger" title="Remove"
+                      onClick={() => set({ anchors: form.anchors.filter((_, j) => j !== i) })}>
+                      <Icon name="trash" size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+              {anchorRoster && (
+                <p className={`anchor-tally ${anchorRoster.ok ? 'ok' : 'off'}`}>{anchorRoster.text}</p>
+              )}
+            </Panel>
           </div>
         )}
 
@@ -989,6 +1236,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     not confirmed by the cut-off is not a valid application. */}
                 <Field label="UPI mandate cut-off (date & time)" hint="last moment an investor can confirm the mandate">
                   <input type="datetime-local" className="input mono" value={form.upiMandateCutoff} onChange={(e) => set({ upiMandateCutoff: e.target.value })} />
+                </Field>
+                {/* Named on the offer document beside the cut-off, and the two
+                    belong together: this is the bank the mandate is raised on. */}
+                <Field label="Sponsor bank(s)" hint="warehouses the UPI mandates for this issue — comma-separated">
+                  <input className="input" value={form.sponsorBank} placeholder="Axis Bank, ICICI Bank"
+                    onChange={(e) => set({ sponsorBank: e.target.value })} />
                 </Field>
               </div>
             </Panel>
@@ -1047,37 +1300,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {/* ================= About Company ================= */}
         {tab === 'company' && (
           <div className="fstack">
-            <Panel title="Anchor investors" desc="Pick from the Anchor Investors master; the ₹ amount is per IPO. Shown on the public detail page.">
-              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4 }}>
-                <select
-                  className="input" style={{ maxWidth: 340 }} value=""
-                  onChange={(e) => {
-                    const n = e.target.value;
-                    if (n && !form.anchors.some((a) => a.name === n)) set({ anchors: [...form.anchors, { name: n, amount: '' }] });
-                  }}
-                >
-                  <option value="">+ Add anchor…</option>
-                  {anchorOpts.filter((o) => o.active && !form.anchors.some((a) => a.name === o.name)).map((o) => (
-                    <option key={o.id} value={o.name}>{o.name}{o.type ? ` — ${o.type}` : ''}</option>
-                  ))}
-                </select>
-                {anchorOpts.length === 0 && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>Master empty — add rows in Masters → Anchor Investors.</span>}
-              </div>
-              {form.anchors.map((a, i) => (
-                <div className="anchor-row" key={a.name}>
-                  <span className="anchor-name">{a.name}</span>
-                  <input
-                    className="input mono" style={{ maxWidth: 170 }} placeholder="₹250 Cr"
-                    value={a.amount}
-                    onChange={(e) => set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)) })}
-                  />
-                  <button type="button" className="icon-btn danger" title="Remove"
-                    onClick={() => set({ anchors: form.anchors.filter((_, j) => j !== i) })}>
-                    <Icon name="trash" size={14} />
-                  </button>
-                </div>
-              ))}
-            </Panel>
             <Panel title="Company Profile">
               <div className="form-grid">
                 <Field label="Company Logo">
@@ -1168,6 +1390,32 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           <div className="fstack">
             {seriesPanel('Application Series — PDF Printing', 'Ranges per syndicate member; the active one is used for prefilled-ASBA PDF printing.', 'pdfSeries', 'pdfActive')}
             {seriesPanel('Application Series — Online Apply', 'Ranges per syndicate member; the active one is used for online applications.', 'onlineSeries', 'onlineActive')}
+          </div>
+        )}
+
+        {/* ================= After Listing ================= */}
+        {/* Last, because none of it exists yet while the issue is being set up.
+            This used to sit inside Pricing, three tabs before the dates it
+            depends on had even been entered. */}
+        {tab === 'afterlisting' && (
+          <div className="fstack">
+            <Panel title="After the issue"
+              desc="Filled once the registrar and the exchanges publish. Nothing here is needed to open bidding or print a form.">
+              <div className="form-grid">
+                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which the engine derives on Review & Publish">
+                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
+                </Field>
+                <Field label="NSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} />
+                </Field>
+                <Field label="BSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} />
+                </Field>
+              </div>
+              {/* Final issue price is NOT repeated here. It lives on Pricing,
+                  and one value behind two controls is how the two drift apart
+                  in an operator's head. */}
+            </Panel>
           </div>
         )}
 

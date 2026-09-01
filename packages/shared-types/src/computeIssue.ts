@@ -48,6 +48,16 @@ export interface IssueInputs {
   finalIssuePrice?: number;
   /** total offer in ₹ Cr — the legacy single figure, used when fresh/ofs are absent */
   issueSizeCr?: number;
+  /**
+   * Total offer in SHARES, exactly as the offer document states it (NSE
+   * PREANCHOR, the RHP). AUTHORITATIVE: every other route to this number —
+   * Fresh+OFS, or ₹ Cr ÷ price — only approximates it, because a ₹ figure is
+   * rounded to two decimals in Cr and a price scenario is a guess until the
+   * issue prices. When present it wins, and it is used VERBATIM rather than
+   * floored to a lot: ESDS offers 1,76,47,058 shares, which is not a multiple
+   * of its lot, and rounding the stated figure would move every derived count.
+   */
+  totalShares?: number;
   fresh?: OfferLeg;
   ofs?: OfferLeg;
   carveouts?: Carveout[];
@@ -55,7 +65,23 @@ export interface IssueInputs {
   reservation: Record<string, number>;
   /** per-category price discount in ₹ */
   discounts?: Record<string, number>;
-  anchor?: { pctOfQib?: number; mfPct?: number };
+  /**
+   * `shares` / `price` are the anchor book as ALLOCATED, from the anchor
+   * intimation: ESDS allocated 50,34,964 shares at ₹429.
+   *
+   * These do NOT override the derivation, and the distinction is worth stating
+   * because getting it wrong publishes figures that disagree with NSE's own.
+   * The anchor portion is a percentage of QIB fixed in RUPEES, so its share
+   * count moves with the price: ESDS reserves 60% of an 88,23,528 QIB portion,
+   * which is 52,94,116 shares at the ₹408 floor but 50,34,964 at the ₹429 the
+   * book actually struck — the same ₹216 Cr either way. NSE's own POSTANCHOR
+   * sheet nets the RESERVED portion off QIB (88,23,528 − 52,94,116 =
+   * 35,29,412), not the allocated one. So `pctOfQib` keeps driving the split
+   * and these two record what was allotted, reconciled by value in W03.
+   *
+   * `shares` is used for the split only when no percentage was entered at all.
+   */
+  anchor?: { pctOfQib?: number; mfPct?: number; shares?: number; price?: number };
   /** which category absorbs the floor-to-lot residual (default: the largest) */
   residualTo?: string;
   /** ISO yyyy-mm-dd. Optional: the date rules simply stay quiet without them. */
@@ -100,7 +126,11 @@ export interface ScenarioResult {
    * field was called `mfShares` and carried only the second, which is exactly
    * the kind of name that gets read as the other one.
    */
-  anchor?: { shares: number; netQibShares: number; anchorMfShares: number; qibMfShares: number };
+  anchor?: {
+    shares: number; netQibShares: number; anchorMfShares: number; qibMfShares: number;
+    /** what the book actually took, at the price it struck — reported, not derived */
+    allocatedShares?: number; allocationPrice?: number; allocatedAmount?: number;
+  };
   residualLots: number;
   residualTo?: string;
 }
@@ -161,6 +191,11 @@ const num = (v: unknown): number => {
 
 function resolveLeg(leg: OfferLeg | undefined, price: number, lot: number): number {
   if (!leg || leg.basis === 'none' || !leg.value) return 0;
+  // NOTE: a shares-basis leg IS floored, unlike `totalShares`. The B03/B04
+  // post-conditions assert that legs and carve-outs resolve to whole lots, and
+  // every existing record depends on it. Real offers do not honour that (ESDS
+  // states 1,76,47,058 against a lot of 34) — which is why `totalShares` takes
+  // its figure verbatim and W02 tolerates a lot when comparing the two.
   if (leg.basis === 'shares') return floorToLot(leg.value, lot);
   return floorToLot((leg.value * CR) / price, lot); // 'amount' is ₹ Cr
 }
@@ -171,9 +206,15 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
 
   /* ── Step 1: offer legs ── */
   let totalOfferShares = resolveLeg(inp.fresh, price, lot) + resolveLeg(inp.ofs, price, lot);
-  // no Fresh/OFS split entered yet → fall back to the single total the legacy
-  // form captures, so existing records still derive
-  if (totalOfferShares <= 0 && inp.issueSizeCr) {
+  // A stated share count is the document speaking; the legs and the ₹ total
+  // are both ways of guessing at it. W02 reports the disagreement rather than
+  // letting either side quietly win.
+  const statedTotal = num(inp.totalShares);
+  if (statedTotal > 0) {
+    totalOfferShares = statedTotal;
+  } else if (totalOfferShares <= 0 && inp.issueSizeCr) {
+    // no Fresh/OFS split entered yet → fall back to the single total the legacy
+    // form captures, so existing records still derive
     totalOfferShares = floorToLot((inp.issueSizeCr * CR) / price, lot);
   }
   if (totalOfferShares <= 0) return null;
@@ -242,10 +283,15 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
   /* ── Step 4: QIB sub-allocation ── */
   let anchor: ScenarioResult['anchor'];
   const qib = categories.find((c) => c.key === 'qib');
-  if (qib && inp.anchor?.pctOfQib) {
-    const anchorShares = floorToLot((qib.shares * num(inp.anchor.pctOfQib)) / 100, lot);
+  if (qib && (num(inp.anchor?.pctOfQib) > 0 || num(inp.anchor?.shares) > 0)) {
+    // the RESERVED portion at this scenario's price — see the `anchor` note on
+    // IssueInputs for why the allocated count must not stand in for it
+    const pctOfQib = num(inp.anchor?.pctOfQib);
+    const anchorShares = pctOfQib > 0
+      ? floorToLot((qib.shares * pctOfQib) / 100, lot)
+      : num(inp.anchor?.shares);
     const netQibShares = qib.shares - anchorShares;
-    const anchorMfPct = inp.anchor.mfPct != null ? num(inp.anchor.mfPct) : pack.anchorMfPct;
+    const anchorMfPct = inp.anchor?.mfPct != null ? num(inp.anchor.mfPct) : pack.anchorMfPct;
     anchor = {
       shares: anchorShares,
       netQibShares,
@@ -253,6 +299,10 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
       anchorMfShares: floorToLot((anchorShares * anchorMfPct) / 100, lot),
       // … and 5% of what is left of QIB after the anchor is taken out
       qibMfShares: floorToLot((netQibShares * pack.mfPctOfNetQib) / 100, lot),
+      allocatedShares: num(inp.anchor?.shares) || undefined,
+      allocationPrice: num(inp.anchor?.price) || undefined,
+      allocatedAmount: num(inp.anchor?.shares) && num(inp.anchor?.price)
+        ? num(inp.anchor!.shares) * num(inp.anchor!.price) : undefined,
     };
   }
 
@@ -497,6 +547,56 @@ export function computeIssue(inp: IssueInputs): IssueDerived {
     ?? scenarios.cap ?? scenarios.floor;
 
   const issues = validateInputs(inp, pack, mechanism);
+
+  /*
+   * W02 / W03 — the stated share counts against the figures we would otherwise
+   * have derived. These are the checks that make a "source of truth" worth
+   * having: on their own the stated counts just silently win, and a mistyped
+   * digit would move every category without anything looking wrong.
+   *
+   * Both are WARNINGS. A disagreement means one of two entered numbers is off,
+   * and the engine cannot know which — blocking would strand an operator who
+   * typed the document correctly and rounded a ₹ figure.
+   */
+  const lotSize = num(inp.lotSize);
+  const statedTotal = num(inp.totalShares);
+  if (primary && statedTotal > 0) {
+    const legs = resolveLeg(inp.fresh, primary.price, lotSize) + resolveLeg(inp.ofs, primary.price, lotSize);
+    // a leg given in ₹ only approximates a count (the ₹ figure is itself
+    // rounded to two decimals in Cr); a leg given in shares is floored to a
+    // lot, so even a perfect entry can sit up to one lot below the stated total
+    const exact = (inp.fresh?.basis ?? 'none') !== 'amount' && (inp.ofs?.basis ?? 'none') !== 'amount';
+    const tol = exact ? lotSize : Math.max(lotSize, statedTotal * 0.005);
+    if (legs > 0 && Math.abs(legs - statedTotal) > tol) {
+      issues.push({
+        code: 'W02', severity: 'warning', field: 'totalShares',
+        message: `Fresh + OFS comes to ${legs.toLocaleString('en-IN')} shares but the total issue is entered as ${statedTotal.toLocaleString('en-IN')}. `
+          + `The stated total is being used; check which of the two is mistyped.`,
+      });
+    }
+  }
+  /*
+   * W03 reconciles the allocated anchor book against the reserved portion BY
+   * VALUE, never by share count. The two are struck at different prices, so
+   * ESDS's 50,34,964 @ ₹429 and its 52,94,116 reserved @ ₹408 are 4.9% apart
+   * as counts and 0.000005% apart as rupees. A share comparison would fire on
+   * a record that is entirely correct.
+   */
+  const statedAnchor = num(inp.anchor?.shares);
+  const anchorPrice = num(inp.anchor?.price);
+  if (primary?.anchor && statedAnchor > 0 && anchorPrice > 0 && primary.anchor.shares > 0) {
+    const allocated = statedAnchor * anchorPrice;
+    const reserved = primary.anchor.shares * primary.price;
+    // an anchor book may close under its ceiling; only an OVERSHOOT is wrong
+    if (allocated > reserved * 1.005) {
+      issues.push({
+        code: 'W03', severity: 'warning', field: 'anchorShares',
+        message: `The anchor allocation of ₹${(allocated / CR).toFixed(2)} Cr `
+          + `(${statedAnchor.toLocaleString('en-IN')} shares @ ₹${anchorPrice}) exceeds the anchor portion of `
+          + `₹${(reserved / CR).toFixed(2)} Cr reserved at ₹${primary.price}. Check the share count and the allocation price.`,
+      });
+    }
+  }
 
   /*
    * B18 — SME must reserve a market-maker portion. Checked HERE rather than in

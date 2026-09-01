@@ -496,3 +496,108 @@ describe('computeIssue — NSE trading calendar', () => {
     expect(r[0]?.message).toMatch(/2 trading days/);
   });
 });
+
+/**
+ * Fixture: ESDS Software Solution — Mainboard, book-built, ICDR 6(2).
+ * Every figure below is read off the NSE PREANCHOR / POSTANCHOR / anchor
+ * intimation for the issue, not computed by us. It is the fixture that proves
+ * the stated share counts are honoured, because NSE publishes the answer.
+ */
+const ESDS: IssueInputs = {
+  board: 'mainboard',
+  mechanism: 'book_built',
+  regulationBasis: 'icdr_6_2',
+  lotSize: 34,
+  priceFloor: 408,
+  priceCap: 429,
+  // PREANCHOR states the offer in shares; the percentages below reproduce it
+  totalShares: 1_76_47_058,
+  reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  anchor: { pctOfQib: 60, shares: 50_34_964, price: 429 },
+};
+const atFloor = (inp: IssueInputs) => computeIssue({ ...inp, priceCap: inp.priceFloor });
+
+describe('ESDS — stated share counts drive the split', () => {
+  const r = atFloor(ESDS);
+
+  it('uses the stated total verbatim, not ₹ ÷ price', () => {
+    expect(r.primary!.totalOfferShares).toBe(1_76_47_058);
+  });
+
+  /**
+   * NSE's published split, for reference:
+   *   QIB 88,23,528 · NIB-Big 17,64,706 · NIB-Small 8,82,353 · Retail 61,76,471
+   *
+   * We land within one lot of each but not ON them, because NSE rounds each
+   * category to the nearest SHARE while Step 3 floors to a whole lot. The lot
+   * constrains an application, not a reservation — see the note in the suite
+   * below. Asserting "within one lot" holds under either policy, so this test
+   * keeps its meaning if that is ever changed.
+   */
+  const NSE_SPLIT: Record<string, number> = {
+    qib: 88_23_528, hni: 17_64_706, hni2: 8_82_353, retail: 61_76_471,
+  };
+
+  it('lands within one lot of every published PREANCHOR category', () => {
+    for (const [key, published] of Object.entries(NSE_SPLIT)) {
+      // the residual holder absorbs everyone else's rounding, so it is the one
+      // category that can sit further out — see the test below
+      if (key === r.primary!.residualTo) continue;
+      expect(Math.abs(cat(r, key).shares - published)).toBeLessThanOrEqual(34);
+    }
+  });
+
+  it('hands the whole rounding residual to QIB', () => {
+    expect(r.primary!.residualTo).toBe('qib');
+    // four categories floored, so QIB can run up to four lots over its share
+    expect(cat(r, 'qib').shares - NSE_SPLIT.qib).toBeLessThanOrEqual(34 * 4);
+  });
+
+  it('the categories add back up to the stated total', () => {
+    const sum = r.primary!.categories.reduce((a, c) => a + c.shares, 0);
+    expect(sum).toBe(1_76_47_058);
+  });
+
+  it('nets the RESERVED anchor portion off QIB, near POSTANCHOR', () => {
+    // NSE's post-anchor sheet: anchor 52,94,116, QIB excluding anchor 35,29,412
+    expect(Math.abs(r.primary!.anchor!.shares - 52_94_116)).toBeLessThanOrEqual(34);
+    expect(Math.abs(r.primary!.anchor!.netQibShares - 35_29_412)).toBeLessThanOrEqual(34);
+  });
+
+  it('reports the ALLOCATED book separately from the reserved portion', () => {
+    expect(r.primary!.anchor!.allocatedShares).toBe(50_34_964);
+    expect(r.primary!.anchor!.allocationPrice).toBe(429);
+    // ₹216 Cr — the same money as the reserved portion, at a different price
+    expect(Math.round(r.primary!.anchor!.allocatedAmount! / 1e7)).toBe(216);
+  });
+
+  it('does not flag the allocation just because its share count differs', () => {
+    expect(r.issues.filter((i) => i.code === 'W03')).toHaveLength(0);
+  });
+
+  it('W03 fires when the anchor book overshoots its portion in rupees', () => {
+    const over = atFloor({ ...ESDS, anchor: { ...ESDS.anchor, shares: 60_00_000 } });
+    const w = over.issues.filter((i) => i.code === 'W03');
+    expect(w).toHaveLength(1);
+    expect(w[0].message).toMatch(/exceeds the anchor portion/);
+  });
+
+  it('W02 fires when Fresh + OFS disagree with the stated total', () => {
+    const bad = atFloor({ ...ESDS, fresh: { basis: 'shares', value: 1_00_00_000 } });
+    const w = bad.issues.filter((i) => i.code === 'W02');
+    expect(w).toHaveLength(1);
+    // the stated total still wins — the warning reports, it does not switch
+    expect(bad.primary!.totalOfferShares).toBe(1_76_47_058);
+  });
+
+  it('stays quiet when the legs reconcile to the stated total', () => {
+    const ok = atFloor({ ...ESDS, fresh: { basis: 'shares', value: 1_76_47_058 } });
+    expect(ok.issues.filter((i) => i.code === 'W02')).toHaveLength(0);
+  });
+
+  it('tolerates a ₹-basis leg, which can only approximate a count', () => {
+    // 719.99 Cr ÷ 408 ≈ 1,76,46,813 — 245 shares off the stated total
+    const ok = atFloor({ ...ESDS, fresh: { basis: 'amount', value: 719.99 } });
+    expect(ok.issues.filter((i) => i.code === 'W02')).toHaveLength(0);
+  });
+});

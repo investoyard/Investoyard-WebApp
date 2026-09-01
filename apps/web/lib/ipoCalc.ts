@@ -37,10 +37,21 @@ export function issueInputsFor(ipo: IpoFull): IssueInputs {
     priceFloor: ipo.priceBandMin,
     priceCap: ipo.priceBandMax ?? ipo.priceBandMin,
     issueSizeCr: parseIssueValue(ipo.issueSize) / 1e7 || undefined,
+    // the stated count outranks the ₹ total — see IssueInputs.totalShares
+    totalShares: Number(ex.totalShares) || undefined,
     fresh: ex.fresh,
     ofs: ex.ofs,
     reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), other: pct('other') },
     discounts: { retail: Number(ex.retailDiscount) || 0 },
+    // pctOfQib drives the split; shares/price record what the book actually took
+    anchor: Number(ex.anchorPct) || Number(ex.anchorShares)
+      ? {
+          pctOfQib: Number(ex.anchorPct) || undefined,
+          mfPct: Number(ex.anchorMfPct) || undefined,
+          shares: Number(ex.anchorShares) || undefined,
+          price: Number(ex.anchorPrice) || undefined,
+        }
+      : undefined,
   };
 }
 

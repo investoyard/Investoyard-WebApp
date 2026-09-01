@@ -79,6 +79,10 @@ export const CATALOG_FIELDS: CatalogField[] = [
     read: (i) => (i.issueSize == null ? '' : Math.round((Number(i.issueSize) / 1e7) * 100) / 100),
     write: (p, _x, v) => { const q = n(v); if (q != null) p.issueSizeCr = q; },
   },
+  // The count the offer document prints, and the one every category divides
+  // out of. Core: without it the split is reconstructed from a ₹ figure that is
+  // itself rounded, at a price that is a guess until the issue prices.
+  ex('totalShares', 'Total issue size (shares)', 'int', true),
   ex('freshIssueCr', 'Fresh issue (₹ Cr)', 'num'),
   ex('freshIssueShares', 'Fresh issue (shares)', 'int'),
   ex('ofsCr', 'OFS portion (₹ Cr)', 'num'),
@@ -91,6 +95,11 @@ export const CATALOG_FIELDS: CatalogField[] = [
   resv('shareholder', 'Shareholder reservation (%)'),
 
   ex('anchorDate', 'Anchor bid date', 'date'),
+  // The anchor book as ALLOTTED. Both columns or neither: the count is struck
+  // at this price, not at the issue price, so it means nothing on its own.
+  ex('anchorShares', 'Anchor shares allotted', 'int'),
+  ex('anchorPrice', 'Anchor allocation price (₹)', 'num'),
+  ex('sponsorBank', 'Sponsor bank(s)'),
   { header: 'Open date *', kind: 'date', core: true, read: (i) => day(i.openDate), write: (p, _x, v) => { const d = isoDate(v); if (d) p.openDate = d; } },
   { header: 'Close date *', kind: 'date', core: true, read: (i) => day(i.closeDate), write: (p, _x, v) => { const d = isoDate(v); if (d) p.closeDate = d; } },
   { header: 'Allotment date', kind: 'date', read: (i) => day(i.allotmentDate), write: (p, _x, v) => { const d = isoDate(v); if (d) p.allotmentDate = d; } },
