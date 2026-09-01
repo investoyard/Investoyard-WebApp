@@ -691,12 +691,13 @@ export interface MessageLogRow {
   status: 'sent' | 'failed' | 'dev'; provider?: string | null;
   error?: string | null; isTest: boolean; createdAt: string;
 }
-export const fetchMessageLog = (f: { channel?: string; status?: string; q?: string; limit?: number } = {}) => {
+export const fetchMessageLog = (f: { channel?: string; status?: string; q?: string; limit?: number; offset?: number } = {}) => {
   const p = new URLSearchParams();
   if (f.channel && f.channel !== 'all') p.set('channel', f.channel);
   if (f.status && f.status !== 'all') p.set('status', f.status);
   if (f.q) p.set('q', f.q);
   p.set('limit', String(f.limit ?? 150));
+  if (f.offset) p.set('offset', String(f.offset));
   return authed<{ total: number; rows: MessageLogRow[] }>(`${API}/admin/message-log?${p}`, { method: 'GET' });
 };
 /** Send one template to a named recipient; returns the provider's answer AND the rendered body. */

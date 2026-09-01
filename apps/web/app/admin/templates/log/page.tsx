@@ -1,10 +1,11 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
+import { Pager } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
@@ -43,14 +44,22 @@ export default function MessageLogPage() {
   const [q, setQ] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // the log only grows, so it pages on the SERVER — the endpoint already
+  // takes limit/offset and returns a total
+  const [page, setPage] = useState(1);
+  const [per, setPer] = useState(25);
 
-  const load = useCallback(() => {
+  const load = useCallback((toPage?: number) => {
+    const p = toPage ?? page;
     setRows(null);
-    api.fetchMessageLog({ channel, status, q })
+    api.fetchMessageLog({ channel, status, q, limit: per, offset: (p - 1) * per })
       .then((r) => { setRows(r.rows); setTotal(r.total); setErr(null); })
       .catch((e) => { setErr(String(e?.message ?? e)); setRows([]); });
-  }, [channel, status, q]);
-  useEffect(() => { load(); }, [channel, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channel, status, q, page, per]);
+  // a filter change starts again at page 1 — page 7 of a different filter is not
+  // a place the operator asked to be
+  useEffect(() => { setPage(1); load(1); }, [channel, status, per]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'providers.manage')) return <NoAccess />;
@@ -61,10 +70,11 @@ export default function MessageLogPage() {
         title="Message Log"
         back={{ href: '/admin/templates', label: 'Message Templates' }}
         sub="Every SMS, email and WhatsApp the system sent, with what the provider answered. Recipients are masked — search by the last 4 digits."
-        actions={<button className="btn btn-secondary" onClick={load}><Icon name="refresh" size={15} /> Refresh</button>}
+        actions={<button className="btn btn-secondary" onClick={() => load()}><Icon name="refresh" size={15} /> Refresh</button>}
       />
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
 
+      <div className="card" style={{ marginBottom: 14 }}><div className="card-pad">
       <div className="filter-row">
         <div className="field" style={{ width: 170 }}>
           <label>Channel</label>
@@ -83,8 +93,9 @@ export default function MessageLogPage() {
           <input className="input mono" value={q} placeholder="last 4 digits, or a full number"
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') load(); }} />
         </div>
-        <button className="btn" onClick={load}><Icon name="search" size={15} /> Search</button>
+        <button className="btn" onClick={() => { setPage(1); load(1); }}><Icon name="search" size={15} /> Search</button>
       </div>
+      </div></div>
 
       <div className="card"><div className="card-pad">
         {rows === null ? <Loader /> : rows.length === 0 ? (
@@ -94,13 +105,12 @@ export default function MessageLogPage() {
           </div>
         ) : (
           <>
-            <p className="hint" style={{ marginTop: 0 }}>{total.toLocaleString('en-IN')} message{total === 1 ? '' : 's'}</p>
             <table className="table">
               <thead><tr><th>When</th><th>Channel</th><th>Template</th><th>To</th><th>Status</th><th>Provider</th><th /></tr></thead>
               <tbody>
                 {rows.map((r) => (
-                  <>
-                    <tr key={r.id}>
+                  <Fragment key={r.id}>
+                    <tr>
                       <td style={{ whiteSpace: 'nowrap' }}>{dt(r.createdAt)}</td>
                       <td><span className="st brand">{r.channel}</span></td>
                       <td className="mono" style={{ fontSize: 12 }}>{r.templateKey || '—'}{r.isTest && <span className="st warn" style={{ marginLeft: 6 }}>test</span>}</td>
@@ -128,10 +138,20 @@ export default function MessageLogPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
+            <Pager
+              page={page}
+              pages={Math.max(1, Math.ceil(total / per))}
+              from={(page - 1) * per + 1}
+              to={Math.min(page * per, total)}
+              total={total}
+              per={per}
+              onPage={setPage}
+              onPer={(n) => { setPer(n); setPage(1); }}
+            />
           </>
         )}
       </div></div>
