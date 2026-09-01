@@ -1,0 +1,5 @@
+# Generated draft queues — regenerate with scripts/social/social-beats.mjs.
+# The compliance archive of what was actually PUBLISHED is a separate record
+# and does not live here.
+social/*/
+social/run.log
