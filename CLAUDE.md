@@ -98,7 +98,7 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 - **Partner-commission module DEFERRED** until the SEBI referral/AP regime settles.
 
 ## Application rail
-- NSE adapter: verified WEB API v1.20.5; BSE iBBS: guarded template (domestic doc still needed). Docs at `D:\Claude\IPO Application\`; member creds in admin Exchange Rails (subscription polling always uses the operator's own member; bidding routes by the IPO's active online-series member).
+- NSE adapter: verified WEB API v1.20.5. **BSE iBBS is NOT a blind template** (checked 2026-09-02): the document arrived and the adapter matches it field for field — action codes `N`/`M`/`D`, the endpoints we call (`/login`, `/ipoorder`, `/ipoorderbulk`), and the payload keys (`actioncode`, `applicantname`, `applicationno`, `asba_upiid`, `cuttoffflag`, `clientbenfid`, `dpid`, `quantity`, `rate`, `scripid`). It was written against this same document family, not guessed. What it lacks is a UAT run, plus endpoints the doc offers that we never implemented: **`ipoupistatus`** (the UPI-status pull the Refresh button needs), `ipoappenquiry` / `ipodpupienquiry` for reconciliation, `ipodeltadownload`, and the **IPO Bid Upload API** (v1.05.4) that would give us the file channel. UAT and production base URLs are both stated in it. ALL exchange docs — the NSE zip and both BSE PDFs — live at `D:\Claude\IPO Application\`, deliberately OUTSIDE the repo: they are vendor-confidential and the BSE pair is footer-marked BSE-INTERNAL. Member creds live in admin Exchange Rails (subscription polling always uses the operator's own member; bidding routes by the IPO's active online-series member).
 
 ## Open items
 - **Sir's decision pending**: Buyback + OFS modules & new IPO fields (2026-08-20 field-list doc); **which 2 of the 4 brand slides** + which IPO-slide treatment; and **whether to do the status machine + entity tables BEFORE the real catalog is entered** — they are far cheaper with 12 disposable records than afterwards.
@@ -109,7 +109,7 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 - **SMTP is not configured yet** (admin → Integrations → Email). Until it is, every `EmailService.send()` only logs — partner approval falls back to the copyable activation link shown in the review panel.
 - **Before publishing the 2,267 historical rows**: `GET /ipos` needs `from`/`to` date params so `/ipos/archive` can page server-side — it filters client-side today, which is fine for a few hundred rows but not the full catalog.
 - EAS Android build (needs Expo account + icon); native Hindi pass on the newer mobile screens.
-- Human actions: counsel sign-offs (Terms/Disclaimer drafts, consent wording, the raw-PAN allotment store), NSE UAT creds, domestic BSE iBBS doc, native Hindi review.
+- Human actions: counsel sign-offs (Terms/Disclaimer drafts, consent wording, the raw-PAN allotment store), NSE UAT creds (**the single thing blocking the whole bidding surface** — see the rail section), native Hindi review.
 
 ## IPO entry (sir's spec — NARROWER fix shipped; full rebuild NOT started)
 - Docs: `docs/ipo-entry-spec.md` (authoritative) · `…-sequence-and-public-contract.md` · `…-implementation-brief.md` (8-phase plan) · **`docs/ipo-entry-phase0-survey.md`** (survey — read first).
