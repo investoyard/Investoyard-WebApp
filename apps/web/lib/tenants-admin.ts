@@ -312,6 +312,8 @@ export interface AdminIpo {
 export interface IpoDoc { type: string; url: string; summary?: string }
 export interface IpoWrite {
   symbol?: string; name?: string; type?: string; status?: string;
+  /** ipo | fpo | reit | invit — the offer kind, not the board */
+  instrument?: string;
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; minAmount?: number;
   issueSizeCr?: number; registrar?: string; isin?: string; objectsOfIssue?: string; logoUrl?: string;
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
@@ -455,9 +457,10 @@ export interface MasterRow {
   allowMultiple?: boolean;      // relationships: repeatable per account
   type?: string | null;         // anchors: Mutual Fund | FPI | Insurance | AIF | Other
   notes?: string | null;        // anchors
+  industries?: string[];        // sectors: the Basic-Industry values rolling up here
   active: boolean;
 }
-export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors';
+export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors' | 'sectors';
 export const fetchMaster = (kind: MasterKind) => authed<MasterRow[]>(`${API}/admin/masters/${kind}`, { method: 'GET' });
 export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

@@ -378,6 +378,7 @@ export class IpoService {
       ...(symbol ? { symbol } : {}),
       name: dto.name,
       type: dto.type,
+      instrument: (dto as any).instrument,
       status: dto.status,
       priceBandMin: dto.priceBandMin,
       priceBandMax: dto.priceBandMax,

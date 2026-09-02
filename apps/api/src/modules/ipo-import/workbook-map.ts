@@ -46,7 +46,12 @@ export const IPO_COLUMNS: Record<string, { field: string; kind: 'str' | 'num' | 
   'Board *': { field: 'type', kind: 'str' },
   'Exchanges * (comma-sep)': { field: 'exchanges', kind: 'str', into: 'extra' },
   'ISIN': { field: 'isin', kind: 'str' },
-  'Sector / Industry': { field: 'sector', kind: 'str', into: 'extra' },
+  // The workbook's "Sector / Industry" column carries the exchanges' fine
+  // Basic Industry ("Ferro & Silica Manganese"), so it lands in `industry`.
+  // The broad `sector` is derived from it against the Sector master, never
+  // typed here — see scripts/seed-sectors.js.
+  'Sector / Industry': { field: 'industry', kind: 'str', into: 'extra' },
+  Industry: { field: 'industry', kind: 'str', into: 'extra' },
   'Company website': { field: 'website', kind: 'str', into: 'extra' },
   'Incorporation year': { field: 'incorporationYear', kind: 'int', into: 'extra' },
   'Logo URL': { field: 'logoUrl', kind: 'str' },

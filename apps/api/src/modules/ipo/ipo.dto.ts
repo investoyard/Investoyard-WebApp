@@ -3,6 +3,8 @@ import { Type } from 'class-transformer';
 
 export enum IpoTypeDto { mainboard = 'mainboard', sme = 'sme' }
 export enum IpoStatusDto { upcoming = 'upcoming', open = 'open', closed = 'closed', listed = 'listed', withdrawn = 'withdrawn' }
+/** The kind of offer, as distinct from the board it lists on. */
+export enum InstrumentDto { ipo = 'ipo', fpo = 'fpo', reit = 'reit', invit = 'invit' }
 
 /** A prospectus / offer document shown on the IPO detail page. */
 export class IpoDocumentDto {
@@ -15,6 +17,7 @@ export class CreateIpoDto {
   @Matches(/^[A-Z0-9]{2,12}$/, { message: 'symbol must be 2–12 uppercase letters/digits' }) symbol!: string;
   @IsString() name!: string;
   @IsEnum(IpoTypeDto) type!: IpoTypeDto;
+  @IsOptional() @IsEnum(InstrumentDto) instrument?: InstrumentDto;
   @IsOptional() @IsEnum(IpoStatusDto) status?: IpoStatusDto;
   @IsOptional() @IsNumber() priceBandMin?: number;
   @IsOptional() @IsNumber() priceBandMax?: number;
@@ -41,6 +44,7 @@ export class UpdateIpoDto {
   @IsOptional() @Matches(/^[A-Z0-9]{2,12}$/, { message: 'symbol must be 2–12 uppercase letters/digits' }) symbol?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEnum(IpoTypeDto) type?: IpoTypeDto;
+  @IsOptional() @IsEnum(InstrumentDto) instrument?: InstrumentDto;
   @IsOptional() @IsEnum(IpoStatusDto) status?: IpoStatusDto;
   @IsOptional() @IsNumber() priceBandMin?: number;
   @IsOptional() @IsNumber() priceBandMax?: number;

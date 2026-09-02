@@ -5,6 +5,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { sha256 } from './partner.guard';
+import { partnerV1Extra } from '@investoyard/shared-types';
 import { PartnerApplicantDto, PartnerPrintFormsDto } from './partner.dto';
 
 /**
@@ -310,4 +311,139 @@ export class PartnerService {
     );
     return { revoked: true };
   }
+
+  /* ══ Partner READ API, v1 ══════════════════════════════════════════════════
+   *
+   * Everything below serialises through `partnerV1Ipo`, which projects a record
+   * down to the operational contract plus optional content. That projection is
+   * the whole point of the layering: a reporting field added next month cannot
+   * widen these responses, so a partner integrating today keeps working without
+   * being told anything. Reporting data, if partners ever want it, gets its own
+   * endpoints rather than leaking into these.
+   *
+   * Hidden issues are excluded everywhere — an unpublished record must never
+   * reach a partner, the same rule the public site follows.
+   */
+
+  /** One IPO, reduced to what a partner is allowed to see. */
+  private partnerV1Ipo(ipo: any) {
+    return {
+      symbol: ipo.symbol,
+      name: ipo.name,
+      board: ipo.type,
+      instrument: ipo.instrument,
+      status: ipo.status,
+      exchanges: ipo.exchanges?.length ? ipo.exchanges : undefined,
+      openDate: day(ipo.openDate),
+      closeDate: day(ipo.closeDate),
+      allotmentDate: day(ipo.allotmentDate),
+      listingDate: day(ipo.listingDate),
+      priceBandMin: dec(ipo.priceBandMin),
+      priceBandMax: dec(ipo.priceBandMax),
+      lotSize: ipo.lotSize ?? undefined,
+      minAmount: dec(ipo.minAmount),
+      issueSizeCr: ipo.issueSize != null ? Number(ipo.issueSize) / 1e7 : undefined,
+      isin: ipo.isin ?? undefined,
+      registrar: ipo.registrar ?? undefined,
+      logoUrl: ipo.logoUrl ?? undefined,
+      objectsOfIssue: ipo.objectsOfIssue ?? undefined,
+      reservations: ipo.reservations?.length ? ipo.reservations : undefined,
+      listingGainPct: dec(ipo.listingGainPct),
+      documents: (ipo.documents ?? []).map((d: any) => ({ type: d.type, url: d.url })),
+      details: partnerV1Extra(ipo.extra as any),
+    };
+  }
+
+  /** GET /partner/v1/ipos */
+  async listIpos(q: { board?: string; instrument?: string; status?: string; limit?: number; offset?: number }) {
+    const take = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
+    const skip = Math.max(Number(q.offset) || 0, 0);
+    const where: any = { hidden: false };
+    if (q.board === 'mainboard' || q.board === 'sme') where.type = q.board;
+    if (q.instrument) where.instrument = q.instrument;
+    if (q.status) where.status = q.status;
+
+    const [total, rows] = await Promise.all([
+      this.prisma.ipo.count({ where }),
+      this.prisma.ipo.findMany({
+        where,
+        // newest first by the date a partner actually cares about
+        orderBy: [{ openDate: { sort: 'desc', nulls: 'last' } }, { symbol: 'asc' }],
+        take, skip,
+        include: { documents: true },
+      }),
+    ]);
+    return { total, limit: take, offset: skip, ipos: rows.map((r) => this.partnerV1Ipo(r)) };
+  }
+
+  /** GET /partner/v1/ipos/:symbol */
+  async getIpo(symbol: string) {
+    const ipo = await this.prisma.ipo.findFirst({
+      where: { symbol: symbol.toUpperCase(), hidden: false },
+      include: { documents: true },
+    });
+    if (!ipo) throw new NotFoundException(`No published IPO with symbol '${symbol}'.`);
+    return this.partnerV1Ipo(ipo);
+  }
+
+  /** GET /partner/v1/ipos/:symbol/subscription — latest figure per category. */
+  async getSubscription(symbol: string) {
+    const ipo = await this.prisma.ipo.findFirst({
+      where: { symbol: symbol.toUpperCase(), hidden: false },
+      select: { id: true, symbol: true, subscriptionAsOf: true },
+    });
+    if (!ipo) throw new NotFoundException(`No published IPO with symbol '${symbol}'.`);
+    const rows = await this.prisma.ipoSubscription.findMany({
+      where: { ipoId: ipo.id }, orderBy: { asOf: 'desc' },
+    });
+    // one row per category — the table keeps a history, a partner wants the latest
+    const latest = new Map<string, any>();
+    for (const r of rows) if (!latest.has(r.category)) latest.set(r.category, r);
+    return {
+      symbol: ipo.symbol,
+      asOf: ipo.subscriptionAsOf ?? null,
+      categories: [...latest.values()].map((r) => ({
+        category: r.category,
+        timesSubscribed: Number(r.timesSubscribed),
+        asOf: r.asOf,
+      })),
+    };
+  }
+
+  /**
+   * GET /partner/v1/ipos/:symbol/gmp
+   *
+   * Off for gmp-disabled tenants, and the disclaimer travels WITH the number
+   * rather than being left to the partner to remember — GMP is unofficial and
+   * unregulated, so a bare figure is the one thing we must not hand over.
+   */
+  async getGmp(tenant: { id: string }, symbol: string) {
+    const setting = await this.prisma.tenantSetting.findFirst({
+      where: { tenantId: tenant.id, featureKey: 'gmpEnabled' },
+    });
+    if (setting && setting.value === false) {
+      throw new BadRequestException('GMP is not enabled for this account.');
+    }
+    const ipo = await this.prisma.ipo.findFirst({
+      where: { symbol: symbol.toUpperCase(), hidden: false },
+      select: { id: true, symbol: true },
+    });
+    if (!ipo) throw new NotFoundException(`No published IPO with symbol '${symbol}'.`);
+    const gmp = await this.prisma.ipoGmp.findFirst({
+      where: { ipoId: ipo.id }, orderBy: { asOf: 'desc' },
+    });
+    return {
+      symbol: ipo.symbol,
+      gmp: gmp ? Number(gmp.value) : null,
+      trend: gmp?.trend ?? null,
+      asOf: gmp?.asOf ?? null,
+      disclaimer:
+        'Grey Market Premium is an unofficial, unregulated indicator. It is not a '
+        + 'price, not a recommendation, and carries no assurance of listing gain.',
+    };
+  }
 }
+
+/* Small shared shapers for the v1 projection. */
+const day = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : undefined);
+const dec = (v: any) => (v == null ? undefined : Number(v));

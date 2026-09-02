@@ -7,6 +7,7 @@ import { NoAccess } from '@/components/AdminUI';
 import { Loader } from '@/components/ui/Loader';
 import { PageHead, Panel, Field, Toggle } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
@@ -132,6 +133,18 @@ interface FormState {
   anchorShares: string; anchorPrice: string;
   /** the bank that warehouses UPI mandates for this issue */
   sponsorBank: string;
+  /**
+   * What kind of offer this is, as distinct from which board it lists on.
+   * The FPO variants of 48 catalogue reports depend on it.
+   */
+  instrument: string;
+  /**
+   * Two rungs of one classification. `sector` is the broad, master-backed group
+   * (Finance · Pharma · IT · Bank); `industry` is the exchanges' fine Basic
+   * Industry beneath it (146 values). Many industries roll up into one sector,
+   * which is how the 850 already-classified records got a sector without re-entry.
+   */
+  sector: string; industry: string;
 }
 const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
@@ -161,6 +174,7 @@ const blankForm = (): FormState => ({
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
   anchors: [],
   totalShares: '', anchorShares: '', anchorPrice: '', sponsorBank: '',
+  instrument: 'ipo', sector: '', industry: '',
 });
 const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
@@ -212,6 +226,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : [],
           totalShares: str(ex.totalShares), anchorShares: str(ex.anchorShares),
           anchorPrice: str(ex.anchorPrice), sponsorBank: str(ex.sponsorBank),
+          instrument: str((d as any).instrument) || 'ipo',
+          sector: str(ex.sector), industry: str(ex.industry),
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
           retailDiscount: str(ex.retailDiscount),
@@ -293,6 +309,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // Anchor Investors master (Masters → Anchor Investors) — picked per IPO with a ₹ amount
   const [anchorOpts, setAnchorOpts] = useState<api.MasterRow[]>([]);
   useEffect(() => { api.fetchMaster('anchors').then(setAnchorOpts).catch(() => {}); }, []);
+  // Sector master (Masters → Sectors) — the dropdown can also create into it
+  const [sectorOpts, setSectorOpts] = useState<api.MasterRow[]>([]);
+  useEffect(() => { api.fetchMaster('sectors').then(setSectorOpts).catch(() => {}); }, []);
   const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', file?: File | null) => {
     if (!file) return;
     setAsbaBusy(slot); setErr(null);
@@ -308,7 +327,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
 
   const payload = (): api.IpoWrite => ({
-    name: form.name, type: form.type, status: form.status,
+    name: form.name, type: form.type, status: form.status, instrument: form.instrument,
     priceBandMin: num(form.priceBandMin), priceBandMax: num(form.priceBandMax), lotSize: num(form.lotSize),
     issueSizeCr: (num(form.issueSizeCr) ?? 0) > 0 ? num(form.issueSizeCr) : undefined,
     // explicit, not invented from the board — an SME issue may list on one platform only
@@ -363,6 +382,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       // stated share counts — inputs, not derivations (see the note in IssueInputs)
       totalShares: form.totalShares, anchorShares: form.anchorShares,
       anchorPrice: form.anchorPrice, sponsorBank: form.sponsorBank,
+      sector: form.sector, industry: form.industry,
       startBid: form.startBid, startPrint: form.startPrint,
       // only the tick and the percentage; every other column is derived on read
       shareResv: Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: form.shareResv[r.key].on, pct: form.shareResv[r.key].pct }])),
@@ -798,6 +818,39 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               <div className="form-grid">
                 <Field label="IPO Name / Company" required span={2}><input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Acme Technologies Limited" /></Field>
                 <Field label="Symbol" required><input className="input mono" value={form.symbol} onChange={(e) => set({ symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="ACME" /></Field>
+                {/* Instrument is NOT the board: an FPO can be Mainboard or SME.
+                    Keeping them apart is what makes the FPO report variants
+                    possible — before this the four we hold were findable only by
+                    searching for "Further Public Offer" inside a text field. */}
+                <Field label="Instrument" hint="what kind of offer this is — separate from the board">
+                  <select className="input" value={form.instrument} onChange={(e) => set({ instrument: e.target.value })}>
+                    <option value="ipo">IPO — Initial Public Offer</option>
+                    <option value="fpo">FPO — Further Public Offer</option>
+                    <option value="reit">REIT</option>
+                    <option value="invit">InvIT</option>
+                  </select>
+                </Field>
+                {/* Two rungs of one classification — see the FormState note. */}
+                <Field label="Sector" hint="broad group used for filtering and reports">
+                  <SearchSelect
+                    options={sectorOpts.filter((o) => o.active).map((o) => ({ value: o.name, label: o.name }))}
+                    value={form.sector}
+                    onChange={(v) => set({ sector: v })}
+                    placeholder="Search sectors…"
+                    createLabel={(n) => `+ Add “${n}” as a new sector`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('sectors', { name });
+                        setSectorOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
+                </Field>
+                <Field label="Industry" hint="the exchange's detailed classification, beneath the sector">
+                  <input className="input" value={form.industry} placeholder="Specialty Chemicals"
+                    onChange={(e) => set({ industry: e.target.value })} />
+                </Field>
                 <Field label="Issue Type" required><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
                 <Field label="IPO Category" required>
                   {categoryMasters.length ? (

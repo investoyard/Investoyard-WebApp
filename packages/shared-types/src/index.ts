@@ -189,3 +189,4 @@ export interface CreateApplicationInput {
   consentNoticeVersion?: string;
 }
 export * from './masterMatch';
+export * from './operationalContract';

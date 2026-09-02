@@ -20,6 +20,39 @@ export class PartnerController {
   printForms(@Req() req: any, @Body() dto: PartnerPrintFormsDto) {
     return this.partner.printFormsLogged(req.partnerTenant, req.partnerKeyId, dto);
   }
+
+  /* ── Read surface ────────────────────────────────────────────────────────
+     Every response is projected through the operational contract, so adding a
+     reporting field can never change what a partner receives. See
+     packages/shared-types/src/operationalContract.ts.                        */
+
+  /** GET /partner/v1/ipos?board=&instrument=&status=&limit=&offset= */
+  @Get('ipos')
+  listIpos(@Query() q: any) {
+    return this.partner.listIpos({
+      board: q.board, instrument: q.instrument, status: q.status,
+      limit: q.limit ? Number(q.limit) : undefined,
+      offset: q.offset ? Number(q.offset) : undefined,
+    });
+  }
+
+  /** GET /partner/v1/ipos/:symbol */
+  @Get('ipos/:symbol')
+  getIpo(@Param('symbol') symbol: string) {
+    return this.partner.getIpo(symbol);
+  }
+
+  /** GET /partner/v1/ipos/:symbol/subscription */
+  @Get('ipos/:symbol/subscription')
+  getSubscription(@Param('symbol') symbol: string) {
+    return this.partner.getSubscription(symbol);
+  }
+
+  /** GET /partner/v1/ipos/:symbol/gmp — tenant-gated, disclaimer included. */
+  @Get('ipos/:symbol/gmp')
+  getGmp(@Req() req: any, @Param('symbol') symbol: string) {
+    return this.partner.getGmp(req.partnerTenant, symbol);
+  }
 }
 
 /**

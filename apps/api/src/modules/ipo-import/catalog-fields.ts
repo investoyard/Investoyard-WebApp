@@ -63,7 +63,11 @@ const ex = (key: string, header: string, kind: CatalogField['kind'] = 'str', cor
 export const CATALOG_FIELDS: CatalogField[] = [
   { header: 'Company name *', kind: 'str', read: (i) => i.name, write: (p, _x, v) => { if (s(v)) p.name = s(v); } },
   { header: 'ISIN', kind: 'str', core: true, read: (i) => i.isin ?? '', write: (p, _x, v) => { if (s(v)) p.isin = s(v).toUpperCase(); } },
-  ex('sector', 'Sector / Industry', 'str', true),
+  // Two levels of one classification, not two competing ideas: many industries
+  // roll up into one sector. Both are exported so the operator can see and
+  // correct the roll-up the seed script produced.
+  ex('sector', 'Sector (broad)', 'str', true),
+  ex('industry', 'Industry (detailed)', 'str', true),
   ex('companyWebsite', 'Company website'),
   { header: 'Logo URL', kind: 'str', read: (i) => i.logoUrl ?? '', write: (p, _x, v) => { if (s(v)) p.logoUrl = s(v); } },
   ex('issueType', 'Issue type *'),

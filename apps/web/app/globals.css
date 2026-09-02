@@ -2456,6 +2456,10 @@ html[data-admin-theme="dark"] .admin-shell select.input, html[data-admin-theme="
 .sselect-opt:hover, .sselect-opt.hl { background: var(--brand-50); }
 .sselect-opt .sub { display: block; font-size: 11.5px; color: var(--text-faint); }
 .sselect-empty { padding: 12px; font-size: 13px; color: var(--text-faint); text-align: center; }
+/* "+ Add …" — separated from the matches by a rule so it reads as a different
+   kind of action, not one more option in the list. */
+.sselect-new { border-top: 1px solid var(--border); color: var(--brand); font-weight: 600; }
+.sselect-new:disabled { opacity: .6; cursor: default; }
 
 /* toast stack (admin feedback) */
 .toasts { position: fixed; right: 18px; top: 18px; z-index: 220; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }

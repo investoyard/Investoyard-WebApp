@@ -45,6 +45,19 @@ enum IpoType {
   sme
 }
 
+/// What kind of offer this is, as distinct from which board it lists on.
+/// Before this existed the four FPOs we hold were identifiable only by the
+/// words "Further Public Offer" appearing inside `extra.issueType` — a free-text
+/// field that actually holds the pricing method. 48 of the 73 catalogue reports
+/// offer an FPO variant, so this one column carries more of them than anything
+/// else on the list.
+enum Instrument {
+  ipo
+  fpo
+  reit
+  invit
+}
+
 enum IpoStatus {
   upcoming
   open
@@ -252,6 +265,23 @@ model AnchorMaster {
   name      String   @unique
   type      String? // Mutual Fund | FPI | Insurance | AIF | Other
   notes     String?
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// Broad sector — Finance, Pharma, IT, Bank. The operator's list, editable.
+/// Deliberately NOT the same thing as `extra.industry`, which holds the
+/// exchanges' fine-grained Basic Industry (146 values: "Ferro & Silica
+/// Manganese", "Plywood Boards/ Laminates"). Many industries roll up into one
+/// sector, and the roll-up is what makes the sector derivable for the 850
+/// records that already carry an industry.
+model SectorMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  /// Basic-Industry values that roll up here, so the mapping is data the
+  /// operator can correct rather than a table buried in code.
+  industries String[] @default([])
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -508,6 +538,9 @@ model Ipo {
   name                 String
   logoUrl              String?
   type                 IpoType
+  /// Defaults to `ipo` so every existing row is correct without a backfill;
+  /// only the four Further Public Offers need changing.
+  instrument           Instrument        @default(ipo)
   exchanges            String[]
   status               IpoStatus         @default(upcoming)
   openDate             DateTime?

@@ -34,6 +34,7 @@ class MasterDto {
   @IsOptional() @IsBoolean() allowMultiple?: boolean; // relationships only: repeatable per account
   @IsOptional() @IsString() type?: string;   // anchors only: Mutual Fund | FPI | Insurance | AIF | Other
   @IsOptional() @IsString() notes?: string;  // anchors only
+  @IsOptional() industries?: string[];       // sectors only: the Basic-Industry values rolling up here
   @IsOptional() @IsBoolean() active?: boolean;
 }
 class MasterPatchDto extends MasterDto {
@@ -49,6 +50,7 @@ const KINDS = {
   relationships: 'relationshipMaster',
   'upi-handles': 'upiHandleMaster',
   anchors: 'anchorMaster',
+  sectors: 'sectorMaster',
 } as const;
 type Kind = keyof typeof KINDS;
 
@@ -75,6 +77,9 @@ export class MastersController {
     if (kind === 'issue-types') fields.push('categoryId');
     if (kind === 'relationships') fields.push('allowMultiple');
     if (kind === 'anchors') fields.push('type', 'notes');
+    // `industries` is the roll-up: which Basic-Industry values belong to this
+    // sector. Held as data so the operator can correct a mapping without a deploy.
+    if (kind === 'sectors') fields.push('industries');
     const data: Record<string, any> = {};
     for (const f of fields) if (dto[f] !== undefined) data[f] = typeof dto[f] === 'string' ? dto[f].trim() : dto[f];
     if (typeof data.shortCode === 'string') data.shortCode = data.shortCode.toUpperCase();

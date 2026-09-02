@@ -7,7 +7,7 @@
  * local.
  */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { computeIssue, rulePackFor, inferRegulationBasis, type IssueInputs } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, type IssueInputs } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -100,8 +100,10 @@ export function issueInputsFor(ipo: IpoFull): IssueInputs {
     issueSizeCr: parseIssueValue(ipo.issueSize) / 1e7 || undefined,
     // the stated count outranks the ₹ total — see IssueInputs.totalShares
     totalShares: Number(ex.totalShares) || undefined,
-    fresh: ex.fresh,
-    ofs: ex.ofs,
+    // read through offerLegFrom — the importer stores these as flat keys the
+    // engine never saw, which hid a fresh-issue count on 596 records
+    fresh: offerLegFrom(ex, 'fresh'),
+    ofs: offerLegFrom(ex, 'ofs'),
     reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), other: pct('other') },
     discounts: { retail: Number(ex.retailDiscount) || 0 },
     // pctOfQib drives the split; shares/price record what the book actually took
