@@ -831,3 +831,74 @@ export const commitCatalogUpdate = (id: string, approve: string[]) =>
     `${API}/admin/ipo-import/update/commit/${id}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approve }) },
   );
+
+/* ── Bidding Report ─────────────────────────────────────────────────────── */
+
+export interface BidRow {
+  id: string;
+  appNo: string | null;
+  name: string;
+  pan: string;
+  demat: string | null;
+  depository: string | null;
+  qty: number;
+  price: number | null;
+  atCutoff: boolean;
+  rejection: string | null;
+  upiStatus: string | null;
+  upiStatusAt: string | null;
+  bidNumber: string | null;
+  status: string;
+  category: string;
+  rail: string | null;
+  ipoSymbol: string | null;
+  ipoName: string | null;
+  member: string | null;
+  memberCode: string | null;
+  /** the newest ledger operation — what the action buttons may do next */
+  lastOp: { action: string; state: string; reason: string | null; at: string } | null;
+  createdAt: string;
+}
+
+export interface BidReportFilters {
+  ipoId?: string; memberCredentialId?: string; status?: string; category?: string;
+  rail?: string; from?: string; to?: string; q?: string;
+  sort?: string; dir?: 'asc' | 'desc'; page?: number; per?: number;
+}
+
+export const fetchBidReport = (f: BidReportFilters = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') p.set(k, String(v));
+  const qs = p.toString();
+  return authed<{ total: number; page: number; per: number; pages: number; rows: BidRow[] }>(
+    `${API}/admin/bidding/report${qs ? `?${qs}` : ''}`, { method: 'GET' });
+};
+
+export const fetchBidFacets = () =>
+  authed<{
+    ipos: { id: string; symbol: string; name: string }[];
+    members: { id: string; label: string; exchange: string }[];
+    statuses: { value: string; count: number }[];
+    categories: { value: string; count: number }[];
+  }>(`${API}/admin/bidding/facets`, { method: 'GET' });
+
+/** Revise a bid's quantity. The server enforces the ICDR direction rule. */
+export const editBid = (id: string, qty: number, price?: number) =>
+  authed<{ ok: boolean; operationId: string; state: string; qty: number }>(
+    `${API}/admin/bidding/${id}/edit`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qty, price }) },
+  );
+
+/**
+ * Withdraw a bid. Refused for HNI/QIB once the bid is at the exchange.
+ *
+ * Sends an explicit `{}` rather than no body at all: IIS answers a POST with no
+ * Content-Length with a 411 before the request ever reaches Nest, which would
+ * surface as a mystery failure that only happens in production. Verified
+ * against the live server — no body 411, `{}` 401.
+ */
+export const cancelBid = (id: string) =>
+  authed<{ ok: boolean; operationId: string; state: string }>(
+    `${API}/admin/bidding/${id}/cancel`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+  );

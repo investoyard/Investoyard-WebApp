@@ -3374,3 +3374,23 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .mbu-counts .bad { color: var(--neg, #d8412a); }
 .mbu-list { margin-top: 10px; max-height: 150px; overflow-y: auto; }
 .mbu-bad { font-size: 12.5px; color: var(--neg, #d8412a); padding: 2px 0; }
+
+/* ── Bidding Report ─────────────────────────────────────────────────────────
+   The table is the shared `.table`; only these few marks are its own. Names are
+   prefixed `bid-` because globals.css is one sheet and short names collide. */
+.bid-tbl { overflow-x: auto; }
+.bid-tbl .table { min-width: 1020px; }
+.bid-name { font-weight: 600; }
+.bid-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+/* a bid we have not posted to any exchange yet — the summary's BYFILE bucket */
+.bid-byfile { font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
+/* a cut-off bid has no price of its own; it bids at the band ceiling */
+.bid-cutoff { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 4px;
+  background: var(--bg-2); color: var(--text-faint); font-size: 9.5px; font-weight: 700; vertical-align: middle; }
+/* the exchange's own refusal. Amber, not the loss red: a rejected bid is a
+   data/eligibility fault to fix, not a financial signal. */
+.bid-reject { display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: #a1670a; font-weight: 600; font-size: 12.5px; }
+/* the report's row actions — kept on one line so the column never wraps */
+.bid-acts { display: flex; gap: 5px; }
+.bid-acts .icon-btn:disabled { opacity: .32; cursor: not-allowed; }

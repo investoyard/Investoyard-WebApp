@@ -31,8 +31,8 @@ const NAV: NavNode[] = [
   { key: 'applications', label: 'Applications', icon: 'list', href: '/admin/applications', perm: 'bids.view' },
   { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', perm: 'rails.manage', children: [
     { href: '/admin/rails-live', label: 'Exchange Rails' },
-    { href: '/admin/bidding/queue', label: 'Bid Queue' },
-    { href: '/admin/bidding/failed', label: 'Failed / Retry' },
+    { href: '/admin/bidding/report', label: 'Bidding Report' },
+    { href: '/admin/bidding/summary', label: 'Bidding Summary' },
   ] },
   { key: 'clients', label: 'Clients', icon: 'users', href: '/admin/clients', perm: 'clients.view' },
   { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', perm: 'tenants.manage', children: [

@@ -28,6 +28,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { MastersModule } from './modules/masters/masters.module';
+import { BiddingModule } from './modules/bidding/bidding.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { PostsModule } from './modules/posts/posts.module';
@@ -65,6 +66,7 @@ import { MessageLogApiModule } from './modules/message-log/message-log.module';
     WhatsappModule,
     SubscriptionModule,
     MastersModule,
+    BiddingModule,
     PartnerModule,
     BannersModule,
     PostsModule,

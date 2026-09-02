@@ -80,11 +80,28 @@ export class BidOperationsService {
   async queueModify(applicationId: string, nextQty: number, price?: number | null) {
     const app = await this.loadApp(applicationId);
     const current = this.qtyOf(app);
-    const check = mayReviseTo(app.category, current, nextQty, this.atExchange(app));
+    const atExchange = this.atExchange(app);
+    const check = mayReviseTo(app.category, current, nextQty, atExchange);
     if (!check.ok) throw new BadRequestException(check.reason);
 
+    /*
+     * A bid the exchange has never seen has nothing to modify. Queuing an M for
+     * it would send the exchange a revision of a bid it has no record of, which
+     * it would rightly reject. Amend the pending N instead, so what finally
+     * posts is one new bid at the corrected quantity.
+     */
+    const pendingNew = atExchange ? null : await this.prisma.bidOperation.findFirst({
+      where: { applicationId: app.id, action: 'new', state: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+
     return this.prisma.$transaction(async (tx) => {
-      const op = await tx.bidOperation.create({ data: this.opData(app, 'modify', nextQty, price) });
+      const op = pendingNew
+        ? await tx.bidOperation.update({
+            where: { id: pendingNew.id },
+            data: { qty: nextQty, ...(price != null ? { price: new Prisma.Decimal(price) } : {}) },
+          })
+        : await tx.bidOperation.create({ data: this.opData(app, 'modify', nextQty, price) });
       await tx.application.update({
         where: { id: app.id },
         data: { shareQty: nextQty, ...(price != null ? { bidPrice: new Prisma.Decimal(price) } : {}) },
@@ -107,11 +124,31 @@ export class BidOperationsService {
     const check = mayCancel(app.category, this.atExchange(app));
     if (!check.ok) throw new BadRequestException(check.reason);
 
+    /*
+     * Same reasoning as a modify: cancelling a bid the exchange never received
+     * means withdrawing our own pending instruction, not sending a D for a bid
+     * that does not exist there. The pending N is marked failed with a reason
+     * so the ledger still shows what happened, and nothing is ever posted.
+     */
+    const atExchange = this.atExchange(app);
+    const pendingNew = atExchange ? null : await this.prisma.bidOperation.findFirst({
+      where: { applicationId: app.id, action: 'new', state: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+
     return this.prisma.$transaction(async (tx) => {
-      const op = await tx.bidOperation.create({ data: this.opData(app, 'cancel', this.qtyOf(app)) });
+      const op = pendingNew
+        ? await tx.bidOperation.update({
+            where: { id: pendingNew.id },
+            data: { state: 'failed', reason: 'Cancelled before it was sent to the exchange.' },
+          })
+        : await tx.bidOperation.create({ data: this.opData(app, 'cancel', this.qtyOf(app)) });
       await tx.application.update({ where: { id: app.id }, data: { status: 'cancelled' } });
       await tx.applicationStatusEvent.create({
-        data: { applicationId: app.id, status: 'cancelled', detail: { by: 'operator', opId: op.id } },
+        data: {
+          applicationId: app.id, status: 'cancelled',
+          detail: { by: 'operator', opId: op.id, atExchange } as any,
+        },
       });
       return op;
     });
