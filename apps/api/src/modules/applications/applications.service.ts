@@ -14,7 +14,7 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
 const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
@@ -517,6 +517,19 @@ export class ApplicationsService {
     if (!WITHDRAWABLE.includes(app.status)) {
       throw new BadRequestException(`A ${app.status.replace(/_/g, ' ')} application cannot be withdrawn.`);
     }
+
+    /*
+     * The rule this method's own comment cites, now actually enforced. Only a
+     * retail bidder may withdraw; ICDR forbids an HNI or QIB from withdrawing
+     * or lowering a bid once it is with the exchange. Until now any category
+     * could withdraw here, and the exchange would have been the one to say no.
+     *
+     * A bid we never posted is a different matter — it exists only in our
+     * database, so cancelling it breaks no rule. `mayCancel` draws that line.
+     */
+    const atExchange = !!app.applicationNumber && !!app.rail;
+    const allowed = mayCancel(app.category, atExchange);
+    if (!allowed.ok) throw new BadRequestException(allowed.reason);
 
     const updated = await this.prisma.application.update({
       where: { id: app.id },

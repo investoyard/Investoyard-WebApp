@@ -95,8 +95,87 @@ enum ApplicationStatus {
   allotted
   not_allotted
   released
+  /// withdrawn by the operator or the investor. Distinct from `released`, which
+  /// is the money coming back — a bid can be cancelled before anything is blocked.
+  cancelled
   rejected
   failed
+}
+
+/// What we are asking the exchange to do. The letters are the exchanges' own:
+/// NSE activity codes and BSE `actioncode` both read N / M / D.
+enum BidAction {
+  new
+  modify
+  cancel
+}
+
+/// How the bid reaches the exchange. `file` is the bid-upload route, which BSE
+/// documents (iBBS v1.05.4) and we have not built; until an operation is posted
+/// by API it is counted under BYFILE on the summary.
+enum BidChannel {
+  api
+  file
+}
+
+/// pending → posted is the happy path. `failed` keeps the exchange's own reason
+/// so the report can show it and somebody can retry.
+enum BidOpState {
+  pending
+  posted
+  failed
+}
+
+/// One row per operation we intend to perform at an exchange.
+///
+/// The application table holds a bid's CURRENT state; this holds its history of
+/// intent. That distinction is what makes the two screens possible: a bid
+/// modified twice and then cancelled is indistinguishable from one cancelled
+/// outright if you only keep the current status.
+///
+/// It is also what makes rebid safe. The operator's rule is local-first: mark
+/// the old bid cancelled and create the new one in ONE transaction, writing a
+/// `cancel` row and a `new` row, then post both. There is no moment where the
+/// cancellation has reached the exchange and the replacement has evaporated —
+/// if a post fails the row stays `pending` and is retried.
+///
+/// The Bidding Summary is a straight grouping over this table: BID DONE is
+/// (new, posted), MODIFY PENDING is (modify, pending), and the PENDING column
+/// is every row still unposted.
+model BidOperation {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  /// denormalised so the summary can group without joining every application
+  ipoId         String
+  tenantId      String
+  /// null until a member is resolved — those rows are the summary's BYFILE bucket
+  memberCredentialId String?
+  exchange      Exchange?
+  channel       BidChannel  @default(api)
+  action        BidAction
+  state         BidOpState  @default(pending)
+
+  /// what we are asking for, captured at intent time so a later edit to the
+  /// application cannot rewrite what we actually sent
+  qty      Int
+  price    Decimal?
+  atCutoff Boolean  @default(true)
+
+  /// what came back
+  reference String? // bidReferenceNumber (NSE) / orderno (BSE)
+  errorCode String?
+  reason    String? // the exchange's rejection text — the report's Rejection column
+  attempts  Int      @default(0)
+  postedAt  DateTime?
+  raw       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([ipoId, memberCredentialId])
+  @@index([state, action])
 }
 
 enum TenantType {
@@ -701,12 +780,23 @@ model Application {
   refundAmount       Decimal? // blocked amount released back
   allottedAt         DateTime?
   allotmentReason    String? // registrar's rejection reason (from the imported allotment file)
+  /// The EXCHANGE's rejection reason for the bid itself. Deliberately separate
+  /// from `allotmentReason`, which is the registrar's verdict on an accepted
+  /// bid — the two answer different questions and conflating them would make
+  /// the Bidding Report's Rejection column mean two things.
+  rejectionReason    String?
+  /// The exchange's own UPI wording, kept verbatim ("Request sent to Investor
+  /// UPI App for Acceptance"). We map UPI events onto `status` for our own
+  /// logic, but that mapping loses the sentence the operator wants to read.
+  upiStatusText      String?
+  upiStatusAt        DateTime?
   status             ApplicationStatus @default(draft)
   idempotencyKey     String            @unique
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  events ApplicationStatusEvent[]
+  events     ApplicationStatusEvent[]
+  operations BidOperation[]
 
   @@index([userId])
   @@index([ipoId])

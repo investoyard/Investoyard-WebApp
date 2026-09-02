@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RailService } from './rail.service';
+import { BidOperationsService } from './bid-operations.service';
 import { RailCallbackController } from './rail-callback.controller';
 import { RailCallbackGuard } from './rail-callback.guard';
 import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
@@ -13,6 +14,7 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
   controllers: [RailCallbackController],
   providers: [
     RailService,
+    BidOperationsService,
     PrismaService,
     PiiVaultService,
     RailCallbackGuard,
@@ -25,6 +27,6 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
       inject: [PrismaApplicationRepo, PushNotifier],
     },
   ],
-  exports: [RailService],
+  exports: [RailService, BidOperationsService],
 })
 export class RailModule {}

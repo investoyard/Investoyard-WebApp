@@ -21,7 +21,9 @@ export type ApplyMethod = 'native' | 'pdf';
 export type ApplicationStatus =
   | 'draft' | 'submitted' | 'dp_verified' | 'dp_failed' | 'mandate_pending'
   | 'upi_blocked' | 'confirmed' | 'allotted' | 'not_allotted' | 'released'
-  | 'rejected' | 'failed';
+  | 'rejected' | 'failed'
+  /** withdrawn by the operator or the investor — distinct from 'released' (money back) */
+  | 'cancelled';
 
 export interface IpoListItem {
   id: string;
@@ -190,3 +192,4 @@ export interface CreateApplicationInput {
 }
 export * from './masterMatch';
 export * from './operationalContract';
+export * from './bidRules';
