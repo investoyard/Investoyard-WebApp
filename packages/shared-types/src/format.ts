@@ -107,7 +107,17 @@ export const LABEL = {
   listingPerformance: 'Listing Performance',
   listingGain: 'Listing Gain',
   openingSoon: 'Opening Soon',
-  gmp: 'GMP',
+  /**
+   * The customer-facing short label, operator's choice (2026-09-02) when the
+   * explorer layout became the home page. Read it from here on BOTH surfaces —
+   * web and mobile must never disagree on vocabulary.
+   *
+   * `gmpLong` deliberately stays "Grey Market Premium": the friendly label is
+   * what a reader scans, but the disclaimer has to name the thing for what it
+   * is — unofficial and unregulated. The `/gmp` URLs, the SEO copy and the FAQ
+   * headings keep GMP too; that is the term people actually search for.
+   */
+  gmp: 'Exp. Premium',
   gmpLong: 'Grey Market Premium',
   issueDetails: 'Issue Details',
   applyNow: 'Apply Now',

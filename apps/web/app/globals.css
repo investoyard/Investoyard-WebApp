@@ -229,10 +229,20 @@ img, svg { vertical-align: middle; }
 .ipocard { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--sh-sm); padding: 14px; position: relative; overflow: hidden; transition: box-shadow .2s var(--ease), transform .2s var(--ease); }
 .ipocard:hover { box-shadow: var(--sh-lg); transform: translateY(-2px); }
 .ipocard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 78px; background: radial-gradient(120% 140% at 100% 0, var(--brand-50), transparent 62%); pointer-events: none; }
-.ipocard::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border-2); pointer-events: none; }
-.ipocard.st-open::after { background: var(--pos); }
-.ipocard.st-upcoming::after { background: var(--gold); }
-.ipocard.st-listed::after { background: var(--brand-400); }
+/* Left rail + top-right corner, both in the card's own --tone.
+   These used to be three hand-written colours keyed off the raw status —
+   .st-open green, .st-upcoming GOLD, .st-listed light indigo — which was an
+   eighth palette that never got unified. Gold is Allotment Out's colour and
+   light indigo is Pre Apply's, so an Upcoming card and a Listed card each wore
+   another status's swatch, and the four statuses with no rule fell through to
+   grey. Reading --tone means the rail can never disagree with the chip beside
+   it, and every status is covered without naming a colour here. */
+.ipocard::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--tone, var(--border-2)); pointer-events: none; }
+.ic-corner { position: absolute; top: 0; right: 0; width: 30px; height: 30px;
+  background: var(--tone, var(--border-2)); pointer-events: none;
+  /* the card's own overflow:hidden + 18px radius trims this to the rounded corner */
+  clip-path: polygon(100% 0, 0 0, 100% 100%); }
 .ic-top { display: flex; gap: 12px; align-items: flex-start; position: relative; }
 .ipologo { flex-shrink: 0; border-radius: 13px; background: #fff; border: 1px solid var(--border); display: grid; place-items: center; box-shadow: var(--sh-xs); overflow: hidden; }
 .ipologo img { width: 100%; height: 100%; object-fit: contain; }
@@ -256,6 +266,11 @@ img, svg { vertical-align: middle; }
 .ic-ring .rc { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; line-height: 1.05; }
 .ic-ring .rc b { font-family: var(--font-display); font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
 .ic-ring .rc span { font-size: 8px; color: var(--text-faint); font-weight: 600; letter-spacing: .03em; margin-top: 2px; }
+/* The ring is 56px with a 5px stroke, so a word has about 46px of clear space —
+   and less than that below the centre, where this line sits. "AWAITING" at 8px
+   ran straight through the arc. Anything over 7 characters drops a size and
+   loses its letter-spacing instead of overlapping. */
+.ic-ring .rc span.long { font-size: 7px; letter-spacing: 0; }
 
 .ic-keys { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0 7px; }
 .ic-subx { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -773,10 +788,11 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 /* detail header — mirrors the listing-card top */
 .detail-hero { position: relative; overflow: hidden; display: flex; align-items: flex-start; gap: 16px; margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--sh-sm); padding: 18px 20px; }
 .detail-hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 96px; background: radial-gradient(120% 140% at 100% 0, var(--brand-50), transparent 62%); pointer-events: none; }
-.detail-hero::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--border-2); pointer-events: none; }
-.detail-hero.st-open::after { background: var(--pos); }
-.detail-hero.st-upcoming::after { background: var(--gold); }
-.detail-hero.st-listed::after { background: var(--brand-400); }
+/* Same rail, same fix as the card: --tone rather than three hand-written
+   colours keyed off the raw status. This copy had the identical fault — an
+   Upcoming issue showed a gold rail, and gold is Allotment Out's. */
+.detail-hero::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--tone, var(--border-2)); pointer-events: none; }
 .detail-hero .grow { flex: 1; min-width: 0; }
 .detail-hero .ipologo { border-radius: 14px; }
 .hero-ex { font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--bg-2); border-radius: var(--pill); padding: 3px 11px; }
@@ -1268,9 +1284,15 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .t-upcoming, .ic-dot.upcoming, .status.upcoming, .ph.upcoming {
             --tone: var(--brand);      --tone-soft: var(--brand-50);  --tone-ink: var(--brand);
             --tone-solid: var(--brand); --tone-on: #fff;       --tone-acc: rgba(60,46,126,.20); }
+/* Awaiting Allotment — TEAL, not grey (operator's call, 2026-09-02).
+   Teal because it is the one family nothing else in the code uses: it cannot be
+   read as Live (green is warmer and yellower), as Upcoming or Pre Apply (both
+   violet-blue), as Allotment Out (gold) or as Listed (purple). Grey was
+   semantically right for "waiting" but rendered as an absence of status rather
+   than a status, which is not what the card is saying. */
 .t-awaiting {
-            --tone: var(--text-faint); --tone-soft: var(--bg-2);      --tone-ink: var(--text-muted);
-            --tone-solid: var(--text-faint); --tone-on: #fff;  --tone-acc: rgba(144,141,158,.16); }
+            --tone: #2b8a96;           --tone-soft: #e2f2f4;          --tone-ink: #1c6570;
+            --tone-solid: #2b8a96;     --tone-on: #fff;        --tone-acc: rgba(43,138,150,.22); }
 .t-allotment, .ph.allotment {
             --tone: var(--gold-600);   --tone-soft: var(--gold-50);   --tone-ink: #8a6d1f;
             --tone-solid: var(--gold-600); --tone-on: #3d2c00; --tone-acc: rgba(230,173,18,.26); }
@@ -1742,6 +1764,10 @@ a.ga-row:hover .ga-name { color: var(--brand); }
   }
   .t-listed, .ic-dot.listed, .status.listed, .ph.listed {
     --tone-soft: var(--tone-listed-soft); --tone-ink: var(--tone-listed-ink); }
+  /* the teal lifts and the tint darkens, same as every other tone here */
+  .t-awaiting {
+    --tone: #56b8c4; --tone-soft: #14282c; --tone-ink: #9ddbe3;
+    --tone-solid: #56b8c4; --tone-acc: rgba(86,184,196,.22); }
   body { background: radial-gradient(1200px 600px at 100% -200px, rgba(120,100,220,0.10), transparent 60%), var(--bg); }
   .header { background: rgba(12,11,18,0.7); }
   .btn-white { background: #fff; color: var(--brand-700); }

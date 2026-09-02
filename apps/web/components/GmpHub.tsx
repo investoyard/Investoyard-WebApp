@@ -84,7 +84,7 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
         <div className="gh-row gh-thead">
           <span>IPO</span>
           <span className="gh-col">{LABEL.offerPrice}</span>
-          <span className="gh-col">GMP</span>
+          <span className="gh-col">{LABEL.gmp}</span>
           <span className="gh-col">Over band</span>
           <span className="gh-col">Est. listing</span>
         </div>

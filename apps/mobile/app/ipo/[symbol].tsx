@@ -29,7 +29,7 @@ import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
-import { exchangeLabels } from '@investoyard/shared-types';
+import { exchangeLabels, LABEL } from '@investoyard/shared-types';
 
 /* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
    listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
@@ -127,7 +127,7 @@ export default function IpoDetailScreen() {
   // subscription & key dates).
   const hasSubs = !!(ipo.subscription && ipo.subscription.length > 0);
   const ALL: Record<string, string> = {
-    overview: 'Overview', gmp: 'GMP', subs: 'Subscription', lots: 'Lot Details',
+    overview: 'Overview', gmp: LABEL.gmp, subs: 'Subscription', lots: 'Lot Details',
     reserve: 'Reservation', dates: 'Key Dates', trends: 'Trends', company: 'Company', details: 'Issue Details',
   };
   const order = postClose
@@ -338,7 +338,7 @@ export default function IpoDetailScreen() {
             <Card style={{ gap: 16 }}>
               {gmpLog.length >= 2 ? (
                 <TrendBlock
-                  label="GMP (₹)"
+                  label={`${LABEL.gmp} (₹)`}
                   points={gmpLog.map((e) => e.gmp)}
                   first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
                   lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}

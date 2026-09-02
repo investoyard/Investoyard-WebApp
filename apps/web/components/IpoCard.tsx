@@ -162,14 +162,23 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
               // v1 keeps the % here because the chip is the only place its card
               // shows GMP at all; on v2 the figure already sits beside the dates.
               : ipo.gmp != null && !v2
-              ? <>GMP <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
-              : (v2 ? 'Exp. Premium' : 'GMP'),
+              ? <>{LABEL.gmp} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
+              : LABEL.gmp,
         }]
       : []),
   ];
 
   return (
-    <div className={`ipocard st-${ipo.status}${v2 ? ' v2' : ''}`}>
+    /* The tone class carries --tone for the whole card, which is what colours
+       the left rail and the corner. Before this the rail had its own palette:
+       an Upcoming card wore an indigo chip and a GOLD rail, and gold belongs to
+       Allotment Out — two statuses in one swatch on one screen. */
+    <div className={`ipocard st-${ipo.status} t-${toneOf(ipo as any)}${v2 ? ' v2' : ''}`}>
+      {/* top-right corner fold. A real element because both of the card's
+          pseudo-elements are taken — ::before is the radial wash, ::after the
+          left rail. 30px keeps it clear of the 56px countdown dial, which
+          starts 14px in. */}
+      <span className="ic-corner" aria-hidden="true" />
       <div className="ic-top">
         <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
         <div className="grow">

@@ -16,6 +16,7 @@ import { CompanyLogo } from '../components/ui/CompanyLogo';
 import { Sparkline } from '../components/ui/Sparkline';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { LABEL } from '@investoyard/shared-types';
 
 const gmpLog = (i: IpoFull): number[] => {
   const log = (i.extra as any)?.gmpLog;
@@ -80,7 +81,7 @@ export default function GmpScreen() {
       {ipos === null ? (
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
       ) : groups.length === 0 ? (
-        <EmptyState title="No live GMP right now" body="GMP appears here while issues are open or awaiting listing." />
+        <EmptyState title={`No live ${LABEL.gmp.toLowerCase()} right now`} body={`${LABEL.gmp} appears here while issues are open or awaiting listing.`} />
       ) : (
         groups.map((g) => (
           <View key={g.label}>

@@ -9,6 +9,7 @@ import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
+import { LABEL } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
 export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
@@ -151,7 +152,7 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
             <Text style={[s.kvV, ipo.gmp >= 0 ? s.pos : s.neg]}>{ipo.gmp >= 0 ? '▲ +' : '▼ '}₹{ipo.gmp}</Text>
           </View>
           <View style={s.kv}>
-            <Text style={s.kvK}>GMP %</Text>
+            <Text style={s.kvK}>{LABEL.gmp} %</Text>
             <Text style={[s.kvV, ipo.gmp >= 0 ? s.pos : s.neg]}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? '—'}%</Text>
           </View>
           <View style={[s.kv, { borderBottomWidth: 0 }]}>

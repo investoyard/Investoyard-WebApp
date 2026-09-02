@@ -7,7 +7,7 @@ import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { compareForList, isRecent } from '@investoyard/shared-types';
+import { compareForList, isRecent, LABEL } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
 
@@ -37,9 +37,17 @@ const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffse
 export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem[]; lang?: Lang }) {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const tenant = useTenant();
-  // /home2 runs a two-up grid in a narrower column, so it pages smaller than /
-  const PAGE = 20;
-  const [shown, setShown] = useState(PAGE);
+  /**
+   * The home page shows a fixed 16 and sends the reader to the archive for
+   * everything else — operator's call, 2026-09-02. It used to page in 20s with
+   * a "View more" ladder, which let the home page grow into a catalogue; the
+   * archive is the place built for browsing the whole thing.
+   *
+   * The 16 come off the top of `compareForList`, so they are the most
+   * ACTIONABLE issues, not the most recent: Closing Today first, then Open
+   * Today, Live, Pre Apply, Upcoming, and only then the finished ones.
+   */
+  const HOME_LIMIT = 16;
   const [query, setQuery] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -71,13 +79,11 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
   }), [ipos, today]);
 
   /**
-   * Everything matching the CURRENT status and search, before the board filter
-   * is applied — the board control's counts are faceted off this, so "SME 4"
-   * means four SME issues in what you are looking at right now, not four in the
-   * whole catalog. Filtering by board then narrows this same set.
+   * Everything matching the CURRENT status and search, cut down to the sixteen
+   * this page shows. The board counts are faceted off those sixteen, so
+   * "SME 11" means eleven of the cards in front of you are SME — not eleven
+   * somewhere in the catalogue. Filtering by board narrows the same sixteen.
    */
-  useEffect(() => { setShown(PAGE); }, [query, type, status]);
-
   const { filtered, olderCount, boardCounts } = useMemo(() => {
     const ql = query.trim().toLowerCase();
     const matches = (ipos as any[]).filter((i) => {
@@ -88,14 +94,24 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     });
     // a search reaches the whole catalog; browsing stays in the recent window
     const inWindow = ql ? matches : matches.filter((i) => isRecent(i));
-    const ofType = inWindow.filter((i) => type === 'all' || i.type === type);
+
+    /**
+     * The home page IS these sixteen. The board filter narrows WITHIN them
+     * rather than re-slicing the catalogue, which is what makes the All /
+     * Mainboard / SME counts true: each one says how many of the cards on this
+     * page are that board. Counting the whole window instead would have put
+     * "SME 42" over a page showing eleven of them.
+     */
+    const page = [...inWindow].sort(compareForList).slice(0, HOME_LIMIT);
+    const ofType = page.filter((i) => type === 'all' || i.type === type);
     return {
-      filtered: [...ofType].sort(compareForList),
-      olderCount: matches.filter((i) => type === 'all' || i.type === type).length - ofType.length,
+      filtered: ofType,
+      // anything the page is not showing — the reason "Browse all" appears
+      olderCount: (matches.length - inWindow.length) + (inWindow.length - page.length),
       boardCounts: {
-        all: inWindow.length,
-        mainboard: inWindow.filter((i) => i.type === 'mainboard').length,
-        sme: inWindow.filter((i) => i.type === 'sme').length,
+        all: page.length,
+        mainboard: page.filter((i) => i.type === 'mainboard').length,
+        sme: page.filter((i) => i.type === 'sme').length,
       },
     };
   }, [ipos, query, type, status]);
@@ -130,7 +146,7 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     },
     ...(tenant.flags.gmpEnabled
       ? [{
-          href: `/gmp${q}`, label: 'Exp. Premium', icon: 'trending' as const,
+          href: `/gmp${q}`, label: LABEL.gmp, icon: 'trending' as const,
           skin: 'prem', note: 'Expected premium across every open issue',
           cta: 'See all premiums',
         }]
@@ -269,26 +285,20 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
               <p className="muted">Try clearing the search or switching filters.</p>
             </div>
           ) : view === 'table' ? (
-            <IpoCompareTable ipos={filtered.slice(0, shown) as any} lang={lang} shortNames />
+            <IpoCompareTable ipos={filtered as any} lang={lang} shortNames />
           ) : (
             <div className="ipo-list two-up">
-              {filtered.slice(0, shown).map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
+              {filtered.map((i) => <IpoCard key={i.id} ipo={i as any} lang={lang} v2 />)}
             </div>
           )}
-          {(filtered.length > shown || olderCount > 0) && (
+          {olderCount > 0 && (
         <div className="more-row">
-          {filtered.length > shown ? (
-            <button className="btn btn-secondary more-btn" onClick={() => setShown((v) => v + PAGE)}>
-              View more
-              <span className="muted">{(filtered.length - shown).toLocaleString('en-IN')} left</span>
-              <Icon name="chevron-down" size={16} />
-            </button>
-          ) : (
-            <a className="btn btn-secondary more-btn" href="/ipos/archive">
-              Browse all
-              <Icon name="arrow-right" size={16} />
-            </a>
-          )}
+          {/* One destination, not a ladder. The count names what is waiting
+              there so "Browse all" is a decision rather than a guess. */}
+          <a className="btn btn-secondary more-btn" href="/ipos/archive">
+            Browse all IPOs
+            <Icon name="arrow-right" size={16} />
+          </a>
         </div>
       )}
         </div>

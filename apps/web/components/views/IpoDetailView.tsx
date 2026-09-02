@@ -12,7 +12,7 @@ import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, exchangeLabels } from '@investoyard/shared-types';
+import { LABEL, titleCase, exchangeLabels, toneOf } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -71,7 +71,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(ipo.subscription ? [{ id: 'subscription', label: 'Subscription' }] : []),
-    { id: 'gmp', label: 'GMP' },
+    { id: 'gmp', label: LABEL.gmp },
     ...(ipo.financialRows ? [{ id: 'financials', label: 'Financials' }] : []),
     ...(ipo.about ? [{ id: 'about', label: 'About' }] : []),
   ];
@@ -80,7 +80,8 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
     <article className="fade-up">
       <a href={home} className="back-link">← All IPOs</a>
 
-      <div className={`detail-hero st-${ipo.status}`}>
+      {/* the tone class carries --tone for the hero's left rail */}
+      <div className={`detail-hero st-${ipo.status} t-${toneOf(ipo as any)}`}>
         <IpoLogo logo={ipo.logo} name={ipo.name} size={60} />
         <div className="grow">
           <h1 style={{ margin: 0 }}>{titleCase(ipo.name)}</h1>

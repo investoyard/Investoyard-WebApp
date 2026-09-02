@@ -6,7 +6,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
 import { useTenant } from '@/components/TenantProvider';
-import { titleCase } from '@investoyard/shared-types';
+import { titleCase, LABEL } from '@investoyard/shared-types';
 
 /**
  * Live navigation — the menu carries a little real-time data, and IPOs opens
@@ -100,7 +100,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
   const hubs: {
     href: string; label: string; icon: 'trending' | 'chart'; sig?: React.ReactNode;
   }[] = [
-    { href: '/gmp', label: 'GMP', icon: 'trending' },
+    { href: '/gmp', label: LABEL.gmp, icon: 'trending' },
     { href: '/subscription', label: 'Subscription', icon: 'chart' },
   ];
 
