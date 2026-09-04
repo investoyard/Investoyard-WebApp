@@ -12,6 +12,8 @@ import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import { IpoImportService } from './ipo-import.service';
 import { CatalogUpdateService } from './catalog-update.service';
+import { parsePreanchor } from './nse-parsers/preanchor';
+import { parseAnchor } from './nse-parsers/anchor';
 
 const TMP_DIR = join(UPLOAD_DIR, 'ipo-import-tmp');
 if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
@@ -71,6 +73,32 @@ export class IpoImportController {
   async updatePreview(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
     return this.upd.preview(file.buffer);
+  }
+
+  /* ── NSE parsers: pull IPO fields straight from the exchange's own PDFs ─
+     Purely a READ path — the endpoint returns parsed JSON and never touches
+     the database. The operator reviews the extracted fields against what is
+     already in the form, then clicks Fill All on the client. This keeps a
+     bad extraction from ever writing to the catalog silently.               */
+
+  /** POST — multipart 'file'. Parses the NSE PREANCHOR Security Parameters
+   *  PDF and returns the extracted fields. Kept in memory (small file). */
+  @Post('parse/preanchor')
+  @RequirePermissions('ipos.manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async parsePreanchor(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    return parsePreanchor(file.buffer);
+  }
+
+  /** POST — multipart 'file'. Parses the Anchor Investor Intimation Letter
+   *  and returns the roster + allocation totals. */
+  @Post('parse/anchor')
+  @RequirePermissions('ipos.manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async parseAnchor(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    return parseAnchor(file.buffer);
   }
 
   /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */

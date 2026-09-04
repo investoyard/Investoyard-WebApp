@@ -8,6 +8,8 @@ import { Loader } from '@/components/ui/Loader';
 import { PageHead, Panel, Field, Toggle } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { PreanchorReviewModal } from '@/components/PreanchorReviewModal';
+import { AnchorReviewModal } from '@/components/AnchorReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
@@ -207,6 +209,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const [tab, setTab] = useState('basic');
   const [loading, setLoading] = useState(editing);
   const [busy, setBusy] = useState(false);
+  // NSE PREANCHOR parser — see PreanchorReviewModal for the whole review flow
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState<api.ParsedPreanchor | null>(null);
+  // Anchor intimation — a separate button, its own modal (roster shape)
+  const [parsingAnchor, setParsingAnchor] = useState(false);
+  const [parsedAnchor, setParsedAnchor] = useState<api.ParsedAnchor | null>(null);
   const [uploading, setUploading] = useState(false);
   const [docBusy, setDocBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -458,6 +466,64 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     } catch (e: any) { setErr(String(e?.message ?? e)); setBusy(false); }
   };
   const onReset = () => { setForm(initial.current); setErr(null); setSavedMsg('Form reset.'); };
+
+  /**
+   * Upload an NSE PREANCHOR PDF and open the review modal with what came back.
+   * Nothing writes to form state here — that happens when the operator hits
+   * Fill in the modal. A parser error surfaces as a banner rather than a
+   * modal, so the operator can retry with a different file.
+   */
+  const onParsePreanchor = async (file: File) => {
+    setParsing(true); setErr(null); setSavedMsg(null);
+    try {
+      const p = await api.parsePreanchor(file);
+      setParsed(p);
+    } catch (e: any) {
+      setErr(`Could not read the PREANCHOR file: ${String(e?.message ?? e)}`);
+    } finally { setParsing(false); }
+  };
+
+  /**
+   * Apply the operator's ticked rows onto form state. Every incoming key maps
+   * onto a form field 1:1, EXCEPT `__leads` which carries a JSON-encoded
+   * array (the modal encodes it that way so a comma in a lead manager's
+   * name never accidentally splits it back at the boundary).
+   */
+  const onApplyPreanchor = (patch: Record<string, string>) => {
+    const next: Partial<typeof form> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === '__leads') { try { next.leads = JSON.parse(v); } catch { /* ignore */ } continue; }
+      (next as any)[k] = v;
+    }
+    set(next);
+    setSavedMsg(`Filled ${Object.keys(patch).length} field${Object.keys(patch).length === 1 ? '' : 's'} from PREANCHOR. Save to keep.`);
+  };
+
+  /** Same shape as PREANCHOR upload — different endpoint, different modal. */
+  const onParseAnchor = async (file: File) => {
+    setParsingAnchor(true); setErr(null); setSavedMsg(null);
+    try { setParsedAnchor(await api.parseAnchor(file)); }
+    catch (e: any) { setErr(`Could not read the Anchor Intimation: ${String(e?.message ?? e)}`); }
+    finally { setParsingAnchor(false); }
+  };
+
+  /**
+   * Apply the anchor parser output onto form state. Roster replaces
+   * form.anchors, totals go into form.anchorShares / form.anchorPrice — same
+   * fields the Phase-B Anchor panel writes to. Nothing here writes to the
+   * catalog; Save on the entry form is still what persists.
+   */
+  const onApplyAnchor = (payload: {
+    anchorShares: string; anchorPrice: string;
+    investors: { name: string; shares: string; pct: string; amount: string }[];
+  }) => {
+    set({
+      anchorShares: payload.anchorShares,
+      anchorPrice: payload.anchorPrice,
+      anchors: payload.investors,
+    });
+    setSavedMsg(`Filled anchor roster (${payload.investors.length} investor${payload.investors.length === 1 ? '' : 's'}) from the Intimation. Save to keep.`);
+  };
 
   const tabIdx = TABS.findIndex((t) => t.key === tab);
   const go = (d: number) => { const t = TABS[tabIdx + d]; if (t) { setTab(t.key); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); } };
@@ -845,6 +911,21 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         actions={
           <>
             <a className="btn btn-secondary" href="/admin/catalog"><Icon name="arrow-right" size={15} style={{ transform: 'rotate(180deg)' }} /> Back to List</a>
+            {/* Auto-fill from an NSE PREANCHOR PDF. Read-only — the review
+                modal decides what actually lands in the form; Save on this
+                page is still what writes to the catalog. */}
+            <label className={`btn btn-secondary${parsing ? ' disabled' : ''}`} title="Upload the NSE Security Parameters PDF for this issue">
+              <Icon name="upload" size={15} />
+              {parsing ? 'Reading…' : 'Fill from PREANCHOR'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsing}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParsePreanchor(f); e.currentTarget.value = ''; }} />
+            </label>
+            <label className={`btn btn-secondary${parsingAnchor ? ' disabled' : ''}`} title="Upload the Anchor Investor Intimation Letter (usually arrives the evening before opening)">
+              <Icon name="upload" size={15} />
+              {parsingAnchor ? 'Reading…' : 'Fill from Anchor Intimation'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsingAnchor}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseAnchor(f); e.currentTarget.value = ''; }} />
+            </label>
             <button className="btn btn-secondary" onClick={onReset}><Icon name="refresh" size={15} /> Reset</button>
             <button className="btn" disabled={busy} onClick={onSave}><Icon name="check" size={15} /> {busy ? 'Saving…' : 'Save IPO'}</button>
           </>
@@ -1683,6 +1764,30 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : <button type="button" className="btn" disabled={busy} onClick={onSave}><Icon name="check" size={15} /> {busy ? 'Saving…' : 'Save IPO'}</button>}
         </div>
       </div></div>
+
+      {parsed && (
+        <PreanchorReviewModal
+          parsed={parsed}
+          current={{
+            symbol: form.symbol, name: form.name, faceValue: form.faceValue,
+            issueSizeCr: form.issueSizeCr, priceBandMin: form.priceBandMin, priceBandMax: form.priceBandMax,
+            lotSize: form.lotSize, tickSize: form.tickSize, registrar: form.registrar,
+            leads: form.leads, sponsorBank: form.sponsorBank,
+            openDate: form.openDate, closeDate: form.closeDate,
+            qibCloseDate: form.qibCloseDate, upiMandateCutoff: form.upiMandateCutoff,
+          }}
+          onClose={() => setParsed(null)}
+          onApply={onApplyPreanchor}
+        />
+      )}
+      {parsedAnchor && (
+        <AnchorReviewModal
+          parsed={parsedAnchor}
+          currentRosterCount={form.anchors.length}
+          onClose={() => setParsedAnchor(null)}
+          onApply={onApplyAnchor}
+        />
+      )}
     </div>
   );
 }

@@ -902,3 +902,74 @@ export const cancelBid = (id: string) =>
     `${API}/admin/bidding/${id}/cancel`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
   );
+
+/* ── NSE PREANCHOR parser ────────────────────────────────────────────────
+   Uploads the exchange's Security Parameters PDF, returns the extracted
+   fields for the IPO form to review before writing. The endpoint is read-
+   only — nothing is persisted here. Written to the catalog only when the
+   operator hits Save on the entry form. */
+
+export interface ParsedPreanchor {
+  symbol?: string;
+  name?: string;
+  faceValue?: number;
+  issueSizeCr?: number;
+  priceBandMin?: number;
+  priceBandMax?: number;
+  lotSize?: number;
+  tickSize?: number;
+  registrar?: string;
+  leadManagers?: string[];
+  sponsorBank?: string;
+  openDate?: string;
+  closeDate?: string;
+  qibCloseDate?: string;
+  upiMandateCutoff?: string;
+  subCategories?: string;
+  upiSubCategories?: string;
+  _raw?: { warnings: string[] };
+}
+
+export const parsePreanchor = async (file: File): Promise<ParsedPreanchor> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/preanchor`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : {};
+};
+
+export interface ParsedAnchorInvestor {
+  name: string; shares: number; pct: number; price: number; amount: number;
+}
+export interface ParsedAnchor {
+  totalShares?: number;
+  allocationPrice?: number;
+  investors: ParsedAnchorInvestor[];
+  _raw?: { warnings: string[] };
+}
+
+export const parseAnchor = async (file: File): Promise<ParsedAnchor> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/anchor`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : { investors: [] };
+};

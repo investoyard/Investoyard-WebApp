@@ -2269,6 +2269,34 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
    Review & Publish (see .iform-optional), and the tab-strip has no such
    concept — a class nothing selects is a rule waiting to be miswired. */
 
+/* PREANCHOR review modal — the list of extracted fields, each with what the
+   PDF said and what the form currently has, so the operator can pick per row. */
+.preanc-sub { font-size: 13.5px; color: var(--text-muted); margin: -6px 0 14px; line-height: 1.55; }
+.preanc-warn { color: #a1670a; font-weight: 600; }
+.preanc-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: var(--surface); }
+.preanc-row { display: grid; grid-template-columns: 22px 1fr 1fr auto; gap: 12px; align-items: center;
+  padding: 10px 12px; border-radius: 7px; cursor: pointer; }
+.preanc-row:hover { background: var(--bg); }
+.preanc-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); cursor: pointer; }
+.preanc-cell .preanc-label { font-size: 10.5px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-faint); }
+.preanc-cell .preanc-value { font-size: 13.5px; font-weight: 500; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; }
+.preanc-current .preanc-value { color: var(--text-muted); }
+/* subtle amber, not the loss red — a change to accept is a data-entry decision,
+   not a financial signal */
+.preanc-mark { font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+  padding: 3px 8px; border-radius: 5px; background: #fdf0d8; color: #a1670a; }
+.preanc-row.same .preanc-mark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .preanc-mark { background: #322611; color: #e0a63c; }
+}
+
+/* file-upload label styled like a button — the input is hidden and clicks
+   flow through the label, so we mimic disabled with pointer-events */
+.btn.disabled { opacity: .6; pointer-events: none; }
+
 /* The one-line readiness banner above the tabs. */
 .iform-state { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; padding: 10px 14px;
   border: 1px solid var(--border); border-radius: 10px; font-size: 13px; line-height: 1.5; }
