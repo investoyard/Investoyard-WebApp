@@ -987,3 +987,47 @@ export const parseAnchor = async (file: File): Promise<ParsedAnchor> => {
   }
   return body ? JSON.parse(body) : { investors: [] };
 };
+
+/**
+ * Merchant banker's IPO Note (Axis format). See the parser for scope; this
+ * type mirrors ParsedIpoNote in the API — kept in sync by hand because both
+ * ends are strictly typed. Fields deliberately omitted (name/symbol/price
+ * band/lot/leads/registrar) because PREANCHOR is authoritative for those.
+ */
+export interface ParsedIpoNoteFinancial {
+  label: string;
+  values: (string | null)[];
+}
+export interface ParsedIpoNote {
+  /** exact dates — OVERWRITE the T+3 estimates PREANCHOR produced */
+  allotmentDate?: string;
+  refundDate?: string;
+  dematDate?: string;
+  listingDate?: string;
+  /** post-issue implied market cap range (Cr) — display-only for now */
+  marketCap?: { min?: number; max?: number };
+  /** year labels in the order the table lists them ("2026", "2025", "2024") */
+  financialPeriods?: string[];
+  /** brief financial highlights — one label + up to 3 period values per row */
+  financials?: ParsedIpoNoteFinancial[];
+  /** pre-rendered HTML table that goes straight into form.companyFinancials */
+  financialsHtml?: string;
+  _raw?: { warnings: string[] };
+}
+
+export const parseIpoNote = async (file: File): Promise<ParsedIpoNote> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/ipo-note`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : {};
+};

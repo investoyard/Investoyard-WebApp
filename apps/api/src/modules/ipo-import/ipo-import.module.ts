@@ -14,6 +14,7 @@ import { IpoImportService } from './ipo-import.service';
 import { CatalogUpdateService } from './catalog-update.service';
 import { parsePreanchor } from './nse-parsers/preanchor';
 import { parseAnchor } from './nse-parsers/anchor';
+import { parseIpoNote } from './nse-parsers/ipo-note';
 import { resolveMaster } from '@investoyard/shared-types';
 
 /**
@@ -139,6 +140,20 @@ export class IpoImportController {
   async parseAnchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
     return parseAnchor(file.buffer);
+  }
+
+  /** POST — multipart 'file'. Parses the merchant banker's IPO Note (Axis
+   *  format across all four samples we hold). Fills what PREANCHOR cannot:
+   *  exact allotment/refund/demat/listing dates from the Indicative
+   *  Timetable, post-issue market cap, and the three-year financial
+   *  highlights rendered as an HTML table. Deliberately narrow — the whole
+   *  point is UPDATE-after-PREANCHOR, not a competing first-pass parser. */
+  @Post('parse/ipo-note')
+  @RequirePermissions('ipos.manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async parseIpoNote(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    return parseIpoNote(file.buffer);
   }
 
   /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */

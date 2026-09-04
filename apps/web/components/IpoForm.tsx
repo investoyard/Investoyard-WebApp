@@ -9,6 +9,7 @@ import { PageHead, Panel, Field, Toggle } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PreanchorReviewModal } from '@/components/PreanchorReviewModal';
+import { IpoNoteReviewModal } from '@/components/IpoNoteReviewModal';
 import { AnchorReviewModal } from '@/components/AnchorReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
@@ -215,6 +216,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // Anchor intimation — a separate button, its own modal (roster shape)
   const [parsingAnchor, setParsingAnchor] = useState(false);
   const [parsedAnchor, setParsedAnchor] = useState<api.ParsedAnchor | null>(null);
+  // IPO Note — arrives after PREANCHOR; fills exact dates and financials
+  const [parsingNote, setParsingNote] = useState(false);
+  const [parsedNote, setParsedNote] = useState<api.ParsedIpoNote | null>(null);
   const [uploading, setUploading] = useState(false);
   const [docBusy, setDocBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -512,6 +516,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     if (shareResvChanged) (next as any).shareResv = nextShareResv;
     set(next);
     setSavedMsg(`Filled ${Object.keys(patch).length} field${Object.keys(patch).length === 1 ? '' : 's'} from PREANCHOR. Save to keep.`);
+  };
+
+  /** IPO Note upload. Same shape as PREANCHOR — different endpoint, different
+   *  modal. The applier reuses `onApplyPreanchor` because the accepted patch
+   *  is a plain field-name → value map that the same code handles. */
+  const onParseNote = async (file: File) => {
+    setParsingNote(true); setErr(null); setSavedMsg(null);
+    try { setParsedNote(await api.parseIpoNote(file)); }
+    catch (e: any) { setErr(`Could not read the IPO Note: ${String(e?.message ?? e)}`); }
+    finally { setParsingNote(false); }
   };
 
   /** Same shape as PREANCHOR upload — different endpoint, different modal. */
@@ -940,6 +954,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               {parsingAnchor ? 'Reading…' : 'Fill from Anchor Intimation'}
               <input type="file" accept="application/pdf,.pdf" hidden disabled={parsingAnchor}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseAnchor(f); e.currentTarget.value = ''; }} />
+            </label>
+            <label className={`btn btn-secondary${parsingNote ? ' disabled' : ''}`} title="Upload the merchant banker's IPO Note (Axis format). Overwrites the timetable estimates with the exact dates from the Note.">
+              <Icon name="upload" size={15} />
+              {parsingNote ? 'Reading…' : 'Fill from IPO Note'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsingNote}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseNote(f); e.currentTarget.value = ''; }} />
             </label>
             <button className="btn btn-secondary" onClick={onReset}><Icon name="refresh" size={15} /> Reset</button>
             <button className="btn" disabled={busy} onClick={onSave}><Icon name="check" size={15} /> {busy ? 'Saving…' : 'Save IPO'}</button>
@@ -1803,6 +1823,18 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           currentRosterCount={form.anchors.length}
           onClose={() => setParsedAnchor(null)}
           onApply={onApplyAnchor}
+        />
+      )}
+      {parsedNote && (
+        <IpoNoteReviewModal
+          parsed={parsedNote}
+          current={{
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
+            hasFinancialsHtml: !!form.companyFinancials?.trim(),
+          }}
+          onClose={() => setParsedNote(null)}
+          onApply={onApplyPreanchor}
         />
       )}
     </div>
