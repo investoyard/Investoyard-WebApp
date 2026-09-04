@@ -43,6 +43,7 @@ export function PreanchorReviewModal({
     lotSize: string; tickSize: string; registrar: string;
     leads: string[]; sponsorBank: string;
     openDate: string; closeDate: string; qibCloseDate: string; upiMandateCutoff: string;
+    allotmentDate: string; refundDate: string; dematDate: string; listingDate: string;
   };
   onClose: () => void;
   /** called with the merged patch when the operator applies one or all rows */
@@ -75,16 +76,28 @@ export function PreanchorReviewModal({
     }
     push('lotSize', 'Lot size', parsed.lotSize?.toString(), current.lotSize);
     push('tickSize', 'Tick size', parsed.tickSize?.toString(), current.tickSize);
-    push('registrar', 'Registrar', parsed.registrar, current.registrar);
-    // lead managers are an array — join for display, JSON for the patch so
-    // the form's setter can read it back as a list without re-parsing
+    // Registrar and Lead Managers arrive as ResolvedName shapes — the endpoint
+    // has already matched them against the masters. Use the master's canonical
+    // name when applying so the form's dropdown selects the master row cleanly;
+    // fall back to the raw name for unmatched, and mark it visibly.
+    if (parsed.registrar) {
+      const r = parsed.registrar;
+      const canonical = r.master?.name ?? r.name;
+      const label = r.master ? `${canonical}  ✓ master` : `${r.name}  ⚠ not in master — will land as free text`;
+      push('registrar', 'Registrar', label, current.registrar, { registrar: canonical });
+    }
     if (parsed.leadManagers?.length) {
+      const canonicalNames = parsed.leadManagers.map((l) => l.master?.name ?? l.name);
+      // one label line per entry so a missing master shows on its own row
+      const shown = parsed.leadManagers
+        .map((l) => (l.master ? `${l.master.name}  ✓` : `${l.name}  ⚠ not in master`))
+        .join(' · ');
       out.push({
         key: 'leads',
         label: 'Lead managers',
-        extracted: parsed.leadManagers.join(', '),
+        extracted: shown,
         current: current.leads.join(', '),
-        apply: { __leads: JSON.stringify(parsed.leadManagers) },
+        apply: { __leads: JSON.stringify(canonicalNames) },
       });
     }
     push('sponsorBank', 'Sponsor bank', parsed.sponsorBank, current.sponsorBank);
@@ -92,6 +105,30 @@ export function PreanchorReviewModal({
     push('closeDate', 'Close date', parsed.closeDate, current.closeDate);
     push('qibCloseDate', 'QIB / NIB close', parsed.qibCloseDate, current.qibCloseDate);
     push('upiMandateCutoff', 'UPI mandate cut-off', parsed.upiMandateCutoff, current.upiMandateCutoff);
+    // computed T+3 dates — the labels flag the estimate so the operator sees
+    // that these came out of an arithmetic rule rather than the PDF
+    push('allotmentDate', 'Allotment date  (T+1, estimated)', parsed.allotmentDate, current.allotmentDate);
+    push('refundDate', 'Refund date  (T+2, estimated)', parsed.refundDate, current.refundDate);
+    push('dematDate', 'Demat credit  (T+2, estimated)', parsed.dematDate, current.dematDate);
+    push('listingDate', 'Listing date  (T+3, estimated)', parsed.listingDate, current.listingDate);
+    // reservation share counts — each feeds a Phase-B override input
+    if (parsed.reservation) {
+      const rvKey: Record<string, string> = { qib: 'sr_qib', hni: 'sr_hni', hni2: 'sr_hni2', retail: 'sr_retail' };
+      const rvLabel: Record<string, string> = { qib: 'QIB shares (NSE)', hni: 'NIB Big shares (NSE)', hni2: 'NIB Small shares (NSE)', retail: 'Retail shares (NSE)' };
+      for (const k of ['qib', 'hni', 'hni2', 'retail'] as const) {
+        const v = parsed.reservation[k];
+        if (v != null) {
+          // __sr:<key> tells the form's applier to write into shareResv[key].sharesActual
+          out.push({
+            key: rvKey[k],
+            label: rvLabel[k],
+            extracted: v.toLocaleString('en-IN'),
+            current: '',    // the override box has no easy "current" to compare against
+            apply: { [`__sr:${k}`]: String(v) },
+          });
+        }
+      }
+    }
     return out;
   }, [parsed, current]);
 

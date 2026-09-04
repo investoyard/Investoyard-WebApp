@@ -909,6 +909,12 @@ export const cancelBid = (id: string) =>
    only — nothing is persisted here. Written to the catalog only when the
    operator hits Save on the entry form. */
 
+/** One extracted name that may or may not resolve to a master row. */
+export interface ResolvedName {
+  name: string;
+  master?: { id: string; name: string };
+}
+
 export interface ParsedPreanchor {
   symbol?: string;
   name?: string;
@@ -918,13 +924,21 @@ export interface ParsedPreanchor {
   priceBandMax?: number;
   lotSize?: number;
   tickSize?: number;
-  registrar?: string;
-  leadManagers?: string[];
+  /** enriched by the endpoint into a ResolvedName — see match() in the API */
+  registrar?: ResolvedName;
+  leadManagers?: ResolvedName[];
   sponsorBank?: string;
   openDate?: string;
   closeDate?: string;
   qibCloseDate?: string;
   upiMandateCutoff?: string;
+  /** computed T+3 estimates — the IPO Note parser overwrites with exact dates */
+  allotmentDate?: string;
+  refundDate?: string;
+  dematDate?: string;
+  listingDate?: string;
+  /** reservation share counts at the LOWER band (as PREANCHOR itself notes) */
+  reservation?: { qib?: number; hni?: number; hni2?: number; retail?: number; total?: number };
   subCategories?: string;
   upiSubCategories?: string;
   _raw?: { warnings: string[] };

@@ -491,10 +491,25 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    */
   const onApplyPreanchor = (patch: Record<string, string>) => {
     const next: Partial<typeof form> = {};
+    // Reservation overrides are folded into a fresh shareResv so all four
+    // NSE counts land in one setState — writing them one-by-one over N
+    // renders would be racy in principle even if it usually wins
+    const nextShareResv = { ...form.shareResv };
+    let shareResvChanged = false;
+
     for (const [k, v] of Object.entries(patch)) {
       if (k === '__leads') { try { next.leads = JSON.parse(v); } catch { /* ignore */ } continue; }
+      if (k.startsWith('__sr:')) {
+        const cat = k.slice(5);                       // qib | hni | hni2 | retail
+        if (nextShareResv[cat]) {
+          nextShareResv[cat] = { ...nextShareResv[cat], on: true, sharesActual: v };
+          shareResvChanged = true;
+        }
+        continue;
+      }
       (next as any)[k] = v;
     }
+    if (shareResvChanged) (next as any).shareResv = nextShareResv;
     set(next);
     setSavedMsg(`Filled ${Object.keys(patch).length} field${Object.keys(patch).length === 1 ? '' : 's'} from PREANCHOR. Save to keep.`);
   };
@@ -1775,6 +1790,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             leads: form.leads, sponsorBank: form.sponsorBank,
             openDate: form.openDate, closeDate: form.closeDate,
             qibCloseDate: form.qibCloseDate, upiMandateCutoff: form.upiMandateCutoff,
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
           }}
           onClose={() => setParsed(null)}
           onApply={onApplyPreanchor}

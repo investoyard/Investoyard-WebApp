@@ -14,6 +14,29 @@ import { IpoImportService } from './ipo-import.service';
 import { CatalogUpdateService } from './catalog-update.service';
 import { parsePreanchor } from './nse-parsers/preanchor';
 import { parseAnchor } from './nse-parsers/anchor';
+import { resolveMaster } from '@investoyard/shared-types';
+
+/**
+ * Match one extracted intermediary name against a master list. Returns a
+ * shape the review modal can render — either "matched to X" or "unmatched".
+ *
+ * `resolveMaster` handles the aliases that make raw string equality
+ * insufficient: Link Intime → MUFG Intime, Karvy → KFin, so on. Without this,
+ * an extraction of "KFin Technologies Limited" that doesn't happen to match
+ * the master's exact row (say the master reads "KFin Technologies Ltd") would
+ * quietly land as free-text and break reports later.
+ */
+export interface ResolvedName {
+  /** exactly what the parser saw */
+  name: string;
+  /** the canonical master row this matched to, if any */
+  master?: { id: string; name: string };
+}
+function match(name: string | undefined, masters: { id: string; name: string }[]): ResolvedName | undefined {
+  if (!name) return undefined;
+  const m = resolveMaster(name, masters);
+  return m ? { name, master: { id: m.id, name: m.name } } : { name };
+}
 
 const TMP_DIR = join(UPLOAD_DIR, 'ipo-import-tmp');
 if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
@@ -82,13 +105,30 @@ export class IpoImportController {
      bad extraction from ever writing to the catalog silently.               */
 
   /** POST — multipart 'file'. Parses the NSE PREANCHOR Security Parameters
-   *  PDF and returns the extracted fields. Kept in memory (small file). */
+   *  PDF, then enriches the intermediary names against the local Lead
+   *  Managers and Registrars masters so the modal can show the canonical
+   *  name rather than whatever the PDF happened to spell. Kept in memory. */
   @Post('parse/preanchor')
   @RequirePermissions('ipos.manage')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parsePreanchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
-    return parsePreanchor(file.buffer);
+    const raw = await parsePreanchor(file.buffer);
+
+    // Fetched once per request rather than baked in — new masters land the
+    // next time somebody uploads. Not cached beyond the request.
+    const [leads, regs] = await Promise.all([
+      this.svc['prisma'].leadManager.findMany({ where: { active: true }, select: { id: true, name: true } }),
+      this.svc['prisma'].registrar.findMany({ where: { active: true }, select: { id: true, name: true } }),
+    ]);
+
+    return {
+      ...raw,
+      // strings replaced with ResolvedName shapes so the modal can render a
+      // ✓ / "will be added as free text" indicator per row
+      leadManagers: raw.leadManagers?.map((n) => match(n, leads)).filter(Boolean),
+      registrar: match(raw.registrar, regs),
+    };
   }
 
   /** POST — multipart 'file'. Parses the Anchor Investor Intimation Letter
