@@ -39,16 +39,28 @@ const ISSUE_TYPES = ['IPO', 'FPO', 'Rights Issue', 'OFS'] as const;
  * portion on Offer & Reservation, the investor roster over on About Company —
  * so the roster could not be checked against the total it came out of.
  */
-const TABS: { key: string; label: string; icon: IconName; later?: boolean }[] = [
+/**
+ * Six tabs, in the order of work (operator decision, 2026-09-04). This was
+ * ten. Three moves went into the collapse:
+ *
+ *   Anchor merged INTO Offer & Reservation — anchor is a portion of the same
+ *   table and reading the roster against the total it comes out of is what
+ *   the two-tab layout was preventing.
+ *
+ *   Intermediaries merged INTO Timeline — dates and who is involved sit
+ *   together in the operator's head.
+ *
+ *   About Company and After Listing moved INTO Review & Publish as
+ *   collapsible sections. Both are content that fills the public detail page
+ *   and blocks nothing operational; keeping them out of the primary flow
+ *   matches sir's "we can add the details a bit later".
+ */
+const TABS: { key: string; label: string; icon: IconName }[] = [
   { key: 'basic', label: 'Issue Setup', icon: 'box' },
   { key: 'pricing', label: 'Pricing', icon: 'rupee' },
-  { key: 'offer', label: 'Offer & Reservation', icon: 'chart' },
-  { key: 'anchor', label: 'Anchor', icon: 'star' },
-  { key: 'timeline', label: 'Timeline', icon: 'calendar' },
-  { key: 'parties', label: 'Intermediaries', icon: 'users' },
+  { key: 'offer', label: 'Offer, Reservation & Anchor', icon: 'chart' },
+  { key: 'timeline', label: 'Timeline & Parties', icon: 'calendar' },
   { key: 'docs', label: 'Documents', icon: 'doc' },
-  { key: 'company', label: 'About Company', icon: 'globe', later: true },
-  { key: 'afterlisting', label: 'After Listing', icon: 'trending', later: true },
   { key: 'review', label: 'Review & Publish', icon: 'check' },
 ];
 // Shares Size Info rows
@@ -570,7 +582,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    */
   const tabGaps = useMemo(() => {
     const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
-    const g: Record<string, string[]> = { basic: [], pricing: [], offer: [], anchor: [], timeline: [], parties: [], docs: [] };
+    // Keys must match the TABS keys above; a mismatch here silently drops a
+    // gap into a tab that no longer exists.
+    const g: Record<string, string[]> = { basic: [], pricing: [], offer: [], timeline: [], docs: [] };
 
     if (!form.symbol.trim()) g.basic.push('Symbol');
     if (!form.name.trim()) g.basic.push('IPO name');
@@ -580,19 +594,19 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     if (!n(form.priceBandMin) && !n(form.finalIssuePrice)) g.pricing.push('a price');
     if (!n(form.faceValue)) g.pricing.push('Face value');
 
+    // offer + anchor are one tab now (2026-09-04), so anchor gaps land in offer
     if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') g.offer.push('the offer size');
     if (!RESV_ROWS.some((r) => form.shareResv[r.key]?.on && n(form.shareResv[r.key].pct) > 0)) g.offer.push('the reservation split');
-
     // the anchor portion is optional — an issue may simply not have one — so
-    // this tab only complains once the operator has started filling it in
-    if (n(form.anchorShares) > 0 && !n(form.anchorPrice)) g.anchor.push('the allocation price');
-    if (form.anchors.length > 0 && !n(form.anchorPct) && !n(form.anchorShares)) g.anchor.push('the anchor portion');
+    // this only complains once the operator has started filling it in
+    if (n(form.anchorShares) > 0 && !n(form.anchorPrice)) g.offer.push('the anchor allocation price');
+    if (form.anchors.length > 0 && !n(form.anchorPct) && !n(form.anchorShares)) g.offer.push('the anchor portion');
 
+    // timeline + parties are one tab now, so registrar/leads land in timeline
     if (!form.openDate) g.timeline.push('Open date');
     if (!form.closeDate) g.timeline.push('Close date');
-
-    if (!form.registrar.trim()) g.parties.push('Registrar');
-    if (!form.leads.length) g.parties.push('Lead manager');
+    if (!form.registrar.trim()) g.timeline.push('Registrar');
+    if (!form.leads.length) g.timeline.push('Lead manager');
 
     // printing is a first-class flow here, and it cannot run without a blank
     if (form.startPrint && !form.asbaResident && !form.asbaSingle) g.docs.push('a blank ASBA form');
@@ -799,13 +813,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             const done = gaps != null && gaps.length === 0;
             return (
               <button key={t.key} role="tab" aria-selected={tab === t.key}
-                className={`iform-tab${tab === t.key ? ' on' : ''}${t.later ? ' later' : ''}`}
-                title={gaps?.length ? `Still needed: ${gaps.join(', ')}` : t.later ? 'Not needed to open bidding or print forms' : undefined}
+                className={`iform-tab${tab === t.key ? ' on' : ''}`}
+                title={gaps?.length ? `Still needed: ${gaps.join(', ')}` : undefined}
                 onClick={() => setTab(t.key)}>
                 <span className="ic"><Icon name={t.icon} size={16} /></span>{t.label}
                 {gaps?.length ? <span className="iform-gap">{gaps.length}</span> : null}
                 {done && <span className="iform-ok" aria-label="complete"><Icon name="check" size={12} /></span>}
-                {t.later && <span className="iform-later">later</span>}
               </button>
             );
           })}
@@ -1161,13 +1174,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-          </div>
-        )}
-
-        {/* ================= Anchor ================= */}
-        {tab === 'anchor' && (
-          <div className="fstack">
-            <Panel title="Anchor portion" desc="A sub-allocation of the QIB quota, not a category of its own — which is why it is not a row in the reservation table.">
+            {/* Anchor moved into this tab (2026-09-04): it is a sub-allocation
+                of the QIB quota, and reading the roster against the total it
+                comes out of was the point of the merge. */}
+            <Panel title="Anchor portion" desc="A sub-allocation of the QIB quota above, not a category of its own — which is why it is not a row in the reservation table.">
               <div className="form-grid">
                 <Field label="Anchor (% of QIB)" hint={`${derived.rulePack.label} caps this at ${derived.rulePack.anchorMaxPctOfQib ?? '—'}%`}>
                   <input className="input mono" value={form.anchorPct} placeholder="60"
@@ -1298,13 +1308,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 </Field>
               </div>
             </Panel>
-          </div>
-        )}
 
-        {/* ================= Intermediaries ================= */}
-        {tab === 'parties' && (
-          <div className="fstack">
-            {/* IPO Partner | Syndicate / Lead Managers — side by side */}
+            {/* Intermediaries moved into this tab (2026-09-04). Dates and the
+                people involved sit together in the operator's head. */}
             <div className="form-cols" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
               <div className="fcol">
                 <Panel title="IPO Partner" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ partners: [...form.partners, { member: syndicate[0], exchange: '' }] })}><Icon name="plus" size={13} /> Add</button>}>
@@ -1351,42 +1357,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         )}
 
         {/* ================= About Company ================= */}
-        {tab === 'company' && (
-          <div className="fstack">
-            <Panel title="Company Profile">
-              <div className="form-grid">
-                <Field label="Company Logo">
-                  <div className="up-tile">
-                    <img className="up-preview" src={form.logoUrl || undefined} alt="" style={form.logoUrl ? {} : { background: 'var(--bg-2)' }} />
-                    <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: 'none' }} onChange={(e) => onLogo(e.target.files?.[0])} />
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>{uploading ? 'Uploading…' : form.logoUrl ? 'Replace logo' : 'Upload logo'}</button>
-                    {form.logoUrl && <button type="button" className="icon-btn danger" onClick={() => set({ logoUrl: '' })} title="Remove logo"><Icon name="trash" size={15} /></button>}
-                  </div>
-                </Field>
-                <Field label="Company Website"><input className="input" value={form.companyWebsite} onChange={(e) => set({ companyWebsite: e.target.value })} placeholder="https://www.company.com" /></Field>
-                <Field label="Company Promoter"><input className="input" value={form.companyPromoter} onChange={(e) => set({ companyPromoter: e.target.value })} placeholder="Promoter name(s)" /></Field>
-              </div>
-            </Panel>
-            <Panel title="Company Info" desc="Shown on the public IPO page."><RichText value={form.companyDescription} onChange={(html) => set({ companyDescription: html })} /></Panel>
-            <Panel title="Company Strength"><RichText value={form.companyStrength} onChange={(html) => set({ companyStrength: html })} /></Panel>
-            <Panel title="Company Financials" desc="Add the financial-highlights table."><RichText value={form.companyFinancials} onChange={(html) => set({ companyFinancials: html })} /></Panel>
-            <Panel title="Objects of the Issue"><RichText value={form.objectsOfIssue} onChange={(html) => set({ objectsOfIssue: html })} /></Panel>
-            <Panel title="Company Contact Info"><RichText value={form.contactInfo} onChange={(html) => set({ contactInfo: html })} /></Panel>
-            <Panel title="FAQs" desc="Question + answer shown on the IPO page." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ faqs: [...form.faqs, { q: '', a: '' }] })}><Icon name="plus" size={13} /> Add FAQ</button>}>
-              {form.faqs.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No FAQs yet. Click <b>Add FAQ</b>.</div> :
-                <div className="fstack">
-                  {form.faqs.map((f, i) => (
-                    <div className="faq-item" key={i}>
-                      <div className="between" style={{ marginBottom: 8 }}><b style={{ fontSize: 13 }}>FAQ {i + 1}</b><button type="button" className="icon-btn danger" onClick={() => set({ faqs: form.faqs.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button></div>
-                      <Field label="Question"><input className="input" value={f.q} onChange={(e) => setFaq(i, { q: e.target.value })} placeholder="What is the lot size?" /></Field>
-                      <div className="field" style={{ marginTop: 4 }}><label>Answer</label><RichText value={f.a} onChange={(html) => setFaq(i, { a: html })} minHeight={110} /></div>
-                    </div>
-                  ))}
-                </div>}
-            </Panel>
-          </div>
-        )}
-
         {/* ================= Documents ================= */}
         {tab === 'docs' && (
           <Panel title="Documents" desc="Upload RHP / DRHP / prospectus and other files shown on the IPO page." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ documents: [...form.documents, { type: 'RHP', name: '', url: '' }] })}><Icon name="plus" size={13} /> Add document</button>}>
@@ -1450,28 +1420,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {/* Last, because none of it exists yet while the issue is being set up.
             This used to sit inside Pricing, three tabs before the dates it
             depends on had even been entered. */}
-        {tab === 'afterlisting' && (
-          <div className="fstack">
-            <Panel title="After the issue"
-              desc="Filled once the registrar and the exchanges publish. Nothing here is needed to open bidding or print a form.">
-              <div className="form-grid">
-                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which the engine derives on Review & Publish">
-                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
-                </Field>
-                <Field label="NSE listing price (₹)" hint="the price it opened at on listing day">
-                  <input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} />
-                </Field>
-                <Field label="BSE listing price (₹)" hint="the price it opened at on listing day">
-                  <input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} />
-                </Field>
-              </div>
-              {/* Final issue price is NOT repeated here. It lives on Pricing,
-                  and one value behind two controls is how the two drift apart
-                  in an operator's head. */}
-            </Panel>
-          </div>
-        )}
-
         {/* ================= Review & Publish ================= */}
         {tab === 'review' && (
           <div className="fstack">
@@ -1532,6 +1480,70 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <div className="banner info" style={{ fontSize: 13, marginTop: 12 }}>{derivedBlockedWhy}</div>
               )}
             </Panel>
+
+            {/* About Company + After Listing moved here (2026-09-04) as
+                collapsible sections. Both fill the public detail page but
+                block nothing operational, so keeping them out of the primary
+                flow matches the operator's own "we can add the details later". */}
+            <details className="iform-optional">
+              <summary><span>About Company</span><span className="iform-opt-hint">optional — fills the public detail page</span></summary>
+              <div className="fstack" style={{ marginTop: 12 }}>
+            <Panel title="Company Profile">
+              <div className="form-grid">
+                <Field label="Company Logo">
+                  <div className="up-tile">
+                    <img className="up-preview" src={form.logoUrl || undefined} alt="" style={form.logoUrl ? {} : { background: 'var(--bg-2)' }} />
+                    <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: 'none' }} onChange={(e) => onLogo(e.target.files?.[0])} />
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>{uploading ? 'Uploading…' : form.logoUrl ? 'Replace logo' : 'Upload logo'}</button>
+                    {form.logoUrl && <button type="button" className="icon-btn danger" onClick={() => set({ logoUrl: '' })} title="Remove logo"><Icon name="trash" size={15} /></button>}
+                  </div>
+                </Field>
+                <Field label="Company Website"><input className="input" value={form.companyWebsite} onChange={(e) => set({ companyWebsite: e.target.value })} placeholder="https://www.company.com" /></Field>
+                <Field label="Company Promoter"><input className="input" value={form.companyPromoter} onChange={(e) => set({ companyPromoter: e.target.value })} placeholder="Promoter name(s)" /></Field>
+              </div>
+            </Panel>
+            <Panel title="Company Info" desc="Shown on the public IPO page."><RichText value={form.companyDescription} onChange={(html) => set({ companyDescription: html })} /></Panel>
+            <Panel title="Company Strength"><RichText value={form.companyStrength} onChange={(html) => set({ companyStrength: html })} /></Panel>
+            <Panel title="Company Financials" desc="Add the financial-highlights table."><RichText value={form.companyFinancials} onChange={(html) => set({ companyFinancials: html })} /></Panel>
+            <Panel title="Objects of the Issue"><RichText value={form.objectsOfIssue} onChange={(html) => set({ objectsOfIssue: html })} /></Panel>
+            <Panel title="Company Contact Info"><RichText value={form.contactInfo} onChange={(html) => set({ contactInfo: html })} /></Panel>
+            <Panel title="FAQs" desc="Question + answer shown on the IPO page." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ faqs: [...form.faqs, { q: '', a: '' }] })}><Icon name="plus" size={13} /> Add FAQ</button>}>
+              {form.faqs.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No FAQs yet. Click <b>Add FAQ</b>.</div> :
+                <div className="fstack">
+                  {form.faqs.map((f, i) => (
+                    <div className="faq-item" key={i}>
+                      <div className="between" style={{ marginBottom: 8 }}><b style={{ fontSize: 13 }}>FAQ {i + 1}</b><button type="button" className="icon-btn danger" onClick={() => set({ faqs: form.faqs.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button></div>
+                      <Field label="Question"><input className="input" value={f.q} onChange={(e) => setFaq(i, { q: e.target.value })} placeholder="What is the lot size?" /></Field>
+                      <div className="field" style={{ marginTop: 4 }}><label>Answer</label><RichText value={f.a} onChange={(html) => setFaq(i, { a: html })} minHeight={110} /></div>
+                    </div>
+                  ))}
+                </div>}
+            </Panel>
+              </div>
+            </details>
+
+            <details className="iform-optional">
+              <summary><span>After Listing</span><span className="iform-opt-hint">filled once the registrar and the exchanges publish</span></summary>
+              <div className="fstack" style={{ marginTop: 12 }}>
+            <Panel title="After the issue"
+              desc="Filled once the registrar and the exchanges publish. Nothing here is needed to open bidding or print a form.">
+              <div className="form-grid">
+                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which the engine derives on Review & Publish">
+                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
+                </Field>
+                <Field label="NSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} />
+                </Field>
+                <Field label="BSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} />
+                </Field>
+              </div>
+              {/* Final issue price is NOT repeated here. It lives on Pricing,
+                  and one value behind two controls is how the two drift apart
+                  in an operator's head. */}
+            </Panel>
+              </div>
+            </details>
 
             <Panel title="Publishing" desc="Whether the issue is visible, and which flows are open on it.">
               <div className="form-grid">

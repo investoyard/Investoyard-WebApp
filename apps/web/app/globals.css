@@ -2252,10 +2252,22 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .iform-gap { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
   background: #fdf0d8; color: #a1670a; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .iform-ok { display: grid; place-items: center; color: #12925a; }
-.iform-later { padding: 1px 6px; border-radius: 5px; background: var(--bg-2); color: var(--text-faint);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.iform-tab.later { color: var(--text-faint); }
-.iform-tab.later:hover, .iform-tab.later.on { color: var(--brand); }
+/* Collapsibles in Review — About Company and After Listing. Native <details>,
+   no React state, so they cannot desync with anything. */
+.iform-optional { border: 1px solid var(--border); border-radius: 12px; padding: 4px 22px; background: var(--surface); }
+.iform-optional + .iform-optional { margin-top: 12px; }
+.iform-optional[open] { padding-bottom: 22px; }
+.iform-optional > summary { display: flex; align-items: baseline; gap: 12px; padding: 15px 0; cursor: pointer;
+  list-style: none; font-weight: 600; font-size: 15px; }
+.iform-optional > summary::-webkit-details-marker { display: none; }
+.iform-optional > summary::after { content: "▸"; margin-left: auto; color: var(--text-faint); font-size: 12px;
+  transition: transform .12s var(--ease); }
+.iform-optional[open] > summary::after { transform: rotate(90deg); }
+.iform-opt-hint { font-size: 12.5px; color: var(--text-faint); font-weight: 500; }
+/* Removed 2026-09-04: .iform-later / .iform-tab.later used to mark About
+   Company and After Listing as "later" tabs. Both are now collapsibles inside
+   Review & Publish (see .iform-optional), and the tab-strip has no such
+   concept — a class nothing selects is a rule waiting to be miswired. */
 
 /* The one-line readiness banner above the tabs. */
 .iform-state { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; padding: 10px 14px;
