@@ -3187,6 +3187,26 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .rc-summary i { font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .09em;
   text-transform: uppercase; color: var(--text-faint); margin-right: 6px; }
 
+/* Dual-band toggle and the note under it. Only appears for a book-built issue
+   fixed by amount with a real price band and no final price — otherwise there
+   is nothing to toggle. */
+.rc-band-toggle { margin-left: auto; padding: 4px 10px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer;
+  font-family: inherit; font-size: 11.5px; font-weight: 600; }
+.rc-band-toggle:hover { border-color: var(--brand-200); color: var(--brand); }
+.rc-band-note { margin: 8px 0 12px; padding: 8px 12px; border-radius: 6px;
+  background: var(--bg-2); color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+
+/* Optional override input beneath the derived share count. Small and quiet —
+   it should not compete with the derived figure for attention. */
+.rc-override { margin-top: 4px; }
+.rc-override .input { padding: 4px 7px; font-size: 11.5px; height: auto;
+  background: var(--bg); text-align: right; }
+.rc-override .input::placeholder { color: var(--text-faint); font-weight: 400; }
+/* Drift warning — amber, because a data-entry mismatch is not a financial signal.
+   Reserved for a real gap: derived and typed are more than one lot apart. */
+.rc-drift { margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #a1670a; text-align: right; }
+
 /* ── IPO form: the Fresh / OFS legs — a basis picker plus its value ──
    Not a plain flex row: `.input` carries width:100%, so the value field fought
    the select's fixed width and the two ended up misaligned. Explicit flex

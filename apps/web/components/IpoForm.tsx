@@ -78,13 +78,19 @@ type Doc = { type: string; name: string; url: string };
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
 /**
- * A reservation row as STORED: the tick and the percentage, nothing else.
+ * A reservation row as STORED: the tick, the percentage, and an OPTIONAL
+ * exact share count.
  *
- * Share count, category remark and require-for-1x used to live here too. They
- * are projections of `pct`, so persisting them created a second copy that could
- * — and did — drift from the number it was computed from.
+ * Share count, remark and require-for-1x were previously derived and never
+ * persisted, because a stored projection is the classic drift bug. The
+ * `sharesActual` field is different — it is the NSE PREANCHOR figure the
+ * operator can enter to reconcile against the exchange's own table. We floor
+ * to a lot; NSE rounds to a share, so the two disagree by up to a lot on
+ * every row. When present, `sharesActual` displays; the engine keeps deriving
+ * on % for everything downstream. A drift warning surfaces if the two are
+ * more than one lot apart, in case the operator typed the wrong figure.
  */
-type Resv = { on: boolean; pct: string };
+type Resv = { on: boolean; pct: string; sharesActual?: string };
 const blankResv = (): Resv => ({ on: false, pct: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
@@ -271,7 +277,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           // legacy rows carry count/remark/req1x — read the inputs only and let
           // the derived columns come from the engine
           shareResv: ex.shareResv
-            ? Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: !!ex.shareResv[r.key]?.on, pct: str(ex.shareResv[r.key]?.pct) }]))
+            ? Object.fromEntries(RESV_ROWS.map((r) => [r.key, {
+                on: !!ex.shareResv[r.key]?.on,
+                pct: str(ex.shareResv[r.key]?.pct),
+                // legacy rows have no override and read blank
+                sharesActual: str(ex.shareResv[r.key]?.sharesActual),
+              }]))
             : (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
           resvRemarks: str(ex.resvRemarks),
         };
@@ -298,6 +309,35 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const setPartner = (i: number, part: Partial<Partner>) => set({ partners: form.partners.map((d, x) => (x === i ? { ...d, ...part } : d)) });
   const setFaq = (i: number, part: Partial<{ q: string; a: string }>) => set({ faqs: form.faqs.map((f, x) => (x === i ? { ...f, ...part } : f)) });
   const setResv = (key: string, part: Partial<Resv>) => set({ shareResv: { ...form.shareResv, [key]: { ...form.shareResv[key], ...part } } });
+
+  /**
+   * Snap the reservation table to a standard ICDR split when the operator
+   * types a known QIB percentage. Sir's decision (2026-09-04): typing 75 fills
+   * NIB Big 10, NIB Small 5, Retail 10 and marks the issue as 6(2); typing
+   * 50 fills NIB Big 10, NIB Small 5, Retail 35 and marks it 6(1). Everything
+   * remains editable afterwards — this is a snap, not a lock.
+   *
+   * Only the four base categories are touched. Employee, shareholder and
+   * "other" reservations are their own decisions and left alone; if a special
+   * quota reduces retail, the operator adjusts retail by hand after the snap.
+   *
+   * Any QIB value other than 50 or 75 is left as typed — snapping to a
+   * non-standard number would be a guess.
+   */
+  const STANDARD_SPLITS: Record<string, { basis: string; rows: Record<string, string> }> = {
+    '75': { basis: 'icdr_6_2', rows: { qib: '75', hni: '10', hni2: '5', retail: '10' } },
+    '50': { basis: 'icdr_6_1', rows: { qib: '50', hni: '10', hni2: '5', retail: '35' } },
+  };
+  const onQibPctChange = (raw: string) => {
+    const clean = raw.replace(/[^\d.]/g, '');
+    const std = STANDARD_SPLITS[clean];
+    if (!std) { setResv('qib', { pct: clean }); return; }
+    // one shot: snap all four rows on, set the standard split, and align the
+    // regulation basis so it and the split agree
+    const next = { ...form.shareResv };
+    for (const [k, v] of Object.entries(std.rows)) next[k] = { ...next[k], on: true, pct: v };
+    set({ shareResv: next, regulationBasis: std.basis });
+  };
   const setSeries = (key: 'pdfSeries' | 'onlineSeries', i: number, part: Partial<Series>) => set({ [key]: form[key].map((s, x) => (x === i ? { ...s, ...part } : s)) } as Partial<FormState>);
   const activate = (key: 'pdfSeries' | 'onlineSeries', i: number) => set({ [key]: form[key].map((s, x) => ({ ...s, active: x === i })) } as Partial<FormState>);
   const addSeries = (key: 'pdfSeries' | 'onlineSeries') => set({ [key]: [...form[key], { member: form.partners[0]?.member ?? '', from: '', to: '', active: form[key].length === 0, ...(key === 'onlineSeries' ? { exchange: 'NSE' } : {}) }] } as Partial<FormState>);
@@ -397,7 +437,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       sector: form.sector, industry: form.industry,
       startBid: form.startBid, startPrint: form.startPrint,
       // only the tick and the percentage; every other column is derived on read
-      shareResv: Object.fromEntries(RESV_ROWS.map((r) => [r.key, { on: form.shareResv[r.key].on, pct: form.shareResv[r.key].pct }])),
+      shareResv: Object.fromEntries(RESV_ROWS.map((r) => {
+        const c = form.shareResv[r.key];
+        // trim the override before saving — a value or nothing, never an empty string
+        const sa = String(c.sharesActual ?? '').trim();
+        return [r.key, { on: c.on, pct: c.pct, ...(sa ? { sharesActual: sa } : {}) }];
+      })),
       resvRemarks: offerRemark || form.resvRemarks,
     },
   });
@@ -620,12 +665,34 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   /** How many entry prerequisites are still outstanding across the whole form. */
   const gapsLeft = Object.values(tabGaps).reduce((a, v) => a + v.length, 0);
 
+  /**
+   * Which price scenario the reservation table shows.
+   *
+   * For a book-built issue fixed by AMOUNT with a real price band, the share
+   * count moves with the price — 680 Cr ÷ 546 gives one number, ÷ 575 gives
+   * another. NSE PREANCHOR uses the lower ("calculated at the Lower end of
+   * the price band"); operator's rationale is that most issues actually price
+   * at the upper, so upper is the practical view. Default upper; toggle for
+   * lower for reconciling against NSE.
+   *
+   * The toggle only appears when there is genuinely a choice: no final price
+   * is set, and floor and cap are different. Fixed-price issues and priced
+   * issues have one price so there is nothing to toggle.
+   */
+  const [showLower, setShowLower] = useState(false);
+  const canToggle = !!(derived.scenarios.floor && derived.scenarios.cap
+    && !derived.scenarios.final
+    && derived.scenarios.floor.price !== derived.scenarios.cap.price);
+  const shown = derived.scenarios.final
+    ?? (canToggle && showLower ? derived.scenarios.floor : derived.scenarios.cap)
+    ?? derived.primary;
+
   /** derived row for a reservation key, or undefined when it cannot be computed */
-  const derivedRow = (key: string) => derived.primary?.categories.find((c: any) => c.key === key);
+  const derivedRow = (key: string) => shown?.categories.find((c: any) => c.key === key);
 
   /** The reservation table's Total row — percentages, shares and rupees. */
   const resvTotals = (() => {
-    const cats = derived.primary?.categories ?? [];
+    const cats = shown?.categories ?? [];
     const pct = cats.reduce((a: number, c: any) => a + c.pct, 0);
     return {
       pct: Math.round(pct * 1000) / 1000,
@@ -1105,15 +1172,31 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 </div>
               )}
               {/* the derived total, so the operator can see the split resolve live */}
-              {derived.primary && (
+              {shown && (
                 <div className="rc-summary">
-                  <span><i>Net offer</i>{derived.primary.netOfferShares.toLocaleString('en-IN')} sh</span>
-                  <span><i>At</i>₹{derived.primary.price}</span>
-                  {derived.primary.residualTo && (
-                    <span><i>Residual</i>{derived.primary.residualLots} lot{derived.primary.residualLots === 1 ? '' : 's'} → {CATEGORY_LABELS[derived.primary.residualTo] ?? derived.primary.residualTo}</span>
+                  <span><i>Net offer</i>{shown.netOfferShares.toLocaleString('en-IN')} sh</span>
+                  <span><i>At</i>₹{shown.price}</span>
+                  {shown.residualTo && (
+                    <span><i>Residual</i>{shown.residualLots} lot{shown.residualLots === 1 ? '' : 's'} → {CATEGORY_LABELS[shown.residualTo] ?? shown.residualTo}</span>
                   )}
                   <span className="muted">{derived.rulePack.label}</span>
+                  {/* only surfaces for a fixed-by-amount book-built issue with
+                      no final price yet — otherwise there is nothing to toggle */}
+                  {canToggle && (
+                    <button type="button" className="rc-band-toggle"
+                      onClick={() => setShowLower((v) => !v)}
+                      title={`Currently at ₹${shown.price} (${showLower ? 'lower' : 'upper'} band). Click for ${showLower ? 'upper' : 'lower'}-band view.`}>
+                      Toggle {showLower ? 'upper' : 'lower'}-band
+                    </button>
+                  )}
                 </div>
+              )}
+              {canToggle && (
+                <p className="rc-band-note">
+                  Shares shown at ₹{shown!.price} ({showLower ? 'lower' : 'upper'} band).
+                  {' '}Toggle for {showLower ? 'upper' : 'lower'}-band view.
+                  {!showLower && <> NSE PREANCHOR uses the lower band; toggle before reconciling.</>}
+                </p>
               )}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table resv-table" style={{ width: '100%' }}>
@@ -1123,17 +1206,46 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                       <tr key={r.key} className={form.shareResv[r.key].on ? 'row-on' : ''}>
                         <td style={{ textAlign: 'center' }}><input type="checkbox" checked={form.shareResv[r.key].on} onChange={(e) => setResv(r.key, { on: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} /></td>
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
-                        <td><input className="input mono" value={form.shareResv[r.key].pct} onChange={(e) => setResv(r.key, { pct: e.target.value })} /></td>
-                        {/* Share Count · Category Remark · Require for 1X are now
-                            PROJECTIONS of the percentage beside them. They used to be
-                            typed by hand, which is how a record could publish a share
-                            count that disagreed with its own percentage. */}
+                        {/* QIB carries the snap: typing 75 or 50 fills every
+                            other row and the regulation basis (see onQibPctChange). */}
+                        <td>{r.key === 'qib'
+                          ? <input className="input mono" value={form.shareResv.qib.pct}
+                              placeholder="75 or 50" title="Type 75 for ICDR 6(2) or 50 for ICDR 6(1) to fill the standard split"
+                              onChange={(e) => onQibPctChange(e.target.value)} />
+                          : <input className="input mono" value={form.shareResv[r.key].pct}
+                              onChange={(e) => setResv(r.key, { pct: e.target.value })} />
+                        }</td>
+                        {/* Share Count is a projection of the percentage, with
+                            an OPTIONAL override the operator can type when the
+                            NSE PREANCHOR figure differs by up to a lot (we
+                            floor, NSE rounds to a share). The override is what
+                            displays; the engine keeps deriving on % for
+                            amount and forms-for-1x so nothing downstream can
+                            drift from it silently. */}
                         {(() => {
                           const d = derivedRow(r.key);
                           const dash = <span className="muted">—</span>;
+                          const override = Number(String(form.shareResv[r.key].sharesActual ?? '').replace(/[^\d]/g, ''));
+                          const hasOverride = Number.isFinite(override) && override > 0;
+                          const shownShares = hasOverride ? override : d?.shares;
+                          // more than one lot off is worth a warning — closer is normal rounding
+                          const drift = hasOverride && d && Math.abs(override - d.shares) > (form.lotSize ? Number(form.lotSize) : 1);
                           return (
                             <>
-                              <td className="rc-derived r">{d ? d.shares.toLocaleString('en-IN') : dash}</td>
+                              <td className="rc-derived r">
+                                {shownShares != null ? shownShares.toLocaleString('en-IN') : dash}
+                                <div className="rc-override">
+                                  <input className="input mono" placeholder="override"
+                                    value={form.shareResv[r.key].sharesActual ?? ''}
+                                    onChange={(e) => setResv(r.key, { sharesActual: e.target.value.replace(/[^\d]/g, '') })}
+                                    title="Optional: the exact share count from NSE PREANCHOR, when different from what we derived" />
+                                </div>
+                                {drift && (
+                                  <div className="rc-drift" title={`Derived from %: ${d!.shares.toLocaleString('en-IN')}. Off by ${Math.abs(override - d!.shares).toLocaleString('en-IN')} shares.`}>
+                                    ± {Math.abs(override - d!.shares).toLocaleString('en-IN')} vs derived
+                                  </div>
+                                )}
+                              </td>
                               <td className="rc-derived r">{d ? `₹${(d.amount / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">
                                 {d?.appsFor1x != null
@@ -1148,7 +1260,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     {/* The total is the check an operator actually runs: does the
                         split add back up to the offer? Reading it off four rows
                         by eye is exactly how a 100.691% table shipped. */}
-                    {derived.primary && (
+                    {shown && (
                       <tr className="resv-total">
                         <td />
                         <td style={{ fontWeight: 700 }}>Total</td>
