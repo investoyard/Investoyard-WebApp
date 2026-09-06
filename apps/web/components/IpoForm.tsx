@@ -1832,6 +1832,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             allotmentDate: form.allotmentDate, refundDate: form.refundDate,
             dematDate: form.dematDate, listingDate: form.listingDate,
             hasFinancialsHtml: !!form.companyFinancials?.trim(),
+            hasCompanyDescription: !!form.companyDescription?.trim(),
+            hasCompanyStrength: !!form.companyStrength?.trim(),
+            hasObjectsOfIssue: !!form.objectsOfIssue?.trim(),
           }}
           onClose={() => setParsedNote(null)}
           onApply={onApplyPreanchor}

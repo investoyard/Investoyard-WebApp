@@ -1012,6 +1012,15 @@ export interface ParsedIpoNote {
   financials?: ParsedIpoNoteFinancial[];
   /** pre-rendered HTML table that goes straight into form.companyFinancials */
   financialsHtml?: string;
+  /** company prose extracted VERBATIM from the Note — the modal offers a
+   *  Rewrite button per row that swaps the verbatim text for a Claude
+   *  redraft in Investoyard's voice */
+  companyDescriptionHtml?: string;
+  companyStrengthHtml?: string;
+  objectsOfIssueHtml?: string;
+  /** true if admin → Integrations → Claude AI is configured — server has
+   *  the API key it needs to serve /rewrite-note-field */
+  canRewrite?: boolean;
   _raw?: { warnings: string[] };
 }
 
@@ -1030,4 +1039,26 @@ export const parseIpoNote = async (file: File): Promise<ParsedIpoNote> => {
     throw new Error(msg);
   }
   return body ? JSON.parse(body) : {};
+};
+
+/** Rewrites one prose field (description / strength / objects) via Claude,
+ *  called by the IPO Note review modal per row. Returns the rewritten
+ *  HTML. Requires admin → Integrations → Claude AI to be configured. */
+export const rewriteNoteField = async (kind: 'description' | 'strength' | 'objects', text: string): Promise<string> => {
+  const res = await fetch(`${API}/admin/ipo-import/rewrite-note-field`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await adminToken()}`,
+    },
+    body: JSON.stringify({ kind, text }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  const parsed = body ? JSON.parse(body) : {};
+  return String(parsed.html ?? '');
 };

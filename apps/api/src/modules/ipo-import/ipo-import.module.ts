@@ -15,6 +15,7 @@ import { CatalogUpdateService } from './catalog-update.service';
 import { parsePreanchor } from './nse-parsers/preanchor';
 import { parseAnchor } from './nse-parsers/anchor';
 import { parseIpoNote } from './nse-parsers/ipo-note';
+import { IpoNoteRewriteService } from './ipo-note-rewrite.service';
 import { resolveMaster } from '@investoyard/shared-types';
 
 /**
@@ -47,7 +48,11 @@ const ALLOWED = new Set(['.xlsx', '.xlsm', '.xls']);
 @Controller('admin/ipo-import')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class IpoImportController {
-  constructor(private readonly svc: IpoImportService, private readonly upd: CatalogUpdateService) {}
+  constructor(
+    private readonly svc: IpoImportService,
+    private readonly upd: CatalogUpdateService,
+    private readonly rewrite: IpoNoteRewriteService,
+  ) {}
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
   @Post()
@@ -145,15 +150,30 @@ export class IpoImportController {
   /** POST — multipart 'file'. Parses the merchant banker's IPO Note (Axis
    *  format across all four samples we hold). Fills what PREANCHOR cannot:
    *  exact allotment/refund/demat/listing dates from the Indicative
-   *  Timetable, post-issue market cap, and the three-year financial
-   *  highlights rendered as an HTML table. Deliberately narrow — the whole
-   *  point is UPDATE-after-PREANCHOR, not a competing first-pass parser. */
+   *  Timetable, post-issue market cap, three-year financial highlights,
+   *  and the company description / promoter overview / objects of the
+   *  issue as HTML (verbatim; the operator can rewrite before applying). */
   @Post('parse/ipo-note')
   @RequirePermissions('ipos.manage')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parseIpoNote(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
-    return parseIpoNote(file.buffer);
+    const parsed = await parseIpoNote(file.buffer);
+    // Tell the client whether the rewrite button should light up. Cheaper
+    // than a second admin endpoint just to check.
+    const canRewrite = await this.rewrite.isEnabled();
+    return { ...parsed, canRewrite };
+  }
+
+  /** POST — Claude-rewrites one prose field from the IPO Note into
+   *  Investoyard's voice. Called by the review modal per row, so the
+   *  operator picks per-field between raw and rewritten. */
+  @Post('rewrite-note-field')
+  @RequirePermissions('ipos.manage')
+  async rewriteNoteField(@Body() body: { kind: 'description' | 'strength' | 'objects'; text: string }) {
+    if (!body?.kind || !body?.text) throw new BadRequestException('kind and text are required.');
+    const html = await this.rewrite.rewrite(body.kind, body.text);
+    return { html };
   }
 
   /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */
@@ -192,6 +212,6 @@ export class IpoImportController {
 @Module({
   imports: [JwtModule.register({})],
   controllers: [IpoImportController],
-  providers: [IpoImportService, CatalogUpdateService, PrismaService, JwtAuthGuard, PermissionsGuard],
+  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, PrismaService, JwtAuthGuard, PermissionsGuard],
 })
 export class IpoImportModule {}

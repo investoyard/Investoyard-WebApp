@@ -57,6 +57,16 @@ export interface ParsedIpoNote {
   financials?: ParsedIpoNoteFinancial[];
   /** rendered HTML table for form.companyFinancials — kept small and inline */
   financialsHtml?: string;
+  /**
+   * Company prose extracted verbatim from the Note, wrapped in <p> tags so
+   * the form's rich-text editor renders it as paragraphs. Verbatim on
+   * purpose — the operator either applies as-is (fastest) or asks the
+   * rewrite endpoint to redraft in Investoyard's voice before applying.
+   * All three fields lift from pages 3-4 of every Axis Note we tested.
+   */
+  companyDescriptionHtml?: string;
+  companyStrengthHtml?: string;
+  objectsOfIssueHtml?: string;
   _raw?: { warnings: string[] };
 }
 
@@ -228,6 +238,161 @@ function parseMarketCap(rows: Row[]): ParsedIpoNote['marketCap'] {
   return undefined;
 }
 
+/* ── company prose sections ──────────────────────────────────────────────
+   Every Axis Note has these three UPPERCASE section headers on pages 3-4:
+   BACKGROUND · OBJECTS OF THE ISSUE · BUSINESS OVERVIEW.
+
+   The extractor works by header lookup rather than page number because the
+   pages shift with the length of the directors' biographies (PSL sits at
+   page 4, ESDS at 3-4, Deepa at 4). A section starts on the row AFTER its
+   header and ends at the next section header or a "Brief Biographies" /
+   OFFER DETAILS boundary. Footer rows ("For additional information &
+   risk factors …") are dropped. */
+
+/** UPPERCASE-only headers that end a section. Case-sensitive.
+ *  The footer line ("For additional information & risk factors …") is
+ *  intentionally NOT a stop — it appears at the bottom of every page and
+ *  a section that spans pages (BUSINESS OVERVIEW usually does) would be
+ *  truncated by page 1. `isNoise()` skips the footer as data instead. */
+const SECTION_STOPS: RegExp[] = [
+  /^BACKGROUND\b/,
+  /^Brief Biographies\b/,
+  /^OBJECTS OF THE ISSUE\b/,
+  /^OBJECTS OF THE OFFER\b/,
+  /^OFFER DETAILS\b/,
+  /^SHAREHOLDING PATTERN\b/,
+  /^BUSINESS OVERVIEW\b/,
+  /^Directors and Senior Management\b/i,
+  /^INVESTMENT RATIONALE\b/,
+  /^INVESTMENT POSITIVES\b/,
+  /^INDUSTRY OVERVIEW\b/,
+  /^KEY RISK\b/,
+  /^PRODUCT OFFERINGS\b/,
+  /^BRIEF FINANCIAL DETAILS\b/,
+  /^COMPETITIVE STRENGTHS\b/,
+];
+
+/** Rows to drop from any section — footer boilerplate on every page. */
+function isNoise(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (/^For additional information & risk factors/.test(t)) return true;
+  if (/^Source:\s*RHP/i.test(t)) return true;
+  if (/^\(\^at upper price band\)/i.test(t)) return true;
+  if (/^-\s*\d+\s*-$/.test(t)) return true;                // page number
+  return false;
+}
+
+/** Sentence-preserving join. Rows are word-wrapped in the PDF, so a row
+ *  that doesn't end in punctuation belongs with the next one. */
+function stitchParagraph(rows: string[]): string {
+  const buf: string[] = [];
+  for (const r of rows) {
+    const clean = r.replace(/\s+/g, ' ').trim();
+    if (!clean) continue;
+    const prev = buf[buf.length - 1] ?? '';
+    if (prev && !/[.!?:]$/.test(prev)) {
+      buf[buf.length - 1] = prev + ' ' + clean;
+    } else {
+      buf.push(clean);
+    }
+  }
+  return buf.join(' ');
+}
+
+/** Extract every row between `header` (inclusive-of-next) and the first
+ *  matching stop, or up to `maxRows` payload rows — whichever comes first.
+ *  The row cap is a defensive backstop: if a section header we depended
+ *  on is missing on a future Note, we'd otherwise slurp the whole tail of
+ *  the document. Returns null if the header is not present. */
+function sectionRows(rows: Row[], header: RegExp, stops: RegExp[], maxRows = 60): string[] | null {
+  const start = rows.findIndex((r) => header.test(r.text));
+  if (start < 0) return null;
+  const out: string[] = [];
+  for (let i = start + 1; i < rows.length && out.length < maxRows; i++) {
+    const t = rows[i].text;
+    if (stops.some((s) => s.test(t))) break;
+    if (!isNoise(t)) out.push(t);
+  }
+  return out;
+}
+
+/** Split a stitched block into 1-3 sentence paragraphs — a single wall of
+ *  text reads badly in the form's rich-text editor. Roughly: every 2-3
+ *  sentences becomes a <p>. Abbreviations that end in a period ("P.O.",
+ *  "Ltd.", "Pvt.", "St.") do NOT start a new sentence; the split treats
+ *  a period as a sentence break only when the following character is a
+ *  space + capital letter AND the preceding word isn't a single upper
+ *  letter (that's an initial) or a known abbreviation. */
+const ABBREV = /\b(?:P\.O|Pvt|Ltd|Co|Corp|Inc|Mr|Mrs|Ms|Dr|St|No)$/;
+function splitSentences(text: string): string[] {
+  const parts: string[] = [];
+  let buf = '';
+  const s = text.replace(/\s+/g, ' ');
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    buf += c;
+    if (!/[.!?]/.test(c)) continue;
+    // look ahead: next non-space char must be uppercase to be a break
+    let j = i + 1;
+    while (j < s.length && s[j] === ' ') j++;
+    if (j >= s.length) { parts.push(buf.trim()); buf = ''; continue; }
+    const next = s[j];
+    if (!/[A-Z"]/.test(next)) continue;
+    // look behind: if last token before the punctuation is an abbreviation
+    // or a single capital (an initial), don't split
+    const before = buf.slice(0, -1);
+    const lastWord = (before.match(/(\S+)$/) ?? [])[1] ?? '';
+    if (/^[A-Z]$/.test(lastWord)) continue;
+    if (ABBREV.test(lastWord)) continue;
+    parts.push(buf.trim());
+    buf = '';
+  }
+  if (buf.trim()) parts.push(buf.trim());
+  return parts;
+}
+
+function paragraphsFrom(text: string): string {
+  const sentences = splitSentences(text);
+  const paras: string[] = [];
+  for (let i = 0; i < sentences.length; i += 3) {
+    const chunk = sentences.slice(i, i + 3).join(' ').trim();
+    if (chunk) paras.push(chunk);
+  }
+  if (!paras.length && text.trim()) paras.push(text.trim());
+  return paras.map((p) => `<p>${escape(p)}</p>`).join('');
+}
+
+/** Objects of the Issue is a bulletted list — bullets start with • or · in
+ *  the raw text and each carries a trailing amount. Rendered as <ul>. */
+function objectsHtml(rows: Row[]): string | undefined {
+  const start = rows.findIndex((r) => /^OBJECTS OF THE (ISSUE|OFFER)\b/.test(r.text));
+  if (start < 0) return undefined;
+  const items: string[] = [];
+  let current: string | null = null;
+  for (let i = start + 1; i < rows.length; i++) {
+    const t = rows[i].text.trim();
+    if (!t) continue;
+    if (/^(OFFER DETAILS|SHAREHOLDING PATTERN|BUSINESS OVERVIEW)\b/.test(t)) break;
+    if (isNoise(t)) continue;
+    // header row of the objects table
+    if (/^Objects\s+Amount/i.test(t)) continue;
+    if (/^Total\b/i.test(t) && /(\[.*\]|\d)/.test(t)) continue;   // "Total [•]"
+    if (/^[•·]\s?/.test(t)) {
+      if (current) items.push(current);
+      current = t.replace(/^[•·]\s?/, '').trim();
+    } else if (current) {
+      // continuation of the previous bullet OR the amount that appears on
+      // its own line — both fold in
+      current = /[.!?]$/.test(current) ? current + ' ' + t : current + ' ' + t;
+    }
+  }
+  if (current) items.push(current);
+  if (!items.length) return undefined;
+  const li = items.map((s) => `<li>${escape(s.replace(/\s+/g, ' '))}</li>`).join('');
+  return `<ul>${li}</ul>`;
+}
+
 /* ── the exported entry point ────────────────────────────────────────── */
 
 export async function parseIpoNote(pdf: Uint8Array | Buffer): Promise<ParsedIpoNote> {
@@ -256,6 +421,38 @@ export async function parseIpoNote(pdf: Uint8Array | Buffer): Promise<ParsedIpoN
   } else {
     warnings.push('Could not read the financial highlights — the BRIEF FINANCIAL DETAILS section may not be present.');
   }
+
+  // ── company prose ──
+  // BACKGROUND intro: the paragraph BEFORE the directors' biographies.
+  // It's the "when was the company incorporated, who owns it" summary —
+  // perfect for companyStrength as a short factual overview.
+  const bgRows = sectionRows(
+    rows,
+    /^BACKGROUND\b/,
+    [/^Brief Biographies/i, /^Directors and Senior Management/i, /^OBJECTS OF THE (ISSUE|OFFER)\b/],
+    12,   // BACKGROUND intro is 3-5 sentences before the biographies start
+  );
+  if (bgRows && bgRows.length) {
+    const stitched = stitchParagraph(bgRows);
+    out.companyStrengthHtml = paragraphsFrom(stitched);
+  }
+
+  // BUSINESS OVERVIEW: the substantive body — what the company does.
+  const boRows = sectionRows(
+    rows,
+    /^BUSINESS OVERVIEW\b/,
+    SECTION_STOPS.filter((r) => r.source !== '^BUSINESS OVERVIEW\\b'),
+  );
+  if (boRows && boRows.length) {
+    const stitched = stitchParagraph(boRows);
+    out.companyDescriptionHtml = paragraphsFrom(stitched);
+  }
+
+  // OBJECTS OF THE ISSUE: the bulleted objects.
+  out.objectsOfIssueHtml = objectsHtml(rows);
+
+  if (!out.companyDescriptionHtml) warnings.push('Could not read the BUSINESS OVERVIEW section.');
+  if (!out.objectsOfIssueHtml) warnings.push('Could not read the OBJECTS OF THE ISSUE section.');
 
   return out;
 }
