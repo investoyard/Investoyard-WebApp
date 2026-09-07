@@ -920,6 +920,40 @@ export const cancelBid = (id: string) =>
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
   );
 
+/* ── Bidding Summary — the operations matrix (IPO × member × exchange). */
+
+export interface BidSummaryCounts {
+  bidDone: number; bidPending: number; bidFailed: number;
+  modifyDone: number; modifyPending: number; modifyFailed: number;
+  cancelDone: number; cancelPending: number; cancelFailed: number;
+  total: number;
+}
+export interface BidSummaryRow {
+  ipoId: string; ipoSymbol: string; ipoName: string;
+  memberCredentialId: string | null;
+  memberCode: string;      // "BYFILE" for unposted (no member resolved yet)
+  memberName: string;
+  exchange: string | null; // "NSE_EIPO" | "BSE_IBBS" | null
+  counts: BidSummaryCounts;
+}
+export interface BidSummaryFilters {
+  ipoId?: string; memberCredentialId?: string; exchange?: string;
+  from?: string; to?: string;
+}
+export const fetchBidSummary = (f: BidSummaryFilters = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') p.set(k, String(v));
+  const qs = p.toString();
+  return authed<{ rows: BidSummaryRow[]; totals: BidSummaryCounts }>(
+    `${API}/admin/bidding/summary${qs ? `?${qs}` : ''}`, { method: 'GET' });
+};
+export const fetchBidSummaryFacets = () =>
+  authed<{
+    ipos: { id: string; symbol: string; name: string }[];
+    members: { id: string; label: string; exchange: string }[];
+    exchanges: { value: string; label: string }[];
+  }>(`${API}/admin/bidding/summary/facets`, { method: 'GET' });
+
 /* ── NSE PREANCHOR parser ────────────────────────────────────────────────
    Uploads the exchange's Security Parameters PDF, returns the extracted
    fields for the IPO form to review before writing. The endpoint is read-
