@@ -8,6 +8,7 @@ import { ApplicationsModule } from '../applications/applications.module';
 import { PartnerController, PartnerKeysAdminController, PartnerReportsAdminController } from './partner.controller';
 import { PartnerService } from './partner.service';
 import { PartnerApiKeyGuard } from './partner.guard';
+import { PartnerScopeGuard } from './partner-scope';
 
 /**
  * White-label Partner API (M2) — v1: the Print-PDF service.
@@ -19,6 +20,6 @@ import { PartnerApiKeyGuard } from './partner.guard';
 @Module({
   imports: [ApplicationsModule, JwtModule.register({})],
   controllers: [PartnerController, PartnerKeysAdminController, PartnerReportsAdminController],
-  providers: [PartnerService, PartnerApiKeyGuard, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  providers: [PartnerService, PartnerApiKeyGuard, PartnerScopeGuard, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
 })
 export class PartnerModule {}

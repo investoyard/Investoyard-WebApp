@@ -455,7 +455,7 @@ with open(data["filename"], "wb") as f:
             <div className="pa-fields"><table>
               <thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead>
               <tbody>
-                <tr><td className="pa-name">Applicants per call</td><td className="pa-notes">Up to <strong>100</strong>. Requests with more are rejected at validation.</td></tr>
+                <tr><td className="pa-name">Applicants per call</td><td className="pa-notes"><strong>25 by default per tenant</strong> — the operator may raise this for your tenant up to a platform hard ceiling of 500. Contact the operator if 25 is too low for your workflow. Requests above your configured cap return a 400 that states your tenant's actual limit.</td></tr>
                 <tr><td className="pa-name">Form numbering</td><td className="pa-notes">Shared per-IPO series with the operator's own applications. Numbers are assigned atomically as rows are inserted, so retries of the same batchId will not renumber.</td></tr>
                 <tr><td className="pa-name">Idempotency</td><td className="pa-notes">The server derives an idempotency key from <code>keyId + batchId + profileId</code>. Retrying the same request from the same partner does not create duplicates as long as the batchId is stable.</td></tr>
                 <tr><td className="pa-name">PII vaulting</td><td className="pa-notes">PAN and bank account are tokenised per tenant on write. Read endpoints never return the raw values.</td></tr>
@@ -463,6 +463,7 @@ with open(data["filename"], "wb") as f:
                 <tr><td className="pa-name">Rate limits</td><td className="pa-notes">No hard rate limit today. Sustained bursts above a few requests per second are visible on the operator's monitoring; if that becomes a routine pattern, please coordinate on a scheduled window.</td></tr>
                 <tr><td className="pa-name">Timeouts</td><td className="pa-notes">Merging 100 forms takes several seconds. Set your client timeout to at least 60s.</td></tr>
                 <tr><td className="pa-name">Reporting</td><td className="pa-notes">Every partner call is available to the operator in the API Call Report and Print Report (CSV). If you need a report of your own calls, ask the operator to share the CSV.</td></tr>
+                <tr><td className="pa-name">Endpoint access</td><td className="pa-notes">Each endpoint is gated per tenant. Your key can call an endpoint only if the operator has granted that scope to your tenant. Calls to a scope your tenant lacks return <code>403</code> with a message naming the scope. Defaults for a new partner: print-forms + ipo catalog reads. Additional endpoints (not documented here) are available on request.</td></tr>
               </tbody>
             </table></div>
           </section>

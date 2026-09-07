@@ -111,6 +111,96 @@ function ApiKeysPanel({ tenantId }: { tenantId: string }) {
   );
 }
 
+/**
+ * Partner API operator controls — scope checkboxes + applicants-per-call cap.
+ * Sits below ApiKeysPanel on the tenant view. Saves to the same PATCH
+ * endpoint the profile edits use; changes are effective on the very next
+ * partner call (no cache, no restart). Scope semantics live in
+ * apps/api/src/modules/partner/partner-scope.ts — keep in step.
+ */
+const SCOPE_META: { key: string; label: string; hint: string }[] = [
+  { key: 'print-forms',       label: 'Print forms',       hint: 'POST /partner/v1/print-forms — the merged prefilled PDF endpoint. The flagship of the API.' },
+  { key: 'ipos:read',         label: 'IPO catalog',       hint: 'GET /ipos, GET /ipos/{symbol} — read the live IPO list and per-issue detail.' },
+  { key: 'subscription:read', label: 'Subscription snapshot', hint: 'GET /ipos/{symbol}/subscription — gross subscription figures from the exchange. Opt-in per partner (not in the public doc).' },
+  { key: 'gmp:read',          label: 'Grey Market Premium', hint: 'GET /ipos/{symbol}/gmp — GMP with SEBI disclaimer. Opt-in per partner (not in the public doc).' },
+];
+
+function ApiAccessControlPanel({ slug, tenant, onSaved }: {
+  slug: string;
+  tenant: api.PartnerDetail;
+  onSaved: () => void;
+}) {
+  const [scopes, setScopes] = useState<Set<string>>(() => new Set(tenant.partnerApiScopes ?? []));
+  const [cap, setCap] = useState<string>(String(tenant.partnerMaxApplicantsPerCall ?? 25));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const isBranch = tenant.type === 'branch';
+  const inheriting = isBranch && scopes.size === 0;
+
+  const toggle = (key: string) => setScopes((s) => {
+    const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n;
+  });
+
+  const save = async () => {
+    const capNum = Math.max(1, Math.min(500, Number(cap) || 25));
+    setBusy(true); setErr(null);
+    try {
+      await api.updateTenant(slug, {
+        partnerApiScopes: Array.from(scopes),
+        partnerMaxApplicantsPerCall: capNum,
+      });
+      setCap(String(capNum));
+      setSavedAt(Date.now());
+      onSaved();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+      <div className="fs-head" style={{ marginBottom: 6 }}>
+        <div className="t">API access &amp; limits</div>
+        <div className="d">Which Partner API endpoints this tenant may call, and how many applicants they may include in one <span className="mono">print-forms</span> request.</div>
+      </div>
+      {err && <div className="banner warn" style={{ margin: '10px 0' }}>{err}</div>}
+      {savedAt && !err && <div className="banner ok" style={{ margin: '10px 0' }}>Saved — effective on the next partner call.</div>}
+
+      <div style={{ margin: '12px 0 16px', display: 'grid', gap: 10 }}>
+        {SCOPE_META.map((s) => (
+          <label key={s.key} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 12, alignItems: 'start', cursor: 'pointer' }}>
+            <input type="checkbox" checked={scopes.has(s.key)} onChange={() => toggle(s.key)} style={{ marginTop: 4 }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>{s.label} <span className="mono muted" style={{ fontSize: 12, fontWeight: 400, marginLeft: 6 }}>{s.key}</span></div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{s.hint}</div>
+            </div>
+          </label>
+        ))}
+        {isBranch && (
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 2, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+            Branch behaviour: leave all four unchecked to <b>inherit</b> the parent partner's scopes.
+            {inheriting && ' Currently inheriting.'}
+          </div>
+        )}
+      </div>
+
+      <div className="row" style={{ gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <Field label="Applicants per print-forms call" hint="Default 25 · maximum 500 (platform ceiling)">
+          <input
+            className="input mono" style={{ width: 100 }}
+            value={cap}
+            onChange={(e) => setCap(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="25"
+          />
+        </Field>
+        <button className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div></div>
+  );
+}
+
 function PartnerProfilePage() {
   const me = useOperator();
   const slug = useSearchParams().get('slug') ?? '';
@@ -178,6 +268,8 @@ function PartnerProfilePage() {
       </div></div>
 
       <ApiKeysPanel tenantId={data.id} />
+
+      <ApiAccessControlPanel slug={slug} tenant={data} onSaved={load} />
 
       <div>
         {edit ? (

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -119,6 +119,10 @@ class UpdateTenantDto {
   @IsOptional() @IsString() customDomain?: string;
   @IsOptional() profile?: Record<string, any>;
   @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number | null;
+  // Partner API operator controls — see partner-scope.ts for the scope
+  // vocabulary and the schema for the 1..500 clamp on the applicants cap.
+  @IsOptional() @IsInt() @Min(1) @Max(500) partnerMaxApplicantsPerCall?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) partnerApiScopes?: string[];
 }
 class CreateClientDto {
   @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile!: string;

@@ -3,12 +3,21 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { PartnerApiKeyGuard } from './partner.guard';
+import { PartnerScopeGuard, RequireScope } from './partner-scope';
 import { PartnerService } from './partner.service';
 import { CreatePartnerKeyDto, PartnerPrintFormsDto } from './partner.dto';
 
-/** Public partner API (API-key auth) — v1. */
+/**
+ * Public partner API (API-key auth) — v1.
+ *
+ * Guard order matters: PartnerApiKeyGuard first (resolves the tenant),
+ * PartnerScopeGuard second (reads the tenant's scopes and 403s if the
+ * endpoint's @RequireScope is not in the list). Every endpoint below is
+ * scoped; a route without a @RequireScope tag is a bug and the scope
+ * guard is silent about it — enforcement lives in code review.
+ */
 @Controller('partner/v1')
-@UseGuards(PartnerApiKeyGuard)
+@UseGuards(PartnerApiKeyGuard, PartnerScopeGuard)
 export class PartnerController {
   constructor(private readonly partner: PartnerService) {}
 
@@ -17,6 +26,7 @@ export class PartnerController {
    * and return the prefilled ASBA form(s) as one merged base64 PDF.
    */
   @Post('print-forms')
+  @RequireScope('print-forms')
   printForms(@Req() req: any, @Body() dto: PartnerPrintFormsDto) {
     return this.partner.printFormsLogged(req.partnerTenant, req.partnerKeyId, dto);
   }
@@ -28,6 +38,7 @@ export class PartnerController {
 
   /** GET /partner/v1/ipos?board=&instrument=&status=&limit=&offset= */
   @Get('ipos')
+  @RequireScope('ipos:read')
   listIpos(@Query() q: any) {
     return this.partner.listIpos({
       board: q.board, instrument: q.instrument, status: q.status,
@@ -38,18 +49,24 @@ export class PartnerController {
 
   /** GET /partner/v1/ipos/:symbol */
   @Get('ipos/:symbol')
+  @RequireScope('ipos:read')
   getIpo(@Param('symbol') symbol: string) {
     return this.partner.getIpo(symbol);
   }
 
-  /** GET /partner/v1/ipos/:symbol/subscription */
+  /** GET /partner/v1/ipos/:symbol/subscription — off by default; opt-in per tenant. */
   @Get('ipos/:symbol/subscription')
+  @RequireScope('subscription:read')
   getSubscription(@Param('symbol') symbol: string) {
     return this.partner.getSubscription(symbol);
   }
 
-  /** GET /partner/v1/ipos/:symbol/gmp — tenant-gated, disclaimer included. */
+  /** GET /partner/v1/ipos/:symbol/gmp — off by default; opt-in per tenant.
+   *  Response still carries the SEBI-mandated disclaimer text when it returns
+   *  a value, and the service's own tenant-level gmpEnabled check remains
+   *  in force as a secondary gate. */
   @Get('ipos/:symbol/gmp')
+  @RequireScope('gmp:read')
   getGmp(@Req() req: any, @Param('symbol') symbol: string) {
     return this.partner.getGmp(req.partnerTenant, symbol);
   }

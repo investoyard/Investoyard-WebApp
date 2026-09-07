@@ -115,6 +115,12 @@ export interface PartnerDetail {
   code?: string; commissionRate?: number;
   brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
   profile: Record<string, any>;
+  /** Partner API operator controls (Phase D). Default 25 for a new partner,
+   *  clamped to 1..500 by the server. */
+  partnerMaxApplicantsPerCall?: number;
+  /** Scope keys this tenant may call on /partner/v1. Empty = inherit from
+   *  parent (branches). Defaults for a new partner: print-forms + ipos:read. */
+  partnerApiScopes?: string[];
   counts: { branches: number; users: number; operators: number };
   createdAt: string;
 }
@@ -194,7 +200,12 @@ export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: n
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
-export const updateTenant = (slug: string, body: Partial<{ name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; customDomain: string; profile: Record<string, any>; commissionRate: number | null }>) =>
+export const updateTenant = (slug: string, body: Partial<{
+  name: string; status: string; brandColor: string; goldColor: string; logoUrl: string;
+  customDomain: string; profile: Record<string, any>; commissionRate: number | null;
+  partnerMaxApplicantsPerCall: number;
+  partnerApiScopes: string[];
+}>) =>
   authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 /* -------------------------------------------------- admin: WhatsApp chatbot flow (Level 1) */
@@ -685,6 +696,12 @@ export const requestPartnerChanges = (id: string, note: string) =>
 export const rejectPartnerApplication = (id: string, note: string) =>
   authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/reject`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+/** Re-send the welcome/activation email for an approved application whose
+ *  link the applicant lost. Regenerates the token, so any previous link dies. */
+export const resendPartnerActivation = (id: string, baseUrl?: string) =>
+  authed<{ ok: boolean; activationLink: string; emailSent: boolean; emailDev: boolean }>(
+    `${API}/admin/partner-applications/${id}/resend-activation`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseUrl }) });
 
 /* -------------------------------------------------- message delivery log */
 export interface MessageLogRow {

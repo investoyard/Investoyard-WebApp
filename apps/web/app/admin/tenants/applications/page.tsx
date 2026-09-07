@@ -193,9 +193,39 @@ export default function PartnerApplicationsPage() {
               <div className="hint" style={{ marginTop: 8 }}>The link works once and expires in 7 days.</div>
             </div>
           ) : open.status === 'approved' ? (
-            <div className="banner ok" style={{ marginTop: 18 }}>
-              Approved on {dt(open.reviewedAt)}{open.activatedAt ? ` · password set ${dt(open.activatedAt)}` : ' · password not set yet'}.
-            </div>
+            <>
+              <div className="banner ok" style={{ marginTop: 18 }}>
+                Approved on {dt(open.reviewedAt)}{open.activatedAt ? ` · password set ${dt(open.activatedAt)}` : ' · password not set yet'}.
+              </div>
+              {/* Re-send activation is meaningful ONLY while the account is
+                  approved but not yet activated. Once the partner has set a
+                  password (activatedAt is present) they use the normal login
+                  flow and this button would just confuse. */}
+              {!open.activatedAt && (
+                <div className="row" style={{ gap: 8, marginTop: 12, alignItems: 'center' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      // `act` toasts and reloads for us; we only need to show
+                      // the fresh link inline so the operator can copy it if
+                      // SMTP is having a bad moment.
+                      const r = await act(() => api.resendPartnerActivation(open.id), 'Activation email re-sent.');
+                      if (r) {
+                        setResult({
+                          slug: '', code: null, username: '',
+                          activationLink: r.activationLink,
+                          emailSent: r.emailSent, emailDev: r.emailDev,
+                        } as any);
+                      }
+                    }}
+                  >
+                    <Icon name="refresh" size={14} /> Re-send activation email
+                  </button>
+                  <span className="hint">Generates a fresh 7-day link and invalidates the previous one.</span>
+                </div>
+              )}
+            </>
           ) : open.status === 'rejected' ? (
             <div className="banner warn" style={{ marginTop: 18 }}>Rejected on {dt(open.reviewedAt)}{open.reviewNote ? ` — ${open.reviewNote}` : ''}</div>
           ) : (

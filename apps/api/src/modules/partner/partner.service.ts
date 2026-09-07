@@ -23,6 +23,25 @@ export class PartnerService {
     private apps: ApplicationsService,
   ) {}
 
+  /**
+   * Per-tenant applicants-per-call cap. Reads Tenant.partnerMaxApplicantsPerCall
+   * (default 25 from schema); clamps to the platform hard ceiling of 500 so
+   * an operator typo can't accept unbounded batches even if the DB has one.
+   * Cast to any because the generated Prisma types lag until the pool cycle
+   * runs `prisma generate` (CLAUDE.md's handshake note); the DB column is
+   * present since `prisma db push`.
+   */
+  private async getApplicantsCap(tenantId: string): Promise<number> {
+    const t: any = await tenantContext.runUnscoped(() =>
+      (this.prisma as any).tenant.findUnique({
+        where: { id: tenantId },
+        select: { partnerMaxApplicantsPerCall: true },
+      }),
+    );
+    const raw = t?.partnerMaxApplicantsPerCall ?? 25;
+    return Math.max(1, Math.min(500, Number(raw) || 25));
+  }
+
   /** The partner tenant's synthetic service account that owns API-created rows. */
   private async serviceUser(tenant: { id: string; slug: string; name: string }) {
     const username = `api-${tenant.slug}`;
@@ -34,6 +53,17 @@ export class PartnerService {
   }
 
   async printForms(tenant: { id: string; slug: string; name: string }, keyId: string, dto: PartnerPrintFormsDto) {
+    // Per-tenant applicants cap (default 25, up to platform ceiling of 500).
+    // Runs AFTER DTO validation and BEFORE any DB writes, so an oversized
+    // batch is rejected before we touch the catalog or profiles.
+    const cap = await this.getApplicantsCap(tenant.id);
+    if (dto.applicants.length > cap) {
+      throw new BadRequestException(
+        `This request has ${dto.applicants.length} applicants; your tenant is configured for a maximum of ${cap} per call. ` +
+        `Split into batches or contact the operator to raise the cap.`,
+      );
+    }
+
     // catalog lookup is operator-global (not partner-scoped)
     const ipo = await tenantContext.runUnscoped(() =>
       this.prisma.ipo.findFirst({

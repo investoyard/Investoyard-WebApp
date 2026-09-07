@@ -516,6 +516,11 @@ export class AdminService {
         brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
         logoUrl: t.logoUrl ?? undefined, customDomain: t.customDomain ?? undefined,
         profile: (t.profile as any) ?? {},
+        // Partner API operator controls — cast because generated Prisma
+        // types lag until the pool cycle re-runs `prisma generate`
+        // (CLAUDE.md handshake). Columns are live via `prisma db push`.
+        partnerMaxApplicantsPerCall: (t as any).partnerMaxApplicantsPerCall ?? 25,
+        partnerApiScopes: ((t as any).partnerApiScopes ?? []) as string[],
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
       };
@@ -553,6 +558,8 @@ export class AdminService {
   async updateTenant(callerId: string, slug: string, dto: {
     name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string;
     customDomain?: string; profile?: Record<string, any>; commissionRate?: number | null;
+    partnerMaxApplicantsPerCall?: number;
+    partnerApiScopes?: string[];
   }) {
     const scope = await this.callerScope(callerId);
     return tenantContext.runUnscoped(async () => {
@@ -564,6 +571,11 @@ export class AdminService {
       if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
       if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
       if (dto.profile) data.profile = { ...((t.profile as any) ?? {}), ...dto.profile };
+      // Partner API operator controls — the DTO caps values at 1..500 and
+      // constrains scopes to strings; the schema also enforces the 500
+      // ceiling as a defence in depth (see partner.dto.ts).
+      if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
+      if (dto.partnerApiScopes !== undefined) data.partnerApiScopes = dto.partnerApiScopes;
       try {
         await this.prisma.tenant.update({ where: { slug }, data });
       } catch (e: any) {

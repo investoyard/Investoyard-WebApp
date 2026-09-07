@@ -45,7 +45,15 @@ export class PartnerApplicantDto {
 
 export class PartnerPrintFormsDto {
   @IsString() ipoSymbol!: string;
-  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => PartnerApplicantDto)
+  /**
+   * ArrayMaxSize(500) is the PLATFORM hard ceiling — a defensive backstop so
+   * a mistyped admin setting can never accept a runaway batch that would
+   * exhaust memory or time out the request. The per-tenant cap
+   * (Tenant.partnerMaxApplicantsPerCall, default 25) is enforced in the
+   * service AFTER the DTO passes, where the tenant identity is known.
+   * Both checks fire — DTO first, tenant cap second.
+   */
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => PartnerApplicantDto)
   applicants!: PartnerApplicantDto[];
 }
 

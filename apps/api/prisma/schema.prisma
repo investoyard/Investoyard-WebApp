@@ -215,6 +215,20 @@ model Tenant {
   profile        Json? // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
   code           String?    @unique // 6-digit channel code (partners/branches), sequential from 601001
   commissionRate Decimal?   @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
+
+  /// Partner API — per-tenant applicants-per-call cap on /partner/v1/print-forms.
+  /// Default 25 for a new partner; the operator can raise it up to a platform
+  /// hard ceiling of 500 (enforced in the DTO with @ArrayMaxSize(500)).
+  partnerMaxApplicantsPerCall Int @default(25)
+
+  /// Partner API — endpoints this tenant may call. Enforced by the RequireScope
+  /// guard on each controller method. Default for a new partner is
+  /// ["print-forms","ipos:read"] — matches what the public /partner-api doc
+  /// advertises. Additional scopes (subscription:read, gmp:read) are opt-in
+  /// per tenant. Branches without an explicit override inherit their parent
+  /// tenant's scopes at request time (see the guard).
+  partnerApiScopes String[] @default(["print-forms","ipos:read"])
+
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

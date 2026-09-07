@@ -15,6 +15,7 @@ import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { tenantContext } from '../../common/tenant-context';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
+import { buildWelcomeEmail } from './welcome-email';
 
 const scrypt = promisify(_scrypt) as (p: string, s: string, k: number) => Promise<Buffer>;
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -215,18 +216,84 @@ export class PartnerOnboardingService {
 
     const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://newipo.finwave.co').replace(/\/$/, '');
     const link = `${base}/partner/activate?token=${token}`;
+
+    // Look up the parent's display name if this is a branch, so the email
+    // reads "under <Parent Name>" instead of just the branch's own label.
+    const parentName = kind === 'branch' && opts.parentSlug
+      ? (await this.prisma.tenant.findUnique({ where: { slug: opts.parentSlug }, select: { name: true } }))?.name ?? undefined
+      : undefined;
+
+    const email = buildWelcomeEmail({
+      contactName: app.contactName, legalName: app.legalName,
+      activationLink: link, username, kind, parentName, linkValidDays: 7,
+    });
     const mail = await this.email.send({
-      to: app.email,
-      subject: 'Your Investoyard partner account is approved',
-      text: `Dear ${app.contactName},\n\nYour partner application for ${app.legalName} has been approved.\n\nSet your password and sign in: ${link}\n\nThis link is valid for 7 days.\n\n— Investoyard`,
-      html: `<p>Dear ${app.contactName},</p><p>Your partner application for <b>${app.legalName}</b> has been approved.</p>`
-        + `<p><a href="${link}">Set your password and sign in</a></p><p>This link is valid for 7 days.</p><p>— Investoyard</p>`,
-    }).catch((e) => ({ sent: false, error: String(e?.message ?? e) } as any));
+      to: app.email, subject: email.subject, text: email.text, html: email.html,
+    }, { tenantId: tenant?.id, templateKey: kind === 'branch' ? 'partner-welcome-branch' : 'partner-welcome' })
+      .catch((e) => ({ sent: false, error: String(e?.message ?? e) } as any));
 
     this.log.log(`application ${id} approved → tenant ${slug} (${tenant?.code ?? '?'}), email sent=${(mail as any).sent}`);
     return {
       ok: true, slug, code: tenant?.code ?? null, username,
       activationLink: link,                    // always returned so approval never silently fails
+      emailSent: !!(mail as any).sent,
+      emailDev: !!(mail as any).dev,
+    };
+  }
+
+  /**
+   * Re-send the activation email — regenerates the token (so any old link
+   * is dead), extends the expiry to today+7, and re-sends the welcome
+   * email. Only meaningful for applications already in 'approved' state
+   * whose activation hasn't been used yet; anything else is a 400.
+   *
+   * Idempotent from the operator's perspective: clicking again produces a
+   * fresh link, invalidates the previous one, and re-sends. Fixes the
+   * "I lost the email" gap sir asked about.
+   */
+  async resendActivation(id: string, opts: { baseUrl?: string } = {}) {
+    const app = await this.prisma.partnerApplication.findUnique({ where: { id } });
+    if (!app) throw new NotFoundException('Application not found.');
+    if (app.status !== 'approved') throw new BadRequestException('This application has not been approved yet.');
+    if (app.activatedAt) throw new BadRequestException('This account has already been activated — the partner can sign in normally.');
+    if (!app.tenantId) throw new BadRequestException('Account is not ready yet.');
+
+    const token = randomBytes(24).toString('base64url');
+    const expires = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    await this.prisma.partnerApplication.update({
+      where: { id },
+      data: { inviteToken: token, inviteExpires: expires },
+    });
+
+    const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://newipo.finwave.co').replace(/\/$/, '');
+    const link = `${base}/partner/activate?token=${token}`;
+
+    // Recover the username + kind + parent name so the resend email reads
+    // consistently with the original approval mail.
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: app.tenantId },
+      select: { type: true, parentId: true, users: { orderBy: { createdAt: 'asc' }, take: 1, select: { username: true } } },
+    });
+    const kind = ((tenant?.type as any) ?? app.kind ?? 'partner') as 'partner' | 'whitelabel' | 'branch';
+    const username = tenant?.users?.[0]?.username ?? '';
+    const parentName = kind === 'branch' && tenant?.parentId
+      ? (await this.prisma.tenant.findUnique({ where: { id: tenant.parentId }, select: { name: true } }))?.name ?? undefined
+      : undefined;
+
+    const email = buildWelcomeEmail({
+      contactName: app.contactName, legalName: app.legalName,
+      activationLink: link, username, kind, parentName, linkValidDays: 7,
+      isResend: true,
+    });
+    const mail = await this.email.send({
+      to: app.email, subject: email.subject, text: email.text, html: email.html,
+    }, { tenantId: app.tenantId, templateKey: 'partner-welcome-resend' })
+      .catch((e) => ({ sent: false, error: String(e?.message ?? e) } as any));
+
+    this.log.log(`application ${id} activation re-sent → ${app.email}, sent=${(mail as any).sent}`);
+    return {
+      ok: true,
+      activationLink: link,
       emailSent: !!(mail as any).sent,
       emailDev: !!(mail as any).dev,
     };
@@ -323,6 +390,15 @@ export class PartnerApplicationsController {
   @RequirePermissions('tenants.manage')
   reject(@Req() req: any, @Param('id') id: string, @Body() body: { note?: string }) {
     return this.svc.reject(id, body?.note ?? '', req.user.sub);
+  }
+
+  /** Re-send the activation email for an approved application whose link
+   *  the applicant lost, or whose link is close to expiring. Regenerates
+   *  the token so the old link is dead the moment this runs. */
+  @Post(':id/resend-activation')
+  @RequirePermissions('tenants.manage')
+  resendActivation(@Param('id') id: string, @Body() body: { baseUrl?: string }) {
+    return this.svc.resendActivation(id, body ?? {});
   }
 }
 
