@@ -1,0 +1,42 @@
+#!/bin/sh
+# pre-push — before ANY push from this monorepo, mirror mobile-relevant
+# paths to the mobile repo working tree and commit+push them there too.
+#
+# Why block-on-failure: the whole point of this hook is drift protection.
+# If we let the monorepo push while sync-mobile.js failed, mobile-only
+# developers pulling Investoyard-MobileApp would see a stale tree — the
+# exact scenario this repository split was set up to avoid.
+#
+# The sync script is idempotent — when nothing mobile-relevant changed
+# since the last sync, it's a fast no-op and prints "unchanged: N".
+# Adds ~1s to a push in the common case; a few seconds when it actually
+# copies files.
+#
+# Bypass with `git push --no-verify` if you truly need to (a rebase in
+# progress, a hotfix push you'll follow with an explicit sync).
+
+# Resolve script dir → repo root → sync-mobile.js in a portable way that
+# survives Git Bash on Windows and any POSIX shell.
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+
+echo ""
+echo "▸ pre-push: mirroring mobile-relevant changes to Investoyard-MobileApp…"
+echo ""
+
+node "$REPO_ROOT/scripts/sync-mobile.js" --commit
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "  ✗ sync-mobile failed (exit $STATUS). The mobile repo is NOT in step with this push."
+  echo "    Fix the sync error, then retry — or bypass with 'git push --no-verify'"
+  echo "    if you are certain no mobile-relevant files changed."
+  echo ""
+  exit 1
+fi
+
+echo ""
+echo "▸ pre-push: mobile repo in step. Proceeding with monorepo push."
+echo ""
+exit 0
