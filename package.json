@@ -13,6 +13,9 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "dev": "turbo run start:dev --parallel",
+    "sync-mobile": "node scripts/sync-mobile.js",
+    "sync-mobile:dry": "node scripts/sync-mobile.js --dry-run",
+    "sync-mobile:push": "node scripts/sync-mobile.js --commit",
     "postinstall": "node scripts/link-expo-router.js"
   },
   "devDependencies": {
