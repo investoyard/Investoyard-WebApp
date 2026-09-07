@@ -18,6 +18,13 @@ class EditBidDto {
   @IsOptional() @IsNumber() price?: number;
 }
 
+/** Rebid — same shape as Edit but both fields are optional. Missing qty/price
+ *  means "keep the current values" (queueRebid handles the defaulting). */
+class RebidDto {
+  @IsOptional() @IsInt() @Min(1) qty?: number;
+  @IsOptional() @IsNumber() price?: number;
+}
+
 /**
  * Bidding Report — the operator's view of every bid, and the actions on it.
  *
@@ -30,9 +37,11 @@ class EditBidDto {
  * Refresh UPI Status lives here as of Phase 3 — pulls one bid's status
  * from the exchange and folds it through the same PrismaApplicationRepo
  * update path the push callbacks use, so pull and push writes produce
- * identical rows. Rebid is still pending; it needs a bid that has
- * actually reached an exchange — see BidOperationsService.postPending
- * for why nothing has, yet.
+ * identical rows.
+ *
+ * Rebid lives here as of Phase 4 — cancel + create in one transaction
+ * via BidOperationsService.queueRebid. Same ICDR direction rule as
+ * cancel; the endpoint just routes.
  *
  * Bidding Summary (the ledger matrix) also lives here — its own
  * read-only service, same permission as the report.
@@ -103,6 +112,21 @@ export class BiddingController {
   @RequirePermissions('bids.manage')
   refresh(@Param('id') id: string) {
     return this.refreshSvc.refresh(id);
+  }
+
+  /**
+   * POST /admin/bidding/:id/rebid — cancel this bid and create a
+   * replacement, in one transaction. Local-first: the cancel row and the
+   * new row are both written before either is posted, so a mid-flight
+   * failure never leaves the investor holding nothing with their mandate
+   * still released. Same ICDR direction rule as cancel — HNI and QIB may
+   * not rebid once the bid is at the exchange.
+   */
+  @Post(':id/rebid')
+  @RequirePermissions('bids.manage')
+  async rebid(@Param('id') id: string, @Body() dto: RebidDto) {
+    const r = await this.ops.queueRebid(id, dto?.qty, dto?.price ?? null);
+    return { ok: true, cancelledId: r.cancelled, createdId: r.created, operationIds: r.ops };
   }
 
   /** GET /admin/bidding/summary — the operations matrix, grouped by

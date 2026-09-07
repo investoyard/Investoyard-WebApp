@@ -938,6 +938,18 @@ export const refreshBid = (id: string) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
 
+/**
+ * Rebid — cancel this bid and create a replacement, in one transaction.
+ * `qty` and `price` are optional; omit either to keep the current value.
+ * Refused for HNI/QIB once the bid is at the exchange (same rule as cancel).
+ * Returns both new IDs — the cancelled application (old) and the fresh one.
+ */
+export const rebidBid = (id: string, qty?: number, price?: number) =>
+  authed<{ ok: boolean; cancelledId: string; createdId: string; operationIds: string[] }>(
+    `${API}/admin/bidding/${id}/rebid`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qty, price }) },
+  );
+
 /* ── Bidding Summary — the operations matrix (IPO × member × exchange). */
 
 export interface BidSummaryCounts {

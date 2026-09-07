@@ -16,12 +16,14 @@ import * as api from '@/lib/tenants-admin';
 /**
  * Bidding Report — every bid and where it stands.
  *
- * Edit, Cancel and Refresh (per row) are live. Rebid is not, and that is
- * deliberate: it would cancel a never-posted bid and create another never-
- * posted one until the first NSE UAT credential clears.
+ * Edit, Cancel, Refresh and Rebid are all live per-row. Rebid runs a
+ * cancel + create in one transaction — same ICDR gate as cancel; the
+ * warning banner in the dialog spells out that exchange identifiers
+ * reset on the replacement, so an operator using it for a rejected bid
+ * knows a fresh application number is coming.
  *
- * Refresh is safe to expose today because the service is a no-op when the
- * exchange hasn't seen the bid yet — it returns the current stored
+ * Refresh is safe to expose today because the service is a no-op when
+ * the exchange hasn't seen the bid yet — it returns the current stored
  * values with `refreshedAt` stamped, so an operator clicking on a
  * pre-posted row sees "no change from the exchange" rather than an
  * error. Once bids do start reaching an exchange, the button starts
@@ -63,6 +65,10 @@ function rights(r: api.BidRow) {
     // a decided bid is history — editing it would rewrite the record, not the bid
     canEdit: !settled,
     canCancel: !settled && cancel.ok,
+    // Rebid runs a cancel + create, so the ICDR rule that gates cancel gates
+    // rebid too. HNI/QIB at the exchange are blocked; retail is always OK.
+    // Same disabled-with-reason UX as cancel.
+    canRebid: !settled && cancel.ok,
     // the floor the edit dialog applies: an HNI may only go up
     floor: mayReviseTo(r.category, r.qty, r.qty - 1, atExchange).ok ? 1 : r.qty,
     why: settled ? `This bid is ${r.status.replace(/_/g, ' ')}.` : cancel.reason,
@@ -92,6 +98,10 @@ export default function BiddingReportPage() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [edit, setEdit] = useState<{ row: api.BidRow; qty: string; floor: number } | null>(null);
+  // Rebid keeps its own draft — different fields from Edit (both qty and price
+  // are editable) and a much stronger warning attached, because the cancel is
+  // atomic with the create and there is no undo once submitted.
+  const [rebid, setRebid] = useState<{ row: api.BidRow; qty: string; price: string } | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [saving, setSaving] = useState(false);
   const { toasts, push } = useToast();
@@ -192,6 +202,29 @@ export default function BiddingReportPage() {
       await api.editBid(edit.row.id, qty);
       push('Quantity revised.');
       setEdit(null);
+      await load();
+    } catch (e: any) { push(String(e?.message ?? e), 'err'); }
+    finally { setSaving(false); }
+  };
+
+  /**
+   * Submit a rebid: cancel the current bid + create a replacement, in one
+   * transaction. Empty qty/price means "keep the same" — the server's
+   * queueRebid defaults from the current application row.
+   */
+  const saveRebid = async () => {
+    if (!rebid) return;
+    const qtyStr = rebid.qty.trim();
+    const priceStr = rebid.price.trim();
+    const qty = qtyStr ? Number(qtyStr) : undefined;
+    const price = priceStr ? Number(priceStr) : undefined;
+    if (qty != null && (!Number.isFinite(qty) || qty < 1)) { push('Enter a quantity of at least 1.', 'err'); return; }
+    if (price != null && (!Number.isFinite(price) || price < 0)) { push('Enter a valid price.', 'err'); return; }
+    setSaving(true);
+    try {
+      await api.rebidBid(rebid.row.id, qty, price);
+      push('Rebid submitted — old bid cancelled, replacement created.');
+      setRebid(null);
       await load();
     } catch (e: any) { push(String(e?.message ?? e), 'err'); }
     finally { setSaving(false); }
@@ -342,6 +375,16 @@ export default function BiddingReportPage() {
                               >
                                 <Icon name="refresh" size={14} />
                               </button>
+                              {/* Rebid = cancel + create in one atomic op. Same
+                                  ICDR gate as cancel; disabled state carries the
+                                  same reason. Distinct from Edit: rebid resets
+                                  the exchange identifiers (appNo, bidRef) — used
+                                  after a rejection, or when qty AND price both
+                                  need to change. */}
+                              <button className="icon-btn" title={g.canRebid ? 'Rebid (cancel + create replacement)' : g.why}
+                                disabled={!g.canRebid} onClick={() => setRebid({ row: r, qty: String(r.qty), price: r.price != null ? String(r.price) : '' })}>
+                                <Icon name="repeat" size={14} />
+                              </button>
                               <button className="icon-btn danger" title={g.canCancel ? 'Cancel this bid' : g.why}
                                 disabled={!g.canCancel} onClick={() => askCancel(r, g.atExchange)}>
                                 <Icon name="trash" size={14} />
@@ -384,6 +427,35 @@ export default function BiddingReportPage() {
             <button className="btn btn-secondary" onClick={() => setEdit(null)}>Cancel</button>
             <button className="btn" disabled={saving} onClick={() => void saveEdit()}>
               {saving ? 'Saving…' : 'Save quantity'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {rebid && (
+        <Modal title="Rebid — cancel and create replacement" sub={`${rebid.row.name} — ${rebid.row.ipoSymbol}`} onClose={() => setRebid(null)}>
+          <div className="banner warn" style={{ marginBottom: 14 }}>
+            The current bid will be <b>cancelled</b> and a fresh replacement created in one step.
+            {rebid.row.appNo
+              ? <> The exchange identifiers (application number, bid reference) reset — the replacement is a new bid at the exchange.</>
+              : <> This bid has not been sent to the exchange, so only our record changes.</>}
+          </div>
+          <div className="field">
+            <label>New quantity (shares) <span className="hint">— leave blank to keep {rebid.row.qty.toLocaleString('en-IN')}</span></label>
+            <input className="input mono" autoFocus value={rebid.qty} inputMode="numeric"
+              onChange={(e) => setRebid({ ...rebid, qty: e.target.value.replace(/[^\d]/g, '') })}
+              placeholder={String(rebid.row.qty)} />
+          </div>
+          <div className="field">
+            <label>New price (₹) <span className="hint">— leave blank to keep {rebid.row.price != null ? `₹${rebid.row.price}` : 'the current price'}</span></label>
+            <input className="input mono" value={rebid.price} inputMode="decimal"
+              onChange={(e) => setRebid({ ...rebid, price: e.target.value.replace(/[^\d.]/g, '') })}
+              placeholder={rebid.row.price != null ? String(rebid.row.price) : 'e.g. 575'} />
+          </div>
+          <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+            <button className="btn btn-secondary" onClick={() => setRebid(null)}>Cancel</button>
+            <button className="btn" disabled={saving} onClick={() => void saveRebid()}>
+              {saving ? 'Submitting…' : 'Submit rebid'}
             </button>
           </div>
         </Modal>

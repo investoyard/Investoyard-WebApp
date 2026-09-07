@@ -8,7 +8,7 @@ type IconName =
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
-  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp';
+  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp' | 'repeat';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
@@ -33,6 +33,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
   share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></>,
   refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v5h-5" /></>,
+  // rebid — two arrows in a loop, distinct from refresh (single circular arrow)
+  repeat: <><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></>,
   eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
   'eye-off': <><path d="M9.9 5.2A9.6 9.6 0 0 1 12 5c6.4 0 10 7 10 7a17.3 17.3 0 0 1-3.3 4M6.3 6.3A17.2 17.2 0 0 0 2 12s3.6 7 10 7a9.5 9.5 0 0 0 4-.9" /><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
