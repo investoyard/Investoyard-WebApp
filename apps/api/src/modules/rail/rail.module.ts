@@ -27,6 +27,9 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
       inject: [PrismaApplicationRepo, PushNotifier],
     },
   ],
-  exports: [RailService, BidOperationsService],
+  // PrismaApplicationRepo is exported so BiddingRefreshService can share
+  // the SAME application-update code path the callback handler uses —
+  // pull and push writes must produce identical rows.
+  exports: [RailService, BidOperationsService, PrismaApplicationRepo],
 })
 export class RailModule {}

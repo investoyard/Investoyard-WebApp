@@ -920,6 +920,24 @@ export const cancelBid = (id: string) =>
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
   );
 
+/**
+ * Pull the exchange's latest status for ONE bid, immediately. Returns the
+ * refreshed values so the row can update without reloading the whole
+ * page. A refresh with no exchange record yet is not an error — the
+ * server returns the current stored values with `refreshedAt` stamped.
+ */
+export const refreshBid = (id: string) =>
+  authed<{
+    applicationId: string;
+    status: string;
+    reason: string | null;
+    amountBlocked: number | null;
+    upiStatusText: string | null;
+    refreshedAt: string;
+  }>(`${API}/admin/bidding/${id}/refresh`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+
 /* ── Bidding Summary — the operations matrix (IPO × member × exchange). */
 
 export interface BidSummaryCounts {

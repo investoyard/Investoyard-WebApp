@@ -8,6 +8,7 @@ import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { BiddingReportService, BiddingReportQuery } from './bidding-report.service';
 import { BiddingSummaryService, BiddingSummaryQuery } from './bidding-summary.service';
+import { BiddingRefreshService } from './bidding-refresh.service';
 import { RailModule } from '../rail/rail.module';
 import { BidOperationsService } from '../rail/bid-operations.service';
 
@@ -26,12 +27,15 @@ class EditBidDto {
  * that could also decide who may cancel would be a second place for those rules
  * to live. They would drift.
  *
- * Rebid and Refresh UPI Status are not here yet. Both need a bid that has
- * actually reached an exchange, and none has — see the note in
- * BidOperationsService.postPending.
+ * Refresh UPI Status lives here as of Phase 3 — pulls one bid's status
+ * from the exchange and folds it through the same PrismaApplicationRepo
+ * update path the push callbacks use, so pull and push writes produce
+ * identical rows. Rebid is still pending; it needs a bid that has
+ * actually reached an exchange — see BidOperationsService.postPending
+ * for why nothing has, yet.
  *
- * Bidding Summary (the ledger matrix) LIVES here — its own read-only
- * service, same permission as the report.
+ * Bidding Summary (the ledger matrix) also lives here — its own
+ * read-only service, same permission as the report.
  *
  * Self-contained module rather than a controller bolted onto RailModule: this
  * needs the JWT and permissions guards, RailModule provides neither, and a
@@ -45,6 +49,7 @@ export class BiddingController {
     private readonly report: BiddingReportService,
     private readonly ops: BidOperationsService,
     private readonly summary: BiddingSummaryService,
+    private readonly refreshSvc: BiddingRefreshService,
   ) {}
 
   /** GET /admin/bidding/report */
@@ -89,6 +94,17 @@ export class BiddingController {
     return { ok: true, operationId: op.id, state: op.state };
   }
 
+  /** POST /admin/bidding/:id/refresh — pull the exchange's latest view of
+   *  ONE bid (UPI status, DP status, block amount, rejection text) and
+   *  write it through the same code path the callback handler uses. A
+   *  no-op returns the current stored values rather than an error — the
+   *  exchange legitimately may not have seen the bid yet. */
+  @Post(':id/refresh')
+  @RequirePermissions('bids.manage')
+  refresh(@Param('id') id: string) {
+    return this.refreshSvc.refresh(id);
+  }
+
   /** GET /admin/bidding/summary — the operations matrix, grouped by
    *  (IPO × member × exchange). Same permission as the report — reads
    *  the ledger and never writes. */
@@ -111,7 +127,7 @@ export class BiddingController {
   // there, and this module only calls them.
   imports: [JwtModule.register({}), RailModule],
   controllers: [BiddingController],
-  providers: [BiddingReportService, BiddingSummaryService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  providers: [BiddingReportService, BiddingSummaryService, BiddingRefreshService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
   exports: [BiddingReportService, BiddingSummaryService],
 })
 export class BiddingModule {}

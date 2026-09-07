@@ -16,10 +16,16 @@ import * as api from '@/lib/tenants-admin';
 /**
  * Bidding Report — every bid and where it stands.
  *
- * Edit and Cancel are live. Rebid and Refresh UPI Status are not, and that is
- * deliberate: both need a bid that has actually reached an exchange, and none
- * has. Rebid would cancel a never-posted bid and create another never-posted
- * one; Refresh would poll an exchange we have never successfully talked to.
+ * Edit, Cancel and Refresh (per row) are live. Rebid is not, and that is
+ * deliberate: it would cancel a never-posted bid and create another never-
+ * posted one until the first NSE UAT credential clears.
+ *
+ * Refresh is safe to expose today because the service is a no-op when the
+ * exchange hasn't seen the bid yet — it returns the current stored
+ * values with `refreshedAt` stamped, so an operator clicking on a
+ * pre-posted row sees "no change from the exchange" rather than an
+ * error. Once bids do start reaching an exchange, the button starts
+ * doing real work automatically.
  *
  * App No, Bid Number, UPI Status and Rejection are all values the EXCHANGE
  * hands back, so they stay blank until a bid completes against a working
@@ -149,6 +155,29 @@ export default function BiddingReportPage() {
     },
   });
 
+  /**
+   * Refresh one bid's exchange status. Optimistic in the sense that we
+   * simply reload the whole page after — the server has already written
+   * the freshest values through the same code path a callback uses, so a
+   * page reload lands them in every column at once. Cheap enough (200
+   * row cap) and simpler than mutating one row in place.
+   */
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const refreshOne = async (r: api.BidRow) => {
+    setRefreshingId(r.id);
+    try {
+      const res = await api.refreshBid(r.id);
+      // Message is truthful about no-op — a refresh with no new data is
+      // still a successful call; the operator sees "no change" rather
+      // than mistaking silence for failure.
+      const changed = (res.status !== r.status) || (res.upiStatusText ?? '') !== (r.upiStatus ?? '');
+      push(changed ? 'Refreshed from the exchange.' : 'No change from the exchange.');
+      if (changed) await load();
+    } catch (e: any) {
+      push(String(e?.message ?? e), 'err');
+    } finally { setRefreshingId(null); }
+  };
+
   const saveEdit = async () => {
     if (!edit) return;
     const qty = Number(edit.qty);
@@ -176,7 +205,7 @@ export default function BiddingReportPage() {
     <div>
       <PageHead
         title="Bidding Report"
-        sub="Every bid, what the exchange said, and where it stands. Read-only — actions arrive with the next release."
+        sub="Every bid, what the exchange said, and where it stands. Edit, cancel, and refresh a single bid from the row actions."
         actions={<button className="btn btn-secondary" disabled={busy} onClick={() => load()}>
           <Icon name="refresh" size={15} /> {busy ? 'Loading…' : 'Refresh'}
         </button>}
@@ -300,6 +329,18 @@ export default function BiddingReportPage() {
                               <button className="icon-btn" title={g.canEdit ? 'Edit quantity' : g.why}
                                 disabled={!g.canEdit} onClick={() => setEdit({ row: r, qty: String(r.qty), floor: g.floor })}>
                                 <Icon name="edit" size={14} />
+                              </button>
+                              {/* Refresh is only meaningful once the bid is at the
+                                  exchange — nothing to pull otherwise. Disabled
+                                  state carries the reason so the operator sees
+                                  why before they click. */}
+                              <button
+                                className="icon-btn"
+                                title={g.atExchange ? 'Refresh UPI status from the exchange' : 'This bid has not been sent to the exchange yet — nothing to refresh.'}
+                                disabled={!g.atExchange || refreshingId === r.id}
+                                onClick={() => refreshOne(r)}
+                              >
+                                <Icon name="refresh" size={14} />
                               </button>
                               <button className="icon-btn danger" title={g.canCancel ? 'Cancel this bid' : g.why}
                                 disabled={!g.canCancel} onClick={() => askCancel(r, g.atExchange)}>
