@@ -20,8 +20,27 @@ export interface ParsedPreanchor {
   symbol?: string;
   name?: string;
   faceValue?: number;
+  /**
+   * mainboard / sme, from the doc title.
+   * The first row of every NSE Security Parameters PDF names the segment
+   * in parentheses: "…- EQ (Mainboard) IPO" or "…- EQ (SME) IPO". This
+   * used to be a manual pick even though the PREANCHOR itself is explicit.
+   */
+  type?: 'mainboard' | 'sme';
+  /**
+   * NSE / BSE flags for the two exchange checkboxes.
+   * Mainboard IPOs list dual (SEBI requires it); SME issues on an NSE
+   * PREANCHOR are NSE Emerge and list on NSE only. Not extracted from the
+   * document text — derived from `type`. The operator can still uncheck one.
+   */
+  exNse?: boolean;
+  exBse?: boolean;
   /** ₹ Cr — converted from the doc's rupees/million/crore, whichever it uses */
   issueSizeCr?: number;
+  /** Fresh issue amount in ₹ Cr — pulled from the same Issue size row. */
+  freshIssueCr?: number;
+  /** OFS amount in ₹ Cr — only present if the issue has an OFS component. */
+  ofsCr?: number;
   priceBandMin?: number;
   priceBandMax?: number;
   lotSize?: number;
@@ -169,19 +188,52 @@ export async function parsePreanchor(pdf: Uint8Array | Buffer): Promise<ParsedPr
   out.name = labelValue(rows, 'Company Name');
 
   /*
+   * Segment (Mainboard / SME) — the doc title itself carries it in
+   * parentheses. "Security Parameters – X Limited – EQ (Mainboard) IPO"
+   * for Mainboard, "…(SME) IPO" for SME issues. Reading the title is
+   * simpler than deriving from issue size and can never disagree with
+   * the exchange's own labeling.
+   */
+  {
+    const titleRow = rows.find((r) => /Security Parameters\b/i.test(r.text));
+    const m = titleRow?.text.match(/\(\s*(mainboard|sme)\s*\)/i);
+    if (m) {
+      out.type = m[1].toLowerCase() as 'mainboard' | 'sme';
+      // Dual-listing is mandatory for Mainboard; SME on an NSE PREANCHOR
+      // is NSE Emerge (BSE SME wouldn't produce an NSE PREANCHOR).
+      out.exNse = true;
+      out.exBse = out.type === 'mainboard';
+    } else {
+      warnings.push('Could not read the segment (Mainboard / SME) — check the document title.');
+    }
+  }
+
+  /*
    * Issue size can wrap: "Initial Public offer comprising Fresh issue of
    * aggregating up to Rs." on one row, "6800 million" on the next. Read the
    * label row then look up to two rows down for the number-with-unit.
+   *
+   * We also parse the Fresh Issue and Offer for Sale amounts out of the
+   * same block. The wording varies:
+   *   "Fresh issue of aggregating up to Rs. 6800 million"                 (PSL — pure Fresh)
+   *   "Fresh issue … Rs. X million and Offer for Sale of … Rs. Y million" (mixed)
+   *   "Offer for Sale of aggregating up to Rs. X million"                 (pure OFS, rare)
+   * Both amounts are optional; if either is present it becomes an override
+   * on the form's Fresh/OFS block, so the operator does not type them
+   * again. Ignoring an OFS row would default it to zero and misrepresent
+   * the issue.
    */
   {
-    // findRow's return type is the plain Row — treat `rows` as such for the
-    // index lookup; every subtype (Row & { pageIndex }) is a Row
     const row = findRow(rows as unknown as Row[], 'Issue size');
     if (row) {
       const i = (rows as unknown as Row[]).indexOf(row);
-      const combined = [rows[i]?.text, rows[i + 1]?.text, rows[i + 2]?.text].filter(Boolean).join(' ');
+      const combined = [rows[i]?.text, rows[i + 1]?.text, rows[i + 2]?.text, rows[i + 3]?.text]
+        .filter(Boolean).join(' ');
       out.issueSizeCr = amountToCr(combined);
       if (out.issueSizeCr == null) warnings.push('Could not read the issue size — check the "Issue size" row.');
+      const parts = parseFreshOfs(combined);
+      out.freshIssueCr = parts.freshCr;
+      out.ofsCr = parts.ofsCr;
     }
   }
 
@@ -240,6 +292,32 @@ export async function parsePreanchor(pdf: Uint8Array | Buffer): Promise<ParsedPr
 
   out.reservation = parseReservationShares(rows);
 
+  return out;
+}
+
+/**
+ * Pull the Fresh Issue and Offer for Sale amounts out of the Issue size
+ * block. The block reads variations like:
+ *   "Fresh issue of aggregating up to Rs. 6800 million"                 (PSL — pure Fresh)
+ *   "Fresh issue … Rs. X million and Offer for Sale of … Rs. Y million" (mixed)
+ * We use amount-then-unit windows to keep the two figures from swapping
+ * with the total issue size that also appears in the same paragraph.
+ */
+function parseFreshOfs(text: string): { freshCr?: number; ofsCr?: number } {
+  const out: { freshCr?: number; ofsCr?: number } = {};
+  // Fresh issue: the amount right after "Fresh issue" up to the next
+  // sentence-ish break or the word "Offer".
+  const fresh = text.match(/Fresh\s*(?:Issue|issue)[^.]*?Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(million|mn|crore|cr)?/i);
+  if (fresh) {
+    const amount = `${fresh[1]} ${fresh[2] ?? 'million'}`;
+    out.freshCr = amountToCr(amount);
+  }
+  // OFS: same shape after "Offer for Sale".
+  const ofs = text.match(/Offer\s*for\s*Sale[^.]*?Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(million|mn|crore|cr)?/i);
+  if (ofs) {
+    const amount = `${ofs[1]} ${ofs[2] ?? 'million'}`;
+    out.ofsCr = amountToCr(amount);
+  }
   return out;
 }
 

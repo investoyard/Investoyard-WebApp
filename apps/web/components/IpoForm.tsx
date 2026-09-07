@@ -511,6 +511,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         }
         continue;
       }
+      // Exchange checkboxes — 'both'|'nse'|'bse'. Booleans on the form,
+      // so a plain string assignment would corrupt the checkbox state.
+      if (k === '__exchanges') {
+        next.exNse = v !== 'bse';
+        next.exBse = v !== 'nse';
+        continue;
+      }
+      // Fresh / OFS — the form encodes each as a basis dropdown +
+      // value string. A ₹ Cr amount lands as { basis: 'amount', value }.
+      if (k === '__fresh') { next.freshBasis = 'amount'; next.freshValue = v; continue; }
+      if (k === '__ofs')   { next.ofsBasis = 'amount';   next.ofsValue = v;   continue; }
       (next as any)[k] = v;
     }
     if (shareResvChanged) (next as any).shareResv = nextShareResv;
@@ -1812,6 +1823,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             qibCloseDate: form.qibCloseDate, upiMandateCutoff: form.upiMandateCutoff,
             allotmentDate: form.allotmentDate, refundDate: form.refundDate,
             dematDate: form.dematDate, listingDate: form.listingDate,
+            type: form.type === 'mainboard' ? 'Mainboard' : form.type === 'sme' ? 'SME' : '',
+            exchanges: form.exNse && form.exBse ? 'NSE + BSE'
+              : form.exNse ? 'NSE only' : form.exBse ? 'BSE only' : '',
+            freshValue: form.freshBasis === 'amount' ? form.freshValue : '',
+            ofsValue: form.ofsBasis === 'amount' ? form.ofsValue : '',
           }}
           onClose={() => setParsed(null)}
           onApply={onApplyPreanchor}
@@ -1835,6 +1851,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             hasCompanyDescription: !!form.companyDescription?.trim(),
             hasCompanyStrength: !!form.companyStrength?.trim(),
             hasObjectsOfIssue: !!form.objectsOfIssue?.trim(),
+            freshValue: form.freshBasis === 'amount' ? form.freshValue : '',
+            ofsValue: form.ofsBasis === 'amount' ? form.ofsValue : '',
           }}
           onClose={() => setParsedNote(null)}
           onApply={onApplyPreanchor}

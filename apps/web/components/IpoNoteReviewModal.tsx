@@ -54,6 +54,8 @@ export function IpoNoteReviewModal({
     hasCompanyDescription: boolean;
     hasCompanyStrength: boolean;
     hasObjectsOfIssue: boolean;
+    freshValue?: string;
+    ofsValue?: string;
   };
   onClose: () => void;
   onApply: Fill;
@@ -68,6 +70,28 @@ export function IpoNoteReviewModal({
     dateRow('refundDate',    'Refund date',    parsed.refundDate,    current.refundDate);
     dateRow('dematDate',     'Demat credit',   parsed.dematDate,     current.dematDate);
     dateRow('listingDate',   'Listing date',   parsed.listingDate,   current.listingDate);
+
+    // Fresh / OFS — same __fresh / __ofs keys the PREANCHOR applier handles.
+    // Present when the Note's OFFER DETAILS block prints an amount in ₹ Cr
+    // (PSL, Deepa); blank otherwise (ESDS, Priority use a different layout).
+    if (parsed.freshIssueCr != null) {
+      out.push({
+        key: 'fresh',
+        label: 'Fresh issue (₹ Cr)',
+        extracted: String(parsed.freshIssueCr),
+        current: current.freshValue ?? '',
+        apply: { __fresh: String(parsed.freshIssueCr) },
+      });
+    }
+    if (parsed.ofsCr != null) {
+      out.push({
+        key: 'ofs',
+        label: 'Offer for Sale (₹ Cr)',
+        extracted: String(parsed.ofsCr),
+        current: current.ofsValue ?? '',
+        apply: { __ofs: String(parsed.ofsCr) },
+      });
+    }
 
     if (parsed.marketCap) {
       const { min, max } = parsed.marketCap;

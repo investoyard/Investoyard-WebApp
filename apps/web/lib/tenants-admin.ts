@@ -919,7 +919,14 @@ export interface ParsedPreanchor {
   symbol?: string;
   name?: string;
   faceValue?: number;
+  /** Mainboard / SME — read from the doc title's "(Mainboard)" or "(SME)". */
+  type?: 'mainboard' | 'sme';
+  /** Dual-listing for Mainboard; NSE-only for NSE-Emerge SME. */
+  exNse?: boolean;
+  exBse?: boolean;
   issueSizeCr?: number;
+  freshIssueCr?: number;
+  ofsCr?: number;
   priceBandMin?: number;
   priceBandMax?: number;
   lotSize?: number;
@@ -1004,6 +1011,12 @@ export interface ParsedIpoNote {
   refundDate?: string;
   dematDate?: string;
   listingDate?: string;
+  /** Fresh Issue / OFS in ₹ Cr from the Note's OFFER DETAILS block.
+   *  A fallback for PREANCHOR — extracted for the 2 of 4 Notes whose
+   *  format prints an OFFER DETAILS header (PSL, Deepa); the other two
+   *  put the same data in an unlabelled page-1 wrap and are left blank. */
+  freshIssueCr?: number;
+  ofsCr?: number;
   /** post-issue implied market cap range (Cr) — display-only for now */
   marketCap?: { min?: number; max?: number };
   /** year labels in the order the table lists them ("2026", "2025", "2024") */

@@ -44,6 +44,12 @@ export function PreanchorReviewModal({
     leads: string[]; sponsorBank: string;
     openDate: string; closeDate: string; qibCloseDate: string; upiMandateCutoff: string;
     allotmentDate: string; refundDate: string; dematDate: string; listingDate: string;
+    /** the four structural fields C.4 added — all optional so any older
+     *  call site that hasn't updated its props doesn't fail typecheck */
+    type?: string;
+    exchanges?: string;
+    freshValue?: string;
+    ofsValue?: string;
   };
   onClose: () => void;
   /** called with the merged patch when the operator applies one or all rows */
@@ -62,8 +68,54 @@ export function PreanchorReviewModal({
     };
     push('symbol', 'Symbol', parsed.symbol, current.symbol);
     push('name', 'IPO name', parsed.name, current.name);
+    // Segment is Mainboard or SME; the form has these as lower-case values,
+    // and the PDF title says the segment plainly. Once it lands the
+    // regulationBasis default (75/15/10 vs 50/15/35) follows from it.
+    if (parsed.type) {
+      out.push({
+        key: 'type',
+        label: 'Segment',
+        extracted: parsed.type === 'mainboard' ? 'Mainboard' : 'SME',
+        current: current.type ?? '',
+        apply: { type: parsed.type },
+      });
+    }
+    // Exchanges — derived from segment. Mainboard = NSE + BSE, SME on
+    // NSE PREANCHOR = NSE only. A __exchanges patch keys both checkboxes.
+    if (parsed.exNse != null || parsed.exBse != null) {
+      const both = parsed.exNse && parsed.exBse;
+      const key = both ? 'both' : parsed.exNse ? 'nse' : 'bse';
+      const shown = both ? 'NSE + BSE' : parsed.exNse ? 'NSE only' : 'BSE only';
+      out.push({
+        key: 'exchanges',
+        label: 'Listing exchanges',
+        extracted: shown,
+        current: current.exchanges ?? '',
+        apply: { __exchanges: key },
+      });
+    }
     push('faceValue', 'Face value', parsed.faceValue?.toString(), current.faceValue);
     push('issueSizeCr', 'Issue size (₹ Cr)', parsed.issueSizeCr?.toString(), current.issueSizeCr);
+    // Fresh / OFS — the form encodes each as a basis + value pair, so a
+    // ₹ Cr amount goes in via a __fresh / __ofs special key.
+    if (parsed.freshIssueCr != null) {
+      out.push({
+        key: 'fresh',
+        label: 'Fresh issue (₹ Cr)',
+        extracted: String(parsed.freshIssueCr),
+        current: current.freshValue ?? '',
+        apply: { __fresh: String(parsed.freshIssueCr) },
+      });
+    }
+    if (parsed.ofsCr != null) {
+      out.push({
+        key: 'ofs',
+        label: 'Offer for Sale (₹ Cr)',
+        extracted: String(parsed.ofsCr),
+        current: current.ofsValue ?? '',
+        apply: { __ofs: String(parsed.ofsCr) },
+      });
+    }
     // price band is two fields, so a single accept sets both together
     if (parsed.priceBandMin != null && parsed.priceBandMax != null) {
       out.push({

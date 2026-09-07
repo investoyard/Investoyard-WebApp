@@ -49,6 +49,16 @@ export interface ParsedIpoNote {
   refundDate?: string;
   dematDate?: string;
   listingDate?: string;
+  /**
+   * Fresh Issue / OFS amounts in ₹ Cr, from the OFFER DETAILS block.
+   * PREANCHOR carries the same values in its Issue size block, but the
+   * two docs disagree occasionally (a revised Note comes in with a new
+   * fresh/OFS mix) and the Note is authoritative. We extract here so an
+   * operator whose first parse was PREANCHOR can pick these up on the
+   * second parse without hunting.
+   */
+  freshIssueCr?: number;
+  ofsCr?: number;
   /** Post-issue implied market cap RANGE — usually "₹4,406 Cr – ₹4,604 Cr" */
   marketCap?: { min?: number; max?: number };
   /** period labels in the order the financial table lists them ("Mar' 2026", "Mar' 2025", ...) */
@@ -192,6 +202,29 @@ function renderFinancialsHtml(periods: string[], rows: ParsedIpoNoteFinancial[])
 
 function escape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* ── fresh issue / offer for sale ────────────────────────────────────────
+   The OFFER DETAILS section on page 3 (or 4) prints these plainly:
+     "Fresh Issue (₹ 680 Cr)        Upto 1,18,26,086 ^ Equity Shares"       (PSL, pure Fresh)
+     "Fresh Issue (₹ 250 Cr)        Upto 1,41,24,293^ Equity Shares"        (Deepa)
+     "Offer for Sale                Up to 1,18,48,340^ Equity Shares"       (Deepa OFS — shares only)
+   Sometimes the OFS line carries a rupee figure, sometimes just shares.
+   The parser reads what it can and leaves what it can't. */
+function parseFreshOfsCr(rows: Row[]): { freshCr?: number; ofsCr?: number } {
+  const out: { freshCr?: number; ofsCr?: number } = {};
+  for (let i = 0; i < rows.length; i++) {
+    const t = rows[i].text;
+    if (/Fresh\s*Issue\s*\(\s*₹\s*([\d,]+(?:\.\d+)?)\s*Cr\s*\)/i.test(t)) {
+      const m = t.match(/Fresh\s*Issue\s*\(\s*₹\s*([\d,]+(?:\.\d+)?)\s*Cr\s*\)/i)!;
+      out.freshCr = Number(m[1].replace(/,/g, ''));
+    }
+    if (/Offer\s*for\s*Sale\s*\(\s*₹\s*([\d,]+(?:\.\d+)?)\s*Cr\s*\)/i.test(t)) {
+      const m = t.match(/Offer\s*for\s*Sale\s*\(\s*₹\s*([\d,]+(?:\.\d+)?)\s*Cr\s*\)/i)!;
+      out.ofsCr = Number(m[1].replace(/,/g, ''));
+    }
+  }
+  return out;
 }
 
 /* ── market cap ──────────────────────────────────────────────────────── */
@@ -412,6 +445,10 @@ export async function parseIpoNote(pdf: Uint8Array | Buffer): Promise<ParsedIpoN
 
   out.marketCap = parseMarketCap(rows);
   if (!out.marketCap) warnings.push('Could not read the market cap — the "Post Issue Implied Market Cap" row may not be present.');
+
+  const fo = parseFreshOfsCr(rows);
+  out.freshIssueCr = fo.freshCr;
+  out.ofsCr = fo.ofsCr;
 
   const fin = parseFinancials(rows);
   if (fin && fin.rows.length) {
