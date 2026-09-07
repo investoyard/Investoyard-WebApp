@@ -127,7 +127,10 @@ export class PartnerService {
       depository: (a.depository ?? 'CDSL') as 'NSDL' | 'CDSL',
       dpId: a.depository === 'NSDL' ? (a.dpId ?? '').trim().toUpperCase() : '',
       clientId: (a.clientId ?? '').trim(),
-      ifsc: a.ifsc?.toUpperCase() || null,
+      // IFSC removed from the partner API contract — see partner.dto.ts.
+      // The InvestorProfile schema keeps its `ifsc` column (operator-side
+      // rows still populate it), so partner-created rows carry null.
+      ifsc: null,
       bankName: a.bankName || null,
       branchName: a.branchName || null,
       address: a.address || null,
@@ -144,7 +147,9 @@ export class PartnerService {
         data: {
           ...contact,
           ...(a.bankAccount ? { bankTokenRef: await this.vault.tokenize(a.bankAccount) } : {}),
-          ...(a.upiId ? { upiTokenRef: await this.vault.tokenize(a.upiId) } : {}),
+          // upiId dropped from the partner API contract — see partner.dto.ts.
+          // The InvestorProfile.upiTokenRef column stays (operator-side rows
+          // still use it); partner-created rows just leave it null.
         },
       });
     }
@@ -157,7 +162,7 @@ export class PartnerService {
         panHash,
         ...contact,
         bankTokenRef: a.bankAccount ? await this.vault.tokenize(a.bankAccount) : null,
-        upiTokenRef: a.upiId ? await this.vault.tokenize(a.upiId) : null,
+        upiTokenRef: null,
       },
     });
   }

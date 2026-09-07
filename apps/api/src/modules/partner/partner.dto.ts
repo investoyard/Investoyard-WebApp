@@ -13,8 +13,17 @@ export class PartnerApplicantDto {
   @IsOptional() @IsString() dpId?: string;      // NSDL: IN + 6 digits · CDSL: blank
   @IsOptional() @IsString() clientId?: string;   // NSDL: 8 digits · CDSL: 16-digit demat
   @IsOptional() @IsString() bankAccount?: string;
-  @IsOptional() @IsString() ifsc?: string;
-  @IsOptional() @IsString() upiId?: string;
+  /**
+   * IFSC and upiId used to be accepted here. Both were removed on
+   * operator's decision — the printed ASBA form carries Bank Account,
+   * Bank Name, and Branch Name; the ASBA block runs on the applicant's
+   * own bank statement (no interbank routing means no IFSC) and UPI is
+   * an electronic rail that doesn't appear on the physical form at all.
+   * Requests that still include an `ifsc` or `upiId` field are silently
+   * ignored (class-validator's whitelist strips unknown properties).
+   * Backward compatible for any partner still integrated against the
+   * old shape.
+   */
   @IsOptional() @IsString() bankName?: string;
   @IsOptional() @IsString() branchName?: string;
   @IsOptional() @IsString() address?: string;
