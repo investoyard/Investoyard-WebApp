@@ -39,6 +39,11 @@ const NAV: NavNode[] = [
     { href: '/admin/tenants', label: 'Partners & Branches' },
     { href: '/admin/tenants/applications', label: 'Applications' },
   ] },
+  // My Organisation — every operator sees their own tenant profile here.
+  // A partner admin uses it to edit their contact person / documents /
+  // empanelment fields without needing tenants.manage. A platform admin
+  // also has it (opens the platform tenant, mostly empty).
+  { key: 'my-org', label: 'My Organisation', icon: 'user', href: '/admin/my-organisation' },
   { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
   // Banners and News are OPERATOR-GLOBAL site content — every reader of
   // the front site sees the same items. Gate on their own perms rather

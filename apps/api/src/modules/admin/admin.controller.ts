@@ -292,9 +292,16 @@ export class AdminController {
     return this.admin.listTenants(req.user.sub);
   }
 
-  /** A single partner/branch with its full empanelment profile. */
+  /**
+   * A single tenant with its full empanelment profile. Reachable by
+   * platform admins (via Tenants → click a partner) and by partner-tier
+   * admins (via My Organisation) — the service enforces "superadmin OR
+   * membership on this tenant" and strips operator-only fields from the
+   * response for non-superadmin callers. Dropping the `tenants.manage`
+   * gate here is deliberate: without it, a partner had no way to see
+   * their own tenant profile at all.
+   */
   @Get('tenants/:slug')
-  @RequirePermissions('tenants.manage')
   tenantDetail(@Req() req: any, @Param('slug') slug: string) {
     return this.admin.tenantDetail(req.user.sub, slug);
   }
@@ -309,8 +316,14 @@ export class AdminController {
     return new StreamableFile(buffer);
   }
 
+  /**
+   * Same scope pattern as tenantDetail — reachable by any authenticated
+   * operator; the service enforces "superadmin OR membership on this
+   * tenant" AND silently drops fields a non-superadmin isn't allowed to
+   * change (name/status/brand/domain/commission/partner-API controls),
+   * so the My Organisation client doesn't need to know the field list.
+   */
   @Patch('tenants/:slug')
-  @RequirePermissions('tenants.manage')
   updateTenant(@Req() req: any, @Param('slug') slug: string, @Body() dto: UpdateTenantDto) {
     return this.admin.updateTenant(req.user.sub, slug, dto as any);
   }
@@ -450,14 +463,14 @@ export class AdminController {
 
   @Post('roles')
   @RequirePermissions('roles.manage')
-  createRole(@Body() dto: CreateRoleDto) {
-    return this.admin.createRole(dto);
+  createRole(@Req() req: any, @Body() dto: CreateRoleDto) {
+    return this.admin.createRole(req.user.sub, dto);
   }
 
   @Patch('roles/:id')
   @RequirePermissions('roles.manage')
-  updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
-    return this.admin.updateRole(id, dto);
+  updateRole(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateRoleDto) {
+    return this.admin.updateRole(req.user.sub, id, dto);
   }
 
   @Delete('roles/:id')

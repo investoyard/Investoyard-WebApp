@@ -279,15 +279,38 @@ export class AdminService {
 
   private validateRole(scope: string, permissions: string[]) {
     if (!ROLE_SCOPES.includes(scope as any)) throw new BadRequestException(`scope must be one of ${ROLE_SCOPES.join(', ')}`);
-    const bad = permissions.filter((p) => !VALID_PERMISSIONS.has(p));
+    const bad = permissions.filter((p) => !VALID_PERMISSIONS.has(p) && p !== '*');
     if (bad.length) throw new BadRequestException(`Unknown permission(s): ${bad.join(', ')}`);
   }
 
+  /**
+   * Only a superadmin may create or grant a role that carries SuperAdmin
+   * capability. A role is SuperAdmin-equivalent when it holds the wildcard
+   * '*' OR scope 'all' — both let the holder read/write across every
+   * tenant. Without this guard, any operator with roles.manage could mint
+   * a role granting * / all and then assign it to themselves, effectively
+   * escalating to superadmin. Same block applies on updateRole and on
+   * createOperator / updateOperator assigning such a role.
+   */
+  private isSuperAdminRole(scope: string, permissions: string[]): boolean {
+    return permissions.includes('*') || scope === 'all';
+  }
+
+  private async assertCanGrantSuperadmin(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) {
+      throw new ForbiddenException('Only a superadmin can create or grant a role with full ("*") permissions or scope "all".');
+    }
+  }
+
   /** Create a custom (platform-level) role. */
-  async createRole(dto: { name: string; scope: string; permissions: string[] }) {
+  async createRole(callerId: string, dto: { name: string; scope: string; permissions: string[] }) {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Role name is required');
     this.validateRole(dto.scope, dto.permissions);
+    if (this.isSuperAdminRole(dto.scope, dto.permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
     try {
       const role = await this.prisma.role.create({
         data: { tenantId: 't-platform', name, scope: dto.scope as any, permissions: dto.permissions, isSystem: false },
@@ -299,14 +322,20 @@ export class AdminService {
     }
   }
 
-  /** Edit a role's scope/permissions. Only the all-powerful SuperAdmin (`*`) role is locked. */
-  async updateRole(id: string, dto: { scope?: string; permissions?: string[] }) {
+  /** Edit a role's scope/permissions. The seeded SuperAdmin (`*`) role is
+   *  fully locked (nobody can edit it); other roles can be edited, but any
+   *  edit that RESULTS in SuperAdmin capability requires the caller to be
+   *  a superadmin. */
+  async updateRole(callerId: string, id: string, dto: { scope?: string; permissions?: string[] }) {
     const role = await this.prisma.role.findUnique({ where: { id } });
     if (!role) throw new NotFoundException('Role not found');
     if (role.permissions.includes('*')) throw new BadRequestException('The SuperAdmin role cannot be edited.');
     const scope = dto.scope ?? role.scope;
     const permissions = dto.permissions ?? role.permissions;
     this.validateRole(scope, permissions);
+    if (this.isSuperAdminRole(scope, permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
     const updated = await this.prisma.role.update({ where: { id }, data: { scope: scope as any, permissions } });
     return { id: updated.id, name: updated.name, scope: updated.scope, permissions: updated.permissions, isSystem: updated.isSystem };
   }
@@ -516,20 +545,29 @@ export class AdminService {
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const flags = (t.flags as any) ?? {};
-      return {
+      // Trim operator-only fields (commissionRate, customDomain, Partner
+      // API operator controls) for non-superadmin callers — a partner
+      // reading their own tenant via the My Organisation page must not
+      // see the operator's private governance data.
+      const base = {
         id: t.id, slug: t.slug, name: t.name, type: t.type, status: t.status,
         parent: t.parent ?? undefined, whitelabel: !!flags.whitelabel,
-        code: t.code ?? undefined, commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+        code: t.code ?? undefined,
         brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
-        logoUrl: t.logoUrl ?? undefined, customDomain: t.customDomain ?? undefined,
+        logoUrl: t.logoUrl ?? undefined,
         profile: (t.profile as any) ?? {},
-        // Partner API operator controls — cast because generated Prisma
-        // types lag until the pool cycle re-runs `prisma generate`
-        // (CLAUDE.md handshake). Columns are live via `prisma db push`.
-        partnerMaxApplicantsPerCall: (t as any).partnerMaxApplicantsPerCall ?? 25,
-        partnerApiScopes: ((t as any).partnerApiScopes ?? []) as string[],
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
+      };
+      if (!scope.superadmin) return base;
+      return {
+        ...base,
+        commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+        customDomain: t.customDomain ?? undefined,
+        // Partner API operator controls — cast because generated Prisma
+        // types lag until the pool cycle re-runs `prisma generate`.
+        partnerMaxApplicantsPerCall: (t as any).partnerMaxApplicantsPerCall ?? 25,
+        partnerApiScopes: ((t as any).partnerApiScopes ?? []) as string[],
       };
     });
   }
@@ -574,21 +612,54 @@ export class AdminService {
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const data: any = {};
-      for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
-      if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
-      if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
-      if (dto.profile) data.profile = { ...((t.profile as any) ?? {}), ...dto.profile };
-      // Partner API operator controls — the DTO caps values at 1..500 and
-      // constrains scopes to strings; the schema also enforces the 500
-      // ceiling as a defence in depth (see partner.dto.ts).
-      if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
-      if (dto.partnerApiScopes !== undefined) data.partnerApiScopes = dto.partnerApiScopes;
+      // The full field set is reserved for superadmin. A partner-tier
+      // caller editing their own tenant (via My Organisation) may only
+      // patch profile — everything else (name, status, brand, custom
+      // domain, commission, partner API operator controls) stays
+      // superadmin-only. Silently drop rather than 403 so the
+      // My Organisation client doesn't need to know the field list.
+      if (scope.superadmin) {
+        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+        if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
+        if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
+        if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
+        if (dto.partnerApiScopes !== undefined) data.partnerApiScopes = dto.partnerApiScopes;
+      }
+      if (dto.profile) {
+        const existingProfile = (t.profile as any) ?? {};
+        const nextProfile = { ...existingProfile, ...dto.profile };
+        // Legal identity fields are immutable after approval for
+        // non-superadmin callers — changing PAN / GSTIN / entityType
+        // means it's a different legal entity, not an edit. Preserve
+        // the originals from the existing profile, ignoring the patch.
+        if (!scope.superadmin) {
+          for (const k of ['pan', 'gstin', 'entityType'] as const) {
+            if (existingProfile[k] !== undefined) nextProfile[k] = existingProfile[k];
+          }
+        }
+        data.profile = nextProfile;
+      }
+      if (Object.keys(data).length === 0) return { ok: true, noop: true };
       try {
         await this.prisma.tenant.update({ where: { slug }, data });
       } catch (e: any) {
         if (e?.code === 'P2002') throw new ConflictException('That custom domain is already taken.');
         throw e;
       }
+      // Audit the write so a partner editing their own profile leaves a
+      // trace — an operator reviewing a partner's history can see who
+      // changed what and when.
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'tenant.update',
+          actorId: callerId,
+          targetType: 'tenant',
+          targetId: t.id,
+          targetLabel: `${t.name} (${t.slug})`,
+          tenantSlug: t.slug,
+          detail: { fields: Object.keys(data) } as any,
+        },
+      }).catch(() => { /* best-effort */ });
       return { ok: true };
     });
   }
@@ -911,6 +982,16 @@ export class AdminService {
     );
     if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
 
+    // Only a superadmin may assign a role that IS SuperAdmin (grants '*'
+    // or scope='all'). Without this, any operator with users.manage could
+    // pick "SuperAdmin" from the role dropdown and mint a peer with
+    // platform-wide power. Server-side is the real gate; the UI hides
+    // SuperAdmin from the dropdown for non-superadmin callers as a
+    // courtesy.
+    if (this.isSuperAdminRole(role.scope, role.permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
+
     // A partner / branch / white-label tenant may hold ONLY ONE Admin.
     // Rationale: an Admin holds users.manage AND clients.manage, so a
     // second Admin means two people can rotate credentials and reset
@@ -956,6 +1037,14 @@ export class AdminService {
       if (!scope.superadmin && !scope.tenantIds.has(user.tenantId)) throw new ForbiddenException('Outside your scope.');
       if (user.username === 'superadmin' && dto.status === 'inactive') throw new BadRequestException('The superadmin cannot be deactivated.');
 
+      // Self-role-edit lockout: a user editing their own row and changing
+      // their own role can drop themselves off admin surfaces mid-session
+      // (and if they were the sole SuperAdmin, permanently). Refuse it —
+      // the hint tells them to ask another operator to make the change.
+      if (dto.roleName && id === callerId) {
+        throw new BadRequestException('You cannot change your own role. Ask another operator to do it.');
+      }
+
       const data: any = {};
       if (dto.name !== undefined) data.name = dto.name.trim();
       if (dto.email !== undefined) data.email = dto.email.trim() || null;
@@ -970,6 +1059,11 @@ export class AdminService {
       if (dto.roleName) {
         const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
         if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found.`);
+
+        // Only a superadmin may assign a SuperAdmin-equivalent role.
+        if (this.isSuperAdminRole(role.scope, role.permissions)) {
+          await this.assertCanGrantSuperadmin(callerId);
+        }
 
         // Same one-Admin-per-partner rule the create path enforces —
         // catches "promote this Staff to Admin" when an Admin already

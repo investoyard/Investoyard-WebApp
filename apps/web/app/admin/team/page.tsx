@@ -25,6 +25,16 @@ function userType(o: api.Operator): string {
 
 const blankNew = { username: '', name: '', email: '', mobile: '', password: '', tenantSlug: '', roleName: 'Admin' };
 
+/** A role name is SuperAdmin-equivalent when its Role row carries '*' OR
+ *  scope='all'. The catalog Role list carries that info; if the role
+ *  isn't in the fetched list (e.g. partner admin without roles.view),
+ *  fall back to the classic name "SuperAdmin". */
+function isSuperAdminRoleName(name: string, roles: import('@/lib/tenants-admin').Role[]): boolean {
+  const r = roles.find((x) => x.name === name);
+  if (r) return r.permissions.includes('*') || r.scope === 'all';
+  return name === 'SuperAdmin';
+}
+
 /**
  * Cut the full tenant tree down to what this operator can add operators
  * for. Superadmin sees everything; anyone else sees their home tenant
@@ -140,6 +150,37 @@ export default function AdminUsers() {
     if (pw) run(() => api.updateOperator(o.id, { password: pw }));
   };
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+
+  // Edit modal — updateOperator supports name, email, mobile, role. Server
+  // enforces: 1-Admin rule for partner tenants; SuperAdmin assignment
+  // limited to superadmin callers; self-role-edit refused.
+  const [editOp, setEditOp] = useState<{ o: api.Operator; name: string; email: string; mobile: string; roleName: string } | null>(null);
+  const openEdit = (o: api.Operator) => setEditOp({
+    o,
+    name: o.name ?? '',
+    email: o.email ?? '',
+    mobile: o.mobile ?? '',
+    roleName: o.roles[0]?.role ?? 'Admin',
+  });
+  const saveEdit = async () => {
+    if (!editOp) return;
+    setBusy(true); setErr(null);
+    try {
+      // Only send role if it actually changed — server refuses a self-role-
+      // edit and 1-Admin rule kicks in if we sent it needlessly.
+      const patch: any = {
+        name: editOp.name.trim(),
+        email: editOp.email.trim() || null,
+        mobile: editOp.mobile.trim() || null,
+      };
+      const currentRole = editOp.o.roles[0]?.role ?? '';
+      if (editOp.roleName && editOp.roleName !== currentRole) patch.roleName = editOp.roleName;
+      await api.updateOperator(editOp.o.id, patch);
+      setEditOp(null);
+      await load();
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
   const toggleActive = (o: api.Operator) => {
     if (o.status !== 'active') return run(() => api.updateOperator(o.id, { status: 'active' }));
     setConfirm({
@@ -204,6 +245,9 @@ export default function AdminUsers() {
                         <td>
                           <span className="row-actions">
                             <RowMenu>
+                              <button disabled={busy} onClick={() => openEdit(o)}>
+                                <Icon name="edit" size={15} /> Edit user
+                              </button>
                               {o.username !== 'superadmin' && (
                                 <button className={o.status === 'active' ? 'danger' : ''} disabled={busy} onClick={() => toggleActive(o)}><Icon name="power" size={15} /> {o.status === 'active' ? 'Deactivate' : 'Activate'}</button>
                               )}
@@ -253,7 +297,11 @@ export default function AdminUsers() {
                 queueMicrotask(() => setForm((f) => f.roleName === 'Admin' ? { ...f, roleName: 'Staff' } : f));
               }
               const options = Array.from(new Set(['Admin', 'Staff', ...roles.map((r) => r.name)]))
-                .filter((n) => !(adminAlreadyExists && n === 'Admin'));
+                .filter((n) => !(adminAlreadyExists && n === 'Admin'))
+                // Only a superadmin may assign a SuperAdmin-equivalent role
+                // (server enforces same). Hide the option from the dropdown
+                // so nobody picks a value that would 403 on submit.
+                .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles));
               return (
                 <Field label="Role" hint={adminAlreadyExists ? `${targetTenant?.name} already has an Admin — only Staff can be added` : undefined}>
                   <select className="input" value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
@@ -270,6 +318,62 @@ export default function AdminUsers() {
           </FormActions>
         </Modal>
       )}
+      {editOp && (() => {
+        // Same 1-Admin rule as the Add dialog: if the target tenant
+        // already has an Admin and it's not THIS user, hide Admin from
+        // the dropdown. Also hide SuperAdmin unless caller is superadmin.
+        const targetSlug = editOp.o.tenant.slug;
+        const targetType = editOp.o.tenant.type;
+        const isPlatform = targetType === 'platform';
+        const otherAdminExists = !isPlatform && ops.some(
+          (o) => o.id !== editOp.o.id &&
+                 o.tenant.slug === targetSlug &&
+                 o.status === 'active' &&
+                 o.roles.some((r) => r.role === 'Admin'),
+        );
+        const selfEdit = editOp.o.id === me?.id;
+        const options = Array.from(new Set(['Admin', 'Staff', ...roles.map((r) => r.name)]))
+          .filter((n) => !(otherAdminExists && n === 'Admin'))
+          .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles));
+        return (
+          <Modal title="Edit user" sub={`${editOp.o.username}${editOp.o.name ? ` — ${editOp.o.name}` : ''}`} onClose={() => setEditOp(null)}>
+            {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
+            <div className="form-grid">
+              <Field label="Username" hint="Username is fixed — change requires a new operator">
+                <input className="input mono" value={editOp.o.username} disabled />
+              </Field>
+              <Field label="Full name" required span={2}>
+                <input className="input" value={editOp.name} onChange={(e) => setEditOp({ ...editOp, name: e.target.value })} />
+              </Field>
+              <Field label="Email">
+                <input className="input" type="email" value={editOp.email} onChange={(e) => setEditOp({ ...editOp, email: e.target.value })} placeholder="jane@partner.com" />
+              </Field>
+              <Field label="Mobile">
+                <input className="input mono" value={editOp.mobile} onChange={(e) => setEditOp({ ...editOp, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="9876543210" />
+              </Field>
+              <Field label="Belongs to">
+                <input className="input" value={`${editOp.o.tenant.name} (${TYPE_LABEL[editOp.o.tenant.type] ?? editOp.o.tenant.type})`} disabled />
+              </Field>
+              <Field label="Role" hint={
+                selfEdit ? 'You cannot change your own role — ask another operator.'
+                  : otherAdminExists ? `${editOp.o.tenant.name} already has another Admin — this user can be Staff.`
+                  : undefined
+              }>
+                <select className="input" value={editOp.roleName} onChange={(e) => setEditOp({ ...editOp, roleName: e.target.value })} disabled={selfEdit}>
+                  {options.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </Field>
+            </div>
+            <FormActions>
+              <button className="btn" disabled={busy} onClick={() => void saveEdit()}>
+                {busy ? 'Saving…' : 'Save changes'}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setEditOp(null)}>Cancel</button>
+            </FormActions>
+          </Modal>
+        );
+      })()}
+
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
   );
