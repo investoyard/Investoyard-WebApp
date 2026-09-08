@@ -40,25 +40,37 @@ const NAV: NavNode[] = [
     { href: '/admin/tenants/applications', label: 'Applications' },
   ] },
   { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
-  { key: 'banners', label: 'Banners', icon: 'sparkle', href: '/admin/banners', perm: 'ipos.view' },
-  { key: 'news', label: 'News & Updates', icon: 'doc', href: '/admin/news', perm: 'ipos.view' },
-  { key: 'allotment', label: 'Allotment', icon: 'receipt', children: [
-    { href: '/admin/allotment/import', label: 'Import Allotment' },
-    { href: '/admin/allotment/list', label: 'Allotment List' },
+  // Banners and News are OPERATOR-GLOBAL site content — every reader of
+  // the front site sees the same items. Gate on their own perms rather
+  // than piggy-backing on ipos.view, which used to let any operator with
+  // catalog read access modify the homepage.
+  { key: 'banners', label: 'Banners', icon: 'sparkle', href: '/admin/banners', perm: 'banners.manage' },
+  { key: 'news', label: 'News & Updates', icon: 'doc', href: '/admin/news', perm: 'news.manage' },
+  // Allotment carries raw PANs (per CLAUDE.md's operator decision) — a
+  // partner-tier user should not see the imports or lists at all.
+  { key: 'allotment', label: 'Allotment', icon: 'receipt', perm: 'allotment.view', children: [
+    { href: '/admin/allotment/import', label: 'Import Allotment', perm: 'allotment.manage' },
+    { href: '/admin/allotment/list', label: 'Allotment List', perm: 'allotment.view' },
   ] },
+  // Partner API: Docs is a reference every operator (including partners
+  // themselves) may want; Calls/Prints reports are gated so an admin
+  // sees them and a plain viewer doesn't.
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
-    { href: '/admin/partner-api/calls', label: 'API Calls' },
-    { href: '/admin/partner-api/prints', label: 'Print Report' },
+    { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.reports.view' },
+    { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.reports.view' },
   ] },
-  { key: 'masters', label: 'Masters', icon: 'layers', children: [
-    { href: '/admin/masters/registrars', label: 'Registrars' },
-    { href: '/admin/masters/lead-managers', label: 'Lead Managers' },
-    { href: '/admin/masters/relationships', label: 'Relationships' },
-    { href: '/admin/masters/upi-handles', label: 'UPI Handles' },
-    { href: '/admin/masters/anchors', label: 'Anchor Investors' },
-    { href: '/admin/masters/sectors', label: 'Sectors' },
-    { href: '/admin/masters/exchanges', label: 'Exchanges' },
+  // Masters are platform reference tables (registrars, lead managers,
+  // exchanges …) shared across all tenants. Gated so only platform-tier
+  // admins can edit them.
+  { key: 'masters', label: 'Masters', icon: 'layers', perm: 'masters.manage', children: [
+    { href: '/admin/masters/registrars', label: 'Registrars', perm: 'masters.manage' },
+    { href: '/admin/masters/lead-managers', label: 'Lead Managers', perm: 'masters.manage' },
+    { href: '/admin/masters/relationships', label: 'Relationships', perm: 'masters.manage' },
+    { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.manage' },
+    { href: '/admin/masters/anchors', label: 'Anchor Investors', perm: 'masters.manage' },
+    { href: '/admin/masters/sectors', label: 'Sectors', perm: 'masters.manage' },
+    { href: '/admin/masters/exchanges', label: 'Exchanges', perm: 'masters.manage' },
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [
     { href: '/admin/team', label: 'Users' },

@@ -22,6 +22,15 @@ export const PERMISSION_CATALOG = [
   { key: 'tenants.manage', label: 'Manage tenants & white-label settings', group: 'Tenants' },
   { key: 'settings.manage', label: 'Manage settings', group: 'Settings' },
   { key: 'providers.manage', label: 'Manage provider keys (SMS / push)', group: 'Settings' },
+  // Perms added later when the corresponding admin surface landed —
+  // previously the pages rendered unconditionally in the sidebar because
+  // there was nothing to gate on. Every menu entry now has a matching key.
+  { key: 'allotment.view', label: 'View allotment lists', group: 'Allotment' },
+  { key: 'allotment.manage', label: 'Import allotment files', group: 'Allotment' },
+  { key: 'banners.manage', label: 'Manage homepage banners', group: 'Content' },
+  { key: 'news.manage', label: 'Manage news posts', group: 'Content' },
+  { key: 'masters.manage', label: 'Manage master data (registrars, lead managers, sectors, exchanges, UPI handles, anchors, relationships)', group: 'Masters' },
+  { key: 'partner-api.reports.view', label: 'View Partner API call & print reports', group: 'Partner API' },
 ] as const;
 
 export const VALID_PERMISSIONS = new Set<string>(PERMISSION_CATALOG.map((p) => p.key));

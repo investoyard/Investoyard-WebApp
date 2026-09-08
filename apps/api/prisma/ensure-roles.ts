@@ -14,8 +14,21 @@ const ADMIN_PERMS = [
   'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'bids.manage',
   'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage',
   'roles.view', 'audit.view', 'tenants.manage', 'settings.manage',
+  // Added when the corresponding admin surfaces got their own perm.
+  'allotment.view', 'allotment.manage', 'banners.manage', 'news.manage',
+  'masters.manage', 'partner-api.reports.view',
 ];
-const STAFF_PERMS = ['dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'clients.view', 'reports.view'];
+const STAFF_PERMS = ['dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'clients.view', 'reports.view', 'allotment.view'];
+
+/** Partner-tenant Admin — sensible perms for a partner or white-label
+ *  admin. Kept in step with AdminService.PARTNER_ADMIN_PERMS. Notably no
+ *  `tenants.manage` — that opens the platform-wide partner tree. */
+const PARTNER_TENANT_ADMIN_PERMS = [
+  'dashboard.view', 'ipos.view', 'bids.view', 'bids.manage',
+  'clients.view', 'clients.manage', 'reports.view',
+  'users.view', 'users.manage', 'roles.view', 'audit.view', 'settings.manage',
+  'partner-api.reports.view',
+];
 
 async function main() {
   const platform = await prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } });
@@ -33,6 +46,7 @@ async function main() {
   }
 
   // Back-fill clients.* onto existing partner/branch Admin roles that predate it.
+  // Additive only — doesn't touch anything already granted.
   const tenantRoles = await prisma.role.findMany({
     where: { name: 'Admin', tenantId: { not: platform.id }, NOT: { permissions: { hasEvery: ['clients.view', 'clients.manage'] } } },
     select: { id: true, permissions: true },
@@ -42,6 +56,27 @@ async function main() {
     await prisma.role.update({ where: { id: r.id }, data: { permissions } });
   }
   if (tenantRoles.length) console.log(`back-filled clients.* on ${tenantRoles.length} partner/branch Admin role(s)`);
+
+  // Trim: strip tenants.manage from partner/branch Admin roles (it was
+  // seeded there earlier but showed the platform-wide partner tree — wrong
+  // for a partner-tier user). Add partner-api.reports.view so partner
+  // admins can see their own API usage.
+  const partnerAdmins = await prisma.role.findMany({
+    where: { name: 'Admin', tenantId: { not: platform.id } },
+    select: { id: true, permissions: true },
+  });
+  let trimmed = 0;
+  for (const r of partnerAdmins) {
+    const next = Array.from(new Set(r.permissions
+      .filter((p) => p !== 'tenants.manage')
+      .concat(['partner-api.reports.view'])));
+    // sort so an idempotent re-run doesn't churn rows unnecessarily
+    if (next.length !== r.permissions.length || next.some((p) => !r.permissions.includes(p))) {
+      await prisma.role.update({ where: { id: r.id }, data: { permissions: next } });
+      trimmed++;
+    }
+  }
+  if (trimmed) console.log(`trimmed tenants.manage / added partner-api.reports.view on ${trimmed} partner/branch Admin role(s)`);
 
   // Assign 6-digit sequential channel codes (from 601001) to any partner/branch missing one.
   const coded = await prisma.tenant.findMany({ where: { code: { not: null } }, orderBy: { code: 'desc' }, take: 1, select: { code: true } });
