@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useOperator } from '@/lib/operator-context';
+import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead, FormActions } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
@@ -74,12 +75,20 @@ export default function MyOrganisationPage() {
     : data.type === 'platform' ? 'Platform'
     : data.type;
 
+  // Every user in the tenant sees the organisation profile; only an Admin
+  // (`users.manage` — the same gate that identifies "an admin, not a staff
+  // viewer") gets the Edit button. The server also refuses non-admin saves
+  // via the `updateTenant` allowlist, so this is UI matching the wire.
+  const canEdit = operatorCan(me, 'users.manage');
+
   return (
     <div style={{ maxWidth: 1200 }}>
       <PageHead
         title="My Organisation"
-        sub={`${data.name} · ${typeLabel}${data.code ? ` · Code ${data.code}` : ''} · Update your contact person, documents, and other empanelment details here — the operator sees the same profile on your tenant record.`}
-        actions={!edit ? (
+        sub={`${data.name} · ${typeLabel}${data.code ? ` · Code ${data.code}` : ''}${canEdit
+          ? ' · Update your contact person, documents, and other empanelment details here — the operator sees the same profile on your tenant record.'
+          : ' · Read-only view. Ask an admin on your organisation to update contact person, documents, or empanelment details.'}`}
+        actions={canEdit && !edit ? (
           <button className="btn" onClick={() => setEdit(true)}>
             <Icon name="edit" size={15} /> Edit profile
           </button>
@@ -107,9 +116,9 @@ export default function MyOrganisationPage() {
         </div>
       </div></div>
 
-      {/* Empanelment profile — the editable surface. */}
+      {/* Empanelment profile — read-only for non-admins, editable for admins. */}
       <div>
-        {edit ? (
+        {edit && canEdit ? (
           <>
             <EmpanelmentFields profile={profile} onChange={setProfile} startAt={1} />
             <FormActions>
@@ -122,7 +131,9 @@ export default function MyOrganisationPage() {
             <ProfileSummary profile={profile} />
           ) : (
             <div className="card"><div className="card-pad muted">
-              No empanelment profile captured yet. Click <b>Edit profile</b> above to add your contact person, address, SEBI / ARN references and supporting documents.
+              {canEdit
+                ? <>No empanelment profile captured yet. Click <b>Edit profile</b> above to add your contact person, address, SEBI / ARN references and supporting documents.</>
+                : 'No empanelment profile captured yet. Ask an admin on your organisation to add contact person, address, and supporting documents.'}
             </div></div>
           )
         )}

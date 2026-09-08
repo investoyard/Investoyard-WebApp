@@ -43,11 +43,10 @@ const NAV: NavNode[] = [
     { href: '/admin/tenants', label: 'Partners & Branches', perm: 'tenants.manage' },
     { href: '/admin/tenants/applications', label: 'Applications', perm: 'tenants.applications.review' },
   ] },
-  // My Organisation — every operator sees their own tenant profile here.
-  // A partner admin uses it to edit their contact person / documents /
-  // empanelment fields without needing tenants.manage. A platform admin
-  // also has it (opens the platform tenant, mostly empty).
-  { key: 'my-org', label: 'My Organisation', icon: 'user', href: '/admin/my-organisation' },
+  // "My Organisation" used to live here as a sidebar entry. Moved into the
+  // top-right user dropdown (2026-09-08, operator decision) — it belongs
+  // beside Dark mode / Sign out as "the current signed-in user's context",
+  // not among the operational menus. See the drop-down block below.
   { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
   // Banners and News are OPERATOR-GLOBAL site content — every reader of
   // the front site sees the same items. Gate on their own perms rather
@@ -336,6 +335,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <div className="muted" style={{ fontSize: 12 }}>{me.homeTenant.name}</div>
                   </div>
                 </div>
+                {/* "My Organisation" opens the current tenant's empanelment
+                    profile. Hidden on the platform tenant — SuperAdmin manages
+                    every partner's profile per-partner under Tenants → view,
+                    and the platform tenant carries no empanelment record. */}
+                {!onPlatform && (
+                  <button className="pm-item" onClick={() => { router.push('/admin/my-organisation'); setMenuOpen(false); }}>
+                    <Icon name="user" size={16} /> My Organisation
+                  </button>
+                )}
                 <button className="pm-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
                   <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} /> {theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </button>
