@@ -70,13 +70,30 @@ async function main() {
     data: {
       tenantId: 't-platform', name: 'Admin', scope: 'all', isSystem: true,
       permissions: [
-        'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'bids.manage',
-        'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage',
-        'roles.view', 'audit.view', 'tenants.manage',
-        // Menus added later — keep the platform Admin able to reach every
-        // operator-facing surface. See permissions-catalog.ts.
-        'allotment.view', 'allotment.manage', 'banners.manage', 'news.manage',
-        'masters.manage', 'partner-api.reports.view',
+        'dashboard.view',
+        // IPO Management — one perm per child menu
+        'ipos.view', 'ipos.manage', 'ipos.import', 'ipos.operations',
+        'gmp.log.view', 'gmp.feed.view',
+        // Applications + Bidding & Exchange (children split from rails.manage)
+        'bids.view', 'bids.manage',
+        'rails.manage', 'bidding.report.view', 'bidding.summary.view',
+        // Clients + Partners / Branches (Partner Applications split off)
+        'clients.view', 'clients.manage',
+        'tenants.manage', 'tenants.applications.review',
+        // Reports + operator-global site content
+        'reports.view', 'banners.manage', 'news.manage',
+        // Allotment (view + import)
+        'allotment.view', 'allotment.manage',
+        // Partner API — one perm per remaining child
+        'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+        // Masters — one perm per child menu
+        'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.relationships.manage',
+        'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+        'masters.exchanges.manage', 'masters.ipo-category.manage',
+        // User Management + Audit
+        'users.view', 'users.manage', 'roles.view', 'audit.view',
+        // System Settings — one perm per child
+        'providers.manage', 'templates.manage', 'messages.view', 'chatbot.manage',
       ],
     },
   });

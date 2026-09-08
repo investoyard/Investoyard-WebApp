@@ -199,19 +199,19 @@ export class GmpAdminController {
   }
 
   @Get('contributors')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.log.view')
   contributors() {
     return this.svc.listContributors();
   }
 
   @Post('contributors')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.log.view')
   add(@Req() req: any, @Body() body: { mobile?: string; note?: string }) {
     return this.svc.addContributor(body?.mobile ?? '', body?.note, req.user.sub);
   }
 
   @Delete('contributors/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.log.view')
   remove(@Param('id') id: string) {
     return this.svc.removeContributor(id);
   }

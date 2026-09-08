@@ -24,7 +24,7 @@ class AlertsController {
   constructor(private readonly alerts: AlertsService) {}
 
   @Post('run')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.operations')
   run() { return this.alerts.run(); }
 }
 

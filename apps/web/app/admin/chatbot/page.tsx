@@ -30,7 +30,7 @@ export default function ChatbotPage() {
 
   useEffect(() => { api.fetchBotFlow().then(setFlow).catch((e) => setErr(String(e?.message ?? e))); }, []);
 
-  if (!operatorCan(me, 'providers.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'chatbot.manage')) return <NoAccess />;
   if (!flow) return <Loader />;
 
   const patch = (p: Partial<api.BotFlow>) => setFlow((f) => (f ? { ...f, ...p } : f));

@@ -222,14 +222,19 @@ export class PartnerService {
 
   /* ---------------- admin: reports (platform sees all; partner sees own) ---------------- */
 
-  /** null = platform operator (all partners); else the requester's own tenant id. */
+  /**
+   * null = platform-wide view (every partner's rows); else the requester's own
+   * tenant id. Superadmin sits on the `platform` tenant, which owns no partner
+   * rows itself — filtering by its id returned zero, hiding the reports. The
+   * legacy `direct` type collapses to the same case.
+   */
   private async reportScope(): Promise<string | null> {
     const tid = tenantContext.tenantId();
     if (!tid) return null;
     const t = await tenantContext.runUnscoped(() =>
       this.prisma.tenant.findUnique({ where: { id: tid }, select: { type: true } }),
     );
-    return t?.type === 'direct' ? null : tid;
+    return (t?.type === 'direct' || t?.type === 'platform') ? null : tid;
   }
 
   private async tenantNames(ids: string[]) {

@@ -32,7 +32,7 @@ export class MessageLogController {
   constructor(private readonly logs: MessageLogService) {}
 
   @Get()
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('messages.view')
   list(
     @Query('channel') channel?: string,
     @Query('status') status?: string,
@@ -45,7 +45,7 @@ export class MessageLogController {
   }
 
   @Get('summary')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('messages.view')
   summary() {
     return this.logs.summary();
   }
@@ -68,7 +68,7 @@ export class TemplateTestController {
    * is the fastest way to spot the mismatch.
    */
   @Post('test')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   async test(@Req() req: any, @Body() dto: TestSendDto) {
     const channel = dto.channel ?? 'sms';
     const key = (dto.key ?? '').trim();

@@ -64,7 +64,7 @@ export class IpoController {
   /** IPO Operations quick controls — safe partial merge (never clobbers `extra`). */
   @Patch(':id/ops')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.operations')
   updateOps(@Param('id') id: string, @Body() dto: UpdateIpoOpsDto) {
     return this.ipo.updateOps(id, dto);
   }

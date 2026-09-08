@@ -51,9 +51,22 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   // a HOOK, so it runs before the guards below — see React #310
   const { slice, node: pager } = usePagination(filtered, 25);
 
+  // Same per-kind perm mapping as MasterCrud — see there for the rationale.
+  const KIND_PERM: Record<string, string> = {
+    'lead-managers': 'masters.lead-managers.manage',
+    registrars: 'masters.registrars.manage',
+    'ipo-categories': 'masters.ipo-category.manage',
+    'issue-types': 'masters.ipo-category.manage',
+    relationships: 'masters.relationships.manage',
+    'upi-handles': 'masters.upi-handles.manage',
+    anchors: 'masters.anchors.manage',
+    sectors: 'masters.sectors.manage',
+  };
+  const mkPerm = KIND_PERM[kind] ?? 'ipos.view';
+
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  if (!operatorCan(me, 'ipos.view') && !operatorCan(me, mkPerm)) return <NoAccess />;
+  const canManage = operatorCan(me, mkPerm);
   const upd = (part: Partial<api.MasterRow>) => setModal((m) => m && { ...m, form: { ...m.form, ...part } });
 
   const save = async () => {

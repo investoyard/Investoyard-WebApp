@@ -62,7 +62,7 @@ export default function MessageLogPage() {
   useEffect(() => { load(); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'providers.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'messages.view')) return <NoAccess />;
 
   return (
     <div style={{ maxWidth: 1180 }}>

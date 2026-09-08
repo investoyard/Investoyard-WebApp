@@ -38,7 +38,7 @@ export default function GmpLogPage() {
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  const canManage = operatorCan(me, 'gmp.log.view');
 
   const add = async () => {
     setBusy(true); setErr(null);

@@ -74,13 +74,13 @@ export class BannersAdminController {
   }
 
   @Post()
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('banners.manage')
   create(@Body() dto: BannerDto) {
     return tenantContext.runUnscoped(() => this.prisma.banner.create({ data: clean(dto) as any }));
   }
 
   @Patch(':id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('banners.manage')
   async update(@Param('id') id: string, @Body() dto: BannerPatchDto) {
     const found = await tenantContext.runUnscoped(() => this.prisma.banner.findUnique({ where: { id } }));
     if (!found) throw new NotFoundException();
@@ -88,7 +88,7 @@ export class BannersAdminController {
   }
 
   @Delete(':id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('banners.manage')
   async remove(@Param('id') id: string) {
     await tenantContext.runUnscoped(() => this.prisma.banner.delete({ where: { id } }).catch(() => null));
     return { deleted: true };

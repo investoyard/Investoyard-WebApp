@@ -45,9 +45,24 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
   // an early return changes the hook count between renders — React #310.
   const { slice, node: pager } = usePagination(filtered, 25);
 
+  // Perm mapping mirrors KIND_PERM in apps/api/src/modules/masters/masters.module.ts.
+  // Every master menu has its OWN perm now — a partner with only registrars.manage
+  // sees "Add Registrar" but not "Add Lead Manager".
+  const KIND_PERM: Record<string, string> = {
+    'lead-managers': 'masters.lead-managers.manage',
+    registrars: 'masters.registrars.manage',
+    'ipo-categories': 'masters.ipo-category.manage',
+    'issue-types': 'masters.ipo-category.manage',
+    relationships: 'masters.relationships.manage',
+    'upi-handles': 'masters.upi-handles.manage',
+    anchors: 'masters.anchors.manage',
+    sectors: 'masters.sectors.manage',
+  };
+  const mkPerm = KIND_PERM[kind] ?? 'ipos.view';
+
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  if (!operatorCan(me, 'ipos.view') && !operatorCan(me, mkPerm)) return <NoAccess />;
+  const canManage = operatorCan(me, mkPerm);
 
   const upd = (part: Partial<api.MasterRow>) => setModal((m) => m && { ...m, form: { ...m.form, ...part } });
 

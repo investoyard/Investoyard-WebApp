@@ -61,7 +61,7 @@ export default function GmpFeedPage() {
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  const canManage = operatorCan(me, 'gmp.feed.view');
 
   const link = async (symbol: string, sourceId: string | null) => {
     setBusy(symbol);

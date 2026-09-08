@@ -30,7 +30,7 @@ export default function IpoOperationsPage() {
   useEffect(() => { load(); }, [load]);
 
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'ipos.operations')) return <NoAccess />;
 
   const save = async (i: api.AdminIpo, ops: api.IpoOps) => {
     setSavingId(i.id); setErr(null);

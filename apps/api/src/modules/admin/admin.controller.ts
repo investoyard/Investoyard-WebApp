@@ -216,59 +216,59 @@ export class AdminController {
   }
 
   @Get('templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   templatesCatalog() {
     return this.admin.templatesCatalog();
   }
 
   // ── message-type catalog CRUD (platform-wide — superadmin only, enforced in service) ──
   @Post('templates/types')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   createMessageType(@Req() req: any, @Body() dto: CreateMessageTypeDto) {
     return this.admin.createMessageType(req.user.sub, dto);
   }
 
   @Patch('templates/types/:id')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   updateMessageType(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateMessageTypeDto) {
     return this.admin.updateMessageType(req.user.sub, id, dto);
   }
 
   @Delete('templates/types/:id')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   deleteMessageType(@Req() req: any, @Param('id') id: string) {
     return this.admin.deleteMessageType(req.user.sub, id);
   }
 
   /** The platform's template content for a key/locale — "Copy from platform" in partner scopes. */
   @Get('templates/resolve')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   resolvePlatformTemplate(@Query('channel') channel: string, @Query('key') key: string, @Query('locale') locale?: string) {
     return this.admin.resolvePlatformTemplate(channel, key, locale);
   }
 
   /** Platform view: which white-label partner set its own SMS/email + overrode which templates. */
   @Get('integrations/overview')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('providers.manage')
   integrationsOverview() {
     return this.admin.integrationsOverview();
   }
 
   @Get('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   tenantTemplates(@Param('slug') slug: string) {
     return this.admin.templatesForTenant(slug);
   }
 
   @Put('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   saveTenantTemplate(@Param('slug') slug: string, @Body() dto: TemplateDto) {
     return this.admin.saveTemplateForTenant(slug, dto);
   }
 
   /** Remove a template row: tenant override → re-inherits platform; platform → drops that locale variant. */
   @Delete('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   deleteTenantTemplate(
     @Param('slug') slug: string,
     @Query('channel') channel: string,

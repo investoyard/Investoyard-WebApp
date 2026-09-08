@@ -12,7 +12,11 @@ import { OperatorContext } from '@/lib/operator-context';
 type Notif = { id: string; tone: 'warn' | 'brand' | 'ok'; icon: Parameters<typeof Icon>[0]['name']; text: string; sub: string };
 
 type IconName = Parameters<typeof Icon>[0]['name'];
-type NavLeaf = { href: string; label: string; perm?: string };
+/** hidePlatform hides a leaf when the caller sits on the platform tenant —
+ *  "My …" pages that key off homeTenant have nothing to show there
+ *  (My API Keys, for example: the platform tenant owns no partner keys —
+ *  superadmin manages them per-partner from Tenants → view). */
+type NavLeaf = { href: string; label: string; perm?: string; hidePlatform?: boolean };
 type NavNode = { key: string; label: string; icon: IconName; perm?: string; href?: string; children?: NavLeaf[] };
 
 // Menu taxonomy — matches the operator's IPO-console design. Real pages where we have
@@ -22,22 +26,22 @@ const NAV: NavNode[] = [
   { key: 'ipo', label: 'IPO Management', icon: 'box', perm: 'ipos.view', children: [
     { href: '/admin/catalog', label: 'IPO List' },
     { href: '/admin/catalog/new', label: 'Add New IPO', perm: 'ipos.manage' },
-    { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.manage' },
-    { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.manage' },
-    { href: '/admin/catalog/gmp-log', label: 'GMP Log & Contributors' },
-    { href: '/admin/catalog/gmp-feed', label: 'GMP Feed' },
-    { href: '/admin/masters/ipo-category', label: 'IPO Category' },
+    { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.import' },
+    { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.operations' },
+    { href: '/admin/catalog/gmp-log', label: 'GMP Log & Contributors', perm: 'gmp.log.view' },
+    { href: '/admin/catalog/gmp-feed', label: 'GMP Feed', perm: 'gmp.feed.view' },
+    { href: '/admin/masters/ipo-category', label: 'IPO Category', perm: 'masters.ipo-category.manage' },
   ] },
   { key: 'applications', label: 'Applications', icon: 'list', href: '/admin/applications', perm: 'bids.view' },
-  { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', perm: 'rails.manage', children: [
-    { href: '/admin/rails-live', label: 'Exchange Rails' },
-    { href: '/admin/bidding/report', label: 'Bidding Report' },
-    { href: '/admin/bidding/summary', label: 'Bidding Summary' },
+  { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', children: [
+    { href: '/admin/rails-live', label: 'Exchange Rails', perm: 'rails.manage' },
+    { href: '/admin/bidding/report', label: 'Bidding Report', perm: 'bidding.report.view' },
+    { href: '/admin/bidding/summary', label: 'Bidding Summary', perm: 'bidding.summary.view' },
   ] },
   { key: 'clients', label: 'Clients', icon: 'users', href: '/admin/clients', perm: 'clients.view' },
-  { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', perm: 'tenants.manage', children: [
-    { href: '/admin/tenants', label: 'Partners & Branches' },
-    { href: '/admin/tenants/applications', label: 'Applications' },
+  { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', children: [
+    { href: '/admin/tenants', label: 'Partners & Branches', perm: 'tenants.manage' },
+    { href: '/admin/tenants/applications', label: 'Applications', perm: 'tenants.applications.review' },
   ] },
   // My Organisation — every operator sees their own tenant profile here.
   // A partner admin uses it to edit their contact person / documents /
@@ -60,25 +64,27 @@ const NAV: NavNode[] = [
   // Partner API: Docs is a reference every operator (including partners
   // themselves) may want; Keys / Calls / Prints are gated so an admin
   // sees them and a plain viewer doesn't. "My API Keys" opens on the
-  // caller's own tenant so a partner admin has one direct link to
-  // manage their credentials without going through Tenants → …
+  // caller's own tenant so a partner admin has one direct link to manage
+  // their credentials without going through Tenants → … — but the
+  // platform tenant owns no partner keys, so superadmin never sees it
+  // (they manage keys per-partner from Tenants → view instead).
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
-    { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.reports.view' },
-    { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.reports.view' },
-    { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.reports.view' },
+    { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.keys.manage', hidePlatform: true },
+    { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.calls.view' },
+    { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.prints.view' },
   ] },
   // Masters are platform reference tables (registrars, lead managers,
   // exchanges …) shared across all tenants. Gated so only platform-tier
   // admins can edit them.
-  { key: 'masters', label: 'Masters', icon: 'layers', perm: 'masters.manage', children: [
-    { href: '/admin/masters/registrars', label: 'Registrars', perm: 'masters.manage' },
-    { href: '/admin/masters/lead-managers', label: 'Lead Managers', perm: 'masters.manage' },
-    { href: '/admin/masters/relationships', label: 'Relationships', perm: 'masters.manage' },
-    { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.manage' },
-    { href: '/admin/masters/anchors', label: 'Anchor Investors', perm: 'masters.manage' },
-    { href: '/admin/masters/sectors', label: 'Sectors', perm: 'masters.manage' },
-    { href: '/admin/masters/exchanges', label: 'Exchanges', perm: 'masters.manage' },
+  { key: 'masters', label: 'Masters', icon: 'layers', children: [
+    { href: '/admin/masters/registrars', label: 'Registrars', perm: 'masters.registrars.manage' },
+    { href: '/admin/masters/lead-managers', label: 'Lead Managers', perm: 'masters.lead-managers.manage' },
+    { href: '/admin/masters/relationships', label: 'Relationships', perm: 'masters.relationships.manage' },
+    { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.upi-handles.manage' },
+    { href: '/admin/masters/anchors', label: 'Anchor Investors', perm: 'masters.anchors.manage' },
+    { href: '/admin/masters/sectors', label: 'Sectors', perm: 'masters.sectors.manage' },
+    { href: '/admin/masters/exchanges', label: 'Exchanges', perm: 'masters.exchanges.manage' },
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [
     { href: '/admin/team', label: 'Users' },
@@ -87,9 +93,9 @@ const NAV: NavNode[] = [
   ] },
   { key: 'settings', label: 'System Settings', icon: 'settings', children: [
     { href: '/admin/integrations', label: 'Provider Keys', perm: 'providers.manage' },
-    { href: '/admin/templates', label: 'Message Templates', perm: 'providers.manage' },
-    { href: '/admin/templates/log', label: 'Message Log', perm: 'providers.manage' },
-    { href: '/admin/chatbot', label: 'Chatbot Flow', perm: 'providers.manage' },
+    { href: '/admin/templates', label: 'Message Templates', perm: 'templates.manage' },
+    { href: '/admin/templates/log', label: 'Message Log', perm: 'messages.view' },
+    { href: '/admin/chatbot', label: 'Chatbot Flow', perm: 'chatbot.manage' },
     { href: '/admin/system', label: 'System Status', perm: 'dashboard.view' },
   ] },
 ];
@@ -200,8 +206,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (me === undefined) return <Loader full />;
   if (!me) return <Loader full label="Redirecting to sign in…" />;
 
+  const onPlatform = me.homeTenant?.type === 'platform';
   const nav = NAV
-    .map((n) => ({ ...n, children: n.children?.filter((c) => !c.perm || operatorCan(me, c.perm)) }))
+    .map((n) => ({
+      ...n,
+      children: n.children?.filter((c) => (!c.perm || operatorCan(me, c.perm)) && !(c.hidePlatform && onPlatform)),
+    }))
     .filter((n) => (!n.perm || operatorCan(me, n.perm)) && (n.href || (n.children && n.children.length)));
   const roleLabel = me.isSuperAdmin ? 'Super Admin' : (me.memberships[0]?.role ?? 'Operator');
   const initials = (me.name ?? 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();

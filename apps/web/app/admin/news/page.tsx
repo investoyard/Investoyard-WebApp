@@ -31,7 +31,7 @@ export default function AdminNewsPage() {
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  const canManage = operatorCan(me, 'news.manage');
   const upd = (part: Partial<api.PostRow>) => setModal((m) => m && { ...m, form: { ...m.form, ...part } });
 
   const save = async (publish?: boolean) => {

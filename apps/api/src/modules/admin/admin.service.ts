@@ -376,13 +376,31 @@ export class AdminService {
   // NOT hold tenants.manage (that surfaces the whole platform's partner tree
   // and belongs to platform-tier operators). Does hold
   // partner-api.reports.view so a partner admin can see their own API usage.
-  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'partner-api.reports.view'];
-  // White-label admins additionally manage their OWN SMS/email keys + message templates.
-  // White-label — same as partner + providers.manage (they configure their
-  // own SMTP / SMS / WhatsApp under their brand). No tenants.manage.
-  private static WHITELABEL_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'providers.manage', 'partner-api.reports.view'];
+  private static PARTNER_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view', 'users.manage', 'roles.view', 'audit.view',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
+  // White-label — same as partner + the four System Settings child perms
+  // (they configure their OWN SMTP / SMS / WhatsApp + templates under their brand).
+  private static WHITELABEL_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view', 'users.manage', 'roles.view', 'audit.view',
+    'providers.manage', 'templates.manage', 'messages.view', 'chatbot.manage',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
   // Branch — a slimmer role. No user/role management (parent partner handles it).
-  private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'partner-api.reports.view'];
+  private static BRANCH_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
 
   /** What tenants can the caller manage? superadmin → all; else the union of their subtree/own scopes. */
   private async callerScope(userId: string): Promise<{ superadmin: boolean; tenantIds: Set<string> }> {

@@ -1,10 +1,10 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
-import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../../common/require-permissions.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { resolveMaster } from '@investoyard/shared-types';
 import { BULK_KINDS, columnsFor, keyOf, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
@@ -57,6 +57,22 @@ type Kind = keyof typeof KINDS;
 /** Kinds that model an org (full contact/address fields + mandatory short code). */
 const ORG_KINDS = new Set(['lead-managers', 'registrars']);
 
+/** Kind → the granular perm that gates writes on it. Any master perm passes
+ *  the route-level anyOf guard; the handler then enforces THIS one against
+ *  the actual `:kind` in the URL, so a partner with only registrars.manage
+ *  can't POST a new lead manager. */
+const KIND_PERM: Record<string, string> = {
+  'lead-managers': 'masters.lead-managers.manage',
+  registrars: 'masters.registrars.manage',
+  'ipo-categories': 'masters.ipo-category.manage',
+  'issue-types': 'masters.ipo-category.manage',
+  relationships: 'masters.relationships.manage',
+  'upi-handles': 'masters.upi-handles.manage',
+  anchors: 'masters.anchors.manage',
+  sectors: 'masters.sectors.manage',
+};
+const ALL_MASTER_PERMS = Object.values(KIND_PERM).filter((v, i, a) => a.indexOf(v) === i);
+
 @Controller('admin/masters')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class MastersController {
@@ -66,6 +82,22 @@ export class MastersController {
     const model = KINDS[kind as Kind];
     if (!model) throw new BadRequestException(`Unknown master '${kind}'`);
     return (this.prisma as any)[model];
+  }
+
+  /** Per-kind perm assertion — the route-level `RequireAnyPermission`
+   *  admits any master perm; this narrows to the specific kind so a caller
+   *  with only registrars.manage can't POST a lead manager. */
+  private async assertKindPerm(userId: string, kind: string) {
+    const need = KIND_PERM[kind];
+    if (!need) throw new BadRequestException(`Unknown master '${kind}'`);
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId, status: 'active' }, include: { role: true },
+    });
+    for (const m of memberships) {
+      const perms: string[] = m.role?.permissions ?? [];
+      if (perms.includes('*') || perms.includes(need)) return;
+    }
+    throw new NotFoundException(); // 404, not 403 — do not leak which perms exist
   }
 
   private clean(kind: string, dto: Record<string, any>) {
@@ -125,8 +157,12 @@ export class MastersController {
   }
 
   @Post(':kind')
-  @RequirePermissions('ipos.manage')
-  async create(@Param('kind') kind: string, @Body() dto: MasterDto) {
+  @RequireAnyPermission(
+    'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+  )
+  async create(@Req() req: any, @Param('kind') kind: string, @Body() dto: MasterDto) {
+    await this.assertKindPerm(req.user.sub, kind);
     if (!dto.name?.trim()) throw new BadRequestException('Name is required.');
     // a lead manager is not always published with a short code; a registrar is
     if (kind === 'registrars' && !dto.shortCode?.trim()) throw new BadRequestException('Name and short code are required.');
@@ -159,9 +195,13 @@ export class MastersController {
 
   /** Step 1 — parse and validate. Writes NOTHING. */
   @Post(':kind/bulk/parse')
-  @RequirePermissions('ipos.manage')
+  @RequireAnyPermission(
+    'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+  )
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  async bulkParse(@Param('kind') kind: string, @UploadedFile() file: any) {
+  async bulkParse(@Req() req: any, @Param('kind') kind: string, @UploadedFile() file: any) {
+    await this.assertKindPerm(req.user.sub, kind);
     this.assertBulk(kind);
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
     const { rows, headerMissing } = parseSheet(file.buffer, kind);
@@ -207,8 +247,12 @@ export class MastersController {
 
   /** Step 2 — write the rows the operator just saw. Existing keys are skipped. */
   @Post(':kind/bulk')
-  @RequirePermissions('ipos.manage')
-  async bulkCommit(@Param('kind') kind: string, @Body() body: { rows?: { data: Record<string, any> }[] }) {
+  @RequireAnyPermission(
+    'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+  )
+  async bulkCommit(@Req() req: any, @Param('kind') kind: string, @Body() body: { rows?: { data: Record<string, any> }[] }) {
+    await this.assertKindPerm(req.user.sub, kind);
     this.assertBulk(kind);
     const incoming = Array.isArray(body?.rows) ? body.rows : [];
     if (!incoming.length) throw new BadRequestException('Nothing to import.');
@@ -233,8 +277,12 @@ export class MastersController {
   }
 
   @Patch(':kind/:id')
-  @RequirePermissions('ipos.manage')
-  async update(@Param('kind') kind: string, @Param('id') id: string, @Body() dto: MasterPatchDto) {
+  @RequireAnyPermission(
+    'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+  )
+  async update(@Req() req: any, @Param('kind') kind: string, @Param('id') id: string, @Body() dto: MasterPatchDto) {
+    await this.assertKindPerm(req.user.sub, kind);
     if (!(await this.repo(kind).findUnique({ where: { id } }))) throw new NotFoundException();
     try {
       return await this.repo(kind).update({ where: { id }, data: this.clean(kind, dto as any) });

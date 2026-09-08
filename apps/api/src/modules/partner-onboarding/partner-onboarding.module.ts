@@ -390,31 +390,31 @@ export class PartnerApplicationsController {
   constructor(private readonly svc: PartnerOnboardingService) {}
 
   @Get()
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   list(@Query('status') status?: string) {
     return this.svc.list(status);
   }
 
   @Get(':id')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   detail(@Param('id') id: string) {
     return this.svc.detail(id);
   }
 
   @Post(':id/approve')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   approve(@Req() req: any, @Param('id') id: string, @Body() body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) {
     return this.svc.approve(id, req.user.sub, body ?? {});
   }
 
   @Post(':id/changes')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   changes(@Req() req: any, @Param('id') id: string, @Body() body: { note?: string }) {
     return this.svc.requestChanges(id, body?.note ?? '', req.user.sub);
   }
 
   @Post(':id/reject')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   reject(@Req() req: any, @Param('id') id: string, @Body() body: { note?: string }) {
     return this.svc.reject(id, body?.note ?? '', req.user.sub);
   }
@@ -423,7 +423,7 @@ export class PartnerApplicationsController {
    *  the applicant lost, or whose link is close to expiring. Regenerates
    *  the token so the old link is dead the moment this runs. */
   @Post(':id/resend-activation')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('tenants.applications.review')
   resendActivation(@Param('id') id: string, @Body() body: { baseUrl?: string }) {
     return this.svc.resendActivation(id, body ?? {});
   }

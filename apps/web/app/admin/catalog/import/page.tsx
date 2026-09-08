@@ -40,7 +40,7 @@ export default function ImportCatalogPage() {
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  const canManage = operatorCan(me, 'ipos.import');
 
   const pick = (f?: File | null) => {
     setErr(null); setPreview(null); setDone(null);

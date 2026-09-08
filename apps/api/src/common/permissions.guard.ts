@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
-import { PERMISSIONS_KEY } from './require-permissions.decorator';
+import { PERMISSIONS_KEY, ANY_PERMISSIONS_KEY } from './require-permissions.decorator';
 
 /**
  * Checks the authenticated user (req.user.sub, set by JwtAuthGuard) has the
@@ -18,7 +18,8 @@ export class PermissionsGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [ctx.getHandler(), ctx.getClass()]) ?? [];
-    if (!required.length) return true;
+    const anyOf = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, [ctx.getHandler(), ctx.getClass()]) ?? [];
+    if (!required.length && !anyOf.length) return true;
 
     const req = ctx.switchToHttp().getRequest();
     const userId: string | undefined = req.user?.sub;
@@ -42,6 +43,13 @@ export class PermissionsGuard implements CanActivate {
       if (!(await this.grants(memberships, perm, targetTenantId))) {
         throw new ForbiddenException(`Missing permission: ${perm}`);
       }
+    }
+    if (anyOf.length) {
+      let held = false;
+      for (const perm of anyOf) {
+        if (await this.grants(memberships, perm, targetTenantId)) { held = true; break; }
+      }
+      if (!held) throw new ForbiddenException(`Requires one of: ${anyOf.join(', ')}`);
     }
     return true;
   }

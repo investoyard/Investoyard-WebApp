@@ -82,7 +82,7 @@ export class PartnerReportsAdminController {
   constructor(private readonly partner: PartnerService) {}
 
   @Get('calls')
-  @RequirePermissions('partner-api.reports.view')
+  @RequirePermissions('partner-api.calls.view')
   calls(@Query() q: any) {
     return this.partner.callsReport({
       tenantId: q.tenantId || undefined,
@@ -93,7 +93,7 @@ export class PartnerReportsAdminController {
   }
 
   @Get('prints')
-  @RequirePermissions('partner-api.reports.view')
+  @RequirePermissions('partner-api.prints.view')
   prints(@Query() q: any) {
     return this.partner.printsReport({
       tenantId: q.tenantId || undefined,
@@ -104,7 +104,7 @@ export class PartnerReportsAdminController {
   }
 
   @Get('prints/export')
-  @RequirePermissions('partner-api.reports.view')
+  @RequirePermissions('partner-api.prints.view')
   async printsCsv(@Query() q: any, @Res() res: any) {
     const csv = await this.partner.printsReportCsv({
       tenantId: q.tenantId || undefined,

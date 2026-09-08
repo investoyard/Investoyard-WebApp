@@ -160,7 +160,7 @@ export default function TemplatesPage() {
     });
 
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'providers.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'templates.manage')) return <NoAccess />;
 
   const counts = Object.fromEntries(CHANNELS.map((c) => [c.key, keys.filter((k) => k.channel === c.key).length]));
 

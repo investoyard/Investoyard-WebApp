@@ -391,11 +391,11 @@ export class GmpFeedController {
 
   /** What the feed WOULD change, and what it cannot match. Writes nothing. */
   @Get('preview')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   preview() { return this.feed.sync(true); }
 
   @Post('sync')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   run() { return this.feed.sync(false); }
 
   /**
@@ -404,25 +404,25 @@ export class GmpFeedController {
    * instead of overwriting itself. Catalog fields still go through Apply.
    */
   @Post('refresh-gmp')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   refreshGmp() { return this.feed.sync(false, true); }
 
   @Post('link')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   link(@Query('symbol') symbol: string, @Query('sourceId') sourceId?: string) {
     return this.feed.link(symbol, sourceId || null);
   }
 
   /** The source URL, so the operator can see and change where rows come from. */
   @Get('config')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   async config() {
     const url = await this.feed.storedUrl();
     return { url, usingDefault: !url };
   }
 
   @Post('config')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('gmp.feed.view')
   saveConfig(@Body() body: { url?: string }) {
     return this.feed.setUrl(body?.url ?? '');
   }

@@ -56,7 +56,7 @@ export class IpoImportController {
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
   @Post()
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: TMP_DIR,
@@ -78,14 +78,14 @@ export class IpoImportController {
   }
 
   @Get('preview/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   preview(@Param('id') id: string) {
     return this.svc.getPreview(id);
   }
 
   /** Writes the previewed rows into the catalog (marked catalogOnly). */
   @Post('commit/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   commit(@Param('id') id: string) {
     return this.svc.commit(id);
   }
@@ -97,7 +97,7 @@ export class IpoImportController {
 
   /** Diff the reviewed workbook against the catalog. Writes nothing. */
   @Post('update/preview')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
   async updatePreview(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
@@ -115,7 +115,7 @@ export class IpoImportController {
    *  Managers and Registrars masters so the modal can show the canonical
    *  name rather than whatever the PDF happened to spell. Kept in memory. */
   @Post('parse/preanchor')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parsePreanchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
@@ -140,7 +140,7 @@ export class IpoImportController {
   /** POST — multipart 'file'. Parses the Anchor Investor Intimation Letter
    *  and returns the roster + allocation totals. */
   @Post('parse/anchor')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parseAnchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
@@ -154,7 +154,7 @@ export class IpoImportController {
    *  and the company description / promoter overview / objects of the
    *  issue as HTML (verbatim; the operator can rewrite before applying). */
   @Post('parse/ipo-note')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parseIpoNote(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
@@ -169,7 +169,7 @@ export class IpoImportController {
    *  Investoyard's voice. Called by the review modal per row, so the
    *  operator picks per-field between raw and rewritten. */
   @Post('rewrite-note-field')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   async rewriteNoteField(@Body() body: { kind: 'description' | 'strength' | 'objects'; text: string }) {
     if (!body?.kind || !body?.text) throw new BadRequestException('kind and text are required.');
     const html = await this.rewrite.rewrite(body.kind, body.text);
@@ -178,7 +178,7 @@ export class IpoImportController {
 
   /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */
   @Post('update/commit/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   applyUpdate(@Param('id') id: string, @Body() body: { approve?: string[] }) {
     return this.upd.commit(id, body?.approve ?? []);
   }
@@ -194,14 +194,14 @@ export class IpoImportController {
    * carry no applications / watchlist / allotment data. Published IPOs are safe.
    */
   @Post('delete-imported')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   deleteImported() {
     return this.svc.deleteImported();
   }
 
   /** Publish (or re-hide) imported rows on the public site. */
   @Post('publish')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   async publish(@Body() body: { symbols?: string[]; published?: boolean }) {
     if (!Array.isArray(body?.symbols) || body.symbols.length === 0) throw new BadRequestException('symbols[] is required.');
     const updated = await this.svc.setPublished(body.symbols, body.published !== false);

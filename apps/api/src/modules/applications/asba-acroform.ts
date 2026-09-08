@@ -1,4 +1,4 @@
-import { PDFDocument, PDFTextField } from 'pdf-lib';
+import { PDFDocument, PDFTextField, PDFName, PDFString, StandardFonts } from 'pdf-lib';
 
 /**
  * AcroForm fill engine — used when the operator's uploaded ASBA blank is a
@@ -110,6 +110,28 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
     if (bad) { try { form.removeField(f); } catch { /* leave it unset */ } }
   }
 
+  // A blank uploaded without a form-level /DA (Default Appearance) and /DR
+  // (Default Resources /Font) prints COMPLETELY BLANK — pdf-lib can't
+  // regenerate appearance streams without a font in scope, and viewers
+  // won't either. That happened to ARDEE: `defaultUpdateAppearances()` throws
+  // "font must be of type PDFFont", flatten falls back to enableReadOnly,
+  // every field lands on paper without a stroke. Install Helvetica on the
+  // form + /DA "/Helv 10 Tf 0 g", flag /NeedAppearances so viewers rebuild
+  // the appearance streams at display time.
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const acroDict = (form as any).acroForm.dict;
+  if (!acroDict.get(PDFName.of('DR'))) {
+    const dr = doc.context.obj({});
+    const fnt = doc.context.obj({});
+    fnt.set(PDFName.of('Helv'), font.ref);
+    dr.set(PDFName.of('Font'), fnt);
+    acroDict.set(PDFName.of('DR'), dr);
+  }
+  if (!acroDict.get(PDFName.of('DA'))) {
+    acroDict.set(PDFName.of('DA'), PDFString.of('/Helv 10 Tf 0 g'));
+  }
+  acroDict.set(PDFName.of('NeedAppearances'), doc.context.obj(true));
+
   // These forms define SAME-NAMED fields as separate objects (one per counterfoil
   // copy) — form.getTextField(name) throws on that, so index every text field by
   // name and set ALL matches. Field maxLength is respected by truncation.
@@ -169,16 +191,24 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
   set('FamilyGroup', d.familyGroup);
   // BIDNO — intentionally left untouched
 
-  // appearances: per-field best effort — one odd field must not block the rest
+  // appearances: per-field best effort — one odd field must not block the rest.
+  // On blanks with /DR properly declared, this succeeds and lets us flatten.
+  // On the ARDEE-style blanks it throws; /NeedAppearances above then carries
+  // the render on the viewer side.
+  let appearancesOk = 0;
   for (const f of form.getFields()) {
-    try { (f as any).defaultUpdateAppearances?.(); } catch { /* viewer regenerates */ }
+    try { (f as any).defaultUpdateAppearances?.(); appearancesOk++; } catch { /* viewer regenerates via /NeedAppearances */ }
   }
-  if (flatten) {
+  // Only flatten when appearances actually built — flattening without them
+  // paints empty boxes over the values. Falling back to a read-only form
+  // still prints correctly because viewers honour /NeedAppearances.
+  if (flatten && appearancesOk === form.getFields().length) {
     try { form.flatten({ updateFieldAppearances: false }); }
     catch {
-      // flatten refused (odd form structure) — lock the fields instead
       for (const f of form.getFields()) { try { (f as any).enableReadOnly(); } catch { /* best effort */ } }
     }
+  } else {
+    for (const f of form.getFields()) { try { (f as any).enableReadOnly(); } catch { /* best effort */ } }
   }
   return Buffer.from(await doc.save({ updateFieldAppearances: false }));
 }

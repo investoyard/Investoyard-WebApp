@@ -84,7 +84,7 @@ export class PostsAdminController {
   }
 
   @HttpPost()
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('news.manage')
   async create(@Body() dto: PostDto) {
     if (!dto.title?.trim()) throw new BadRequestException('Title is required.');
     const slug = slugify(dto.slug?.trim() || dto.title);
@@ -111,7 +111,7 @@ export class PostsAdminController {
   }
 
   @Patch(':id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('news.manage')
   async update(@Param('id') id: string, @Body() dto: PostPatchDto) {
     const found = await tenantContext.runUnscoped(() => this.prisma.post.findUnique({ where: { id } }));
     if (!found) throw new NotFoundException();
@@ -137,7 +137,7 @@ export class PostsAdminController {
   }
 
   @Delete(':id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('news.manage')
   async remove(@Param('id') id: string) {
     await tenantContext.runUnscoped(() => this.prisma.post.delete({ where: { id } }).catch(() => null));
     return { deleted: true };
