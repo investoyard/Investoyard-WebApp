@@ -43,3 +43,10 @@ apps/api/uploads/
 
 # exchange API documentation (member-confidential; kept out of the repo)
 apis/
+
+# operator's IPO source docs — PREANCHOR, Anchor Intimation, IPO Note PDFs
+# for the D.1 batch importer to walk. Vendor / merchant-banker material;
+# never crosses into git. Path may be Data/ or data/ depending on the
+# operator's setup — both stay ignored.
+Data/
+data/

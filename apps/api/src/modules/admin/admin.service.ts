@@ -593,11 +593,42 @@ export class AdminService {
     return { verified, total: statuses.length };
   }
 
-  /** Investor clients (customers) in the caller's scope; optional tenant filter + free-text search. */
+  /** Investor clients (customers) in the caller's scope; optional tenant filter + free-text search.
+   *
+   *  Two DPDP-relevant filters on the base where clause:
+   *    • username: null            — operator users are excluded (they have usernames)
+   *    • no PartnerApplication     — a partner applicant OTP-logs in exactly like an
+   *                                    investor does, so they land in the User table.
+   *                                    Without this filter, half-completed partner
+   *                                    applications pollute the investor list. Surgical:
+   *                                    only users linked to a PartnerApplication (by
+   *                                    email or mobile) are excluded — a legitimate
+   *                                    investor who hasn't yet created a profile stays
+   *                                    visible so an operator can chase them.
+   *
+   *  Full mobile is shown to superadmin and to any caller holding `clients.manage`
+   *  (the admin-tier permission), matches the operator's "who can see PII" call.
+   *  Roles with clients.view only see the masked form.
+   */
   async listClients(callerId: string, opts: { tenantSlug?: string; q?: string } = {}) {
     const scope = await this.callerScope(callerId);
+    const canSeeFullMobile = scope.superadmin || (await this.callerHasPerm(callerId, 'clients.manage'));
     return tenantContext.runUnscoped(async () => {
       const where: any = { username: null, mobile: { not: null } }; // customers, not operators
+      // Exclude anyone who came in via the partner-onboarding OTP flow —
+      // matched on email or mobile because PartnerApplication is a separate
+      // table (not FK-linked to User). See partner-onboarding.module.ts.
+      const partnerApplicants = await this.prisma.partnerApplication.findMany({
+        select: { email: true, mobile: true },
+      });
+      const partnerEmails = partnerApplicants.map((p) => p.email).filter(Boolean) as string[];
+      const partnerMobiles = partnerApplicants.map((p) => p.mobile).filter(Boolean) as string[];
+      if (partnerEmails.length || partnerMobiles.length) {
+        where.AND = [
+          ...(partnerEmails.length ? [{ email: { notIn: partnerEmails } }] : []),
+          ...(partnerMobiles.length ? [{ mobile: { notIn: partnerMobiles } }] : []),
+        ];
+      }
       if (opts.tenantSlug) {
         const t = await this.tenantBySlug(opts.tenantSlug);
         const ids = await this.subtreeIds(t.id);
@@ -619,12 +650,26 @@ export class AdminService {
       });
       return users.map((u) => ({
         id: u.id, name: u.name ?? undefined,
+        // Full mobile for superadmin + admin (clients.manage); masked for view-only.
+        mobile: canSeeFullMobile ? (u.mobile ?? undefined) : undefined,
         mobileMasked: u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : undefined,
         email: u.email ?? undefined, status: u.status, tenant: u.tenant,
         profiles: u._count.profiles, applications: u._count.applications,
         kyc: this.kycSummary(u.profiles.map((p) => p.kycStatus)),
         createdAt: u.createdAt.toISOString().slice(0, 10),
       }));
+    });
+  }
+
+  /** Does this caller's role set include a given permission? Used by list
+   *  endpoints that project different fields depending on the caller. */
+  private async callerHasPerm(callerId: string, perm: string): Promise<boolean> {
+    return tenantContext.runUnscoped(async () => {
+      const memberships = await this.prisma.membership.findMany({
+        where: { userId: callerId },
+        include: { role: { select: { permissions: true } } },
+      });
+      return memberships.some((m) => (m.role.permissions ?? []).includes(perm));
     });
   }
 
@@ -740,6 +785,90 @@ export class AdminService {
       if (dto.status) data.status = dto.status;
       if (Object.keys(data).length) await this.prisma.user.update({ where: { id }, data });
       return { ok: true };
+    });
+  }
+
+  /**
+   * Hard-delete a client — user row + every child that carries their data.
+   * SUPERADMIN ONLY. Destructive and irreversible.
+   *
+   * What we delete, in order (children first so the User delete is legal):
+   *   • BidOperation rows (via applicationId — no FK to User directly,
+   *     but every one belongs to an application the user owns)
+   *   • ApplicationStatusEvent rows (via applicationId)
+   *   • Application rows (financial history — deliberate: sir asked
+   *     "with his all data")
+   *   • WatchlistItem rows
+   *   • Consent rows
+   *   • DeviceToken rows
+   *   • GmpContributor row (if any — this table has userId @unique)
+   *   • Membership rows (should be empty for investors; kept safe)
+   *   • InvestorProfile rows (PII carrier — panTokenRef, bankTokenRef,
+   *     upiTokenRef, ifsc all live here)
+   *   • User row (last)
+   *
+   * What we PRESERVE:
+   *   • MessageLog entries — already store the recipient masked
+   *     (recipientLast4), qualifies as an audit trail and is not
+   *     personally identifying beyond the last 4 digits of the mobile.
+   *   • AuditLog — we WRITE a delete row here, both as an operator
+   *     audit trail and so the deletion itself is traceable.
+   *
+   * PII vault leftovers: panTokenRef / bankTokenRef / upiTokenRef in
+   * InvestorProfile point at ciphertext blobs in the vault store. Once
+   * the profile row is deleted the tokens become unreferenced — the
+   * ciphertext stays in the vault but is unrecoverable without the
+   * token reference. A vault sweep job would collect these later.
+   * Not a leak: no plaintext ever existed outside the vault.
+   *
+   * Wrapped in one transaction so a partial delete never leaves the
+   * catalog in a torn state.
+   */
+  async hardDeleteClient(callerId: string, id: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException('Only a platform superadmin can hard-delete a client.');
+    return tenantContext.runUnscoped(async () => {
+      const u = await this.prisma.user.findUnique({
+        where: { id },
+        include: { tenant: { select: { slug: true, name: true } }, applications: { select: { id: true } } },
+      });
+      if (!u) throw new NotFoundException('Client not found.');
+      if (u.username) throw new BadRequestException('This account is an operator, not an investor client — refuse to hard-delete from this endpoint.');
+      const appIds = u.applications.map((a) => a.id);
+      const mobileMasked = u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : '(no mobile)';
+
+      // Audit BEFORE the delete so we have the row even if the transaction
+      // succeeds — audit and delete are one atomic thing from the operator's
+      // point of view but two writes at the DB level, and the audit row is
+      // the one we most need to survive a partial failure.
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'client.hard-delete',
+          actorId: callerId,
+          targetType: 'user',
+          targetId: id,
+          targetLabel: `${u.name ?? '—'} · ${mobileMasked} · ${u.tenant.slug}`,
+          tenantSlug: u.tenant.slug,
+          detail: { applications: appIds.length, profiles: (await this.prisma.investorProfile.count({ where: { userId: id } })) } as any,
+        },
+      });
+
+      await this.prisma.$transaction(async (tx) => {
+        if (appIds.length) {
+          await tx.bidOperation.deleteMany({ where: { applicationId: { in: appIds } } });
+          await tx.applicationStatusEvent.deleteMany({ where: { applicationId: { in: appIds } } });
+          await tx.application.deleteMany({ where: { id: { in: appIds } } });
+        }
+        await tx.watchlistItem.deleteMany({ where: { userId: id } });
+        await tx.consent.deleteMany({ where: { userId: id } });
+        await tx.deviceToken.deleteMany({ where: { userId: id } });
+        await tx.gmpContributor.deleteMany({ where: { userId: id } });
+        await tx.membership.deleteMany({ where: { userId: id } });
+        await tx.investorProfile.deleteMany({ where: { userId: id } });
+        await tx.user.delete({ where: { id } });
+      });
+
+      return { ok: true, deletedId: id, appliedApplications: appIds.length };
     });
   }
 

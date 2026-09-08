@@ -237,7 +237,12 @@ export async function downloadEmpanelmentPdf(slug: string): Promise<void> {
 
 /* -------------------------------------------------- admin: clients (investors) */
 export interface ClientRow {
-  id: string; name?: string; mobileMasked?: string; email?: string; status: string;
+  id: string; name?: string;
+  /** Full 10-digit mobile — only present for superadmin + admin (clients.manage) callers */
+  mobile?: string;
+  /** Masked form ("98****1234") — always present when the user has a mobile */
+  mobileMasked?: string;
+  email?: string; status: string;
   tenant: { slug: string; name: string; type: string };
   profiles: number; applications: number; kyc: { verified: number; total: number }; createdAt: string;
 }
@@ -263,6 +268,13 @@ export const createClient = (body: { mobile: string; name?: string; email?: stri
   authed<{ id: string }>(`${API}/admin/clients`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateClient = (id: string, body: { name?: string; email?: string; status?: 'active' | 'suspended' }) =>
   authed<{ ok: boolean }>(`${API}/admin/clients/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+/** Hard delete — superadmin only. Removes the client and every child that
+ *  carries their data (applications, profiles, bid ops, watchlist,
+ *  consents, device tokens, memberships, GMP contributor row).
+ *  Irreversible. An audit-log row is written before the delete. */
+export const hardDeleteClient = (id: string) =>
+  authed<{ ok: boolean; deletedId: string; appliedApplications: number }>(
+    `${API}/admin/clients/${id}`, { method: 'DELETE' });
 export interface AddProfileBody {
   fullName: string; relationship?: string; pan: string; dateOfBirth?: string;
   depository: 'NSDL' | 'CDSL'; dpId: string; clientId: string; bankAccount?: string; ifsc?: string; upi?: string;

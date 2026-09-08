@@ -340,6 +340,20 @@ export class AdminController {
     return this.admin.updateClient(req.user.sub, id, dto);
   }
 
+  /**
+   * DELETE /admin/clients/:id — hard-delete a client and everything they own
+   * (applications, profiles, bid operations, watchlist, consents, device
+   * tokens, memberships, GMP contributor row). The service enforces that
+   * only a superadmin can run this; the permission decorator gates admin-
+   * tier callers away from the endpoint itself so nobody without
+   * clients.manage even reaches the service check.
+   */
+  @Delete('clients/:id')
+  @RequirePermissions('clients.manage')
+  hardDeleteClient(@Req() req: any, @Param('id') id: string) {
+    return this.admin.hardDeleteClient(req.user.sub, id);
+  }
+
   @Post('clients/:id/profiles')
   @RequirePermissions('clients.manage')
   addClientProfile(@Req() req: any, @Param('id') id: string, @Body() dto: AddClientProfileDto) {
