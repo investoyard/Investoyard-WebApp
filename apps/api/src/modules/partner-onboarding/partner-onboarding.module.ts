@@ -269,16 +269,23 @@ export class PartnerOnboardingService {
     const link = `${base}/partner/activate?token=${token}`;
 
     // Recover the username + kind + parent name so the resend email reads
-    // consistently with the original approval mail.
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: app.tenantId },
-      select: { type: true, parentId: true, users: { orderBy: { createdAt: 'asc' }, take: 1, select: { username: true } } },
+    // consistently with the original approval mail. Wrapped in runUnscoped
+    // because User is a SCOPED_MODEL — the nested `users` include applies
+    // RLS to its subquery, and the request's default tenant (from
+    // TenantMiddleware) is NOT the partner tenant we're looking up. Same
+    // reason activate() has to unscope its User lookups.
+    const { kind, username, parentName } = await tenantContext.runUnscoped(async () => {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: app.tenantId! },
+        select: { type: true, parentId: true, users: { orderBy: { createdAt: 'asc' }, take: 1, select: { username: true } } },
+      });
+      const k = ((tenant?.type as any) ?? app.kind ?? 'partner') as 'partner' | 'whitelabel' | 'branch';
+      const u = tenant?.users?.[0]?.username ?? '';
+      const pn = k === 'branch' && tenant?.parentId
+        ? (await this.prisma.tenant.findUnique({ where: { id: tenant.parentId }, select: { name: true } }))?.name ?? undefined
+        : undefined;
+      return { kind: k, username: u, parentName: pn };
     });
-    const kind = ((tenant?.type as any) ?? app.kind ?? 'partner') as 'partner' | 'whitelabel' | 'branch';
-    const username = tenant?.users?.[0]?.username ?? '';
-    const parentName = kind === 'branch' && tenant?.parentId
-      ? (await this.prisma.tenant.findUnique({ where: { id: tenant.parentId }, select: { name: true } }))?.name ?? undefined
-      : undefined;
 
     const email = buildWelcomeEmail({
       contactName: app.contactName, legalName: app.legalName,
@@ -299,7 +306,21 @@ export class PartnerOnboardingService {
     };
   }
 
-  /** Applicant sets their password from the emailed link. Single use. */
+  /**
+   * Applicant sets their password from the emailed link. Single use.
+   *
+   * Every query on the User table runs INSIDE an async runUnscoped
+   * callback. The old shape wrapped a sync arrow that returned a Prisma
+   * PromiseLike, and the tenant-context ALS was lost between the return
+   * and the outer `await` — the query then executed under the request's
+   * default tenant (whatever TenantMiddleware resolved from the Host
+   * header, usually 'platform'), RLS on User filtered every row that
+   * didn't belong to that tenant, and the newly created partner-tenant's
+   * admin user was invisible. Result: "Account is not ready yet." even
+   * when the account was fully ready. The async-wrapper shape everywhere
+   * else in this service works because the awaits happen INSIDE the
+   * callback where the ALS context is still active.
+   */
   async activate(token: string, password: string) {
     if (!token) throw new BadRequestException('Missing activation token.');
     if (!password || password.length < 8) throw new BadRequestException('Choose a password of at least 8 characters.');
@@ -309,22 +330,24 @@ export class PartnerOnboardingService {
     if (app.inviteExpires && app.inviteExpires < new Date()) throw new BadRequestException('This link has expired — ask the operator to resend it.');
     if (!app.tenantId) throw new BadRequestException('Account is not ready yet.');
 
-    const admin = await tenantContext.runUnscoped(() => this.prisma.user.findFirst({
-      where: { tenantId: app.tenantId!, username: { not: null } },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, username: true },
-    }));
-    if (!admin) throw new BadRequestException('Account is not ready yet.');
+    return tenantContext.runUnscoped(async () => {
+      const admin = await this.prisma.user.findFirst({
+        where: { tenantId: app.tenantId!, username: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, username: true },
+      });
+      if (!admin) throw new BadRequestException('Account is not ready yet.');
 
-    const salt = randomBytes(16).toString('hex');
-    const hash = (await scrypt(password, salt, 64)).toString('hex');
-    await tenantContext.runUnscoped(() => this.prisma.user.update({
-      where: { id: admin.id }, data: { passwordHash: `${salt}:${hash}` },
-    }));
-    await this.prisma.partnerApplication.update({
-      where: { id: app.id }, data: { activatedAt: new Date(), inviteToken: null },
+      const salt = randomBytes(16).toString('hex');
+      const hash = (await scrypt(password, salt, 64)).toString('hex');
+      await this.prisma.user.update({
+        where: { id: admin.id }, data: { passwordHash: `${salt}:${hash}` },
+      });
+      await this.prisma.partnerApplication.update({
+        where: { id: app.id }, data: { activatedAt: new Date(), inviteToken: null },
+      });
+      return { ok: true, username: admin.username };
     });
-    return { ok: true, username: admin.username };
   }
 }
 
