@@ -72,7 +72,7 @@ async function main() {
       permissions: [
         'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'bids.manage',
         'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage',
-        'roles.view', 'audit.view', 'tenants.manage', 'settings.manage',
+        'roles.view', 'audit.view', 'tenants.manage',
         // Menus added later — keep the platform Admin able to reach every
         // operator-facing surface. See permissions-catalog.ts.
         'allotment.view', 'allotment.manage', 'banners.manage', 'news.manage',

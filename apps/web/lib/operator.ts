@@ -25,7 +25,10 @@ export async function operatorLogin(username: string, password: string): Promise
 export interface OperatorMe {
   id: string; username: string; name: string; email?: string;
   isSuperAdmin: boolean; permissions: string[];
-  homeTenant: { slug: string; name: string; type: string };
+  /** id is used by any admin page that needs to call a tenant-keyed
+   *  endpoint for the CURRENT user's own tenant — e.g. Partner API →
+   *  My API Keys — without a second fetchTenant round-trip. */
+  homeTenant: { id: string; slug: string; name: string; type: string };
   memberships: { tenantSlug: string; tenantName: string; tenantType: string; role: string; scope: string; permissions: string[] }[];
 }
 

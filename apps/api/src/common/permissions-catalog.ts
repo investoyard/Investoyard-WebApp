@@ -20,7 +20,9 @@ export const PERMISSION_CATALOG = [
   { key: 'audit.view', label: 'View audit log', group: 'Audit' },
   { key: 'rails.manage', label: 'Configure exchange APIs (NSE/BSE)', group: 'Exchange rails' },
   { key: 'tenants.manage', label: 'Manage tenants & white-label settings', group: 'Tenants' },
-  { key: 'settings.manage', label: 'Manage settings', group: 'Settings' },
+  // settings.manage removed 2026-09-08 — nothing in the code gated on it,
+  // so a checkbox that granted no capability was misleading. If a real
+  // "Settings" surface returns later, add it back alongside that surface.
   { key: 'providers.manage', label: 'Manage provider keys (SMS / push)', group: 'Settings' },
   // Perms added later when the corresponding admin surface landed —
   // previously the pages rendered unconditionally in the sidebar because

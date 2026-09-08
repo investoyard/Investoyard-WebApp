@@ -82,7 +82,7 @@ export class PartnerReportsAdminController {
   constructor(private readonly partner: PartnerService) {}
 
   @Get('calls')
-  @RequirePermissions('reports.view')
+  @RequirePermissions('partner-api.reports.view')
   calls(@Query() q: any) {
     return this.partner.callsReport({
       tenantId: q.tenantId || undefined,
@@ -93,7 +93,7 @@ export class PartnerReportsAdminController {
   }
 
   @Get('prints')
-  @RequirePermissions('reports.view')
+  @RequirePermissions('partner-api.reports.view')
   prints(@Query() q: any) {
     return this.partner.printsReport({
       tenantId: q.tenantId || undefined,
@@ -104,7 +104,7 @@ export class PartnerReportsAdminController {
   }
 
   @Get('prints/export')
-  @RequirePermissions('reports.view')
+  @RequirePermissions('partner-api.reports.view')
   async printsCsv(@Query() q: any, @Res() res: any) {
     const csv = await this.partner.printsReportCsv({
       tenantId: q.tenantId || undefined,
@@ -116,27 +116,32 @@ export class PartnerReportsAdminController {
   }
 }
 
-/** Admin key management (Tenants → API access panel). */
+/**
+ * Admin key management. Reachable both from Tenants → API access (platform
+ * operators) and from Partner API → My API Keys (a partner admin on their
+ * own tenant). Server-side scope is enforced in the service — the caller
+ * must be superadmin OR hold a membership on the target tenant. Removing
+ * the `tenants.manage` gate here is deliberate: it used to be the only
+ * door to a partner's own keys, but that permission also opened the
+ * platform tenant tree, which a partner should not see.
+ */
 @Controller('admin/partner-keys')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PartnerKeysAdminController {
   constructor(private readonly partner: PartnerService) {}
 
   @Get(':tenantId')
-  @RequirePermissions('tenants.manage')
-  list(@Param('tenantId') tenantId: string) {
-    return this.partner.listKeys(tenantId);
+  list(@Req() req: any, @Param('tenantId') tenantId: string) {
+    return this.partner.listKeys(req.user.sub, tenantId);
   }
 
   @Post(':tenantId')
-  @RequirePermissions('tenants.manage')
-  create(@Param('tenantId') tenantId: string, @Body() dto: CreatePartnerKeyDto) {
-    return this.partner.createKey(tenantId, dto.label);
+  create(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: CreatePartnerKeyDto) {
+    return this.partner.createKey(req.user.sub, tenantId, dto.label);
   }
 
   @Delete(':id')
-  @RequirePermissions('tenants.manage')
-  revoke(@Param('id') id: string) {
-    return this.partner.revokeKey(id);
+  revoke(@Req() req: any, @Param('id') id: string) {
+    return this.partner.revokeKey(req.user.sub, id);
   }
 }

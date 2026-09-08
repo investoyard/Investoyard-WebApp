@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
@@ -314,9 +314,34 @@ export class PartnerService {
     return [head.join(','), ...lines].join('\r\n');
   }
 
-  /* ---------------- admin: key management ---------------- */
+  /* ---------------- admin: key management ----------------
+   *
+   * Access rule (superadmin OR own-tenant): the endpoints used to gate on
+   * `tenants.manage`, which meant a partner admin could NEVER see their
+   * own API keys (they can't have tenants.manage — that would let them
+   * see the whole platform tenant tree). Now every method takes callerId
+   * and verifies the caller is either a superadmin (scope='all') or has
+   * an active membership on the tenant whose keys they're operating on.
+   * The endpoints themselves only require the caller to be authenticated;
+   * scope is enforced here.                                              */
 
-  listKeys(tenantId: string) {
+  /** Scope check: is this caller allowed to manage keys on this tenant? */
+  private async assertCanManageKeys(callerId: string, tenantId: string): Promise<void> {
+    const memberships = await tenantContext.runUnscoped(() =>
+      this.prisma.membership.findMany({
+        where: { userId: callerId, status: 'active' },
+        include: { role: { select: { scope: true } } },
+      }),
+    );
+    const superadmin = memberships.some((m) => m.role.scope === 'all');
+    if (superadmin) return;
+    const owns = memberships.some((m) => m.tenantId === tenantId);
+    if (owns) return;
+    throw new ForbiddenException('You do not manage this tenant.');
+  }
+
+  async listKeys(callerId: string, tenantId: string) {
+    await this.assertCanManageKeys(callerId, tenantId);
     return tenantContext.runUnscoped(() =>
       this.prisma.partnerApiKey.findMany({
         where: { tenantId },
@@ -327,7 +352,8 @@ export class PartnerService {
   }
 
   /** Create a key — the SECRET is returned once and never stored in plain. */
-  async createKey(tenantId: string, label?: string) {
+  async createKey(callerId: string, tenantId: string, label?: string) {
+    await this.assertCanManageKeys(callerId, tenantId);
     const tenant = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId } }));
     if (!tenant) throw new NotFoundException('Tenant not found.');
     const keyId = `pk_${randomBytes(6).toString('hex')}`;
@@ -340,7 +366,14 @@ export class PartnerService {
     return { keyId, secret, apiKey: `${keyId}.${secret}` };
   }
 
-  async revokeKey(id: string) {
+  async revokeKey(callerId: string, id: string) {
+    // Resolve the key's owning tenant first so the scope check knows what
+    // to check against — a key ID is opaque to the caller.
+    const key = await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiKey.findUnique({ where: { id }, select: { tenantId: true } }),
+    );
+    if (!key) throw new NotFoundException('Key not found.');
+    await this.assertCanManageKeys(callerId, key.tenantId);
     await tenantContext.runUnscoped(() =>
       this.prisma.partnerApiKey.update({ where: { id }, data: { active: false, revokedAt: new Date() } }),
     );

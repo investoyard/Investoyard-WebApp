@@ -53,10 +53,13 @@ const NAV: NavNode[] = [
     { href: '/admin/allotment/list', label: 'Allotment List', perm: 'allotment.view' },
   ] },
   // Partner API: Docs is a reference every operator (including partners
-  // themselves) may want; Calls/Prints reports are gated so an admin
-  // sees them and a plain viewer doesn't.
+  // themselves) may want; Keys / Calls / Prints are gated so an admin
+  // sees them and a plain viewer doesn't. "My API Keys" opens on the
+  // caller's own tenant so a partner admin has one direct link to
+  // manage their credentials without going through Tenants → …
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
+    { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.reports.view' },
     { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.reports.view' },
     { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.reports.view' },
   ] },

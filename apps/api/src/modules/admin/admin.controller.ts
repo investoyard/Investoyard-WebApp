@@ -466,34 +466,37 @@ export class AdminController {
     return this.admin.deleteRole(id);
   }
 
+  // Every /:slug endpoint threads req.user.sub through so the service
+  // can refuse a partner admin who tries to query another tenant's data
+  // by URL — without the callerId these were readable across tenants.
   @Get('members/:slug')
   @RequirePermissions('users.view')
-  members(@Param('slug') slug: string) {
-    return this.admin.listMembers(slug);
+  members(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listMembers(req.user.sub, slug);
   }
 
   @Get('applications/:slug')
   @RequirePermissions('bids.view')
-  applications(@Param('slug') slug: string) {
-    return this.admin.listApplications(slug);
+  applications(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listApplications(req.user.sub, slug);
   }
 
   @Get('dashboard/:slug')
   @RequirePermissions('dashboard.view')
-  dashboard(@Param('slug') slug: string) {
-    return this.admin.dashboard(slug);
+  dashboard(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.dashboard(req.user.sub, slug);
   }
 
   @Get('reports/:slug')
   @RequirePermissions('reports.view')
-  reports(@Param('slug') slug: string) {
-    return this.admin.reports(slug);
+  reports(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.reports(req.user.sub, slug);
   }
 
   @Get('reports/:slug/export')
   @RequirePermissions('reports.view')
-  async exportCsv(@Param('slug') slug: string, @Res({ passthrough: true }) res: any) {
-    const csv = await this.admin.applicationsCsv(slug);
+  async exportCsv(@Req() req: any, @Param('slug') slug: string, @Res({ passthrough: true }) res: any) {
+    const csv = await this.admin.applicationsCsv(req.user.sub, slug);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="investoyard-${slug}-applications.csv"`);
     return csv;

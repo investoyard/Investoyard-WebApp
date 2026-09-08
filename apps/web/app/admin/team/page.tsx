@@ -25,6 +25,48 @@ function userType(o: api.Operator): string {
 
 const blankNew = { username: '', name: '', email: '', mobile: '', password: '', tenantSlug: '', roleName: 'Admin' };
 
+/**
+ * Cut the full tenant tree down to what this operator can add operators
+ * for. Superadmin sees everything; anyone else sees their home tenant
+ * plus every descendant below it. Mirrors the server's own scope check
+ * on POST /admin/operators — showing tenants the operator would be
+ * refused for is a bad UX (they click, get 403). Superadmin is
+ * identified by isSuperAdmin OR by holding tenants.manage on a role
+ * with scope='all' (the platform Admin), same as the sidebar test.
+ */
+function scopeTree(all: api.AdminTenant[], me: import('@/lib/operator').OperatorMe | null | undefined): api.AdminTenant[] {
+  if (!me) return [];
+  const platformScope = me.isSuperAdmin || me.memberships.some((m) => m.scope === 'all');
+  if (platformScope) return all;
+
+  // Membership tenants are the operator's home + any others they hold a
+  // role on. For each such tenant, include it AND every descendant.
+  const owned = new Set(
+    all
+      .filter((t) => me.memberships.some((m) => m.tenantSlug === t.slug))
+      .map((t) => t.id),
+  );
+  // Walk children up to a bounded depth so a cycle (should not exist)
+  // can't hang the loader.
+  const byParent = new Map<string, api.AdminTenant[]>();
+  for (const t of all) {
+    if (!t.parentId) continue;
+    const list = byParent.get(t.parentId) ?? [];
+    list.push(t);
+    byParent.set(t.parentId, list);
+  }
+  const visit = (id: string, depth = 0) => {
+    if (depth > 6) return;
+    for (const child of byParent.get(id) ?? []) {
+      if (owned.has(child.id)) continue;
+      owned.add(child.id);
+      visit(child.id, depth + 1);
+    }
+  };
+  for (const id of Array.from(owned)) visit(id);
+  return all.filter((t) => owned.has(t.id));
+}
+
 export default function AdminUsers() {
   const me = useOperator();
   const [ops, setOps] = useState<api.Operator[]>([]);
@@ -42,15 +84,36 @@ export default function AdminUsers() {
   }, []);
   useEffect(() => {
     (async () => {
-      try {
-        const [o, t, r] = await Promise.all([api.fetchOperators(), api.fetchTree(), api.fetchRoles()]);
-        setOps(o); setTree(t); setRoles(r);
-        const first = t.find((x) => x.type !== 'platform') ?? t[0];
+      // Load the three independently. Combining them in a Promise.all made
+      // a 403 on fetchRoles (partner admin tier lacks roles.view) reject
+      // the whole batch — tree never got set and the Add User dropdown
+      // rendered blank. allSettled lets each succeed on its own; the role
+      // dropdown already falls back to Admin/Staff when the fetched list
+      // is empty, so a failed fetchRoles is invisible to the operator.
+      const [oRes, tRes, rRes] = await Promise.allSettled([
+        api.fetchOperators(), api.fetchTree(), api.fetchRoles(),
+      ]);
+      if (oRes.status === 'fulfilled') setOps(oRes.value);
+      let scopedTree: api.AdminTenant[] = [];
+      if (tRes.status === 'fulfilled') {
+        // Scope the dropdown to what this operator can actually own users
+        // for. Superadmin (or a role with 'tenants.manage' at platform
+        // scope) sees every tenant; a partner-tier admin sees their own
+        // home tenant + any branches under it. Server-side add-operator
+        // enforces the same, but showing the whole tree here would let a
+        // partner click a tenant only to see it fail on submit.
+        scopedTree = scopeTree(tRes.value, me);
+        setTree(scopedTree);
+        const first = scopedTree.find((x) => x.type !== 'platform') ?? scopedTree[0];
         setForm((f) => ({ ...f, tenantSlug: first?.slug ?? '' }));
-      } catch (e: any) { setErr(String(e?.message ?? e)); }
-      finally { setLoading(false); }
+      }
+      if (rRes.status === 'fulfilled') setRoles(rRes.value);
+      // Only report an error to the operator if the load they'd actually
+      // notice failed — the operators list itself.
+      if (oRes.status === 'rejected') setErr(String((oRes.reason as any)?.message ?? oRes.reason));
+      setLoading(false);
     })();
-  }, []);
+  }, [me]);
 
   const run = async (fn: () => Promise<any>) => {
     setBusy(true); setErr(null);
@@ -171,11 +234,34 @@ export default function AdminUsers() {
                 {tree.map((t) => <option key={t.id} value={t.slug}>{t.name} ({TYPE_LABEL[t.type] ?? t.type})</option>)}
               </select>
             </Field>
-            <Field label="Role">
-              <select className="input" value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
-                {Array.from(new Set(['Admin', 'Staff', ...roles.map((r) => r.name)])).map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
+            {(() => {
+              // Enforce "one Admin per partner/branch/white-label" in the
+              // UI. Platform tenants may have many Admins (the operator
+              // team). The server enforces this too — the client-side
+              // hide is just so an operator doesn't pick a role that
+              // will 409 on submit.
+              const targetTenant = tree.find((t) => t.slug === form.tenantSlug);
+              const isPlatform = targetTenant?.type === 'platform';
+              const adminAlreadyExists = !isPlatform && ops.some(
+                (o) => o.tenant.slug === form.tenantSlug &&
+                       o.status === 'active' &&
+                       o.roles.some((r) => r.role === 'Admin'),
+              );
+              // Auto-flip the pending selection to Staff so the operator
+              // never lands on the disallowed value.
+              if (adminAlreadyExists && form.roleName === 'Admin') {
+                queueMicrotask(() => setForm((f) => f.roleName === 'Admin' ? { ...f, roleName: 'Staff' } : f));
+              }
+              const options = Array.from(new Set(['Admin', 'Staff', ...roles.map((r) => r.name)]))
+                .filter((n) => !(adminAlreadyExists && n === 'Admin'));
+              return (
+                <Field label="Role" hint={adminAlreadyExists ? `${targetTenant?.name} already has an Admin — only Staff can be added` : undefined}>
+                  <select className="input" value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
+                    {options.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </Field>
+              );
+            })()}
             <Field label="Password" hint="Blank → auto-generate (shown once)"><PasswordInput value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="auto-generate" /></Field>
           </div>
           <FormActions>

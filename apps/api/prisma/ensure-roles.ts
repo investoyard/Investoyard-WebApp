@@ -13,7 +13,7 @@ const prisma = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_U
 const ADMIN_PERMS = [
   'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 'bids.manage',
   'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage',
-  'roles.view', 'audit.view', 'tenants.manage', 'settings.manage',
+  'roles.view', 'audit.view', 'tenants.manage',
   // Added when the corresponding admin surfaces got their own perm.
   'allotment.view', 'allotment.manage', 'banners.manage', 'news.manage',
   'masters.manage', 'partner-api.reports.view',
@@ -26,7 +26,7 @@ const STAFF_PERMS = ['dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view', 
 const PARTNER_TENANT_ADMIN_PERMS = [
   'dashboard.view', 'ipos.view', 'bids.view', 'bids.manage',
   'clients.view', 'clients.manage', 'reports.view',
-  'users.view', 'users.manage', 'roles.view', 'audit.view', 'settings.manage',
+  'users.view', 'users.manage', 'roles.view', 'audit.view',
   'partner-api.reports.view',
 ];
 
@@ -68,15 +68,27 @@ async function main() {
   let trimmed = 0;
   for (const r of partnerAdmins) {
     const next = Array.from(new Set(r.permissions
-      .filter((p) => p !== 'tenants.manage')
+      .filter((p) => p !== 'tenants.manage' && p !== 'settings.manage')
       .concat(['partner-api.reports.view'])));
-    // sort so an idempotent re-run doesn't churn rows unnecessarily
     if (next.length !== r.permissions.length || next.some((p) => !r.permissions.includes(p))) {
       await prisma.role.update({ where: { id: r.id }, data: { permissions: next } });
       trimmed++;
     }
   }
-  if (trimmed) console.log(`trimmed tenants.manage / added partner-api.reports.view on ${trimmed} partner/branch Admin role(s)`);
+  if (trimmed) console.log(`trimmed tenants.manage + settings.manage / added partner-api.reports.view on ${trimmed} partner/branch Admin role(s)`);
+
+  // Also drop settings.manage from every Admin role that still carries it
+  // (it was granted historically, gates nothing, and shows in the role
+  // editor as a checkbox that grants no capability — misleading).
+  const stillHasSettings = await prisma.role.findMany({
+    where: { permissions: { has: 'settings.manage' } },
+    select: { id: true, name: true, permissions: true },
+  });
+  for (const r of stillHasSettings) {
+    const next = r.permissions.filter((p) => p !== 'settings.manage');
+    await prisma.role.update({ where: { id: r.id }, data: { permissions: next } });
+  }
+  if (stillHasSettings.length) console.log(`removed dead settings.manage from ${stillHasSettings.length} role(s)`);
 
   // Assign 6-digit sequential channel codes (from 601001) to any partner/branch missing one.
   const coded = await prisma.tenant.findMany({ where: { code: { not: null } }, orderBy: { code: 'desc' }, take: 1, select: { code: true } });

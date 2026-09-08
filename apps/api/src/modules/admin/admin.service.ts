@@ -323,7 +323,7 @@ export class AdminService {
   }
 
   private async tenantBySlug(slug: string) {
-    const t = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true, slug: true, name: true } });
+    const t = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true, slug: true, name: true, type: true } });
     if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
     return t;
   }
@@ -347,11 +347,11 @@ export class AdminService {
   // NOT hold tenants.manage (that surfaces the whole platform's partner tree
   // and belongs to platform-tier operators). Does hold
   // partner-api.reports.view so a partner admin can see their own API usage.
-  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'settings.manage', 'partner-api.reports.view'];
+  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'partner-api.reports.view'];
   // White-label admins additionally manage their OWN SMS/email keys + message templates.
   // White-label — same as partner + providers.manage (they configure their
   // own SMTP / SMS / WhatsApp under their brand). No tenants.manage.
-  private static WHITELABEL_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'settings.manage', 'providers.manage', 'partner-api.reports.view'];
+  private static WHITELABEL_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'providers.manage', 'partner-api.reports.view'];
   // Branch — a slimmer role. No user/role management (parent partner handles it).
   private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'partner-api.reports.view'];
 
@@ -910,6 +910,29 @@ export class AdminService {
       this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [tenant.id, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } }),
     );
     if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
+
+    // A partner / branch / white-label tenant may hold ONLY ONE Admin.
+    // Rationale: an Admin holds users.manage AND clients.manage, so a
+    // second Admin means two people can rotate credentials and reset
+    // client data on the same account — a real governance risk for a
+    // small operator. Extra hands should be Staff, which excludes
+    // user management. Platform tenants are exempt (multiple platform
+    // Admins are normal for the operator team).
+    if (dto.roleName === 'Admin' && tenant.type !== 'platform') {
+      const existingAdmin = await tenantContext.runUnscoped(() =>
+        this.prisma.membership.findFirst({
+          where: { tenantId: tenant.id, status: 'active', role: { name: 'Admin' } },
+          include: { user: { select: { username: true } } },
+        }),
+      );
+      if (existingAdmin) {
+        throw new ConflictException(
+          `${tenant.name} already has an Admin (${existingAdmin.user.username}). ` +
+          `Only one Admin per ${tenant.type} — add this user as Staff, or replace the current Admin first.`,
+        );
+      }
+    }
+
     return tenantContext.runUnscoped(async () => {
       try {
         const password = dto.password?.trim() || this.genPassword();
@@ -947,6 +970,27 @@ export class AdminService {
       if (dto.roleName) {
         const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
         if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found.`);
+
+        // Same one-Admin-per-partner rule the create path enforces —
+        // catches "promote this Staff to Admin" when an Admin already
+        // exists. Skipped when the user is ALREADY the Admin (a re-save
+        // that doesn't actually change anything).
+        if (dto.roleName === 'Admin') {
+          const tenant = await this.prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, type: true } });
+          if (tenant && tenant.type !== 'platform') {
+            const existingAdmin = await this.prisma.membership.findFirst({
+              where: { tenantId: user.tenantId, status: 'active', role: { name: 'Admin' }, userId: { not: id } },
+              include: { user: { select: { username: true } } },
+            });
+            if (existingAdmin) {
+              throw new ConflictException(
+                `${tenant.name} already has an Admin (${existingAdmin.user.username}). ` +
+                `Only one Admin per ${tenant.type} — promote to Admin only after replacing the current one.`,
+              );
+            }
+          }
+        }
+
         await this.prisma.membership.upsert({
           where: { userId_tenantId: { userId: id, tenantId: user.tenantId } },
           update: { roleId: role.id, status: 'active' },
@@ -975,8 +1019,26 @@ export class AdminService {
     };
   }
 
+  /**
+   * Assert the caller is allowed to see data for the given tenant subtree.
+   * Superadmin passes; anyone else must have a membership on the tenant
+   * itself or an ancestor. Every /:slug endpoint calls this — without it,
+   * a partner admin could hit /admin/reports/some-other-partner and read
+   * that other partner's data, since the slug is a URL parameter with
+   * no ambient scoping.
+   */
+  private async assertSlugScope(callerId: string, slug: string): Promise<{ id: string }> {
+    const scope = await this.callerScope(callerId);
+    const tenant = await this.tenantBySlug(slug);
+    if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) {
+      throw new ForbiddenException('Outside your scope.');
+    }
+    return { id: tenant.id };
+  }
+
   /** Operators of a tenant and its sub-tenants. */
-  async listMembers(slug: string) {
+  async listMembers(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     const rows = await this.prisma.membership.findMany({
@@ -1011,7 +1073,8 @@ export class AdminService {
   }
 
   /** Applications (bids) across a tenant subtree — back-office view. */
-  async listApplications(slug: string) {
+  async listApplications(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     // Applications are RLS-scoped; an operator views across tenants, so read unscoped
@@ -1057,8 +1120,9 @@ export class AdminService {
   }
 
   /** Admin home overview — headline counts, live-IPO performance, per-partner & 7-day trends. */
-  async dashboard(slug: string) {
-    const rep = await this.reports(slug); // scope + application aggregate (runUnscoped inside)
+  async dashboard(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
+    const rep = await this.reports(callerId, slug); // scope + application aggregate (runUnscoped inside)
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
@@ -1127,8 +1191,9 @@ export class AdminService {
   }
 
   /** The subtree's applications serialised as CSV (the rows behind the report). */
-  async applicationsCsv(slug: string): Promise<string> {
-    const rows = await this.listApplications(slug);
+  async applicationsCsv(callerId: string, slug: string): Promise<string> {
+    // listApplications enforces the scope check — no need to duplicate here.
+    const rows = await this.listApplications(callerId, slug);
     const headers = ['IPO', 'IPO name', 'Applicant', 'Mobile', 'Category', 'Applicant type', 'Lots', 'Amount', 'Status', 'Allotted lots', 'Refund', 'Applied', 'Tenant'];
     const esc = (v: any) => {
       const s = v == null ? '' : String(v);
@@ -1145,7 +1210,8 @@ export class AdminService {
   }
 
   /** Aggregate bid analytics for a tenant subtree (computed from live applications). */
-  async reports(slug: string) {
+  async reports(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     return tenantContext.runUnscoped(async () => {
