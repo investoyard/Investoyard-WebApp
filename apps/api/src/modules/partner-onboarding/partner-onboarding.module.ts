@@ -3,8 +3,7 @@ import {
   Param, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { randomBytes, scrypt as _scrypt } from 'crypto';
-import { promisify } from 'util';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { EmailService } from '../../common/email.service';
@@ -16,8 +15,8 @@ import { tenantContext } from '../../common/tenant-context';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
 import { buildWelcomeEmail } from './welcome-email';
+import { hashPassword } from '../../common/password';
 
-const scrypt = promisify(_scrypt) as (p: string, s: string, k: number) => Promise<Buffer>;
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const KINDS = ['partner', 'whitelabel', 'branch'] as const;
 
@@ -338,10 +337,15 @@ export class PartnerOnboardingService {
       });
       if (!admin) throw new BadRequestException('Account is not ready yet.');
 
-      const salt = randomBytes(16).toString('hex');
-      const hash = (await scrypt(password, salt, 64)).toString('hex');
+      // hashPassword produces the canonical `scrypt$<salt>$<hash>` shape
+      // that verifyPassword expects. The old inline scrypt here wrote
+      // `${salt}:${hash}` — no scheme prefix, colon separator — which
+      // verifyPassword refused to parse, so every activated partner got
+      // "Invalid username or password" on their first sign-in. Kept the
+      // same underlying algorithm; only the storage format changed.
+      const passwordHash = await hashPassword(password);
       await this.prisma.user.update({
-        where: { id: admin.id }, data: { passwordHash: `${salt}:${hash}` },
+        where: { id: admin.id }, data: { passwordHash },
       });
       await this.prisma.partnerApplication.update({
         where: { id: app.id }, data: { activatedAt: new Date(), inviteToken: null },
