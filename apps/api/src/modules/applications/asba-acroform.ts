@@ -49,6 +49,9 @@ export interface AsbaFormData {
   branchName?: string | null;
   familyGroup?: string | null;
   subBrokerCode?: string | null;
+  /** For the PDF Title metadata line — e.g. "ARDEE". Optional; when
+   *  missing the title falls back to the form number. */
+  ipoSymbol?: string | null;
 }
 
 /** Plain integer digits — no thousands separators. The registrar prints
@@ -66,8 +69,20 @@ function twoDigits(n: number): string {
   return `${TENS[Math.floor(n / 10)]}${n % 10 ? ' ' + ONES[n % 10] : ''}`;
 }
 
-/** Indian-system amount in words: 12,34,567 → "Twelve Lakh Thirty Four Thousand Five Hundred Sixty Seven Only". */
+/** Indian-system amount in words, formatted for the ASBA "Amount Blocked
+ *  (₹ in words)" field: prefixed RUPEES, suffixed ONLY, whole string
+ *  uppercased — 225250 → "RUPEES TWO LAKH TWENTY FIVE THOUSAND TWO
+ *  HUNDRED FIFTY ONLY". The form mandates block letters ("PLEASE FILL
+ *  IN BLOCK LETTERS") and the printed field expects "RUPEES … ONLY"
+ *  (operator spec 2026-09-09). */
 export function amountInWordsInr(n?: number | null): string {
+  const body = buildWords(n);
+  return body ? `RUPEES ${body} ONLY`.toUpperCase() : '';
+}
+
+/** Internal — just the number as words, no RUPEES prefix / ONLY suffix.
+ *  Kept separate so the recursive Crore branch can compose cleanly. */
+function buildWords(n?: number | null): string {
   if (n == null || !Number.isFinite(n) || n <= 0) return '';
   let v = Math.round(n);
   const parts: string[] = [];
@@ -75,12 +90,12 @@ export function amountInWordsInr(n?: number | null): string {
   const lakh = Math.floor(v / 100000); v %= 100000;
   const thousand = Math.floor(v / 1000); v %= 1000;
   const hundred = Math.floor(v / 100); v %= 100;
-  if (crore) parts.push(`${amountInWordsInr(crore).replace(/ Only$/, '')} Crore`.trim());
+  if (crore) parts.push(`${buildWords(crore)} Crore`.trim());
   if (lakh) parts.push(`${twoDigits(lakh)} Lakh`);
   if (thousand) parts.push(`${twoDigits(thousand)} Thousand`);
   if (hundred) parts.push(`${ONES[hundred]} Hundred`);
   if (v) parts.push(twoDigits(v));
-  return parts.length ? `${parts.join(' ')} Only` : '';
+  return parts.join(' ');
 }
 
 /** Split a name at a word boundary into the two name boxes (14 + 17 chars). */
@@ -154,6 +169,13 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
       try { f.setText(v); } catch { /* combed/odd field — leave blank rather than fail the print */ }
     }
   };
+  /** UPPERCASE the value before writing — used for the block-letter fields
+   *  the form demands ("PLEASE FILL IN BLOCK LETTERS"). Email is
+   *  deliberately NOT routed through this — RFC 5321 keeps the local part
+   *  case-preserving and "KARISHMA@EXAMPLE.COM" reads wrong. Digits and
+   *  already-uppercase inputs (PAN, demat, form number) skip this too. */
+  const setUpper = (name: string, value?: string | null) =>
+    set(name, value == null ? value : String(value).toUpperCase());
 
   const [name1, name2] = splitName(d.fullName);
   const demat = d.depository === 'CDSL'
@@ -164,13 +186,13 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
   set('APPNo', d.formNo ?? '');
   set('SubBrokerCode', d.subBrokerCode);
   set('SubBrokerCode2', d.subBrokerCode);
-  set('Name', name1);
-  set('NamePart2', name2);
-  set('ApplicantName', d.fullName);
-  set('RecvFrom', d.fullName);
-  set('AddressFull', d.address);
+  setUpper('Name', name1);
+  setUpper('NamePart2', name2);
+  setUpper('ApplicantName', d.fullName);
+  setUpper('RecvFrom', d.fullName);
+  setUpper('AddressFull', d.address);
   set('Pincode', d.pincode);
-  set('Email', d.email);
+  set('Email', d.email);   // case-preserved (see setUpper comment)
   set('Email2', d.email);
   set('Mobile', d.mobile);
   set('Mobile2', d.mobile);
@@ -186,13 +208,29 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
   set('BIDPRICE2', d.bidPrice != null ? String(Math.round(d.bidPrice)) : '');
   set('Amount', inrDigits(d.amount));
   set('GrandTotal', inrDigits(d.amount));
-  set('AmountInWord', amountInWordsInr(d.amount));
+  set('AmountInWord', amountInWordsInr(d.amount));   // already RUPEES … ONLY + UPPER
   set('ACCOUNTNO', d.bankAccount);
   set('ACCOUNTNO2', d.bankAccount);
   set('ACCOUNTNO3', d.bankAccount);
-  set('BANKBRANCH2', bankBranch);
-  set('FamilyGroup', d.familyGroup);
+  setUpper('BANKBRANCH2', bankBranch);
+  setUpper('FamilyGroup', d.familyGroup);
   // BIDNO — intentionally left untouched
+
+  // Metadata cleanup — clear whatever the printer's tool baked in (Producer,
+  // Creator, inherited Title/Author often carry the previous IPO's name)
+  // and stamp our own identity. Keeps the printed sheet from advertising a
+  // stale tool chain and gives file-managers a meaningful filename hint.
+  const title = d.ipoSymbol && d.formNo ? `${d.ipoSymbol} — ASBA Application ${d.formNo}`
+    : d.ipoSymbol ? `${d.ipoSymbol} — ASBA Application`
+    : d.formNo ? `ASBA Application ${d.formNo}`
+    : 'ASBA Application';
+  doc.setTitle(title);
+  doc.setAuthor('Investoyard');
+  doc.setCreator('Investoyard');
+  doc.setProducer('Investoyard');
+  doc.setSubject('ASBA / UPI Bid cum Application Form');
+  // Keywords intentionally minimal — the sheet's own text carries the specifics.
+  doc.setKeywords(['ASBA', 'IPO', d.ipoSymbol].filter(Boolean) as string[]);
 
   // appearances: per-field best effort — one odd field must not block the rest.
   // On blanks with /DR properly declared, this succeeds and lets us flatten.

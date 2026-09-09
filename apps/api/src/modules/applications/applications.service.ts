@@ -277,6 +277,7 @@ export class ApplicationsService {
         branchName: app.profile.branchName,
         familyGroup: app.familyGroup ?? app.user?.name ?? app.user?.mobile ?? null,
         subBrokerCode: tenantIsChannel ? (app.tenant?.code ?? null) : null,
+        ipoSymbol: app.ipo.symbol ?? null,
       });
       if (acro) return { buffer: acro, formNo };
 
