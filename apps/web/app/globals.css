@@ -2370,8 +2370,20 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .prose > :last-child { margin-bottom: 0; }
 .prose p { margin: 0 0 8px; }
 .prose h1, .prose h2, .prose h3 { font-size: 15px; font-weight: 700; margin: 14px 0 6px; letter-spacing: -.01em; color: var(--text); }
-.prose ul, .prose ol { margin: 0 0 8px; padding-left: 20px; }
-.prose li { margin: 4px 0; }
+.prose ul, .prose ol { margin: 0 0 8px; padding-left: 0; list-style: none; }
+.prose li { margin: 5px 0; padding-left: 22px; position: relative; }
+/* Unordered lists carry the Investoyard IY mark as the bullet — set in
+   /public/bullet-iy.svg (operator ask 2026-09-09). Ordered lists keep
+   numeric markers so a sequenced list still reads in order. */
+.prose ul > li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 3px;
+  width: 14px; height: 14px;
+  background: url('/bullet-iy.svg') no-repeat center / contain;
+}
+.prose ol { padding-left: 22px; list-style: decimal; }
+.prose ol > li { padding-left: 0; }
 .prose a { color: var(--brand); text-decoration: underline; }
 .prose blockquote { border-left: 3px solid var(--border); margin: 10px 0; padding: 4px 0 4px 14px; color: var(--text-muted); }
 .prose table { width: 100%; margin: 10px 0; font-size: 13px; border: 1px solid var(--border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; }

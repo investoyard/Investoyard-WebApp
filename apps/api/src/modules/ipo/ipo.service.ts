@@ -240,6 +240,13 @@ export class IpoService {
       allotmentDate: dto.allotmentDate ?? day(existing.allotmentDate),
       listingDate: dto.listingDate ?? day(existing.listingDate),
     });
+    // Auto-false the live-subscription flag on any closed record — polling
+    // stops once the exchange window closes, so a true here would just be
+    // stale UI. Client already disables the toggle in that state; this is
+    // the belt to the client's braces (operator ask 2026-09-09).
+    if (this.isClosedRecord(existing, dto) && (dto as UpdateIpoDto).autoPollSubscription !== false) {
+      (dto as UpdateIpoDto).autoPollSubscription = false;
+    }
     try {
       // Symbol is editable (unique in DB); other writes unchanged.
       await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, dto.symbol, dto.type) });
@@ -280,11 +287,18 @@ export class IpoService {
       // Route bids under this member: activate its Online Apply series row.
       extra.onlineSeries = extra.onlineSeries.map((s: any) => ({ ...s, active: s.member === dto.bidMember }));
     }
+    // Force autoPollSubscription off for closed issues here too — this is
+    // the OTHER write path (IPO Operations quick controls) and needs the
+    // same guard as `update()` above.
+    const closedNow = this.isClosedRecord(existing, {} as UpdateIpoDto);
+    const nextAutoPoll = closedNow ? false
+      : dto.autoPollSubscription !== undefined ? dto.autoPollSubscription
+      : undefined;
     const updated = await this.prisma.ipo.update({
       where: { id },
       data: {
         extra,
-        ...(dto.autoPollSubscription !== undefined ? { autoPollSubscription: dto.autoPollSubscription } : {}),
+        ...(nextAutoPoll !== undefined ? { autoPollSubscription: nextAutoPoll } : {}),
       },
     });
     return {
@@ -369,6 +383,22 @@ export class IpoService {
         data: { ipoSymbol: ipo.symbol, listingGainPct: pct, listingGain: gain, applicationId: a.id },
       }).catch(() => { /* best-effort */ });
     }
+  }
+
+  /** True when the merged (existing + DTO) record is past its close window —
+   *  status is closed / listed / withdrawn, or the close date has passed.
+   *  Used to strip a stale `autoPollSubscription: true` on save so the
+   *  poller never sees a "live" flag on an issue that has already closed. */
+  private isClosedRecord(existing: any, dto: UpdateIpoDto | CreateIpoDto): boolean {
+    const status = (dto as any).status ?? existing.status;
+    if (status === 'closed' || status === 'listed' || status === 'withdrawn') return true;
+    const closeIso = (dto as any).closeDate ?? (existing.closeDate ? day(existing.closeDate) : undefined);
+    if (closeIso && /^\d{4}-\d{2}-\d{2}$/.test(closeIso)) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const close = new Date(`${closeIso}T00:00:00`);
+      if (close.getTime() < today.getTime()) return true;
+    }
+    return false;
   }
 
   /** DTO → Prisma write data (dates, ₹cr → rupees, exchanges from type). */

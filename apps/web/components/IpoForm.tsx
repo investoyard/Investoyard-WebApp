@@ -582,6 +582,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   }, []);
 
   const phase = ipoPhase({ status: form.status, openDate: form.openDate, closeDate: form.closeDate, allotmentDate: form.allotmentDate, listingDate: form.listingDate });
+  /** Once bidding has closed the live-subscription poller has nothing to fetch —
+   *  the exchange stops publishing new numbers and the flag becomes visual
+   *  noise. Auto-false on load AND disable the toggle so an operator can't
+   *  turn it back on for a closed issue. Server enforces the same on save. */
+  const isClosed = phase.phase === 'closed' || phase.phase === 'allotment' || phase.phase === 'listed' || phase.phase === 'withdrawn';
+  useEffect(() => {
+    if (isClosed && form.autoPollSubscription) set({ autoPollSubscription: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClosed]);
 
   const issueTypeOptions = issueTypeMasters.length ? issueTypeMasters.map((t) => t.name) : [...ISSUE_TYPES];
   /** Selecting an issue type auto-matches its linked IPO Category (and the platform type). */
@@ -1098,10 +1107,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   </Field>
                   {editing && (
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <Field label="Live subscription">
+                      <Field label="Live subscription" hint={isClosed ? 'Polling stops once the issue closes — turned off automatically.' : undefined}>
                         <div style={{ paddingTop: 3, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                          <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} />
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub}><Icon name="refresh" size={13} /> Refresh now</button>
+                          <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} disabled={isClosed} />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub} disabled={isClosed}><Icon name="refresh" size={13} /> Refresh now</button>
                           {subMsg && <span className="muted" style={{ fontSize: 12 }}>{subMsg}</span>}
                         </div>
                       </Field>

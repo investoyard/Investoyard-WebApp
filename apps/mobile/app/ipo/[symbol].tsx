@@ -23,6 +23,7 @@ import { Chip, ChipTone } from '../../components/ui/Chip';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
+import { BulletIY } from '../../components/BulletIY';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
@@ -381,18 +382,18 @@ export default function IpoDetailScreen() {
             <Card style={{ paddingVertical: 2 }}>
               {aboutParas.length > 0 ? (
                 <ExpandTile title="About the company" initiallyOpen>
-                  {aboutParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                  {aboutParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)}
                 </ExpandTile>
               ) : null}
               {objectParas.length > 0 ? (
                 <ExpandTile title="Objects of the issue">
-                  {objectParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                  {objectParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)}
                 </ExpandTile>
               ) : null}
               {finParas.length > 0 || (ipo.financials && ipo.financials.length > 0) ? (
                 <ExpandTile title="Financials">
                   {finParas.length > 0
-                    ? finParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)
+                    ? finParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)
                     : ipo.financials!.map((f, i) => <KV key={f.label} k={f.label} v={f.value} last={i === ipo.financials!.length - 1} />)}
                 </ExpandTile>
               ) : null}
@@ -475,6 +476,24 @@ export default function IpoDetailScreen() {
       ) : null}
     </View>
   );
+}
+
+/** One paragraph or list-item from the operator's rich text. stripHtml
+ *  already prefixes bullet lines with '• '; we detect that prefix and
+ *  swap the character for the Investoyard IY mark. Parity with web's
+ *  `.prose ul li::before` in globals.css. */
+function ProseLine({ p, first }: { p: string; first: boolean }) {
+  const isBullet = p.startsWith('• ');
+  const marginTop = first ? 0 : isBullet ? 6 : 8;
+  if (isBullet) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop }}>
+        <View style={{ paddingTop: 5 }}><BulletIY size={12} /></View>
+        <Text style={[styles.para, { flex: 1 }]}>{p.slice(2)}</Text>
+      </View>
+    );
+  }
+  return <Text style={[styles.para, { marginTop }]}>{p}</Text>;
 }
 
 function Metric({ k, v, hi }: { k: string; v: string; hi?: boolean }) {
