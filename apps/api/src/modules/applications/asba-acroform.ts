@@ -51,8 +51,11 @@ export interface AsbaFormData {
   subBrokerCode?: string | null;
 }
 
-/** "12,34,567" style Indian digit grouping (figures fields). */
-const inrDigits = (n?: number | null) => (n == null || !Number.isFinite(n) ? '' : Math.round(n).toLocaleString('en-IN'));
+/** Plain integer digits — no thousands separators. The registrar prints
+ *  "Amount Blocked (₹ in figures)" as a run of digits (operator ask,
+ *  2026-09-08); locale grouping (`2,25,250`) reads as separator characters
+ *  in some counterfoil layouts and can trip OCR at the banker. */
+const inrDigits = (n?: number | null) => (n == null || !Number.isFinite(n) ? '' : String(Math.round(n)));
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
   'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
