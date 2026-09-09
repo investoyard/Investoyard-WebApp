@@ -116,8 +116,9 @@ export default function IpoDetailScreen() {
   const subLog: { d: string; total: number }[] = Array.isArray(ex.subLog)
     ? ex.subLog.map((e: any) => ({ d: String(e?.d ?? ''), total: Number(e?.total) || 0 })) : [];
   const hasTrends = gmpLog.length >= 2 || subLog.length >= 2;
-  const anchors: { name: string; amount: string }[] = Array.isArray(ex.anchors)
-    ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? a), amount: String(a?.amount ?? '') })).filter((a: any) => a.name) : [];
+  // ex.anchors was rendered on this screen; hidden 2026-09-09 (identities
+  // are for the operator report only). Kept parsed out here as a marker
+  // in case the operator ever asks for an aggregate summary — see web parity.
   const DOC_LABEL: Record<string, string> = { drhp: 'DRHP', rhp: 'RHP', anchor: 'Anchor allocation', prospectus: 'Prospectus' };
   const docs = (ipo.documents ?? []).filter((d) => d.url && DOC_LABEL[d.type?.toLowerCase?.() ?? '']);
 
@@ -399,17 +400,9 @@ export default function IpoDetailScreen() {
           </View>
         ) : null}
 
-        {/* anchor investors (per-IPO allocations from the admin master) */}
-        {anchors.length > 0 ? (
-          <>
-            <SectionTitle label="Anchor investors" meta={`${anchors.length} institutions`} style={{ marginTop: 24 }} />
-            <Card>
-              {anchors.map((a, i) => (
-                <KV key={`${a.name}-${i}`} k={a.name} v={a.amount ? `₹${a.amount} Cr` : '—'} last={i === anchors.length - 1} />
-              ))}
-            </Card>
-          </>
-        ) : null}
+        {/* Anchor investor identities are kept for the operator's own
+            report surface only. Hidden from the public IPO detail
+            (operator decision 2026-09-09) — parity with web. */}
 
         {/* issue details + offer documents */}
         <View onLayout={reg('details')}>

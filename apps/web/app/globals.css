@@ -244,6 +244,9 @@ img, svg { vertical-align: middle; }
   /* the card's own overflow:hidden + 18px radius trims this to the rounded corner */
   clip-path: polygon(100% 0, 0 0, 100% 100%); }
 .ic-top { display: flex; gap: 12px; align-items: flex-start; position: relative; }
+/* Logo click target — no visual change, just makes the whole logo box a link. */
+.ic-logo-link { display: inline-flex; text-decoration: none; border-radius: 8px; }
+.ic-logo-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .ipologo { flex-shrink: 0; border-radius: 13px; background: #fff; border: 1px solid var(--border); display: grid; place-items: center; box-shadow: var(--sh-xs); overflow: hidden; }
 .ipologo img { width: 100%; height: 100%; object-fit: contain; }
 .ic-top .grow { flex: 1; min-width: 0; }
@@ -2488,6 +2491,75 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .field.col-2 { grid-column: span 2; }
 .field.col-3 { grid-column: span 3; }
 .field.full { grid-column: 1 / -1; }
+
+/* Completeness bar cell — the "Complete" column on Admin → IPO List.
+   Pastel indigo track + solid indigo fill; a check chip replaces the bar
+   at 100%. Colour DOES shift by tier (low → indigo-faded, mid → indigo,
+   high → indigo-strong, full → gold check) but stays inside the brand
+   family — no green/red, those are reserved for financial signals. */
+.cc-bar {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: none; border: 0; padding: 4px 6px; cursor: pointer;
+  border-radius: 6px; min-width: 88px; font: inherit;
+}
+.cc-bar:hover { background: var(--bg-2); }
+.cc-bar:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.cc-track { display: inline-block; width: 54px; height: 6px; background: var(--brand-50, #ece9f7); border-radius: 999px; overflow: hidden; }
+.cc-fill { display: block; height: 100%; background: var(--brand, #3c2e7e); border-radius: 999px; transition: width .3s var(--ease); }
+.cc-label { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 30px; text-align: right; }
+.cc-pct-low  .cc-fill { background: var(--brand-300, #7565bd); }
+.cc-pct-mid  .cc-fill { background: var(--brand, #3c2e7e); }
+.cc-pct-high .cc-fill { background: var(--brand, #3c2e7e); }
+.cc-done {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: #7a5b00; background: #fff4d0; border: 1px solid #f0b429;
+  padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+}
+
+/* Completeness modal: group panels with a per-group X/Y count and a
+   check/x mark per row. The 'ok' branch uses a green tint AS A UI
+   COMPLETENESS SIGNAL — this is not a financial gain/loss, so the
+   semantic-green rule doesn't apply here. Muted gray for misses. */
+.cc-modal { display: flex; flex-direction: column; gap: 16px; padding: 4px; }
+.cc-summary { display: flex; align-items: center; gap: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.cc-bar.cc-lg { min-width: 140px; }
+.cc-bar.cc-lg .cc-track { width: 100px; height: 8px; }
+.cc-bar.cc-lg .cc-label { font-size: 14px; }
+.cc-group { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+.cc-group-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.cc-group-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.cc-group-count { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cc-group-count.ok { color: #12925a; font-weight: 700; }
+.cc-checklist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
+.cc-checklist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+.cc-checklist li .cc-mark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; }
+.cc-checklist li.ok   .cc-mark { background: rgba(18, 146, 90, 0.15); color: #12925a; }
+.cc-checklist li.miss .cc-mark { background: var(--bg-2); color: var(--text-faint); }
+.cc-checklist li.miss .cc-name { color: var(--text-muted); }
+.cc-note { font-size: 12px; padding: 8px 12px; background: var(--bg-2); border-radius: 6px; }
+@media (max-width: 720px) { .cc-checklist { grid-template-columns: 1fr; } }
+
+/* Pending-field highlights on the IPO entry form — operator ask 2026-09-09.
+   Pastel amber for mandatory-empty (attention, not error); pastel gray-blue
+   for optional-empty (nice-to-fill). Both are BACKGROUND WASH + LEFT RAIL,
+   so an existing input border keeps its own colour. Filled fields stay
+   neutral. Dark theme flips to muted tints of the same hue so the wash
+   still reads as "this row wants something" without shouting. */
+.field.pending-mandatory,
+.field.pending-optional {
+  padding: 8px 12px 6px;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  margin-left: -8px;   /* pull the wash flush with the surrounding grid */
+  margin-right: -8px;
+  transition: background .18s var(--ease), border-color .18s var(--ease);
+}
+.field.pending-mandatory { background: #fff7e0; border-left-color: #f0b429; }
+.field.pending-optional  { background: #f0f4fa; border-left-color: #7d8ba0; }
+:root:not([data-admin-theme="light"]) .field.pending-mandatory,
+[data-admin-theme="dark"] .field.pending-mandatory { background: rgba(240, 180, 41, 0.10); border-left-color: rgba(240, 180, 41, 0.55); }
+:root:not([data-admin-theme="light"]) .field.pending-optional,
+[data-admin-theme="dark"] .field.pending-optional  { background: rgba(125, 139, 160, 0.10); border-left-color: rgba(125, 139, 160, 0.45); }
 @media (max-width: 640px) { .field.col-2, .field.col-3 { grid-column: 1 / -1; } }
 
 .form-actions { display: flex; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-sm); padding: 15px 22px; }

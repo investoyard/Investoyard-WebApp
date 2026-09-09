@@ -1023,8 +1023,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           <div className="fstack">
             <Panel title="Basic Information">
               <div className="form-grid">
-                <Field label="IPO Name / Company" required span={2}><input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Acme Technologies Limited" /></Field>
-                <Field label="Symbol" required><input className="input mono" value={form.symbol} onChange={(e) => set({ symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="ACME" /></Field>
+                <Field label="IPO Name / Company" required value={form.name} span={2}><input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Acme Technologies Limited" /></Field>
+                <Field label="Symbol" required value={form.symbol}><input className="input mono" value={form.symbol} onChange={(e) => set({ symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="ACME" /></Field>
                 {/* Instrument is NOT the board: an FPO can be Mainboard or SME.
                     Keeping them apart is what makes the FPO report variants
                     possible — before this the four we hold were findable only by
@@ -1058,8 +1058,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <input className="input" value={form.industry} placeholder="Specialty Chemicals"
                     onChange={(e) => set({ industry: e.target.value })} />
                 </Field>
-                <Field label="Issue Type" required><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
-                <Field label="IPO Category" required>
+                <Field label="Issue Type" required value={form.issueType}><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+                <Field label="IPO Category" required value={form.categoryName || form.type}>
                   {categoryMasters.length ? (
                     <select className="input" value={form.categoryName || ''} onChange={(e) => pickCategory(e.target.value)}>
                       <option value="">— select category —</option>
@@ -1069,13 +1069,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     <select className="input" value={form.type} onChange={(e) => set({ type: e.target.value })}><option value="mainboard">Main Board IPO</option><option value="sme">SME IPO</option></select>
                   )}
                 </Field>
-                <Field label="ISIN" hint={isinHint ?? undefined}>
+                <Field label="ISIN" required value={form.isin} hint={isinHint ?? undefined}>
                   <input className="input mono" value={form.isin}
                     onChange={(e) => set({ isin: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })}
                     placeholder="INE000000000" />
                 </Field>
                 <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                  <Field label="Face Value (₹)"><input className="input mono" value={form.faceValue} onChange={(e) => set({ faceValue: e.target.value })} placeholder="2.00" /></Field>
+                  <Field label="Face Value (₹)" required value={form.faceValue}><input className="input mono" value={form.faceValue} onChange={(e) => set({ faceValue: e.target.value })} placeholder="2.00" /></Field>
                   <Field label="Is Active"><div style={{ paddingTop: 3 }}><Toggle on={isActive} onChange={(v) => set({ status: v ? 'upcoming' : 'withdrawn' })} /></div></Field>
                   {/* Shareholder / Employee quotas are now CARVE-OUT ROWS on the
                       Offer tab — a quota exists because shares are set aside for
@@ -1130,13 +1130,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     <option value="fixed_price">Fixed price</option>
                   </select>
                 </Field>
-                <Field label="Lot Size" required hint="shares per application lot">
+                <Field label="Lot Size" required value={form.lotSize} hint="shares per application lot">
                   <input className="input mono" value={form.lotSize} onChange={(e) => set({ lotSize: e.target.value })} placeholder="1" />
                 </Field>
-                <Field label={form.mechanism === 'fixed_price' ? 'Issue price (₹)' : 'Price band — min (₹)'}>
+                <Field label={form.mechanism === 'fixed_price' ? 'Issue price (₹)' : 'Price band — min (₹)'} required value={form.priceBandMin}>
                   <input className="input mono" value={form.priceBandMin} onChange={(e) => set({ priceBandMin: e.target.value })} />
                 </Field>
-                <Field label="Price band — max (₹)" hint={form.mechanism === 'fixed_price' ? 'not used for a fixed-price issue' : undefined}>
+                <Field label="Price band — max (₹)" required={form.mechanism !== 'fixed_price'} value={form.mechanism === 'fixed_price' ? 'n/a' : form.priceBandMax} hint={form.mechanism === 'fixed_price' ? 'not used for a fixed-price issue' : undefined}>
                   <input className="input mono" value={form.priceBandMax} disabled={form.mechanism === 'fixed_price'} onChange={(e) => set({ priceBandMax: e.target.value })} />
                 </Field>
                 <Field label="Tick size (₹)"><input className="input mono" value={form.tickSize} onChange={(e) => set({ tickSize: e.target.value })} placeholder="1" /></Field>
@@ -1218,11 +1218,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             <Panel title="Offer size" desc="Derived from the Fresh Issue and Offer for Sale legs above.">
               <div className="form-grid">
                 {legSumCr ? (
-                  <Field label="Total issue size (₹ Cr)" hint="derived from the two legs above">
+                  <Field label="Total issue size (₹ Cr)" required value={legSumCr} hint="derived from the two legs above">
                     <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
                   </Field>
                 ) : (
-                  <Field label="Total issue size (₹ Cr)" required
+                  <Field label="Total issue size (₹ Cr)" required value={form.issueSizeCr}
                     hint="no Fresh / OFS legs entered — enter the total the RHP states">
                     <input className="input mono" value={form.issueSizeCr}
                       onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
@@ -1526,14 +1526,14 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           <div className="fstack">
             <Panel title="Important Dates">
               <div className="form-grid">
-                <Field label="Anchor date (date & time)" hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
-                <Field label="Issue Open (date & time)"><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
-                <Field label="Issue Close (date & time)"><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
-                <Field label="Issue Close — QIB (date & time)" hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
-                <Field label="Basis of allotment"><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
-                <Field label="Refund date"><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
-                <Field label="Demat credit"><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
-                <Field label="Listing date"><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
+                <Field label="Anchor date (date & time)" value={form.anchorDate} hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
+                <Field label="Issue Open (date & time)" required value={form.openDate}><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
+                <Field label="Issue Close (date & time)" required value={form.closeDate}><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
+                <Field label="Issue Close — QIB (date & time)" value={form.qibCloseDate} hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
+                <Field label="Basis of allotment" value={form.allotmentDate}><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
+                <Field label="Refund date" value={form.refundDate}><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
+                <Field label="Demat credit" value={form.dematDate}><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
+                <Field label="Listing date" required value={form.listingDate}><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
                 {/* The deadline that actually bites on the last day: a mandate
                     not confirmed by the cut-off is not a valid application. */}
                 <Field label="UPI mandate cut-off (date & time)" hint="last moment an investor can confirm the mandate">

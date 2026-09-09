@@ -59,9 +59,24 @@ export function Section({ n, title, desc, children }: { n?: number | string; tit
   );
 }
 
-/** A labelled field. `span` widens it across grid columns; `full` spans the row. */
-export function Field({ label, required, hint, span, full, children }: { label: string; required?: boolean; hint?: string; span?: 2 | 3; full?: boolean; children: React.ReactNode }) {
-  const cls = ['field', full ? 'full' : span === 3 ? 'col-3' : span === 2 ? 'col-2' : ''].filter(Boolean).join(' ');
+/** A labelled field. `span` widens it across grid columns; `full` spans the row.
+ *
+ *  `value` is an OPTIONAL data-tap for the pending-field highlight (operator
+ *  ask 2026-09-09) — pass the underlying form value and Field decides:
+ *    - `required` + empty → `pending-mandatory` (pastel amber tint)
+ *    - not required + empty → `pending-optional` (pastel gray-blue tint)
+ *    - filled → neutral
+ *  Old callers that don't pass `value` see no tint (fully backward-compatible).
+ *  "Empty" = null / undefined / '' / empty array. */
+export function Field({ label, required, hint, span, full, value, children }: {
+  label: string; required?: boolean; hint?: string; span?: 2 | 3; full?: boolean;
+  value?: any; children: React.ReactNode;
+}) {
+  const hasValue = value != null && value !== '' && !(Array.isArray(value) && value.length === 0);
+  const pending = value !== undefined && !hasValue
+    ? (required ? 'pending-mandatory' : 'pending-optional')
+    : '';
+  const cls = ['field', pending, full ? 'full' : span === 3 ? 'col-3' : span === 2 ? 'col-2' : ''].filter(Boolean).join(' ');
   return (
     <div className={cls}>
       <label>{label}{required && <span className="req">*</span>}</label>

@@ -180,7 +180,13 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
           starts 14px in. */}
       <span className="ic-corner" aria-hidden="true" />
       <div className="ic-top">
-        <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
+        {/* Logo is a click target too — the whole "identity block" (logo +
+            name) opens the detail page. Operator ask 2026-09-09; previously
+            only the name text carried the link. `aria-label` gives screen
+            readers something to read on the logo alone. */}
+        <a className="ic-logo-link" href={detailHref} aria-label={`Open ${titleCase(ipo.name)} details`}>
+          <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
+        </a>
         <div className="grow">
           {/* the full legal name stays in the tooltip (and on the detail page) */}
           <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>

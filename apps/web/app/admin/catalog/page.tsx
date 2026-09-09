@@ -12,6 +12,7 @@ import { Loader } from '@/components/ui/Loader';
 import { Toasts, useToast } from '@/components/ui/Toast';
 import { Icon } from '@/components/Icon';
 import { ipoPhase, priceBand, type IpoPhase } from '@/lib/format';
+import { CompletenessCell } from '@/components/CompletenessCell';
 import * as api from '@/lib/tenants-admin';
 
 const FILTERS: { key: IpoPhase | 'all'; label: string }[] = [
@@ -208,6 +209,7 @@ export default function AdminCatalog() {
                 <SortTh k="symbol" label="Symbol" /><SortTh k="name" label="Name" /><SortTh k="type" label="Category" />
                 <SortTh k="band" label="Band" /><SortTh k="lot" label="Lot" /><SortTh k="open" label="Open" />
                 <SortTh k="close" label="Close" /><th title="Operator gates: Bid / Print (set in Edit or IPO Operations)">Ops</th><SortTh k="status" label="Status" />
+                <th title="How much of the IPO's detail is filled in — click for the checklist">Complete</th>
                 {canManage && <th style={{ textAlign: 'right' }}>Action</th>}
               </tr></thead>
               <tbody>
@@ -247,6 +249,9 @@ export default function AdminCatalog() {
                       </span>
                     </td>
                     <td><span className={`ph ${ph.phase}`}>{ph.label}</span></td>
+                    <td>
+                      <CompletenessCell ipo={i} editHref={`/admin/catalog/edit?id=${i.id}`} />
+                    </td>
                     {canManage && (
                       <td>
                         <span className="row-actions">

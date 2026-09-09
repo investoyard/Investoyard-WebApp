@@ -222,16 +222,11 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                   <div className="kv"><span className="k">Registrar</span><span className="v" style={{ fontSize: 14 }}>{ipo.registrar ?? '—'}</span></div>
                 </div>
               </div>
-              {ipo.anchors && ipo.anchors.length > 0 && (
-                <div className="panel">
-                  <h3>Anchor investors</h3>
-                  <div style={{ marginTop: 8 }}>
-                    {ipo.anchors.map((an) => (
-                      <div className="kv" key={an.name}><span className="k">{an.name}</span><span className="v mono">{an.amount}</span></div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Anchor investor identities are kept for the operator's own
+                  report surface only (admin → IPO detail). Hidden from the
+                  public detail page (operator decision 2026-09-09) — a listed
+                  anchor list served no reader here and duplicated data
+                  presented more usefully in the operator's report. */}
             </div>
           </section>
 
