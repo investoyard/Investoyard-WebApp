@@ -209,7 +209,6 @@ export default function AdminCatalog() {
                 <SortTh k="symbol" label="Symbol" /><SortTh k="name" label="Name" /><SortTh k="type" label="Category" />
                 <SortTh k="band" label="Band" /><SortTh k="lot" label="Lot" /><SortTh k="open" label="Open" />
                 <SortTh k="close" label="Close" /><th title="Operator gates: Bid / Print (set in Edit or IPO Operations)">Ops</th><SortTh k="status" label="Status" />
-                <th title="How much of the IPO's detail is filled in — click for the checklist">Complete</th>
                 {canManage && <th style={{ textAlign: 'right' }}>Action</th>}
               </tr></thead>
               <tbody>
@@ -217,12 +216,17 @@ export default function AdminCatalog() {
                   <tr key={i.id}>
                     <td>{i.logoUrl ? <img src={i.logoUrl} alt="" width={28} height={28} style={{ borderRadius: 7, objectFit: 'contain', background: '#fff', border: '1px solid var(--border)' }} /> : <span style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', display: 'inline-block' }} />}</td>
                     <td className="mono" style={{ fontWeight: 700 }}>{i.symbol}</td>
-                    <td>{i.name}</td>
+                    <td>
+                      <div className="cat-name-cell">
+                        <span className="cat-name">{i.name}</span>
+                        <CompletenessCell ipo={i} editHref={`/admin/catalog/edit?id=${i.id}`} />
+                      </div>
+                    </td>
                     <td><span className={`chip ${i.type === 'sme' ? 'sme' : 'mainboard'}`} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 999 }}>{i.extra?.categoryName || (i.type === 'sme' ? 'SME' : 'Mainboard')}</span></td>
                     <td className="mono">{priceBand(i.priceBandMin, i.priceBandMax)}</td>
                     <td className="mono">{i.lotSize ?? '—'}</td>
-                    <td className="mono" style={{ fontSize: 12.5 }}>{i.openDate ?? '—'}</td>
-                    <td className="mono" style={{ fontSize: 12.5 }}>{i.closeDate ?? '—'}</td>
+                    <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{i.openDate ?? '—'}</td>
+                    <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{i.closeDate ?? '—'}</td>
                     {/* read-only operator-gate indicators (toggles live in IPO Operations) */}
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4 }}>
@@ -248,16 +252,13 @@ export default function AdminCatalog() {
                         })}
                       </span>
                     </td>
-                    <td><span className={`ph ${ph.phase}`}>{ph.label}</span></td>
-                    <td>
-                      <CompletenessCell ipo={i} editHref={`/admin/catalog/edit?id=${i.id}`} />
-                    </td>
+                    <td style={{ width: '1%', whiteSpace: 'nowrap' }}><span className={`ph ${ph.phase}`}>{ph.label}</span></td>
                     {canManage && (
-                      <td>
+                      <td style={{ width: '1%', whiteSpace: 'nowrap', textAlign: 'right' }}>
                         <span className="row-actions">
-                          <a className="icon-btn" href={`/admin/catalog/view?id=${i.id}`} title="View details"><Icon name="eye" size={15} /></a>
-                          <a className="icon-btn" href={`/admin/catalog/edit?id=${i.id}`} title="Edit"><Icon name="edit" size={15} /></a>
-                          <button className="icon-btn" onClick={() => openGmp(i)} title="GMP & Listing"><Icon name="trending" size={15} /></button>
+                          <a className="icon-btn" href={`/admin/catalog/view?id=${i.id}`} title="View details"><Icon name="eye" size={14} /></a>
+                          <a className="icon-btn" href={`/admin/catalog/edit?id=${i.id}`} title="Edit"><Icon name="edit" size={14} /></a>
+                          <button className="icon-btn" onClick={() => openGmp(i)} title="GMP & Listing"><Icon name="trending" size={14} /></button>
                           <RowMenu>
                             <button className="danger" disabled={busy} onClick={() => askDelete(i)}><Icon name="trash" size={15} /> Delete IPO</button>
                           </RowMenu>

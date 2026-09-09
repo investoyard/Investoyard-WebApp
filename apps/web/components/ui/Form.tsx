@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { Children, isValidElement, useState, type ReactNode } from 'react';
 import { Icon } from '@/components/Icon';
 
 /** Password input with a show/hide eye toggle. */
@@ -61,19 +61,29 @@ export function Section({ n, title, desc, children }: { n?: number | string; tit
 
 /** A labelled field. `span` widens it across grid columns; `full` spans the row.
  *
- *  `value` is an OPTIONAL data-tap for the pending-field highlight (operator
- *  ask 2026-09-09) — pass the underlying form value and Field decides:
+ *  Pending-field highlight (operator ask 2026-09-09):
  *    - `required` + empty → `pending-mandatory` (pastel amber tint)
  *    - not required + empty → `pending-optional` (pastel gray-blue tint)
  *    - filled → neutral
- *  Old callers that don't pass `value` see no tint (fully backward-compatible).
+ *
+ *  The empty check runs against `value` when the caller passes it explicitly,
+ *  otherwise Field auto-detects by walking `children` for the first element
+ *  carrying a `value` prop (input / select / textarea / SearchSelect / custom
+ *  widgets). Booleans (Toggle `on`) are skipped — "off" is a legitimate state,
+ *  not "empty". Explicitly passing `value={'n/a'}` from the caller bypasses
+ *  auto-detect for a field where the child's value shouldn't drive the tint
+ *  (e.g. a disabled max-price field on a fixed-price issue).
+ *
  *  "Empty" = null / undefined / '' / empty array. */
 export function Field({ label, required, hint, span, full, value, children }: {
   label: string; required?: boolean; hint?: string; span?: 2 | 3; full?: boolean;
-  value?: any; children: React.ReactNode;
+  value?: any; children: ReactNode;
 }) {
-  const hasValue = value != null && value !== '' && !(Array.isArray(value) && value.length === 0);
-  const pending = value !== undefined && !hasValue
+  const detected = value !== undefined ? { has: true, v: value } : findValue(children);
+  const hasValue = detected.has
+    && detected.v != null && detected.v !== ''
+    && !(Array.isArray(detected.v) && detected.v.length === 0);
+  const pending = detected.has && !hasValue
     ? (required ? 'pending-mandatory' : 'pending-optional')
     : '';
   const cls = ['field', pending, full ? 'full' : span === 3 ? 'col-3' : span === 2 ? 'col-2' : ''].filter(Boolean).join(' ');
@@ -84,6 +94,28 @@ export function Field({ label, required, hint, span, full, value, children }: {
       {hint && <span className="hint">{hint}</span>}
     </div>
   );
+}
+
+/** Walk children for the first React element carrying a string/number/array
+ *  `value` (or empty string). Booleans are skipped — a Toggle's `on` prop is
+ *  state, not "pending". Recurses one level into wrapper divs so a Toggle
+ *  wrapped in a spacer doesn't hide its child's value from us. */
+function findValue(node: ReactNode, depth = 0): { has: boolean; v?: any } {
+  if (depth > 4) return { has: false };
+  const kids = Children.toArray(node);
+  for (const c of kids) {
+    if (!isValidElement(c)) continue;
+    const props: any = (c as any).props;
+    if (props && 'value' in props) {
+      const v = props.value;
+      if (typeof v !== 'boolean') return { has: true, v };
+    }
+    if (props?.children != null) {
+      const inner = findValue(props.children, depth + 1);
+      if (inner.has) return inner;
+    }
+  }
+  return { has: false };
 }
 
 /** Segmented control for a small set of choices. */

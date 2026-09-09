@@ -44,8 +44,9 @@ export function CompletenessCell({ ipo, editHref }: { ipo: any; editHref: string
 function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
   completeness: Completeness; ipo: any; editHref: string; onClose: () => void;
 }) {
+  const railClosed = c.checks.some((k) => k.group === 'Application rail' && k.skipped);
   return (
-    <Modal title={`${ipo.symbol ?? ipo.name} — Detail completeness (${c.filled}/${c.total})`} onClose={onClose}>
+    <Modal title={`${ipo.symbol ?? ipo.name} — Detail completeness (${c.filled}/${c.total})`} wide onClose={onClose}>
       <div className="cc-modal">
         <div className="cc-summary">
           <div className={`cc-bar cc-pct-${c.pct === 100 ? 'full' : c.pct >= 66 ? 'high' : c.pct >= 33 ? 'mid' : 'low'} cc-lg`}>
@@ -55,35 +56,39 @@ function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
           <a className="btn" href={editHref}><Icon name="edit" size={14} /> Edit IPO</a>
         </div>
 
-        {COMPLETENESS_GROUPS.map((g) => {
-          const rows = c.checks.filter((k) => k.group === g);
-          if (!rows.length) return null;
-          const anySkipped = rows.every((r) => r.skipped);
-          if (anySkipped) return null;
-          const done = rows.filter((r) => r.filled && !r.skipped).length;
-          const grpTotal = rows.filter((r) => !r.skipped).length;
-          return (
-            <div className="cc-group" key={g}>
-              <div className="cc-group-head">
-                <span className="cc-group-name">{g}</span>
-                <span className={`cc-group-count${done === grpTotal ? ' ok' : ''}`}>{done}/{grpTotal}</span>
+        {/* Two-column grid of group cards — 7 groups fit in ~4 rows and
+            the whole modal stays inside one viewport. Falls to one
+            column below 720px so the mobile view is still scannable. */}
+        <div className="cc-grid">
+          {COMPLETENESS_GROUPS.map((g) => {
+            const rows = c.checks.filter((k) => k.group === g);
+            if (!rows.length) return null;
+            const visible = rows.filter((r) => !r.skipped);
+            if (!visible.length) return null;
+            const done = visible.filter((r) => r.filled).length;
+            return (
+              <div className="cc-group" key={g}>
+                <div className="cc-group-head">
+                  <span className="cc-group-name">{g}</span>
+                  <span className={`cc-group-count${done === visible.length ? ' ok' : ''}`}>{done}/{visible.length}</span>
+                </div>
+                <ul className="cc-checklist">
+                  {visible.map((r) => (
+                    <li key={r.key} className={r.filled ? 'ok' : 'miss'}>
+                      <span className="cc-mark">{r.filled ? <Icon name="check" size={10} /> : <Icon name="x" size={10} />}</span>
+                      <span className="cc-name">{r.label}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <ul className="cc-checklist">
-                {rows.filter((r) => !r.skipped).map((r) => (
-                  <li key={r.key} className={r.filled ? 'ok' : 'miss'}>
-                    <span className="cc-mark">{r.filled ? <Icon name="check" size={12} /> : <Icon name="x" size={12} />}</span>
-                    <span className="cc-name">{r.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
 
         {/* Application-rail checks are hidden entirely for closed issues.
             Say so explicitly so the operator sees WHY the denominator dropped. */}
-        {c.checks.some((k) => k.group === 'Application rail' && k.skipped) && (
-          <div className="cc-note muted">
+        {railClosed && (
+          <div className="cc-note">
             Application-rail checks (PDF template · print series · bid rail) are excluded — this issue has closed.
           </div>
         )}

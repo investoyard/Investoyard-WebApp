@@ -712,8 +712,12 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .icon-btn.danger:hover { color: var(--neg); border-color: var(--neg); background: var(--neg-soft); }
 .icon-btn.pos:hover { color: var(--pos); border-color: var(--pos); background: var(--pos-soft); }
 /* borderless icon actions inside table rows (clean, like the reference) */
-.row-actions { display: inline-flex; align-items: center; gap: 3px; justify-content: flex-end; }
-.row-actions .icon-btn { border: 0; background: transparent; width: 30px; height: 30px; color: var(--text-faint); }
+/* Row-actions column shrunk (operator ask 2026-09-09) so it stops pushing
+   Open/Close onto two lines on typical 1440px admin viewports. Also
+   width:1% (a CSS table trick) collapses the actions cell to content, and
+   the Status cell right beside it inherits the same via .table td.status-td. */
+.row-actions { display: inline-flex; align-items: center; gap: 1px; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+.row-actions .icon-btn { border: 0; background: transparent; width: 26px; height: 26px; color: var(--text-faint); }
 .row-actions .icon-btn:hover { background: var(--bg-2); color: var(--brand); }
 .row-actions .icon-btn.danger:hover { background: var(--neg-soft); color: var(--neg); border-color: transparent; }
 .row-actions .icon-btn.pos:hover { background: var(--pos-soft); color: var(--pos); border-color: transparent; }
@@ -2492,52 +2496,55 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .field.col-3 { grid-column: span 3; }
 .field.full { grid-column: 1 / -1; }
 
-/* Completeness bar cell — the "Complete" column on Admin → IPO List.
-   Pastel indigo track + solid indigo fill; a check chip replaces the bar
-   at 100%. Colour DOES shift by tier (low → indigo-faded, mid → indigo,
-   high → indigo-strong, full → gold check) but stays inside the brand
-   family — no green/red, those are reserved for financial signals. */
+/* Completeness bar under the IPO name — Admin → IPO List.
+   Slim (4px tall) so a two-line name cell stays as tall as the rest of
+   the row. Pastel indigo track + solid indigo fill; a gold check chip
+   replaces the bar at 100%. Colour stays in the brand family — no
+   green/red (those are reserved for financial signals per CLAUDE.md). */
+.cat-name-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cat-name-cell .cat-name { line-height: 1.25; }
 .cc-bar {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: none; border: 0; padding: 4px 6px; cursor: pointer;
-  border-radius: 6px; min-width: 88px; font: inherit;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  border-radius: 4px; font: inherit; text-align: left;
 }
-.cc-bar:hover { background: var(--bg-2); }
-.cc-bar:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.cc-track { display: inline-block; width: 54px; height: 6px; background: var(--brand-50, #ece9f7); border-radius: 999px; overflow: hidden; }
+.cc-bar:hover .cc-label { color: var(--text); }
+.cc-bar:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.cc-track { display: inline-block; width: 72px; height: 4px; background: var(--brand-50, #ece9f7); border-radius: 999px; overflow: hidden; }
 .cc-fill { display: block; height: 100%; background: var(--brand, #3c2e7e); border-radius: 999px; transition: width .3s var(--ease); }
-.cc-label { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 30px; text-align: right; }
+.cc-label { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cc-pct-low  .cc-fill { background: var(--brand-300, #7565bd); }
 .cc-pct-mid  .cc-fill { background: var(--brand, #3c2e7e); }
 .cc-pct-high .cc-fill { background: var(--brand, #3c2e7e); }
 .cc-done {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 4px;
   color: #7a5b00; background: #fff4d0; border: 1px solid #f0b429;
-  padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
 }
 
-/* Completeness modal: group panels with a per-group X/Y count and a
-   check/x mark per row. The 'ok' branch uses a green tint AS A UI
-   COMPLETENESS SIGNAL — this is not a financial gain/loss, so the
-   semantic-green rule doesn't apply here. Muted gray for misses. */
-.cc-modal { display: flex; flex-direction: column; gap: 16px; padding: 4px; }
-.cc-summary { display: flex; align-items: center; gap: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-.cc-bar.cc-lg { min-width: 140px; }
-.cc-bar.cc-lg .cc-track { width: 100px; height: 8px; }
+/* Completeness modal — designed to fit ONE viewport without scrolling.
+   Two-column grid of compact group cards; each card is a header row +
+   a tight single-column checklist. The 'ok' green tint is a UI signal
+   (completeness), not a financial gain/loss, so the semantic-green
+   rule doesn't apply here. */
+.cc-modal { display: flex; flex-direction: column; gap: 12px; padding: 2px; }
+.cc-summary { display: flex; align-items: center; gap: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.cc-bar.cc-lg .cc-track { width: 140px; height: 8px; }
 .cc-bar.cc-lg .cc-label { font-size: 14px; }
-.cc-group { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
-.cc-group-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.cc-group-name { font-size: 13px; font-weight: 700; color: var(--text); }
-.cc-group-count { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.cc-group { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.cc-group-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.cc-group-name { font-size: 12px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.4px; }
+.cc-group-count { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cc-group-count.ok { color: #12925a; font-weight: 700; }
-.cc-checklist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
-.cc-checklist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; }
-.cc-checklist li .cc-mark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; }
+.cc-checklist { list-style: none; padding: 0; margin: 0; }
+.cc-checklist li { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; line-height: 1.35; }
+.cc-checklist li .cc-mark { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
 .cc-checklist li.ok   .cc-mark { background: rgba(18, 146, 90, 0.15); color: #12925a; }
 .cc-checklist li.miss .cc-mark { background: var(--bg-2); color: var(--text-faint); }
 .cc-checklist li.miss .cc-name { color: var(--text-muted); }
-.cc-note { font-size: 12px; padding: 8px 12px; background: var(--bg-2); border-radius: 6px; }
-@media (max-width: 720px) { .cc-checklist { grid-template-columns: 1fr; } }
+.cc-note { font-size: 11.5px; padding: 6px 10px; background: var(--bg-2); border-radius: 6px; color: var(--text-muted); }
+@media (max-width: 720px) { .cc-grid { grid-template-columns: 1fr; } }
 
 /* Pending-field highlights on the IPO entry form — operator ask 2026-09-09.
    Pastel amber for mandatory-empty (attention, not error); pastel gray-blue
