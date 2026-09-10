@@ -32,7 +32,12 @@ const NAV: NavNode[] = [
     { href: '/admin/catalog/gmp-feed', label: 'GMP Feed', perm: 'gmp.feed.view' },
     { href: '/admin/masters/ipo-category', label: 'IPO Category', perm: 'masters.ipo-category.manage' },
   ] },
-  { key: 'applications', label: 'Applications', icon: 'list', href: '/admin/applications', perm: 'bids.view' },
+  { key: 'applications', label: 'Applications', icon: 'list', perm: 'bids.view', children: [
+    { href: '/admin/applications', label: 'Applications', perm: 'bids.view' },
+    /* Print Forms Report — consumer prints from web / mobile. Partner-API
+       prints stay on their own report under Partner API → Print Report. */
+    { href: '/admin/prints', label: 'Print Forms Report', perm: 'bids.view' },
+  ] },
   { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', children: [
     { href: '/admin/rails-live', label: 'Exchange Rails', perm: 'rails.manage' },
     { href: '/admin/bidding/report', label: 'Bidding Report', perm: 'bidding.report.view' },

@@ -502,6 +502,15 @@ export class AdminController {
     return this.admin.listApplications(req.user.sub, slug);
   }
 
+  /** Print Forms Report — every ASBA PDF the operator generated for a
+   *  consumer through web / mobile. Partner-API prints are excluded (they
+   *  have their own report under Partner API → Print Report). */
+  @Get('prints/:slug')
+  @RequirePermissions('bids.view')
+  consumerPrints(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listConsumerPrints(req.user.sub, slug);
+  }
+
   @Get('dashboard/:slug')
   @RequirePermissions('dashboard.view')
   dashboard(@Req() req: any, @Param('slug') slug: string) {

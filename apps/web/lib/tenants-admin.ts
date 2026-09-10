@@ -381,6 +381,22 @@ export interface AdminApplication {
 }
 export const fetchApplications = (slug: string) => authed<AdminApplication[]>(`${API}/admin/applications/${slug}`, { method: 'GET' });
 
+/** One row on the consumer-print report. NOT a bid — the operator
+ *  generated a PDF form for the applicant to hand in at their bank.
+ *  Partner-API prints have their own report under Partner API. */
+export interface ConsumerPrintRow {
+  id: string;
+  tenantSlug?: string; tenantName?: string; partnerCode?: string;
+  ipoSymbol: string; ipoName: string;
+  applicantName?: string; accountHolder?: string; mobileMasked?: string;
+  category: string; applicantType: string;
+  familyGroup?: string;
+  lots: number; shareQty?: number; amount: number;
+  formNo?: string; printedAt: string;
+}
+export const fetchConsumerPrints = (slug: string) =>
+  authed<ConsumerPrintRow[]>(`${API}/admin/prints/${slug}`, { method: 'GET' });
+
 export interface AdminReport {
   scope: { slug: string; name: string };
   totals: { applications: number; amount: number; byStatus: Record<string, number> };

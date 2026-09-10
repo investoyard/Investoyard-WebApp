@@ -776,10 +776,14 @@ export class AdminService {
       });
       const partnerEmails = partnerApplicants.map((p) => p.email).filter(Boolean) as string[];
       const partnerMobiles = partnerApplicants.map((p) => p.mobile).filter(Boolean) as string[];
+      // `email NOT IN (...)` evaluates NULL as unknown in SQL — Prisma
+      // faithfully translates that, so every consumer without an email
+      // (the vast majority — signup is mobile-OTP) got filtered out. Wrap
+      // each clause in an OR-with-null so null values are kept.
       if (partnerEmails.length || partnerMobiles.length) {
         where.AND = [
-          ...(partnerEmails.length ? [{ email: { notIn: partnerEmails } }] : []),
-          ...(partnerMobiles.length ? [{ mobile: { notIn: partnerMobiles } }] : []),
+          ...(partnerEmails.length ? [{ OR: [{ email: null }, { email: { notIn: partnerEmails } }] }] : []),
+          ...(partnerMobiles.length ? [{ OR: [{ mobile: null }, { mobile: { notIn: partnerMobiles } }] }] : []),
         ];
       }
       if (opts.tenantSlug) {
@@ -1247,10 +1251,13 @@ export class AdminService {
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     // Applications are RLS-scoped; an operator views across tenants, so read unscoped
-    // and filter by the subtree explicitly.
+    // and filter by the subtree explicitly. PDF prints (both partner-API and
+    // consumer web/mobile) are excluded — those are just printed forms, not
+    // bids to the exchange, and each has its own report page (Partner API →
+    // Print Report, Admin → Print Forms Report).
     return tenantContext.runUnscoped(async () => {
       const rows = await this.prisma.application.findMany({
-        where: { tenantId: { in: ids } },
+        where: { tenantId: { in: ids }, applyMethod: { not: 'pdf' } },
         include: {
           ipo: { select: { symbol: true, name: true } },
           profile: { select: { fullName: true } },
@@ -1285,6 +1292,63 @@ export class AdminService {
           appliedAt: a.createdAt.toISOString().slice(0, 10),
         };
       });
+    });
+  }
+
+  /**
+   * Print Forms Report — every ASBA PDF the operator generated for a
+   * consumer through web / mobile. Partner-API prints have their own
+   * report under Partner API → Print Report and are excluded here
+   * (idempotencyKey `partner:…`), because the two channels have
+   * different downstream flows and the operator wants them separated
+   * (operator ask 2026-09-10).
+   *
+   * These rows are NOT bids to any exchange — the form was printed for
+   * the applicant to sign and hand in at their bank. Kept as an audit
+   * trail: who printed, for whom, for which IPO, when, and what form
+   * number was allocated from the IPO's PDF series.
+   */
+  async listConsumerPrints(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
+    const tenant = await this.tenantBySlug(slug);
+    const ids = await this.subtreeIds(tenant.id);
+    return tenantContext.runUnscoped(async () => {
+      const rows = await this.prisma.application.findMany({
+        where: {
+          tenantId: { in: ids },
+          applyMethod: 'pdf',
+          // Partner-API rows carry an `idempotencyKey` prefixed `partner:` —
+          // exclude them so they only appear on the partner report. Column
+          // is non-nullable so a simple NOT-startsWith is enough.
+          NOT: { idempotencyKey: { startsWith: 'partner:' } },
+        },
+        include: {
+          ipo: { select: { symbol: true, name: true } },
+          profile: { select: { fullName: true } },
+          user: { select: { mobile: true, name: true } },
+          tenant: { select: { slug: true, name: true, code: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return rows.map((a) => ({
+        id: a.id,
+        tenantSlug: a.tenant?.slug,
+        tenantName: a.tenant?.name,
+        partnerCode: a.tenant?.code ?? undefined,
+        ipoSymbol: a.ipo?.symbol,
+        ipoName: a.ipo?.name,
+        applicantName: a.profile?.fullName,
+        accountHolder: a.user?.name ?? undefined,
+        mobileMasked: a.user?.mobile ? a.user.mobile.slice(0, 2) + '****' + a.user.mobile.slice(-4) : undefined,
+        category: a.category,
+        applicantType: a.applicantType,
+        familyGroup: a.familyGroup ?? undefined,
+        lots: a.lots,
+        shareQty: a.shareQty ?? undefined,
+        amount: Number(a.amount),
+        formNo: a.asbaFormNo ?? undefined,
+        printedAt: a.createdAt.toISOString().slice(0, 10),
+      }));
     });
   }
 
