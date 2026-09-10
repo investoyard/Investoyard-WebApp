@@ -1546,22 +1546,41 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             {/* Sits directly under the portion it is allotted out of: the tally
                 below compares the two, which it could not do while the roster
                 lived over on About Company. */}
-            <Panel title="Anchor investors" desc="From the anchor intimation. Pick the name from the Anchor Investors master, then enter what that investor was allotted. Shown on the public detail page.">
-              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4 }}>
-                <select
-                  className="input" style={{ maxWidth: 340 }} value=""
-                  onChange={(e) => {
-                    const n = e.target.value;
-                    if (n && !form.anchors.some((a) => a.name === n)) set({ anchors: [...form.anchors, { name: n, shares: '', pct: '', amount: '' }] });
-                  }}
-                >
-                  <option value="">+ Add anchor…</option>
-                  {anchorOpts.filter((o) => o.active && !form.anchors.some((a) => a.name === o.name)).map((o) => (
-                    <option key={o.id} value={o.name}>{o.name}{o.type ? ` — ${o.type}` : ''}</option>
-                  ))}
-                </select>
-                {anchorOpts.length === 0 && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>Master empty — add rows in Masters → Anchor Investors.</span>}
+            <Panel title="Anchor investors" desc="From the anchor intimation. Pick the name from the Anchor Investors master (type to filter — new names can be added inline). Names in the master survive the parse; unmatched ones show a ⚠ chip and can be corrected here or added to the master.">
+              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4, maxWidth: 420 }}>
+                {/* Type-to-filter picker over the master. Operator ask 2026-09-10:
+                    the plain <select> was unusable once the master grew past a
+                    dozen rows. `onCreate` writes a new anchor master row on the
+                    fly (same pattern as the Sector field elsewhere on this form). */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <SearchSelect
+                    options={anchorOpts
+                      .filter((o) => o.active && !form.anchors.some((a) => a.name === o.name))
+                      .map((o) => ({ value: o.name, label: o.type ? `${o.name} — ${o.type}` : o.name }))}
+                    value=""
+                    onChange={(v) => {
+                      if (v && !form.anchors.some((a) => a.name === v)) {
+                        set({ anchors: [...form.anchors, { name: v, shares: '', pct: '', amount: '' }] });
+                      }
+                    }}
+                    placeholder="Search anchors…  (type to filter)"
+                    createLabel={(n) => `+ Add “${n}” as a new anchor`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('anchors', { name });
+                        setAnchorOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        set({ anchors: [...form.anchors, { name: row.name, shares: '', pct: '', amount: '' }] });
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
+                </div>
               </div>
+              {anchorOpts.length === 0 && (
+                <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+                  Master empty — type the anchor name above and click “+ Add … as a new anchor” to seed the master.
+                </div>
+              )}
               {form.anchors.length > 0 && (
                 <div className="anchor-row anchor-head">
                   <span className="anchor-name">Investor</span>
@@ -1571,9 +1590,18 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               {form.anchors.map((a, i) => {
                 const upd = (patch: Partial<typeof a>) =>
                   set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+                // Warn if the row's name doesn't correspond to an active master
+                // row — the operator can then fix it (type-to-filter above) or
+                // add to master.
+                const inMaster = anchorOpts.some((o) => o.active && o.name === a.name);
                 return (
                   <div className="anchor-row" key={a.name}>
-                    <span className="anchor-name">{a.name}</span>
+                    <span className="anchor-name">
+                      {a.name}
+                      {!inMaster && a.name.trim() && (
+                        <span className="pill" style={{ marginLeft: 8, background: '#fdebea', color: '#b3372e', fontSize: 10.5 }} title="Not in the Anchor Investors master — add it there or pick a matching entry above">⚠ not in master</span>
+                      )}
+                    </span>
                     <input className="input mono" placeholder="10,25,644" value={a.shares}
                       onChange={(e) => upd({ shares: e.target.value.replace(/[^\d]/g, '') })} />
                     <input className="input mono" placeholder="20.37" value={a.pct}

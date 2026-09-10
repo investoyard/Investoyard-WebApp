@@ -533,9 +533,18 @@ export const createRail = (body: any) =>
   authed<{ id: string }>(`${API}/admin/rails`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateRail = (id: string, body: any) =>
   authed<{ updated: boolean }>(`${API}/admin/rails/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export type RailTestOutcome = 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret';
+export interface RailTestResult {
+  ok: boolean;
+  outcome: RailTestOutcome;
+  note: string;
+  /** First few chars of the session token when `outcome === 'connected'`. */
+  tokenPreview?: string;
+  /** Human-readable ms round-trip when the adapter returned a timing. */
+  durationMs?: number;
+}
 export const testRail = (id: string) =>
-  authed<{ ok: boolean; outcome: 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret'; note: string }>(
-    `${API}/admin/rails/${id}/test`, { method: 'POST' });
+  authed<RailTestResult>(`${API}/admin/rails/${id}/test`, { method: 'POST' });
 /** Run a live NSE subscription sweep now (all open IPOs). */
 export const pollSubscription = () =>
   authed<{ open: number; updated: number; reason?: string }>(`${API}/admin/rails/subscription/poll`, { method: 'POST' });
@@ -1063,6 +1072,10 @@ export const parsePreanchor = async (file: File): Promise<ParsedPreanchor> => {
 
 export interface ParsedAnchorInvestor {
   name: string; shares: number; pct: number; price: number; amount: number;
+  /** Master-matched canonical when the parsed name resolves to a row in
+   *  the Anchor Investors master (aliases + normalisation handled by
+   *  the shared `resolveMaster`). Undefined for free-text passes-through. */
+  master?: { id: string; name: string };
 }
 export interface ParsedAnchor {
   totalShares?: number;

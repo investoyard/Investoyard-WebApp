@@ -238,17 +238,24 @@ export class AdminService {
         adapter.login(cred),
         new Promise((_, rej) => setTimeout(() => rej(new Error('__timeout__')), 10_000)),
       ]);
-      return { ok: true, outcome: 'connected', note: `Session token issued (${Date.now() - started}ms).`, tokenPreview: String(session?.token ?? '').slice(0, 6) + '…' };
+      const durationMs = Date.now() - started;
+      return {
+        ok: true, outcome: 'connected',
+        note: `Session token issued (${durationMs}ms).`,
+        tokenPreview: String(session?.token ?? '').slice(0, 6) + '…',
+        durationMs,
+      };
     } catch (e: any) {
+      const durationMs = Date.now() - started;
       const msg = String(e?.message ?? e);
-      if (msg === '__timeout__') return { ok: false, outcome: 'unreachable', note: 'Timed out after 10s.' };
+      if (msg === '__timeout__') return { ok: false, outcome: 'unreachable', note: 'Timed out after 10s.', durationMs };
       // The adapter's httpJson wraps everything in RailError: code NETWORK/TIMEOUT
       // means transport failure (unreachable); anything else means the endpoint
       // responded but refused (bad creds / guarded adapter / bad payload).
       if (e?.code === 'NETWORK' || e?.code === 'TIMEOUT') {
-        return { ok: false, outcome: 'unreachable', note: msg.slice(0, 160) };
+        return { ok: false, outcome: 'unreachable', note: msg.slice(0, 240), durationMs };
       }
-      return { ok: false, outcome: 'rejected', note: msg.slice(0, 160) };
+      return { ok: false, outcome: 'rejected', note: msg.slice(0, 240), durationMs };
     }
   }
 

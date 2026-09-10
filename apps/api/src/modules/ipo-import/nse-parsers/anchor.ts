@@ -33,6 +33,9 @@ export interface ParsedAnchorInvestor {
   price: number;
   /** total ₹ = shares × price */
   amount: number;
+  /** Master-matched canonical, filled by the parse endpoint after the parser
+   *  itself has run — the parser stays pure and doesn't touch the DB. */
+  master?: { id: string; name: string };
 }
 
 export interface ParsedAnchor {

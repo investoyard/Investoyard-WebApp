@@ -26,7 +26,9 @@ export default function AdminRailsLive() {
   const me = useOperator();
   const [rails, setRails] = useState<api.RailCred[]>([]);
   const [form, setForm] = useState<any>({ ...blank });
-  const [test, setTest] = useState<Record<string, string>>({});
+  /** Currently-running test id (button spinner) + last result (modal payload). */
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<null | (api.RailTestResult & { rail: api.RailCred })>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,12 +106,11 @@ export default function AdminRailsLive() {
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
-  const doTest = async (id: string) => {
-    setBusy(true);
-    setTest({ ...test, [id]: 'testing…' });
-    try { const r = await api.testRail(id); setTest((t) => ({ ...t, [id]: `${r.outcome}${r.note ? ` — ${r.note}` : ''}` })); }
-    catch (e: any) { setErr(String(e?.message ?? e)); setTest((t) => ({ ...t, [id]: '' })); }
-    finally { setBusy(false); }
+  const doTest = async (rail: api.RailCred) => {
+    setBusy(true); setTesting(rail.id); setErr(null);
+    try { const r = await api.testRail(rail.id); setTestResult({ ...r, rail }); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); setTesting(null); }
   };
 
   if (!operatorCan(me, 'rails.manage')) return <NoAccess />;
@@ -148,7 +149,6 @@ export default function AdminRailsLive() {
                         <td>{c.passwordSet ? <span className="mono muted">•••••• set</span> : <span className="muted">—</span>}</td>
                         <td><span className={`st ${c.active ? 'ok' : 'mut'}`}>{c.active ? 'On' : 'Off'}</span></td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {test[c.id] && <span className="muted" style={{ fontSize: 12, marginRight: 8 }}>{test[c.id]}</span>}
                           <span className="row-actions">
                             <button className="icon-btn" disabled={busy} onClick={() => setViewing(c)} title="View details"><Icon name="eye" size={15} /></button>
                             <button className="icon-btn" disabled={busy} onClick={() => openEdit(c)} title="Edit"><Icon name="edit" size={15} /></button>
@@ -158,7 +158,9 @@ export default function AdminRailsLive() {
                                 <Icon name="star" size={15} />
                               </button>
                             )}
-                            <button className="icon-btn" disabled={busy} onClick={() => doTest(c.id)} title="Test connection"><Icon name="refresh" size={15} /></button>
+                            <button className="icon-btn" disabled={busy} onClick={() => doTest(c)} title="Test connection">
+                              <Icon name={testing === c.id ? 'clock' : 'refresh'} size={15} />
+                            </button>
                             <button className={`icon-btn ${c.active ? 'danger' : 'pos'}`} disabled={busy} onClick={() => toggleRail(c)} title={c.active ? 'Deactivate' : 'Activate'}><Icon name="power" size={15} /></button>
                           </span>
                         </td>
@@ -240,7 +242,54 @@ export default function AdminRailsLive() {
           </FormActions>
         </Modal>
       )}
+      {testResult && (
+        <RailTestModal result={testResult} onRetry={() => doTest(testResult.rail)} onClose={() => setTestResult(null)} />
+      )}
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
+  );
+}
+
+/**
+ * Rail test result — shown after every "Test connection" (operator ask
+ * 2026-09-10; used to be a truncated inline `<span>` that hid the useful
+ * detail on `rejected` outcomes). Coloured banner picks the tone; a
+ * "Raw response" panel opens the exchange's own reason string so an
+ * operator can tell "Invalid Id/Password" from "session already active".
+ */
+function RailTestModal({ result, onRetry, onClose }: {
+  result: api.RailTestResult & { rail: api.RailCred };
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const { outcome, note, tokenPreview, durationMs, rail } = result;
+  const tone = outcome === 'connected' ? 'ok'
+    : outcome === 'unreachable' ? 'warn'
+    : 'err';
+  const bannerBg = tone === 'ok' ? '#eaf5ee' : tone === 'warn' ? '#fff4d0' : '#fdebea';
+  const bannerFg = tone === 'ok' ? '#12925a' : tone === 'warn' ? '#7a5b00' : '#b3372e';
+  const hint = outcome === 'connected' ? `Ready to receive bids. Session token issued — first six chars: ${tokenPreview ?? '—'}.`
+    : outcome === 'unreachable' ? 'The exchange host did not answer. Check the Base URL, network, and firewall rules (some exchanges whitelist source IPs).'
+    : outcome === 'rejected' ? 'The exchange responded but refused the login. Common causes: (i) NSE / BSE issue a SEPARATE API user distinct from the web-portal login — check the onboarding letter; (ii) Login ID and Member Code swapped; (iii) Env is set to UAT but the credential is LIVE (or vice-versa); (iv) API password differs from the web-portal password.'
+    : outcome === 'incomplete' ? 'Fill Base URL, Login ID, Member Code and Password before testing.'
+    : 'The stored password could not be decrypted from the vault — re-enter it via Edit and try again.';
+  return (
+    <Modal title={`Test connection — ${rail.memberName}`} sub={`${EX_LABEL[rail.exchange] ?? rail.exchange} · env ${rail.env} · ${rail.loginId}`} onClose={onClose} wide>
+      <div className="banner" style={{ background: bannerBg, color: bannerFg, padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontWeight: 600 }}>
+        {outcome === 'connected' ? '✓ Connected' : outcome === 'unreachable' ? '⚠ Unreachable' : outcome === 'incomplete' ? '⚠ Incomplete configuration' : outcome === 'invalid_secret' ? '⚠ Stored secret unusable' : '✕ Rejected by exchange'}
+        {typeof durationMs === 'number' && <span style={{ fontWeight: 400, marginLeft: 10, opacity: 0.8 }}>({durationMs} ms)</span>}
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Exchange reason</div>
+        <div className="mono" style={{ background: 'var(--bg-2)', padding: 10, borderRadius: 6, fontSize: 12.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+          {note || <span className="muted">no reason returned</span>}
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>{hint}</p>
+      <FormActions>
+        <button className="btn" onClick={onRetry}><Icon name="refresh" size={14} /> Retry</button>
+        <button className="btn btn-secondary" onClick={onClose}>Close</button>
+      </FormActions>
+    </Modal>
   );
 }

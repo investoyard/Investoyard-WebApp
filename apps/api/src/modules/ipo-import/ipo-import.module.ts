@@ -138,13 +138,31 @@ export class IpoImportController {
   }
 
   /** POST — multipart 'file'. Parses the Anchor Investor Intimation Letter
-   *  and returns the roster + allocation totals. */
+   *  and returns the roster + allocation totals.
+   *
+   *  Each investor is enriched with a `master: { id, name }` link when its
+   *  parsed name matches (or aliases to) a row in the Anchor Investors
+   *  master. Same shape lead-managers + registrar use — the review modal
+   *  renders a ✓ / ⚠ badge per row and applies the CANONICAL master name
+   *  to form.anchors, so "Nippon India Mutual Fund" from the letter and
+   *  "Nippon India MF" in the master link cleanly instead of piling up as
+   *  two separate rows on the operator's own IPO record. */
   @Post('parse/anchor')
   @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async parseAnchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
-    return parseAnchor(file.buffer);
+    const raw = await parseAnchor(file.buffer);
+    const anchors = await this.svc['prisma'].anchorMaster.findMany({
+      where: { active: true }, select: { id: true, name: true },
+    });
+    return {
+      ...raw,
+      investors: raw.investors.map((inv) => {
+        const m = resolveMaster(inv.name, anchors);
+        return m ? { ...inv, master: { id: m.id, name: m.name } } : inv;
+      }),
+    };
   }
 
   /** POST — multipart 'file'. Parses the merchant banker's IPO Note (Axis
