@@ -487,3 +487,18 @@ export async function ipoSymbols(): Promise<string[]> {
   const symbols = list.map((i) => i.symbol);
   return symbols.length ? symbols : MOCK.map((i) => i.symbol);
 }
+
+/**
+ * Every URL handle the IPO detail route should statically emit — both the
+ * SEO-friendly `slug` (new) AND the raw `symbol` (backward compat).
+ * External bookmarks still work; new internal links prefer the slug.
+ */
+export async function ipoUrlHandles(): Promise<string[]> {
+  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  const handles = new Set<string>();
+  for (const i of list) {
+    if (i.symbol) handles.add(i.symbol);
+    if (i.slug) handles.add(i.slug);
+  }
+  return handles.size ? [...handles] : MOCK.map((i) => i.symbol);
+}

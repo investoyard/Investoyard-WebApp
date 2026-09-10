@@ -69,7 +69,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
           return (
             <div className="panel sh-card" key={ipo.id}>
               <div className="sh-top">
-                <a className="sh-ipo" href={`/ipos/${ipo.symbol}`}>
+                <a className="sh-ipo" href={`/ipos/${ipo.slug ?? ipo.symbol}`}>
                   <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={38} />
                   <span className="gh-name-wrap">
                     <span className="gh-name" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</span>
@@ -106,7 +106,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
             {closed.map((i) => {
               const dm = demandLabel(i.subscriptionTimes!, i.type === 'sme');
               return (
-                <a className="sh-closedrow" key={i.id} href={`/ipos/${i.symbol}`}>
+                <a className="sh-closedrow" key={i.id} href={`/ipos/${i.slug ?? i.symbol}`}>
                   <span className="gh-ipo">
                     <IpoLogo logo={(i as any).logo} name={i.name} size={30} />
                     <span className="gh-name-wrap">

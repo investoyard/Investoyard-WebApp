@@ -125,7 +125,10 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
-  const detailHref = lang === 'en' ? `/ipos/${ipo.symbol}` : `/${lang}/ipos/${ipo.symbol}`;
+  // Prefer the SEO slug when present — new visitors and Google index the
+  // clean URL; legacy /ipos/SYMBOL still resolves via the API's dual lookup.
+  const handle = ipo.slug ?? ipo.symbol;
+  const detailHref = lang === 'en' ? `/ipos/${handle}` : `/${lang}/ipos/${handle}`;
   const [open, setOpen] = useState<Topic | null>(null);
   // Operator gates: "Start Bid" → Apply (UPI flow) · "Start Printing" → Print PDF (ASBA forms).
   const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';

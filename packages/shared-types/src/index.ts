@@ -28,6 +28,10 @@ export type ApplicationStatus =
 export interface IpoListItem {
   id: string;
   symbol: string;
+  /** SEO-friendly slug used in the public URL — `/ipos/<slug>`.
+   *  Undefined on legacy rows until the backfill runs; readers fall
+   *  back to `symbol` for the URL when absent. */
+  slug?: string;
   name: string;
   type: IpoType;
   status: IpoStatus;

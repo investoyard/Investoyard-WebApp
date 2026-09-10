@@ -91,7 +91,7 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
         {rows.length === 0 ? (
           <p className="muted" style={{ padding: '22px 0', textAlign: 'center' }}>No grey-market figures for this filter yet.</p>
         ) : rows.map((i) => (
-          <a className="gh-row" key={i.id} href={`/ipos/${i.symbol}`}>
+          <a className="gh-row" key={i.id} href={`/ipos/${i.slug ?? i.symbol}`}>
             <span className="gh-ipo">
               <IpoLogo logo={(i as any).logo} name={i.name} size={32} />
               <span className="gh-name-wrap">

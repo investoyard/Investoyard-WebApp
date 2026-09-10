@@ -628,6 +628,11 @@ model Consent {
 model Ipo {
   id                   String            @id @default(uuid())
   symbol               String            @unique
+  /// SEO-friendly slug for the public URL (`/ipos/<slug>`). Generated
+  /// from shortName(name) + "-ipo" at write time and unique. Nullable
+  /// during backfill; the backfill script fills every row and the
+  /// server refuses a save with an empty slug once the backfill runs.
+  slug                 String?           @unique
   name                 String
   logoUrl              String?
   type                 IpoType

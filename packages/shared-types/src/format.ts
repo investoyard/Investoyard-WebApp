@@ -83,6 +83,41 @@ export function shortName(name?: string | null): string {
   return cut || full;
 }
 
+/**
+ * Public URL for an IPO. Prefer the SEO-friendly slug when present; fall
+ * back to the raw SYMBOL for legacy rows the backfill hasn't reached
+ * (both routes still 200 on the site — the static export emits both).
+ * Kept as a helper so every internal-link builder speaks the same URL.
+ */
+export function ipoUrl(ipo: { symbol?: string | null; slug?: string | null }): string {
+  const h = ipo?.slug || ipo?.symbol || '';
+  return h ? `/ipos/${h}` : '/ipos';
+}
+
+/**
+ * SEO-friendly URL slug for an IPO. Derives from the shortened company name
+ * (Limited/Pvt Ltd stripped) plus an `-ipo` suffix so Google indexes the
+ * keyword. Lowercase, hyphenated, alphanumeric-only — safe as a URL segment.
+ *
+ *   "Glasswall Technologies Limited"  → "glasswall-technologies-ipo"
+ *   "ARDEE Industries Ltd"            → "ardee-industries-ipo"
+ *   "5Paisa Capital Limited"          → "5paisa-capital-ipo"
+ *
+ * Returns an empty string when the input is empty. The `-ipo` suffix is
+ * appended UNCONDITIONALLY (fine even for FPOs / REITs — the search
+ * queries the operator wants to rank on all use "IPO").
+ */
+export function ipoSlug(name?: string | null): string {
+  const short = shortName(name);
+  if (!short) return '';
+  const base = short.toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+  return base ? `${base}-ipo` : '';
+}
+
 /* ── domain vocabulary ────────────────────────────────────────────────────── */
 
 /**

@@ -4,7 +4,7 @@ import { RailService } from '../rail/rail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { CreateIpoDto, UpdateIpoDto } from './ipo.dto';
-import { EXCHANGES } from '@investoyard/shared-types';
+import { EXCHANGES, ipoSlug } from '@investoyard/shared-types';
 
 const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice.';
 
@@ -25,7 +25,7 @@ function toDetail(ipo: any) {
   const gmp = gmpRow ? num(gmpRow.value) : undefined;
   const sme = ipo.smeFlags ?? undefined;
   return {
-    id: ipo.id, symbol: ipo.symbol, name: ipo.name, type: ipo.type, status: ipo.status,
+    id: ipo.id, symbol: ipo.symbol, slug: ipo.slug ?? undefined, name: ipo.name, type: ipo.type, status: ipo.status,
     openDate: day(ipo.openDate), closeDate: day(ipo.closeDate),
     allotmentDate: day(ipo.allotmentDate), listingDate: day(ipo.listingDate),
     priceBandMin: num(ipo.priceBandMin), priceBandMax: num(ipo.priceBandMax),
@@ -202,11 +202,28 @@ export class IpoService {
     return toDetail(ipo);
   }
 
-  async getBySymbol(symbol: string) {
-    const ipo = await this.prisma.ipo.findUnique({
-      where: { symbol: symbol.toUpperCase() },
-      include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
-    });
+  /**
+   * Detail lookup by URL handle — accepts either the old SEO SYMBOL
+   * (`GLASSWALL`) or the new SEO slug (`glasswall-technologies-ipo`).
+   * The `[symbol]` folder name in the web app is a legacy label — the
+   * value it carries is now a slug for new external links. Symbol reads
+   * are kept as a fallback so bookmarks + external SEO backlinks don't 404.
+   */
+  async getBySymbol(handle: string) {
+    const h = handle.trim();
+    // Slug shape is always lowercase with hyphens; symbol shape is uppercase
+    // ALL-CAPS. Try the shape that fits first for a single query most of
+    // the time.
+    const looksLikeSlug = /-/.test(h) || /[a-z]/.test(h);
+    const ipo = looksLikeSlug
+      ? await this.prisma.ipo.findFirst({
+          where: { OR: [{ slug: h }, { symbol: h.toUpperCase() }] },
+          include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        })
+      : await this.prisma.ipo.findFirst({
+          where: { OR: [{ symbol: h.toUpperCase() }, { slug: h.toLowerCase() }] },
+          include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        });
     if (!ipo) throw new NotFoundException();
     return toDetail(ipo);
   }
@@ -404,8 +421,16 @@ export class IpoService {
   /** DTO → Prisma write data (dates, ₹cr → rupees, exchanges from type). */
   private mapWrite(dto: CreateIpoDto | UpdateIpoDto, symbol?: string, type?: string): any {
     const d = (s?: string) => (s ? new Date(s + 'T00:00:00Z') : undefined);
+    // Auto-generate a slug from the name for the SEO-friendly URL. Only when
+    // a name is present in the write (create always, update when the operator
+    // changed the name). The slug column is @unique; collisions get a
+    // numeric suffix in a follow-up commit — for now they P2002 and the
+    // operator picks a slightly different name, same recovery path as the
+    // symbol column has always had.
+    const slugFromName = dto.name ? ipoSlug(dto.name) : undefined;
     const data: any = {
       ...(symbol ? { symbol } : {}),
+      ...(slugFromName ? { slug: slugFromName } : {}),
       name: dto.name,
       type: dto.type,
       instrument: (dto as any).instrument,

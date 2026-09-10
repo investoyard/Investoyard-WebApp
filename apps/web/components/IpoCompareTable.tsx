@@ -117,7 +117,8 @@ export function IpoCompareTable({ ipos, lang = 'en', shortNames = false, archive
             const subX = i.subscriptionTimes;
             const dm = subX != null ? demandLabel(subX, i.type === 'sme') : null;
             const canApply = (i.status === 'open' || i.status === 'upcoming') && (i as any).extra?.startBid === true;
-            const href = lang === 'en' ? `/ipos/${i.symbol}` : `/${lang}/ipos/${i.symbol}`;
+            const handle = i.slug ?? i.symbol;
+            const href = lang === 'en' ? `/ipos/${handle}` : `/${lang}/ipos/${handle}`;
             return (
               <Fragment key={i.id}>
               <tr

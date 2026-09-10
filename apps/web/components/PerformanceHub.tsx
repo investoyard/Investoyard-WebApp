@@ -87,7 +87,7 @@ export function PerformanceHub({ ipos: baked }: { ipos: IpoFull[] }) {
         {rows.length === 0 ? (
           <p className="muted" style={{ padding: '22px 0', textAlign: 'center' }}>No listed issues with performance data yet.</p>
         ) : rows.map((r) => (
-          <a className="pf2-row" key={r.ipo.id} href={`/ipos/${r.ipo.symbol}`}>
+          <a className="pf2-row" key={r.ipo.id} href={`/ipos/${r.ipo.slug ?? r.ipo.symbol}`}>
             <span className="gh-ipo">
               <IpoLogo logo={(r.ipo as any).logo} name={r.ipo.name} size={32} />
               <span className="gh-name-wrap">

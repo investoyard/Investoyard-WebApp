@@ -176,7 +176,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
         <div className="emoji">⏳</div>
         <h3>Bidding hasn&apos;t started yet</h3>
         <p className="muted">Applications for {ipo.name} will open shortly — check back soon.</p>
-        <a className="btn" href={`/ipos/${ipo.symbol}${q}`} style={{ marginTop: 14 }}>View IPO details</a>
+        <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`} style={{ marginTop: 14 }}>View IPO details</a>
       </div>
     );
   }
@@ -399,7 +399,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
 
   return (
     <div className="fade-up">
-      <a href={`/ipos/${ipo.symbol}${q}`} className="back-link">← {ipo.name}</a>
+      <a href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`} className="back-link">← {ipo.name}</a>
       <h1 style={{ marginTop: 10 }}>{tr('apply.title')}</h1>
 
       {/* progress */}

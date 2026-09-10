@@ -663,7 +663,7 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
             </a>
           )}
           {canPrint && <a className="btn btn-inkline" href={`/print/${ipo.symbol}${q}`}>{LABEL.printForms} <Icon name="file-pdf" size={14} /></a>}
-          {!canApply && !canPrint && <a className="btn btn-inkline" href={`/ipos/${ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
+          {!canApply && !canPrint && <a className="btn btn-inkline" href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
           {countdown && <span className="hbi-cd"><i>Closes in</i><b className="mono">{countdown}</b></span>}
         </div>
       </div>
@@ -753,7 +753,7 @@ function IpoSlide({ ipo, q, active }: { ipo: IpoFull; q: string; active: boolean
             </a>
           )}
           {canPrint && <a className="btn btn-ondark" href={`/print/${ipo.symbol}${q}`}>{LABEL.printForms} <Icon name="file-pdf" size={14} /></a>}
-          {!canApply && !canPrint && <a className="btn btn-white" href={`/ipos/${ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
+          {!canApply && !canPrint && <a className="btn btn-white" href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`}>View details <Icon name="arrow-right" size={15} /></a>}
         </div>
       </div>
 

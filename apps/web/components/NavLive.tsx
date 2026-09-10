@@ -134,7 +134,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
           const canPrint = (ipo as any).extra?.startPrint === true && (ipo.status === 'open' || ipo.status === 'upcoming');
           return (
             <div className="nv-ipo" key={ipo.id}>
-              <a className="nv-ipomain" href={`/ipos/${ipo.symbol}`}>
+              <a className="nv-ipomain" href={`/ipos/${ipo.slug ?? ipo.symbol}`}>
                 <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={28} />
                 <span className="nv-iponame" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</span>
                 <span className={`ic-status ${c.cls}`}>{c.pulse && <span className="pd" />}{c.label}</span>
