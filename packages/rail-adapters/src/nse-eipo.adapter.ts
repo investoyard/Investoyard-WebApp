@@ -75,11 +75,16 @@ export class NseEipoAdapter implements RailAdapter {
   }
 
   async login(cred: MemberCredential): Promise<AuthSession> {
+    // Field name on the wire is `member` — NOT `memberCode`. Confirmed
+    // against a live NSE e-IPO login on 2026-09-10 (member 13233 / AIRANAPI):
+    // the older name buried in the doc rejected with "Invalid Id/Password",
+    // the working shape is { member, loginId, password }. Response echoes
+    // the same key: { member: "13233", loginId, status: "success", token }.
     const res = await httpJson<any>(this.url(cred, PATHS.login), {
       method: 'POST',
       exchange: this.exchange,
       body: {
-        memberCode: cred.memberCode,
+        member: cred.memberCode,
         loginId: cred.loginId,
         password: cred.password,
       },
