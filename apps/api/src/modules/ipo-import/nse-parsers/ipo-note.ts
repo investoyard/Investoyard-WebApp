@@ -49,6 +49,10 @@ export interface ParsedIpoNote {
   refundDate?: string;
   dematDate?: string;
   listingDate?: string;
+  /** Anchor investor bidding date when the Indicative Timetable lists it
+   *  (some Axis Notes include an "Anchor Investor Bidding Date" row). Fed
+   *  to the form; if missing here the anchor letter usually carries it. */
+  anchorDate?: string;
   /**
    * Fresh Issue / OFS amounts in ₹ Cr, from the OFFER DETAILS block.
    * PREANCHOR carries the same values in its Issue size block, but the
@@ -439,6 +443,10 @@ export async function parseIpoNote(pdf: Uint8Array | Buffer): Promise<ParsedIpoN
   out.refundDate = dateNear(rows, /Refunds\s*\/?\s*Unblocking/i);
   out.dematDate = dateNear(rows, /Credit of equity shares/i);
   out.listingDate = dateNear(rows, /Trading commences/i);
+  // Anchor bidding is on the trading day BEFORE the issue opens. Some Notes
+  // print it inside the Indicative Timetable ("Anchor Investor Bidding
+  // Date"); when present we prefer it over the openDate−1 fallback.
+  out.anchorDate = dateNear(rows, /Anchor\s+Investor(?:s)?\s+(?:Bidding|Bid)/i);
 
   if (!out.allotmentDate) warnings.push('Could not read the allotment date — check the Indicative Timetable.');
   if (!out.listingDate) warnings.push('Could not read the listing date — check the Indicative Timetable.');

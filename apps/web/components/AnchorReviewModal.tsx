@@ -25,25 +25,23 @@ export function AnchorReviewModal({
   currentRosterCount: number;
   onClose: () => void;
   onApply: (payload: {
-    anchorShares: string; anchorPrice: string;
+    anchorShares: string; anchorPrice: string; anchorDate?: string;
     investors: { name: string; shares: string; pct: string; amount: string }[];
   }) => void;
 }) {
   const [applying, setApplying] = useState(false);
-  const hasAny = !!(parsed.totalShares || parsed.allocationPrice || parsed.investors.length);
+  const hasAny = !!(parsed.totalShares || parsed.allocationPrice || parsed.investors.length || parsed.anchorDate);
 
   const apply = () => {
     setApplying(true);
-    // convert to the strings the form's anchor state expects; toFixed(2) on
-    // amount matches the intimation's own ₹.xx presentation
     onApply({
       anchorShares: parsed.totalShares ? String(parsed.totalShares) : '',
       anchorPrice: parsed.allocationPrice ? String(parsed.allocationPrice) : '',
+      anchorDate: parsed.anchorDate,
       investors: parsed.investors.map((i) => ({
         name: i.name,
         shares: String(i.shares),
         pct: String(i.pct),
-        // matches the intimation format: "₹87,99,86,900.00" → "₹87.99 Cr" is derived
         amount: i.amount.toFixed(2),
       })),
     });
@@ -62,6 +60,7 @@ export function AnchorReviewModal({
             {parsed.totalShares != null && parsed.allocationPrice != null
               ? <>Allocated <b className="mono">{parsed.totalShares.toLocaleString('en-IN')}</b> shares at <b className="mono">₹{parsed.allocationPrice}</b> per share.</>
               : 'Read the header but a total is missing — the roster still applies below.'}
+            {parsed.anchorDate && <> <b>Anchor date:</b> <span className="mono">{parsed.anchorDate}</span>.</>}
             {' '}Found <b>{parsed.investors.length}</b> investor{parsed.investors.length === 1 ? '' : 's'}.
             {currentRosterCount > 0 && <> <span className="preanc-warn">Fill will replace the {currentRosterCount} row{currentRosterCount === 1 ? '' : 's'} currently on the form.</span></>}
             {parsed._raw?.warnings.length ? <> <span className="preanc-warn">Parser noted: {parsed._raw.warnings.join(' · ')}</span></> : null}

@@ -40,9 +40,31 @@ export interface ParsedAnchor {
   totalShares?: number;
   /** the allocation price the book struck at */
   allocationPrice?: number;
+  /** ISO date the anchor investors bid — usually stated in the letter's
+   *  header ("Anchor Investor Bidding Date …" / "allocation to Anchor
+   *  Investors on …"). Left undefined when the header phrase is absent
+   *  (form falls back to openDate − 1 business day). */
+  anchorDate?: string;
   /** the roster in the order it appears in the letter */
   investors: ParsedAnchorInvestor[];
   _raw?: { warnings: string[] };
+}
+
+/** DD-MM-YYYY OR "15 October, 2025" / "15th October 2025" → ISO. Returns
+ *  undefined when nothing recognisable is in the input. */
+function extractIsoDate(text: string): string | undefined {
+  const dm = text.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if (dm) return `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
+  const MONTHS: Record<string, string> = {
+    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+  };
+  const wm = text.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)[,\s]+(\d{4})/i);
+  if (wm) {
+    const mm = MONTHS[wm[2].toLowerCase()];
+    if (mm) return `${wm[3]}-${mm}-${wm[1].padStart(2, '0')}`;
+  }
+  return undefined;
 }
 
 /** Number-first from a comma-formatted string. */
@@ -101,6 +123,21 @@ export async function parseAnchor(pdf: Uint8Array | Buffer): Promise<ParsedAncho
   const priceMatch = header.match(/Allocation Price of\s*[~₹]?\s*(\d+(?:\.\d+)?)/i);
   if (priceMatch) out.allocationPrice = num(priceMatch[1]);
   else warnings.push('Could not read the allocation price — check the header paragraph.');
+
+  // Anchor date — the letters phrase it as either
+  //   "Anchor Investor Bidding Date … 15-10-2025"
+  //   "allocation of … Equity Shares … on 15th October, 2025 to the Anchor Investors"
+  // Search a slightly wider window (whole doc) because some letters push
+  // this line below the 25-row header.
+  const fullHead = rows.slice(0, 80).map((r) => r.text).join(' ');
+  const dateCtx = fullHead.match(/Anchor(?:\s+Investor)?\s+(?:Bidding|Bid)\s*Date[^.\n]{0,60}/i)
+    ?? fullHead.match(/on\s+(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+[,\s]+\d{4})\s+to\s+(?:the\s+)?Anchor/i)
+    ?? fullHead.match(/Anchor[^.\n]{0,120}?(\d{1,2}[-\/]\d{1,2}[-\/]\d{4})/i);
+  if (dateCtx) {
+    const iso = extractIsoDate(dateCtx[0]);
+    if (iso) out.anchorDate = iso;
+    else warnings.push('Found the anchor-date phrase but could not read the date — check the header.');
+  }
 
   /* ── roster rows ─────────────────────────────────────────────────────── */
 

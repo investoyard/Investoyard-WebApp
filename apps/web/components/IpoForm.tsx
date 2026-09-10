@@ -340,15 +340,24 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     '75': { basis: 'icdr_6_2', rows: { qib: '75', hni: '10', hni2: '5', retail: '10' } },
     '50': { basis: 'icdr_6_1', rows: { qib: '50', hni: '10', hni2: '5', retail: '35' } },
   };
+  /** For any QIB % the operator types, derive NII (15%, split 2:1 into
+   *  hni:hni2 = 10:5) and Retail = 100 − QIB − 15. Basis follows the
+   *  same 50 / 75 thresholds. Exact 50 or 75 keeps the existing snap-map
+   *  answer (identical numbers, just avoids the retail rounding). Any
+   *  QIB above 85 or below 0 stays free-form — the operator likely
+   *  meant to type it and let the form flag it via B01. */
   const onQibPctChange = (raw: string) => {
     const clean = raw.replace(/[^\d.]/g, '');
     const std = STANDARD_SPLITS[clean];
-    if (!std) { setResv('qib', { pct: clean }); return; }
-    // one shot: snap all four rows on, set the standard split, and align the
-    // regulation basis so it and the split agree
+    const q = Number(clean);
+    if (!std && (!Number.isFinite(q) || q <= 0 || q > 85)) { setResv('qib', { pct: clean }); return; }
+    const rows = std ? std.rows : {
+      qib: clean, hni: '10', hni2: '5', retail: String(+(100 - q - 15).toFixed(2)),
+    };
+    const basis = std ? std.basis : q <= 50 ? 'icdr_6_1' : q >= 75 ? 'icdr_6_2' : form.regulationBasis;
     const next = { ...form.shareResv };
-    for (const [k, v] of Object.entries(std.rows)) next[k] = { ...next[k], on: true, pct: v };
-    set({ shareResv: next, regulationBasis: std.basis });
+    for (const [k, v] of Object.entries(rows)) next[k] = { ...next[k], on: true, pct: v };
+    set({ shareResv: next, regulationBasis: basis });
   };
   const setSeries = (key: 'pdfSeries' | 'onlineSeries', i: number, part: Partial<Series>) => set({ [key]: form[key].map((s, x) => (x === i ? { ...s, ...part } : s)) } as Partial<FormState>);
   const activate = (key: 'pdfSeries' | 'onlineSeries', i: number) => set({ [key]: form[key].map((s, x) => ({ ...s, active: x === i })) } as Partial<FormState>);
@@ -511,6 +520,18 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         }
         continue;
       }
+      // __srp:<cat> writes the PERCENTAGE side of the reservation split.
+      // Paired with __sr:<cat> by the PREANCHOR modal (operator ask
+      // 2026-09-09) so a single tick fills sharesActual AND the pct that
+      // downstream derivations read. `on: true` lights up the row.
+      if (k.startsWith('__srp:')) {
+        const cat = k.slice(6);
+        if (nextShareResv[cat]) {
+          nextShareResv[cat] = { ...nextShareResv[cat], on: true, pct: v };
+          shareResvChanged = true;
+        }
+        continue;
+      }
       // Exchange checkboxes — 'both'|'nse'|'bse'. Booleans on the form,
       // so a plain string assignment would corrupt the checkbox state.
       if (k === '__exchanges') {
@@ -522,9 +543,27 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       // value string. A ₹ Cr amount lands as { basis: 'amount', value }.
       if (k === '__fresh') { next.freshBasis = 'amount'; next.freshValue = v; continue; }
       if (k === '__ofs')   { next.ofsBasis = 'amount';   next.ofsValue = v;   continue; }
+      // anchorDate is a datetime-local input on the form; a bare ISO date
+      // from the Note gets stamped 10:00 (bid open) so the input accepts it.
+      if (k === 'anchorDate' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        (next as any).anchorDate = `${v}T10:00`;
+        continue;
+      }
       (next as any)[k] = v;
     }
     if (shareResvChanged) (next as any).shareResv = nextShareResv;
+
+    // Anchor-date fallback: when the parser gave openDate but no
+    // anchorDate, derive as openDate − 1 business day (Mon-Fri only,
+    // ignoring holidays — operator decision 2026-09-09). Only fills when
+    // neither the patch nor the form already carries an anchor date, so a
+    // hand-typed value or an anchor-letter extraction wins over the fallback.
+    if (!next.anchorDate && !form.anchorDate && (next.openDate || patch.openDate)) {
+      const openIso = String((next.openDate ?? patch.openDate ?? '')).slice(0, 10);
+      const anchorIso = prevBusinessDay(openIso);
+      if (anchorIso) (next as any).anchorDate = `${anchorIso}T10:00`;
+    }
+
     set(next);
     setSavedMsg(`Filled ${Object.keys(patch).length} field${Object.keys(patch).length === 1 ? '' : 's'} from PREANCHOR. Save to keep.`);
   };
@@ -554,15 +593,40 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    * catalog; Save on the entry form is still what persists.
    */
   const onApplyAnchor = (payload: {
-    anchorShares: string; anchorPrice: string;
+    anchorShares: string; anchorPrice: string; anchorDate?: string;
     investors: { name: string; shares: string; pct: string; amount: string }[];
   }) => {
-    set({
+    const patch: Partial<typeof form> = {
       anchorShares: payload.anchorShares,
       anchorPrice: payload.anchorPrice,
       anchors: payload.investors,
-    });
+    };
+    // If the intimation carries an anchor date, prefer it — anchor bidding
+    // is on the trading day BEFORE the issue opens, and the letter is
+    // authoritative when it's stamped. Only fill when the form is empty
+    // so a hand-typed value the operator already committed isn't clobbered.
+    if (payload.anchorDate && !form.anchorDate) {
+      // anchorDate on the form is a datetime-local string; stamp 10:00
+      // (bid open) if the parser gave date-only.
+      patch.anchorDate = /T\d{2}:\d{2}/.test(payload.anchorDate)
+        ? payload.anchorDate
+        : `${payload.anchorDate}T10:00`;
+    }
+    set(patch);
     setSavedMsg(`Filled anchor roster (${payload.investors.length} investor${payload.investors.length === 1 ? '' : 's'}) from the Intimation. Save to keep.`);
+  };
+
+  /** openDate − 1 business day (Mon-Fri only, ignoring holidays — operator
+   *  decision 2026-09-09). The anchor bid is on the trading day before the
+   *  issue opens, so this is the fallback when neither the IPO Note nor the
+   *  Anchor Intimation prints an explicit anchor date. */
+  const prevBusinessDay = (iso: string): string | undefined => {
+    if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return undefined;
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() - 1);
+    while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6) dt.setUTCDate(dt.getUTCDate() - 1);
+    return dt.toISOString().slice(0, 10);
   };
 
   const tabIdx = TABS.findIndex((t) => t.key === tab);
@@ -1856,6 +1920,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           current={{
             allotmentDate: form.allotmentDate, refundDate: form.refundDate,
             dematDate: form.dematDate, listingDate: form.listingDate,
+            anchorDate: form.anchorDate ? form.anchorDate.slice(0, 10) : '',
             hasFinancialsHtml: !!form.companyFinancials?.trim(),
             hasCompanyDescription: !!form.companyDescription?.trim(),
             hasCompanyStrength: !!form.companyStrength?.trim(),

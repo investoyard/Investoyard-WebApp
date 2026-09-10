@@ -163,22 +163,39 @@ export function PreanchorReviewModal({
     push('refundDate', 'Refund date  (T+2, estimated)', parsed.refundDate, current.refundDate);
     push('dematDate', 'Demat credit  (T+2, estimated)', parsed.dematDate, current.dematDate);
     push('listingDate', 'Listing date  (T+3, estimated)', parsed.listingDate, current.listingDate);
-    // reservation share counts — each feeds a Phase-B override input
+    // Reservation split — the parser gives share counts; we also derive the
+    // PERCENTAGE per category (share_count / net_offer × 100) and emit a
+    // paired `__srp:<key>` so the form's shareResv[k].pct fills at the same
+    // time as sharesActual (operator ask 2026-09-09: "percentage-wise
+    // breakup to be filled from parser"). Total is preferred from the
+    // "Total Issue size" row when present, else the sum of the four
+    // categories — a fixed-price SME issue with no NIB rows still totals
+    // correctly.
     if (parsed.reservation) {
+      const r = parsed.reservation;
+      const total = r.total ?? ((r.qib ?? 0) + (r.hni ?? 0) + (r.hni2 ?? 0) + (r.retail ?? 0));
       const rvKey: Record<string, string> = { qib: 'sr_qib', hni: 'sr_hni', hni2: 'sr_hni2', retail: 'sr_retail' };
-      const rvLabel: Record<string, string> = { qib: 'QIB shares (NSE)', hni: 'NIB Big shares (NSE)', hni2: 'NIB Small shares (NSE)', retail: 'Retail shares (NSE)' };
+      const rvLabel: Record<string, string> = { qib: 'QIB', hni: 'NIB Big (>₹10 L)', hni2: 'NIB Small (₹2–10 L)', retail: 'Retail' };
       for (const k of ['qib', 'hni', 'hni2', 'retail'] as const) {
-        const v = parsed.reservation[k];
-        if (v != null) {
-          // __sr:<key> tells the form's applier to write into shareResv[key].sharesActual
-          out.push({
-            key: rvKey[k],
-            label: rvLabel[k],
-            extracted: v.toLocaleString('en-IN'),
-            current: '',    // the override box has no easy "current" to compare against
-            apply: { [`__sr:${k}`]: String(v) },
-          });
-        }
+        const v = r[k];
+        if (v == null) continue;
+        const pct = total > 0 ? +((v / total) * 100).toFixed(2) : null;
+        const shownPct = pct != null ? ` · ${pct}%` : '';
+        // Two apply keys per row:
+        //   __sr:<k>   → shareResv[k].sharesActual  (the raw count override)
+        //   __srp:<k>  → shareResv[k].pct           (the percentage the derivation reads)
+        // Emitting both from a single tick keeps the count and percentage
+        // in lock-step; the form-level derivation cannot see one without
+        // the other, and a pct-only fill leaves the override box empty.
+        const applyPatch: Record<string, string> = { [`__sr:${k}`]: String(v) };
+        if (pct != null) applyPatch[`__srp:${k}`] = String(pct);
+        out.push({
+          key: rvKey[k],
+          label: `${rvLabel[k]} shares${shownPct}`,
+          extracted: `${v.toLocaleString('en-IN')}${shownPct}`,
+          current: '',
+          apply: applyPatch,
+        });
       }
     }
     return out;

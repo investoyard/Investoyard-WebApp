@@ -1067,6 +1067,10 @@ export interface ParsedAnchorInvestor {
 export interface ParsedAnchor {
   totalShares?: number;
   allocationPrice?: number;
+  /** ISO date the anchor investors bid — usually the trading day BEFORE
+   *  the issue opens. Set when the intimation letter's header states it;
+   *  the form falls back to openDate − 1 business day otherwise. */
+  anchorDate?: string;
   investors: ParsedAnchorInvestor[];
   _raw?: { warnings: string[] };
 }
@@ -1104,6 +1108,9 @@ export interface ParsedIpoNote {
   refundDate?: string;
   dematDate?: string;
   listingDate?: string;
+  /** Anchor investor bidding date when the Note's Indicative Timetable
+   *  states it — usually the trading day BEFORE openDate. */
+  anchorDate?: string;
   /** Fresh Issue / OFS in ₹ Cr from the Note's OFFER DETAILS block.
    *  A fallback for PREANCHOR — extracted for the 2 of 4 Notes whose
    *  format prints an OFFER DETAILS header (PSL, Deepa); the other two

@@ -56,6 +56,9 @@ export function IpoNoteReviewModal({
     hasObjectsOfIssue: boolean;
     freshValue?: string;
     ofsValue?: string;
+    /** Optional so pre-existing callers don't need updating in one go —
+     *  when omitted the anchor-date row shows no "current" comparison. */
+    anchorDate?: string;
   };
   onClose: () => void;
   onApply: Fill;
@@ -66,6 +69,7 @@ export function IpoNoteReviewModal({
       if (!extracted) return;
       out.push({ key, label, extracted, current: cur ?? '', apply: { [key]: extracted } });
     };
+    dateRow('anchorDate',    'Anchor date',    parsed.anchorDate,    current.anchorDate);
     dateRow('allotmentDate', 'Allotment date', parsed.allotmentDate, current.allotmentDate);
     dateRow('refundDate',    'Refund date',    parsed.refundDate,    current.refundDate);
     dateRow('dematDate',     'Demat credit',   parsed.dematDate,     current.dematDate);
