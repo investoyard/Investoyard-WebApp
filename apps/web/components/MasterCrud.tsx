@@ -129,21 +129,33 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
             <input className="input" style={{ width: 220 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%' }}>
-              <thead><tr><th>Name</th><th>Code</th><th className="r">IPOs</th><th>Contact</th><th>Email / Phone</th><th>City</th>{withUrl && <th>Allotment URL</th>}<th>Status</th><th /></tr></thead>
+            <table className="table mst-tbl" style={{ width: '100%' }}>
+              <thead><tr>
+                <th>Name</th><th>Code</th><th className="r">IPOs</th>
+                <th>Contact</th><th>Email / Phone</th><th>City</th>
+                {withUrl && <th>Allotment URL</th>}
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th />
+              </tr></thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={withUrl ? 9 : 8} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
                 ) : slice.map((r) => (
                   <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
-                    <td>{r.name}</td>
-                    <td className="mono">{r.shortCode}</td>
-                      <td className="r mono">{r.ipoCount != null ? r.ipoCount.toLocaleString('en-IN') : <span className="muted">—</span>}</td>
-                    <td>{r.contactPerson || '—'}{r.mobile ? <div className="muted mono" style={{ fontSize: 11 }}>{r.mobile}</div> : null}</td>
-                    <td style={{ fontSize: 13 }}>{r.email || '—'}{r.phone ? <div className="muted mono" style={{ fontSize: 11 }}>{r.phone}</div> : null}</td>
-                    <td>{r.city || '—'}</td>
-                    {withUrl && <td style={{ fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.allotmentUrl || '—'}</td>}
-                    <td><span className={`st ${r.active ? 'ok' : 'mut'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}><span className="mst-name">{r.name}</span></td>
+                    <td className="mono" style={{ whiteSpace: 'nowrap' }}><span className="mst-code">{r.shortCode}</span></td>
+                    <td className="r mono">{r.ipoCount != null && r.ipoCount > 0
+                      ? <span className="mst-ipos">{r.ipoCount.toLocaleString('en-IN')}</span>
+                      : <span className="muted">—</span>}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{r.contactPerson || <span className="muted">—</span>}{r.mobile ? <div className="muted mono" style={{ fontSize: 11 }}>{r.mobile}</div> : null}</td>
+                    <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{r.email || <span className="muted">—</span>}{r.phone ? <div className="muted mono" style={{ fontSize: 11 }}>{r.phone}</div> : null}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{r.city || <span className="muted">—</span>}</td>
+                    {withUrl && <td style={{ fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.allotmentUrl || <span className="muted">—</span>}</td>}
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`rl-st ${r.active ? 'on' : 'off'}`}>
+                        <span className="rl-dot" />{r.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {canManage && (
                         <span className="row-actions">

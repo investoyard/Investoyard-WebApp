@@ -81,20 +81,24 @@ type Doc = { type: string; name: string; url: string };
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
 /**
- * A reservation row as STORED: the tick, the percentage, and an OPTIONAL
- * exact share count.
+ * A reservation row as STORED: the percentage, plus optional exact share
+ * counts at each end of the price band.
  *
- * Share count, remark and require-for-1x were previously derived and never
- * persisted, because a stored projection is the classic drift bug. The
- * `sharesActual` field is different — it is the NSE PREANCHOR figure the
- * operator can enter to reconcile against the exchange's own table. We floor
- * to a lot; NSE rounds to a share, so the two disagree by up to a lot on
- * every row. When present, `sharesActual` displays; the engine keeps deriving
- * on % for everything downstream. A drift warning surfaces if the two are
- * more than one lot apart, in case the operator typed the wrong figure.
+ * `sharesLower` / `sharesUpper` are the operator's optional reconciliation
+ * against the exchange's own numbers — NSE PREANCHOR prints figures AT THE
+ * LOWER BAND, so the anchor/preanchor parser writes into `sharesLower`; the
+ * upper-band count is either derived from the percentage or typed by the
+ * operator when they have both numbers to hand. Every downstream figure
+ * (amount reserved, forms-for-1x) keeps deriving off `pct` regardless, so a
+ * typed count is a display override, not a source of truth.
+ *
+ * The 2026-09-10 grid dropped the per-row `on` toggle — a row is now
+ * "active" when it has a non-empty `pct`. Legacy `on:false` rows are
+ * loaded with pct as-is (the operator can zero it out or delete) and the
+ * legacy `sharesActual` value migrates onto `sharesLower`.
  */
-type Resv = { on: boolean; pct: string; sharesActual?: string };
-const blankResv = (): Resv => ({ on: false, pct: '' });
+type Resv = { pct: string; sharesLower?: string; sharesUpper?: string };
+const blankResv = (): Resv => ({ pct: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
   symbol: string; name: string; type: string; issueType: string; status: string; faceValue: string; lotSize: string; isin: string;
@@ -290,12 +294,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           // the derived columns come from the engine
           shareResv: ex.shareResv
             ? Object.fromEntries(RESV_ROWS.map((r) => [r.key, {
-                on: !!ex.shareResv[r.key]?.on,
                 pct: str(ex.shareResv[r.key]?.pct),
-                // legacy rows have no override and read blank
-                sharesActual: str(ex.shareResv[r.key]?.sharesActual),
+                // legacy `sharesActual` was the NSE PREANCHOR figure — LOWER band.
+                sharesLower: str(ex.shareResv[r.key]?.sharesLower ?? ex.shareResv[r.key]?.sharesActual),
+                sharesUpper: str(ex.shareResv[r.key]?.sharesUpper),
               }]))
-            : (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
+            // Legacy `reservations` array from older records — kept as
+            // hint metadata, but no explicit "on" flag any more (a row is
+            // active when it carries a pct). Left as blank rows; operator
+            // fills the percentage themselves.
+            : blankShareResv(),
           resvRemarks: str(ex.resvRemarks),
         };
         initial.current = loaded; setForm(loaded);
@@ -356,7 +364,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     };
     const basis = std ? std.basis : q <= 50 ? 'icdr_6_1' : q >= 75 ? 'icdr_6_2' : form.regulationBasis;
     const next = { ...form.shareResv };
-    for (const [k, v] of Object.entries(rows)) next[k] = { ...next[k], on: true, pct: v };
+    for (const [k, v] of Object.entries(rows)) next[k] = { ...next[k], pct: v };
     set({ shareResv: next, regulationBasis: basis });
   };
   const setSeries = (key: 'pdfSeries' | 'onlineSeries', i: number, part: Partial<Series>) => set({ [key]: form[key].map((s, x) => (x === i ? { ...s, ...part } : s)) } as Partial<FormState>);
@@ -457,12 +465,19 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       anchorPrice: form.anchorPrice, sponsorBank: form.sponsorBank,
       sector: form.sector, industry: form.industry,
       startBid: form.startBid, startPrint: form.startPrint,
-      // only the tick and the percentage; every other column is derived on read
+      // pct + optional per-band overrides (sharesLower / sharesUpper).
+      // No `on` flag — a row is active when its pct is non-empty. The old
+      // `sharesActual` alias has been retired; parser paths now write
+      // `sharesLower` (see PREANCHOR footnote — figures are at the lower band).
       shareResv: Object.fromEntries(RESV_ROWS.map((r) => {
         const c = form.shareResv[r.key];
-        // trim the override before saving — a value or nothing, never an empty string
-        const sa = String(c.sharesActual ?? '').trim();
-        return [r.key, { on: c.on, pct: c.pct, ...(sa ? { sharesActual: sa } : {}) }];
+        const sl = String(c.sharesLower ?? '').trim();
+        const su = String(c.sharesUpper ?? '').trim();
+        return [r.key, {
+          pct: c.pct,
+          ...(sl ? { sharesLower: sl } : {}),
+          ...(su ? { sharesUpper: su } : {}),
+        }];
       })),
       resvRemarks: offerRemark || form.resvRemarks,
     },
@@ -515,19 +530,21 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       if (k.startsWith('__sr:')) {
         const cat = k.slice(5);                       // qib | hni | hni2 | retail
         if (nextShareResv[cat]) {
-          nextShareResv[cat] = { ...nextShareResv[cat], on: true, sharesActual: v };
+          // NSE PREANCHOR prints share counts AT THE LOWER BAND (per its
+          // own footnote), so the parser fills sharesLower — not the
+          // legacy `sharesActual` name, and not the upper-band cell.
+          nextShareResv[cat] = { ...nextShareResv[cat], sharesLower: v };
           shareResvChanged = true;
         }
         continue;
       }
       // __srp:<cat> writes the PERCENTAGE side of the reservation split.
-      // Paired with __sr:<cat> by the PREANCHOR modal (operator ask
-      // 2026-09-09) so a single tick fills sharesActual AND the pct that
-      // downstream derivations read. `on: true` lights up the row.
+      // Paired with __sr:<cat> by the PREANCHOR modal so a single tick
+      // fills sharesLower AND the pct that downstream derivations read.
       if (k.startsWith('__srp:')) {
         const cat = k.slice(6);
         if (nextShareResv[cat]) {
-          nextShareResv[cat] = { ...nextShareResv[cat], on: true, pct: v };
+          nextShareResv[cat] = { ...nextShareResv[cat], pct: v };
           shareResvChanged = true;
         }
         continue;
@@ -687,7 +704,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const derived = useMemo(() => {
     const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
     const reservation: Record<string, number> = {};
-    for (const r of RESV_ROWS) { const c = form.shareResv[r.key]; if (c?.on) { const v = n(c.pct); if (v > 0) reservation[r.key] = v; } }
+    for (const r of RESV_ROWS) { const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v; }
     const inputs: IssueInputs = {
       board: form.type === 'sme' ? 'sme' : 'mainboard',
       mechanism: form.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
@@ -820,7 +837,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
 
     // offer + anchor are one tab now (2026-09-04), so anchor gaps land in offer
     if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') g.offer.push('the offer size');
-    if (!RESV_ROWS.some((r) => form.shareResv[r.key]?.on && n(form.shareResv[r.key].pct) > 0)) g.offer.push('the reservation split');
+    if (!RESV_ROWS.some((r) => n(form.shareResv[r.key]?.pct) > 0)) g.offer.push('the reservation split');
     // the anchor portion is optional — an issue may simply not have one — so
     // this only complains once the operator has started filling it in
     if (n(form.anchorShares) > 0 && !n(form.anchorPrice)) g.offer.push('the anchor allocation price');
@@ -854,17 +871,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    * at the upper, so upper is the practical view. Default upper; toggle for
    * lower for reconciling against NSE.
    *
-   * The toggle only appears when there is genuinely a choice: no final price
-   * is set, and floor and cap are different. Fixed-price issues and priced
-   * issues have one price so there is nothing to toggle.
+   * `shown` picks the upper-band scenario (or the final price when set); the
+   * reservation table renders BOTH bands' share counts side-by-side now
+   * (operator ask 2026-09-10), so the old per-panel band toggle was retired.
+   * `shown` still drives the downstream derived columns (Amount Reserved,
+   * Forms-for-1x, totals) at the upper/final price — the standard ICDR view.
    */
-  const [showLower, setShowLower] = useState(false);
-  const canToggle = !!(derived.scenarios.floor && derived.scenarios.cap
-    && !derived.scenarios.final
-    && derived.scenarios.floor.price !== derived.scenarios.cap.price);
-  const shown = derived.scenarios.final
-    ?? (canToggle && showLower ? derived.scenarios.floor : derived.scenarios.cap)
-    ?? derived.primary;
+  const shown = derived.scenarios.final ?? derived.scenarios.cap ?? derived.primary;
 
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => shown?.categories.find((c: any) => c.key === key);
@@ -1375,36 +1388,29 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               {shown && (
                 <div className="rc-summary">
                   <span><i>Net offer</i>{shown.netOfferShares.toLocaleString('en-IN')} sh</span>
-                  <span><i>At</i>₹{shown.price}</span>
+                  <span><i>Upper band</i>₹{derived.scenarios.cap?.price ?? shown.price}</span>
+                  {derived.scenarios.floor && derived.scenarios.floor.price !== derived.scenarios.cap?.price && (
+                    <span><i>Lower band</i>₹{derived.scenarios.floor.price}</span>
+                  )}
                   {shown.residualTo && (
                     <span><i>Residual</i>{shown.residualLots} lot{shown.residualLots === 1 ? '' : 's'} → {CATEGORY_LABELS[shown.residualTo] ?? shown.residualTo}</span>
                   )}
                   <span className="muted">{derived.rulePack.label}</span>
-                  {/* only surfaces for a fixed-by-amount book-built issue with
-                      no final price yet — otherwise there is nothing to toggle */}
-                  {canToggle && (
-                    <button type="button" className="rc-band-toggle"
-                      onClick={() => setShowLower((v) => !v)}
-                      title={`Currently at ₹${shown.price} (${showLower ? 'lower' : 'upper'} band). Click for ${showLower ? 'upper' : 'lower'}-band view.`}>
-                      Toggle {showLower ? 'upper' : 'lower'}-band
-                    </button>
-                  )}
                 </div>
               )}
-              {canToggle && (
-                <p className="rc-band-note">
-                  Shares shown at ₹{shown!.price} ({showLower ? 'lower' : 'upper'} band).
-                  {' '}Toggle for {showLower ? 'upper' : 'lower'}-band view.
-                  {!showLower && <> NSE PREANCHOR uses the lower band; toggle before reconciling.</>}
-                </p>
-              )}
+              {/* Both bands' share counts are shown side-by-side (operator ask
+                  2026-09-10). NSE PREANCHOR prints its figures at the LOWER
+                  band, so `sharesLower` is what the parser fills; the upper-
+                  band cell derives from the percentage against the upper price.
+                  Both cells accept a manual override — the input under the
+                  derived value. Every downstream figure (Amount Reserved,
+                  Forms for 1X) still derives off pct at the upper band. */}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table resv-table" style={{ width: '100%' }}>
-                  <thead><tr><th style={{ width: 40 }} /><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
+                  <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count (Upper)</th><th className="r">Share Count (Lower)</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
                   <tbody>
                     {RESV_ROWS.map((r) => (
-                      <tr key={r.key} className={form.shareResv[r.key].on ? 'row-on' : ''}>
-                        <td style={{ textAlign: 'center' }}><input type="checkbox" checked={form.shareResv[r.key].on} onChange={(e) => setResv(r.key, { on: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} /></td>
+                      <tr key={r.key}>
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
                         {/* QIB carries the snap: typing 75 or 50 fills every
                             other row and the regulation basis (see onQibPctChange). */}
@@ -1415,34 +1421,47 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           : <input className="input mono" value={form.shareResv[r.key].pct}
                               onChange={(e) => setResv(r.key, { pct: e.target.value })} />
                         }</td>
-                        {/* Share Count is a projection of the percentage, with
-                            an OPTIONAL override the operator can type when the
-                            NSE PREANCHOR figure differs by up to a lot (we
-                            floor, NSE rounds to a share). The override is what
-                            displays; the engine keeps deriving on % for
-                            amount and forms-for-1x so nothing downstream can
-                            drift from it silently. */}
                         {(() => {
-                          const d = derivedRow(r.key);
+                          const catCap = derived.scenarios.cap?.categories.find((c: any) => c.key === r.key);
+                          const catFloor = derived.scenarios.floor?.categories.find((c: any) => c.key === r.key);
+                          const d = derivedRow(r.key);   // for downstream (amount, apps) — uses `shown` (upper by default)
                           const dash = <span className="muted">—</span>;
-                          const override = Number(String(form.shareResv[r.key].sharesActual ?? '').replace(/[^\d]/g, ''));
-                          const hasOverride = Number.isFinite(override) && override > 0;
-                          const shownShares = hasOverride ? override : d?.shares;
-                          // more than one lot off is worth a warning — closer is normal rounding
-                          const drift = hasOverride && d && Math.abs(override - d.shares) > (form.lotSize ? Number(form.lotSize) : 1);
+                          const upperOv = Number(String(form.shareResv[r.key].sharesUpper ?? '').replace(/[^\d]/g, ''));
+                          const lowerOv = Number(String(form.shareResv[r.key].sharesLower ?? '').replace(/[^\d]/g, ''));
+                          const hasUpperOv = Number.isFinite(upperOv) && upperOv > 0;
+                          const hasLowerOv = Number.isFinite(lowerOv) && lowerOv > 0;
+                          const upperVal = hasUpperOv ? upperOv : catCap?.shares;
+                          const lowerVal = hasLowerOv ? lowerOv : catFloor?.shares ?? catCap?.shares;
+                          const lot = form.lotSize ? Number(form.lotSize) : 1;
+                          const upperDrift = hasUpperOv && catCap && Math.abs(upperOv - catCap.shares) > lot;
+                          const lowerDrift = hasLowerOv && catFloor && Math.abs(lowerOv - catFloor.shares) > lot;
                           return (
                             <>
                               <td className="rc-derived r">
-                                {shownShares != null ? shownShares.toLocaleString('en-IN') : dash}
+                                {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"
-                                    value={form.shareResv[r.key].sharesActual ?? ''}
-                                    onChange={(e) => setResv(r.key, { sharesActual: e.target.value.replace(/[^\d]/g, '') })}
-                                    title="Optional: the exact share count from NSE PREANCHOR, when different from what we derived" />
+                                    value={form.shareResv[r.key].sharesUpper ?? ''}
+                                    onChange={(e) => setResv(r.key, { sharesUpper: e.target.value.replace(/[^\d]/g, '') })}
+                                    title="Optional override — the exact upper-band share count when it differs from the derived value" />
                                 </div>
-                                {drift && (
-                                  <div className="rc-drift" title={`Derived from %: ${d!.shares.toLocaleString('en-IN')}. Off by ${Math.abs(override - d!.shares).toLocaleString('en-IN')} shares.`}>
-                                    ± {Math.abs(override - d!.shares).toLocaleString('en-IN')} vs derived
+                                {upperDrift && catCap && (
+                                  <div className="rc-drift" title={`Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.`}>
+                                    ± {Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="rc-derived r">
+                                {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
+                                <div className="rc-override">
+                                  <input className="input mono" placeholder="override"
+                                    value={form.shareResv[r.key].sharesLower ?? ''}
+                                    onChange={(e) => setResv(r.key, { sharesLower: e.target.value.replace(/[^\d]/g, '') })}
+                                    title="Optional override — NSE PREANCHOR prints figures at the lower band; paste from there when reconciling" />
+                                </div>
+                                {lowerDrift && catFloor && (
+                                  <div className="rc-drift" title={`Derived from %: ${catFloor.shares.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')} shares.`}>
+                                    ± {Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')}
                                   </div>
                                 )}
                               </td>
@@ -1594,12 +1613,25 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 // row — the operator can then fix it (type-to-filter above) or
                 // add to master.
                 const inMaster = anchorOpts.some((o) => o.active && o.name === a.name);
+                /** Click ⚠ chip → confirm → seed the anchor master with this
+                 *  name (operator ask 2026-09-10). The pill vanishes on the
+                 *  next render because the newly-added master row now matches. */
+                const addToMaster = async () => {
+                  if (!a.name.trim()) return;
+                  if (typeof window !== 'undefined' && !window.confirm(`Add "${a.name}" to the Anchor Investors master?`)) return;
+                  try {
+                    const row = await api.createMaster('anchors', { name: a.name.trim() });
+                    setAnchorOpts((prev) => [...prev, row].sort((p, q) => p.name.localeCompare(q.name)));
+                  } catch (e: any) { setErr(String(e?.message ?? e)); }
+                };
                 return (
                   <div className="anchor-row" key={a.name}>
                     <span className="anchor-name">
                       {a.name}
                       {!inMaster && a.name.trim() && (
-                        <span className="pill" style={{ marginLeft: 8, background: '#fdebea', color: '#b3372e', fontSize: 10.5 }} title="Not in the Anchor Investors master — add it there or pick a matching entry above">⚠ not in master</span>
+                        <button type="button" className="pill" onClick={addToMaster}
+                          style={{ marginLeft: 8, background: '#fdebea', color: '#b3372e', fontSize: 10.5, border: 0, cursor: 'pointer' }}
+                          title="Not in the Anchor Investors master — click to add">⚠ not in master</button>
                       )}
                     </span>
                     <input className="input mono" placeholder="10,25,644" value={a.shares}
@@ -1699,20 +1731,54 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {/* ================= About Company ================= */}
         {/* ================= Documents ================= */}
         {tab === 'docs' && (
-          <Panel title="Documents" desc="Upload RHP / DRHP / prospectus and other files shown on the IPO page." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ documents: [...form.documents, { type: 'RHP', name: '', url: '' }] })}><Icon name="plus" size={13} /> Add document</button>}>
+          <Panel title="Documents" desc="RHP / DRHP / prospectus and other files. Each row is either an uploaded PDF on our storage or an external URL from SEBI." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ documents: [...form.documents, { type: 'RHP', name: '', url: '' }] })}><Icon name="plus" size={13} /> Add document</button>}>
             {form.documents.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No documents yet. Click <b>Add document</b>.</div> :
               <div className="lead-list">
-                {form.documents.map((d, i) => (
-                  <div className="doc-up" key={i}>
+                {form.documents.map((d, i) => {
+                  // Segmented control per row (operator ask 2026-09-10):
+                  // Upload a PDF onto our storage OR paste an external URL
+                  // (SEBI / exchange). "External" is inferred from the URL
+                  // shape — no dedicated field on the Doc type keeps the
+                  // storage compatible with existing rows. A url starting
+                  // with http(s):// AND not hitting /api/uploads/ is external.
+                  const isExternal = /^https?:\/\//i.test(d.url) && !/\/uploads\//i.test(d.url);
+                  const mode: 'upload' | 'url' = isExternal ? 'url' : 'upload';
+                  const setMode = (m: 'upload' | 'url') => {
+                    // Switching modes doesn't clobber the current URL — the
+                    // operator may want to compare and pick, and reverting
+                    // is a single click. Explicit "Remove" clears the row.
+                    if (m === 'url' && !isExternal && d.url) return; // keep current uploaded url visible on URL side too
+                    setDoc(i, { url: '' });
+                  };
+                  return (
+                  <div className="doc-up" key={i} style={{ flexWrap: 'wrap' }}>
                     <select className="input" style={{ width: 170 }} value={d.type} onChange={(e) => setDoc(i, { type: e.target.value })}>{DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-                    <div className="doc-file">{d.url ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></> : <span className="muted" style={{ fontSize: 13 }}>No file chosen</span>}</div>
-                    <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                      {docBusy === i ? 'Uploading…' : d.url ? 'Replace' : <><Icon name="upload" size={14} /> Upload</>}
-                      <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={(e) => onDocFile(i, e.target.files?.[0])} />
-                    </label>
+                    <div className="seg" style={{ marginRight: 8 }}>
+                      <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload PDF</button>
+                      <button type="button" className={mode === 'url' ? 'on' : ''} onClick={() => setMode('url')}>External URL</button>
+                    </div>
+                    {mode === 'upload' ? (
+                      <>
+                        <div className="doc-file">{d.url ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></> : <span className="muted" style={{ fontSize: 13 }}>No file chosen</span>}</div>
+                        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                          {docBusy === i ? 'Uploading…' : d.url ? 'Replace' : <><Icon name="upload" size={14} /> Upload</>}
+                          <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={(e) => onDocFile(i, e.target.files?.[0])} />
+                        </label>
+                      </>
+                    ) : (
+                      <input
+                        className="input mono"
+                        style={{ flex: 1, minWidth: 320, fontSize: 12.5 }}
+                        placeholder="https://www.sebi.gov.in/…/rhp.pdf"
+                        value={d.url}
+                        onChange={(e) => setDoc(i, { url: e.target.value.trim(), name: e.target.value.trim().split('/').pop() ?? '' })}
+                        title="Paste the SEBI / exchange URL for this document. It opens in a new tab on the public detail page."
+                      />
+                    )}
                     <button type="button" className="icon-btn danger" onClick={() => set({ documents: form.documents.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
                   </div>
-                ))}
+                  );
+                })}
               </div>}
           </Panel>
         )}

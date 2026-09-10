@@ -121,15 +121,24 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
             {embedded && canManage && <button className="btn btn-sm" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button>}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%' }}>
-              <thead><tr><th>Name</th>{extraLabel && <th>{extraLabel}</th>}<th>Status</th><th /></tr></thead>
+            <table className="table mst-tbl" style={{ width: '100%' }}>
+              <thead><tr>
+                <th>Name</th>
+                {extraLabel && <th>{extraLabel}</th>}
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th />
+              </tr></thead>
               <tbody>
                 {filtered.length === 0 ? <tr><td colSpan={extraLabel ? 4 : 3} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr> :
                   slice.map((r) => (
                     <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
-                      <td>{r.name}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}><span className="mst-name">{r.name}</span></td>
                       {extraCell && <td>{extraCell(r)}</td>}
-                      <td><span className={`st ${r.active ? 'ok' : 'mut'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`rl-st ${r.active ? 'on' : 'off'}`}>
+                          <span className="rl-dot" />{r.active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {canManage && (
                           <span className="row-actions">
