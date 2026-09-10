@@ -83,7 +83,10 @@ const NAV: NavNode[] = [
     { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.upi-handles.manage' },
     { href: '/admin/masters/anchors', label: 'Anchor Investors', perm: 'masters.anchors.manage' },
     { href: '/admin/masters/sectors', label: 'Sectors', perm: 'masters.sectors.manage' },
-    { href: '/admin/masters/exchanges', label: 'Exchanges', perm: 'masters.exchanges.manage' },
+    /* Exchanges master was a scaffold page with no live data behind it
+       (operator decision 2026-09-10 — the real exchange config lives on
+       Exchange Rails). Dropped from the sidebar; the perm key stays in
+       the catalog in case a future exchange-config surface reuses it. */
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [
     { href: '/admin/team', label: 'Users' },

@@ -27,6 +27,7 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
   const me = useOperator();
   const [rows, setRows] = useState<api.MasterRow[] | null>(null);
   const [modal, setModal] = useState<null | { id?: string; form: Partial<api.MasterRow> }>(null);
+  const [viewing, setViewing] = useState<api.MasterRow | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -133,13 +134,16 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
               <thead><tr>
                 <th>Name</th><th>Code</th><th className="r">IPOs</th>
                 <th>Contact</th><th>Email / Phone</th><th>City</th>
-                {withUrl && <th>Allotment URL</th>}
+                {/* Allotment URL dropped from the list (operator ask
+                    2026-09-10) — it's a long URL that pushed other columns
+                    off-screen. Still edited in the modal and visible on
+                    the new View sheet. */}
                 <th style={{ textAlign: 'center' }}>Status</th>
                 <th />
               </tr></thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={withUrl ? 9 : 8} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
+                  <tr><td colSpan={8} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr>
                 ) : slice.map((r) => (
                   <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
                     <td style={{ whiteSpace: 'nowrap' }}><span className="mst-name">{r.name}</span></td>
@@ -150,15 +154,15 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
                     <td style={{ whiteSpace: 'nowrap' }}>{r.contactPerson || <span className="muted">—</span>}{r.mobile ? <div className="muted mono" style={{ fontSize: 11 }}>{r.mobile}</div> : null}</td>
                     <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{r.email || <span className="muted">—</span>}{r.phone ? <div className="muted mono" style={{ fontSize: 11 }}>{r.phone}</div> : null}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{r.city || <span className="muted">—</span>}</td>
-                    {withUrl && <td style={{ fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.allotmentUrl || <span className="muted">—</span>}</td>}
                     <td style={{ textAlign: 'center' }}>
                       <span className={`rl-st ${r.active ? 'on' : 'off'}`}>
                         <span className="rl-dot" />{r.active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {canManage && (
-                        <span className="row-actions">
+                      <span className="row-actions">
+                        <button className="icon-btn" title="View details" onClick={() => setViewing(r)}><Icon name="eye" size={15} /></button>
+                        {canManage && <>
                           <button className="icon-btn" title="Edit" onClick={() => { setModalErr(null); setModal({ id: r.id, form: { ...r } }); }}><Icon name="edit" size={15} /></button>
                           <button className={`icon-btn ${r.active ? 'danger' : 'pos'}`} title={r.active ? 'Deactivate' : 'Activate'} onClick={() => toggle(r)}><Icon name="power" size={15} /></button>
                           {me.isSuperAdmin && (
@@ -168,8 +172,8 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
                               </button>
                             </RowMenu>
                           )}
-                        </span>
-                      )}
+                        </>}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -204,7 +208,50 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
           </FormActions>
         </Modal>
       )}
+      {viewing && <MasterViewModal row={viewing} withUrl={!!withUrl} onClose={() => setViewing(null)} onEdit={canManage ? () => { setModalErr(null); setModal({ id: viewing.id, form: { ...viewing } }); setViewing(null); } : undefined} />}
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
+  );
+}
+
+/** Read-only detail view of a master row (Registrars / Lead Managers). All
+ *  fields including the AllotmentUrl live here — the list column was dropped
+ *  on 2026-09-10 because the URL crowded the row on narrower viewports. */
+function MasterViewModal({ row, withUrl, onClose, onEdit }: {
+  row: api.MasterRow; withUrl: boolean;
+  onClose: () => void;
+  onEdit?: () => void;
+}) {
+  const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
+    <div className="kv"><span className="k">{k}</span><span className="v">{v ?? <span className="muted">—</span>}</span></div>
+  );
+  return (
+    <Modal title={row.name} sub={`Registrar / lead-manager master${row.shortCode ? ` · ${row.shortCode}` : ''}`} onClose={onClose} wide>
+      <div className="form-grid" style={{ gap: 6 }}>
+        <Row k="Name" v={row.name} />
+        <Row k="Short code" v={row.shortCode ? <span className="mono">{row.shortCode}</span> : null} />
+        <Row k="Status" v={<span className={`rl-st ${row.active ? 'on' : 'off'}`}><span className="rl-dot" />{row.active ? 'Active' : 'Inactive'}</span>} />
+        <Row k="IPOs handled" v={row.ipoCount != null ? row.ipoCount.toLocaleString('en-IN') : null} />
+        <Row k="Contact person" v={row.contactPerson} />
+        <Row k="Mobile" v={row.mobile ? <span className="mono">{row.mobile}</span> : null} />
+        <Row k="Phone" v={row.phone ? <span className="mono">{row.phone}</span> : null} />
+        <Row k="Email" v={row.email} />
+        <Row k="GSTIN" v={row.gstin ? <span className="mono">{row.gstin}</span> : null} />
+        <Row k="Address line 1" v={row.address1} />
+        <Row k="Address line 2" v={row.address2} />
+        <Row k="City" v={row.city} />
+        <Row k="State" v={row.state} />
+        <Row k="PIN" v={row.pincode ? <span className="mono">{row.pincode}</span> : null} />
+        {withUrl && (
+          <Row k="Allotment-check URL" v={row.allotmentUrl
+            ? <a href={row.allotmentUrl} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{row.allotmentUrl}</a>
+            : null} />
+        )}
+      </div>
+      <FormActions>
+        {onEdit && <button className="btn" onClick={onEdit}><Icon name="edit" size={14} /> Edit</button>}
+        <button className="btn btn-secondary" onClick={onClose}>Close</button>
+      </FormActions>
+    </Modal>
   );
 }

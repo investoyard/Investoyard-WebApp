@@ -37,7 +37,7 @@ export default function SectorsPage() {
       )}
       extraCell={(r) => (
         r.industries?.length
-          ? <span className="pill">{r.industries.length}</span>
+          ? <span className="mst-badge" title={r.industries.join(', ')}>{r.industries.length} industr{r.industries.length === 1 ? 'y' : 'ies'}</span>
           : <span className="muted">—</span>
       )}
     />

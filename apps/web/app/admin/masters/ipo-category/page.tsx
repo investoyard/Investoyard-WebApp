@@ -50,7 +50,7 @@ export default function IpoCategoryPage() {
               </select>
             </Field>
           )}
-          extraCell={(r) => (r.category ? <span className="pill">{r.category.name}</span> : <span className="muted">—</span>)}
+          extraCell={(r) => (r.category ? <span className="mst-badge">{r.category.name}</span> : <span className="muted">—</span>)}
         />
       )}
     </>

@@ -19,7 +19,9 @@ export default function RelationshipsPage() {
           <span>Allow multiple applicants with this relation (e.g. Child) — off = once per account (e.g. Mother)</span>
         </label>
       )}
-      extraCell={(r) => (r.allowMultiple ? <span className="pill">multiple</span> : <span className="pill" style={{ background: 'var(--bg-subtle)' }}>once</span>)}
+      extraCell={(r) => (r.allowMultiple
+        ? <span className="mst-badge">multiple</span>
+        : <span className="mst-badge mut">once</span>)}
     />
   );
 }
