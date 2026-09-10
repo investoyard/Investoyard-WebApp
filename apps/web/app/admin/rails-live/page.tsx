@@ -6,6 +6,7 @@ import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
@@ -115,6 +116,21 @@ export default function AdminRailsLive() {
     finally { setBusy(false); setTesting(null); }
   };
 
+  /** Hard-delete a rail credential. Superadmin-only + server-side validated
+   *  (refuses when references exist). Confirm dialog names the credential
+   *  and quotes the 409 reason if the delete is blocked. */
+  const askDelete = (c: api.RailCred) => setConfirm({
+    title: `Delete ${c.memberName} permanently?`,
+    danger: true, confirmLabel: 'Delete',
+    message: <>This removes the credential. If it's referenced by any submitted application, bid operation, or IPO's Online Apply series, the server will refuse and tell you which.</>,
+    onConfirm: async () => {
+      setBusy(true); setErr(null); setMsg(null);
+      try { await api.deleteRail(c.id); await load(); setMsg(`${c.memberName} deleted.`); }
+      catch (e: any) { setErr(String(e?.message ?? e)); }
+      finally { setBusy(false); }
+    },
+  });
+
   if (!operatorCan(me, 'rails.manage')) return <NoAccess />;
 
   return (
@@ -133,37 +149,68 @@ export default function AdminRailsLive() {
         <div className="card">
           <div className="card-head"><span className="t">Member credentials <span className="count-badge">{rails.length}</span></span></div>
           <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%' }}>
-                <thead><tr><th>Exchange</th><th>Member</th><th>Login</th><th>Code</th><th>Env</th><th>Secret</th><th>Active</th><th></th></tr></thead>
+              <table className="table rl-tbl" style={{ width: '100%' }}>
+                <thead><tr>
+                  <th>Exchange</th><th>Member</th><th>Login</th><th>Code</th>
+                  <th style={{ textAlign: 'center' }}>Env</th>
+                  <th style={{ textAlign: 'center' }}>Secret</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
+                  <th></th>
+                </tr></thead>
                 <tbody>
                   {rails.length === 0 ? <tr><td colSpan={8} className="muted" style={{ padding: 14 }}>No credentials yet.</td></tr> :
                     rails.map((c) => (
                       <tr key={c.id}>
-                        <td><span className="pill">{EX_LABEL[c.exchange] ?? c.exchange}</span></td>
-                        <td>
-                          {c.memberName}
-                          {c.subscriptionUse && <span className="pill" style={{ marginLeft: 6, background: '#eaf5ee', fontSize: 11 }} title="Our own membership — subscription auto-fetch, IPO master & holidays always use this credential">★ subscription</span>}
-                          <div className="muted" style={{ fontSize: 11 }}>{c.memberType}</div>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span className={`rl-ex ${c.exchange === 'NSE_EIPO' ? 'nse' : 'bse'}`}>{EX_LABEL[c.exchange] ?? c.exchange}</span>
                         </td>
-                        <td className="mono">{c.loginId}</td>
-                        <td className="mono">{c.memberCode}</td>
-                        <td><span className="pill" style={{ background: c.env === 'live' ? '#eaf5ee' : 'var(--bg-subtle)' }}>{c.env}</span></td>
-                        <td>{c.passwordSet ? <span className="mono muted">•••••• set</span> : <span className="muted">—</span>}</td>
-                        <td><span className={`st ${c.active ? 'ok' : 'mut'}`}>{c.active ? 'On' : 'Off'}</span></td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <span className="row-actions">
-                            <button className="icon-btn" disabled={busy} onClick={() => setViewing(c)} title="View details"><Icon name="eye" size={15} /></button>
-                            <button className="icon-btn" disabled={busy} onClick={() => openEdit(c)} title="Edit"><Icon name="edit" size={15} /></button>
-                            {!c.subscriptionUse && (
-                              <button className="icon-btn" disabled={busy} title="Mark as OUR member — use for subscription auto-fetch"
-                                onClick={() => run(() => api.updateRail(c.id, { subscriptionUse: true }), `${c.memberName} is now used for subscription fetch on ${EX_LABEL[c.exchange] ?? c.exchange}.`)}>
-                                <Icon name="star" size={15} />
-                              </button>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="rl-name">{c.memberName}</span>
+                            {c.subscriptionUse && (
+                              <span className="rl-sub" title="OUR own membership — subscription auto-fetch, IPO master & holidays always use this credential">
+                                <Icon name="star" size={11} />
+                              </span>
                             )}
-                            <button className="icon-btn" disabled={busy} onClick={() => doTest(c)} title="Test connection">
-                              <Icon name={testing === c.id ? 'clock' : 'refresh'} size={15} />
-                            </button>
-                            <button className={`icon-btn ${c.active ? 'danger' : 'pos'}`} disabled={busy} onClick={() => toggleRail(c)} title={c.active ? 'Deactivate' : 'Activate'}><Icon name="power" size={15} /></button>
+                          </div>
+                          <div className="rl-sub-line">{c.memberType}</div>
+                        </td>
+                        <td className="mono" style={{ whiteSpace: 'nowrap' }}>{c.loginId}</td>
+                        <td className="mono" style={{ whiteSpace: 'nowrap' }}>{c.memberCode}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className={`rl-env ${c.env}`}>{c.env}</span>
+                        </td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {c.passwordSet
+                            ? <span className="rl-secret set"><Icon name="check" size={11} /> set</span>
+                            : <span className="rl-secret unset">not set</span>}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className={`rl-st ${c.active ? 'on' : 'off'}`}>
+                            <span className="rl-dot" />{c.active ? 'Active' : 'Off'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>
+                          <span className="row-actions">
+                            <button className="icon-btn" disabled={busy} onClick={() => setViewing(c)} title="View details"><Icon name="eye" size={14} /></button>
+                            <button className="icon-btn" disabled={busy} onClick={() => openEdit(c)} title="Edit"><Icon name="edit" size={14} /></button>
+                            <button className={`icon-btn ${c.active ? 'danger' : 'pos'}`} disabled={busy} onClick={() => toggleRail(c)} title={c.active ? 'Deactivate' : 'Activate'}><Icon name="power" size={14} /></button>
+                            <RowMenu>
+                              <button disabled={busy} onClick={() => doTest(c)}>
+                                <Icon name={testing === c.id ? 'clock' : 'refresh'} size={14} /> Test connection
+                              </button>
+                              {!c.subscriptionUse && (
+                                <button disabled={busy}
+                                  onClick={() => run(() => api.updateRail(c.id, { subscriptionUse: true }), `${c.memberName} is now used for subscription fetch on ${EX_LABEL[c.exchange] ?? c.exchange}.`)}>
+                                  <Icon name="star" size={14} /> Mark as subscription source
+                                </button>
+                              )}
+                              {me?.isSuperAdmin && (
+                                <button className="danger" disabled={busy} onClick={() => askDelete(c)}>
+                                  <Icon name="trash" size={14} /> Delete permanently
+                                </button>
+                              )}
+                            </RowMenu>
                           </span>
                         </td>
                       </tr>

@@ -489,6 +489,8 @@ export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateMaster = (kind: MasterKind, id: string, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteMaster = (kind: MasterKind, id: string) =>
+  authed<{ deleted: boolean; name: string }>(`${API}/admin/masters/${kind}/${id}`, { method: 'DELETE' });
 
 /** Platform oversight: per-white-label-partner integration status. */
 export interface IntegrationStatus { slug: string; name: string; code?: string; providers: string[]; templates: string[] }
@@ -533,6 +535,8 @@ export const createRail = (body: any) =>
   authed<{ id: string }>(`${API}/admin/rails`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateRail = (id: string, body: any) =>
   authed<{ updated: boolean }>(`${API}/admin/rails/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteRail = (id: string) =>
+  authed<{ deleted: boolean; memberName: string }>(`${API}/admin/rails/${id}`, { method: 'DELETE' });
 export type RailTestOutcome = 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret';
 export interface RailTestResult {
   ok: boolean;

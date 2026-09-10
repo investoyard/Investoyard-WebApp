@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Module, NotFoundException, Param, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, Module, NotFoundException, Param, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -290,6 +290,100 @@ export class MastersController {
       if (e?.code === 'P2002') throw new ConflictException(ORG_KINDS.has(kind) ? 'That short code is already in use.' : 'That name already exists.');
       throw e;
     }
+  }
+
+  /**
+   * Hard-delete a master row — SUPERADMIN ONLY, and refused when the row is
+   * referenced anywhere (all masters are name-referenced snapshots on the
+   * IPO catalog / investor profiles, per CLAUDE.md's "IPOs snapshot
+   * registrars/leads by name" rule). Deactivate remains the normal
+   * lifecycle; this is the escape hatch for rows added by mistake.
+   *
+   * UPI handles are the one exception: they gate what's ALLOWED at the
+   * input form; deleting one doesn't retroactively invalidate any vaulted
+   * UPI token. So UPI-handle deletion is unblocked.
+   */
+  @Delete(':kind/:id')
+  @RequireAnyPermission(
+    'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+  )
+  async remove(@Req() req: any, @Param('kind') kind: string, @Param('id') id: string) {
+    // Superadmin-only — mirrors admin.service.callerScope's own predicate
+    // (a role with scope 'all' is the platform superadmin marker).
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId: req.user.sub, status: 'active' }, include: { role: true },
+    });
+    const isSuper = memberships.some((m) => m.role.scope === 'all');
+    if (!isSuper) throw new ForbiddenException('Hard-delete is superadmin-only. Deactivate instead.');
+    await this.assertKindPerm(req.user.sub, kind);
+
+    const row = await this.repo(kind).findUnique({ where: { id } });
+    if (!row) throw new NotFoundException();
+
+    // Per-kind reference count. Fetch what's needed and refuse with a
+    // clear reason naming the count. Sample IPO symbols are appended so
+    // the operator can see which records still bind to it.
+    const blocked = await this.countReferences(kind, row.name);
+    if (blocked && blocked.count > 0) {
+      const sample = blocked.samples?.length ? ` (${blocked.samples.slice(0, 5).join(', ')}${blocked.samples.length > 5 ? ` +${blocked.samples.length - 5} more` : ''})` : '';
+      throw new ConflictException(
+        `Cannot delete "${row.name}" — used by ${blocked.count} ${blocked.label}${sample}. Deactivate instead.`,
+      );
+    }
+
+    try { await this.repo(kind).delete({ where: { id } }); }
+    catch (e: any) {
+      if (e?.code === 'P2003') throw new ConflictException('Cannot delete — still referenced by another table.');
+      throw e;
+    }
+    return { deleted: true, name: row.name };
+  }
+
+  /**
+   * Count how many records reference this master by NAME. The fields checked
+   * mirror the catalog's snapshot columns (see CLAUDE.md) — every intermediary
+   * on an IPO is stored as text, so a delete safety check has to scan those
+   * text columns. Returns undefined for kinds without a natural back-reference.
+   */
+  private async countReferences(kind: string, name: string): Promise<{ count: number; label: string; samples?: string[] } | undefined> {
+    if (kind === 'registrars') {
+      const rows = await this.prisma.ipo.findMany({
+        where: { registrar: name }, select: { symbol: true },
+      });
+      return { count: rows.length, label: 'IPO(s)', samples: rows.map((r) => r.symbol) };
+    }
+    // Issue Type is a free-text field on Ipo.extra.issueType (not the
+    // top-level Ipo.instrument enum, which is a coarser IPO/FPO/REIT split).
+    // Fall through to the JSON-scan branch below with the issue-types kind.
+    if (kind === 'relationships') {
+      const count = await this.prisma.investorProfile.count({ where: { relationship: name } });
+      return { count, label: 'investor profile(s)' };
+    }
+    if (kind === 'upi-handles') {
+      // UPI-handle masters gate INPUT (what an investor can pick) — deleting
+      // one does NOT invalidate any stored (vaulted) UPI. Allow unconditionally.
+      return { count: 0, label: 'investor profile(s)' };
+    }
+    if (kind === 'lead-managers' || kind === 'ipo-categories' || kind === 'anchors' || kind === 'sectors' || kind === 'issue-types') {
+      // These fields live under Ipo.extra — Prisma's JSON filter needs a
+      // scalar predicate we don't have (arrays of objects for leads/anchors),
+      // so fetch the catalog and check in JS. Catalog size makes this fine.
+      const ipos = await this.prisma.ipo.findMany({ select: { symbol: true, extra: true } });
+      const matches: string[] = [];
+      for (const ipo of ipos) {
+        const extra: any = ipo.extra ?? {};
+        let hit = false;
+        if (kind === 'lead-managers') hit = Array.isArray(extra.leads) && extra.leads.includes(name);
+        else if (kind === 'ipo-categories') hit = extra.categoryName === name;
+        else if (kind === 'anchors') hit = Array.isArray(extra.anchors) && extra.anchors.some((a: any) => a?.name === name);
+        else if (kind === 'sectors') hit = extra.sector === name;
+        else if (kind === 'issue-types') hit = extra.issueType === name;
+        if (hit) matches.push(ipo.symbol);
+      }
+      return { count: matches.length, label: 'IPO(s)', samples: matches };
+    }
+    return undefined;
   }
 }
 

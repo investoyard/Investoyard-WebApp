@@ -2508,6 +2508,50 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .field.col-3 { grid-column: span 3; }
 .field.full { grid-column: 1 / -1; }
 
+/* Exchange rails grid — refreshed 2026-09-10 for a consistent chip family.
+   Exchange chip carries the brand hue keyed to the exchange (indigo NSE,
+   gold BSE); env chip is a small uppercase pill with a semantic-green wash
+   on live and neutral on UAT; status chip pairs a dot with the label so it
+   scans like the IPO List status. All chips share the same font size + weight
+   so no column looks quieter than another. */
+.rl-tbl td { font-size: 13px; vertical-align: middle; }
+.rl-ex {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+}
+.rl-ex.nse { background: rgba(60, 46, 126, 0.10); color: var(--brand, #3c2e7e); }
+.rl-ex.bse { background: rgba(240, 180, 41, 0.14); color: #7a5b00; }
+.rl-name { font-weight: 600; color: var(--text); }
+.rl-sub {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff4d0; color: #7a5b00;
+}
+.rl-sub-line { font-size: 11px; color: var(--text-faint); margin-top: 2px; text-transform: capitalize; }
+.rl-env {
+  display: inline-block; padding: 2px 9px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.rl-env.live { background: rgba(18, 146, 90, 0.14); color: #12925a; }
+.rl-env.uat  { background: var(--bg-2); color: var(--text-muted); }
+.rl-secret {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+}
+.rl-secret.set   { background: rgba(18, 146, 90, 0.10); color: #12925a; }
+.rl-secret.unset { background: var(--bg-2); color: var(--text-faint); }
+.rl-st {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px 2px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600;
+}
+.rl-st .rl-dot { width: 6px; height: 6px; border-radius: 50%; }
+.rl-st.on  { background: rgba(18, 146, 90, 0.12); color: #12925a; }
+.rl-st.on .rl-dot  { background: #12925a; }
+.rl-st.off { background: var(--bg-2); color: var(--text-faint); }
+.rl-st.off .rl-dot { background: var(--text-faint); }
+
 /* Completeness bar under the IPO name — Admin → IPO List.
    Slim (4px tall) so a two-line name cell stays as tall as the rest of
    the row. Pastel indigo track + solid indigo fill; a gold check chip

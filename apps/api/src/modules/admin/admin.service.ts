@@ -259,6 +259,56 @@ export class AdminService {
     }
   }
 
+  /**
+   * Hard-delete an Exchange Rails credential — superadmin only. Refuses when
+   * the credential is referenced anywhere: any submitted Application, any
+   * BidOperation, or any IPO whose `extra.onlineSeries` names this member
+   * for this exchange. The refusal names WHICH IPOs / how many rows block,
+   * so the operator can re-assign in seconds and retry.
+   */
+  async deleteRail(callerId: string, id: string) {
+    await this.assertSuperadmin(callerId);
+    const cred = await this.prisma.memberCredential.findUnique({ where: { id } });
+    if (!cred) throw new NotFoundException('Credential not found');
+
+    const [apps, ops] = await Promise.all([
+      this.prisma.application.count({ where: { memberCredentialId: id } }),
+      this.prisma.bidOperation.count({ where: { memberCredentialId: id } }),
+    ]);
+    if (apps > 0 || ops > 0) {
+      throw new ConflictException(
+        `Cannot delete — ${apps} application${apps === 1 ? '' : 's'}` +
+        ` and ${ops} bid operation${ops === 1 ? '' : 's'} reference this credential. Deactivate instead.`,
+      );
+    }
+
+    // Extra.onlineSeries stores { member, exchange, active, from, to } — the
+    // member field carries the memberCode string. IPOs are name-linked; a
+    // stale onlineSeries entry pointing at a deleted credential wouldn't
+    // crash bidding (the bidder falls through), but the operator has almost
+    // certainly forgotten it. Prisma JSON filters can't reach into an array
+    // shape cleanly, so we fetch the catalog and filter in JS — small enough
+    // for a one-shot delete pre-check.
+    const ipos = await this.prisma.ipo.findMany({ select: { id: true, symbol: true, extra: true } });
+    const blocking: string[] = [];
+    for (const ipo of ipos) {
+      const series: any[] = (ipo.extra as any)?.onlineSeries ?? [];
+      if (series.some((s) => s?.member === cred.memberCode && (!s?.exchange || s.exchange === cred.exchange))) {
+        blocking.push(ipo.symbol);
+      }
+    }
+    if (blocking.length) {
+      throw new ConflictException(
+        `Cannot delete — this credential is assigned to ${blocking.length} IPO${blocking.length === 1 ? '' : 's'}: ` +
+        `${blocking.slice(0, 6).join(', ')}${blocking.length > 6 ? ` +${blocking.length - 6} more` : ''}. ` +
+        `Re-assign the "Online Apply" series on those IPOs first.`,
+      );
+    }
+
+    await this.prisma.memberCredential.delete({ where: { id } });
+    return { deleted: true, memberName: cred.memberName };
+  }
+
   /** All assignable roles (platform system templates + any custom). */
   async listRoles() {
     const roles = await this.prisma.role.findMany({ orderBy: { name: 'asc' } });

@@ -447,6 +447,14 @@ export class AdminController {
     return this.admin.testRail(id);
   }
 
+  /** Hard-delete a rail credential. Superadmin-only, and the service refuses
+   *  when any application / bid operation / IPO onlineSeries references it. */
+  @Delete('rails/:id')
+  @RequirePermissions('rails.manage')
+  deleteRail(@Req() req: any, @Param('id') id: string) {
+    return this.admin.deleteRail(req.user.sub, id);
+  }
+
   /** Run a NSE Query-Server subscription sweep now over all open IPOs (the poller runs automatically in market hours). */
   @Post('rails/subscription/poll')
   @RequirePermissions('rails.manage')

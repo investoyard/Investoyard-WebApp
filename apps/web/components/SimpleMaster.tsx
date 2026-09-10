@@ -7,6 +7,7 @@ import { PageHead, Field, FormActions } from '@/components/ui/Form';
 import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
 import { usePagination } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
@@ -90,6 +91,16 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
     });
   };
 
+  /** Hard-delete — superadmin only, server refuses when the row is referenced. */
+  const askDelete = (r: api.MasterRow) => setConfirm({
+    title: `Delete ${r.name} permanently?`, danger: true, confirmLabel: 'Delete',
+    message: <>The row is removed from the master. If it's referenced by any IPO or investor profile, the server will refuse and tell you where.</>,
+    onConfirm: async () => {
+      try { await api.deleteMaster(kind, r.id); await load(); }
+      catch (e: any) { setErr(String(e?.message ?? e)); }
+    },
+  });
+
   return (
     <>
       {!embedded && (
@@ -124,6 +135,13 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
                           <span className="row-actions">
                             <button className="icon-btn" title="Edit" onClick={() => { setModalErr(null); setModal({ id: r.id, form: { ...r } }); }}><Icon name="edit" size={15} /></button>
                             <button className={`icon-btn ${r.active ? 'danger' : 'pos'}`} title={r.active ? 'Deactivate' : 'Activate'} onClick={() => toggle(r)}><Icon name="power" size={15} /></button>
+                            {me.isSuperAdmin && (
+                              <RowMenu>
+                                <button className="danger" onClick={() => askDelete(r)}>
+                                  <Icon name="trash" size={14} /> Delete permanently
+                                </button>
+                              </RowMenu>
+                            )}
                           </span>
                         )}
                       </td>

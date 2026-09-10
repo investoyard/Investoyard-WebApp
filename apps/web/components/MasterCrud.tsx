@@ -7,6 +7,7 @@ import { PageHead, Field, FormActions } from '@/components/ui/Form';
 import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
 import { usePagination } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
@@ -96,6 +97,18 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
     });
   };
 
+  /** Hard-delete a master row — superadmin only, server refuses when the
+   *  row is referenced by any IPO / investor profile. Confirm dialog
+   *  quotes the 409 back so it's clear which records still bind. */
+  const askDelete = (r: api.MasterRow) => setConfirm({
+    title: `Delete ${r.name} permanently?`, danger: true, confirmLabel: 'Delete',
+    message: <>The row is removed from the master. If it's referenced by any IPO or investor profile, the server will refuse and tell you where.</>,
+    onConfirm: async () => {
+      try { await api.deleteMaster(kind, r.id); await load(); setMsg(`${r.name} deleted.`); }
+      catch (e: any) { setErr(String(e?.message ?? e)); }
+    },
+  });
+
   return (
     <>
       <PageHead
@@ -136,6 +149,13 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
                         <span className="row-actions">
                           <button className="icon-btn" title="Edit" onClick={() => { setModalErr(null); setModal({ id: r.id, form: { ...r } }); }}><Icon name="edit" size={15} /></button>
                           <button className={`icon-btn ${r.active ? 'danger' : 'pos'}`} title={r.active ? 'Deactivate' : 'Activate'} onClick={() => toggle(r)}><Icon name="power" size={15} /></button>
+                          {me.isSuperAdmin && (
+                            <RowMenu>
+                              <button className="danger" onClick={() => askDelete(r)}>
+                                <Icon name="trash" size={14} /> Delete permanently
+                              </button>
+                            </RowMenu>
+                          )}
                         </span>
                       )}
                     </td>
