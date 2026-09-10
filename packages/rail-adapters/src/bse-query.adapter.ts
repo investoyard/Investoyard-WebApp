@@ -47,9 +47,10 @@ export class BseQueryAdapter {
     return swapped;
   }
 
+  /** See bse-ibbs.adapter for the "IBBS" hardcoded-password recipe — same
+   *  key derivation on the message API, no per-member key on live. */
   private checksum(payload: string, cred: MemberCredential): string {
-    if (!cred.checksumKey) throw new RailError('BSE checksum key not configured', EXCHANGE, 'CONFIG');
-    return bseChecksum(payload, cred.checksumKey);
+    return bseChecksum(payload, cred.checksumKey ?? '');
   }
 
   /** Message-API login → token (separate session from the bidding API). */

@@ -14,9 +14,11 @@ const EX_LABEL: Record<string, string> = { NSE_EIPO: 'NSE e-IPO', BSE_IBBS: 'BSE
 
 // Exact base URLs from the NSE WEB API doc (v1.20.6, Appendix B). The adapter
 // appends /v1/login, /v1/ipomaster, /v1/transactions/add … to this base.
-// BSE iBBS base comes from the member's iBBS onboarding, so it's left blank.
+// BSE iBBS live URL confirmed against sir's working reference on 2026-09-10 —
+// the earlier "ibbsapi.bseindia.com/IBBSAPI/..." variant was wrong (different
+// subdomain + upper-cased path); iBBS actually serves on ibbs.bseindia.com.
 const NSE_BASE: Record<string, string> = { uat: 'https://uat-ipo.nseindia.com/eipo', live: 'https://eipo.nseindia.com/eipo' };
-const BSE_BASE: Record<string, string> = { uat: 'https://uat.bseindia.in/ibbsapi/ibbsapiservice.svc', live: 'https://ibbsapi.bseindia.com/IBBSAPI/IBBSAPISERVICE.SVC' };
+const BSE_BASE: Record<string, string> = { uat: 'https://uat.bseindia.in/ibbsapi/ibbsapiservice.svc', live: 'https://ibbs.bseindia.com/ibbsapi/ibbsapiservice.svc' };
 const KNOWN_BASES = [...Object.values(NSE_BASE), ...Object.values(BSE_BASE)];
 const suggestBase = (exchange: string, env: string) => (exchange === 'BSE_IBBS' ? BSE_BASE[env] ?? '' : NSE_BASE[env] ?? '');
 
