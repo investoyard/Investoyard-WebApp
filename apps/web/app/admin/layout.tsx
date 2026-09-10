@@ -298,10 +298,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ))}
           </nav>
           <div style={{ flex: 1 }} />
-          <div className="conn-pills">
-            <span className="conn"><span className="conn-dot" /> NSE <b>Connected</b></span>
-            <span className="conn"><span className="conn-dot" /> BSE <b>Connected</b></span>
-          </div>
+          {/* NSE / BSE "Connected" pills removed (operator ask 2026-09-11) —
+              they were a scaffold placeholder, not a real live-check. Rail
+              health is diagnosed through Exchange Rails → Test connection. */}
           <button className="theme-toggle" aria-label="Help & docs" title="Help & docs"><Icon name="help" size={17} /></button>
           <div className="profile-menu" onClick={(e) => e.stopPropagation()}>
             <button className="theme-toggle" onClick={() => { setNotifOpen((o) => !o); setMenuOpen(false); }} aria-label="Notifications" style={{ position: 'relative' }}>

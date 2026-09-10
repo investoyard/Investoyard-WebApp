@@ -5,6 +5,7 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { Loader } from '@/components/ui/Loader';
+import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { PageHead, Panel, Field, Toggle } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -77,7 +78,13 @@ const RESV_ROWS: { key: string; label: string }[] = [
   { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' }, { key: 'other', label: 'Other' },
 ];
 
-type Doc = { type: string; name: string; url: string };
+type Doc = {
+  type: string; name: string; url: string;
+  /** Form-only. Which source picker the operator selected. Kept out of the
+   *  DB payload — inferred from the URL shape on load, then the operator
+   *  can toggle explicitly (empty rows have no URL to infer from). */
+  source?: 'upload' | 'url';
+};
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
 /**
@@ -227,6 +234,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const [docBusy, setDocBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1438,37 +1446,33 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           return (
                             <>
                               <td className="rc-derived r">
-                                {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
+                                <span className="rc-val" title={upperDrift && catCap ? `Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.` : undefined}>
+                                  {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
+                                  {upperDrift && catCap && <sup className="rc-drift-inline"> ±{Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')}</sup>}
+                                </span>
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"
                                     value={form.shareResv[r.key].sharesUpper ?? ''}
                                     onChange={(e) => setResv(r.key, { sharesUpper: e.target.value.replace(/[^\d]/g, '') })}
                                     title="Optional override — the exact upper-band share count when it differs from the derived value" />
                                 </div>
-                                {upperDrift && catCap && (
-                                  <div className="rc-drift" title={`Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.`}>
-                                    ± {Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')}
-                                  </div>
-                                )}
                               </td>
                               <td className="rc-derived r">
-                                {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
+                                <span className="rc-val" title={lowerDrift && catFloor ? `Derived from %: ${catFloor.shares.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')} shares.` : undefined}>
+                                  {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
+                                  {lowerDrift && catFloor && <sup className="rc-drift-inline"> ±{Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')}</sup>}
+                                </span>
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"
                                     value={form.shareResv[r.key].sharesLower ?? ''}
                                     onChange={(e) => setResv(r.key, { sharesLower: e.target.value.replace(/[^\d]/g, '') })}
                                     title="Optional override — NSE PREANCHOR prints figures at the lower band; paste from there when reconciling" />
                                 </div>
-                                {lowerDrift && catFloor && (
-                                  <div className="rc-drift" title={`Derived from %: ${catFloor.shares.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')} shares.`}>
-                                    ± {Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')}
-                                  </div>
-                                )}
                               </td>
                               <td className="rc-derived r">{d ? `₹${(d.amount / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">
                                 {d?.appsFor1x != null
-                                  ? <>{d.appsFor1x.toLocaleString('en-IN')}<i title="Applications that can be allotted at 1x — capacity, not demand"> · {d.maxAllottees!.toLocaleString('en-IN')} allottees</i></>
+                                  ? <span title={d.maxAllottees != null ? `Applications that can be allotted at 1× — capacity, not demand. Allottees: ${d.maxAllottees.toLocaleString('en-IN')}` : undefined}>{d.appsFor1x.toLocaleString('en-IN')}</span>
                                   : dash}
                               </td>
                             </>
@@ -1481,10 +1485,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         by eye is exactly how a 100.691% table shipped. */}
                     {shown && (
                       <tr className="resv-total">
-                        <td />
+                        {/* 6 columns: Category · % · Upper · Lower · Amount · Forms */}
                         <td style={{ fontWeight: 700 }}>Total</td>
                         <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.pct}</td>
-                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.shares.toLocaleString('en-IN')}</td>
+                        <td className="r mono" style={{ fontWeight: 700 }}>
+                          {(derived.scenarios.cap?.categories ?? [])
+                            .reduce((s: number, c: any) => s + (c.shares ?? 0), 0).toLocaleString('en-IN')}
+                        </td>
+                        <td className="r mono" style={{ fontWeight: 700 }}>
+                          {((derived.scenarios.floor?.categories ?? derived.scenarios.cap?.categories) ?? [])
+                            .reduce((s: number, c: any) => s + (c.shares ?? 0), 0).toLocaleString('en-IN')}
+                        </td>
                         <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.amount / 1e7).toFixed(2)} Cr</td>
                         <td />
                       </tr>
@@ -1613,16 +1624,30 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 // row — the operator can then fix it (type-to-filter above) or
                 // add to master.
                 const inMaster = anchorOpts.some((o) => o.active && o.name === a.name);
-                /** Click ⚠ chip → confirm → seed the anchor master with this
-                 *  name (operator ask 2026-09-10). The pill vanishes on the
-                 *  next render because the newly-added master row now matches. */
-                const addToMaster = async () => {
+                /** Click ⚠ chip → custom confirm → seed the anchor master
+                 *  with this name (operator ask 2026-09-10, follow-up
+                 *  2026-09-11 replaced the browser confirm with the app's
+                 *  ConfirmDialog for visual consistency). On success we
+                 *  re-fetch the master rather than push-append so the
+                 *  server's canonical row (with `active: true` guaranteed)
+                 *  is what the picker + inMaster check see. */
+                const addToMaster = () => {
                   if (!a.name.trim()) return;
-                  if (typeof window !== 'undefined' && !window.confirm(`Add "${a.name}" to the Anchor Investors master?`)) return;
-                  try {
-                    const row = await api.createMaster('anchors', { name: a.name.trim() });
-                    setAnchorOpts((prev) => [...prev, row].sort((p, q) => p.name.localeCompare(q.name)));
-                  } catch (e: any) { setErr(String(e?.message ?? e)); }
+                  setConfirm({
+                    title: `Add "${a.name}" to the Anchor Investors master?`,
+                    confirmLabel: 'Add to master',
+                    message: <>New master rows are picked up by the type-to-filter picker above and used by future IPO parses. You can rename or deactivate the row later under <b>Masters → Anchor Investors</b>.</>,
+                    onConfirm: async () => {
+                      try {
+                        await api.createMaster('anchors', { name: a.name.trim() });
+                        // Refetch so the newly-created row is fresh from the
+                        // server — a push-append pattern was leaving `active`
+                        // ambiguous on some responses.
+                        const fresh = await api.fetchMaster('anchors');
+                        setAnchorOpts(fresh);
+                      } catch (e: any) { setErr(String(e?.message ?? e)); }
+                    },
+                  });
                 };
                 return (
                   <div className="anchor-row" key={a.name}>
@@ -1735,32 +1760,43 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             {form.documents.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No documents yet. Click <b>Add document</b>.</div> :
               <div className="lead-list">
                 {form.documents.map((d, i) => {
-                  // Segmented control per row (operator ask 2026-09-10):
-                  // Upload a PDF onto our storage OR paste an external URL
-                  // (SEBI / exchange). "External" is inferred from the URL
-                  // shape — no dedicated field on the Doc type keeps the
-                  // storage compatible with existing rows. A url starting
-                  // with http(s):// AND not hitting /api/uploads/ is external.
+                  // Mode picker — Upload (our storage) or Link (external
+                  // SEBI / exchange URL). `d.source` stores the operator's
+                  // explicit choice; if unset we infer from the URL shape.
+                  // Empty rows (both url and source absent) default to
+                  // 'upload' — most rows have a PDF, and Link is a click
+                  // away for the rest.
                   const isExternal = /^https?:\/\//i.test(d.url) && !/\/uploads\//i.test(d.url);
-                  const mode: 'upload' | 'url' = isExternal ? 'url' : 'upload';
+                  const mode: 'upload' | 'url' = d.source ?? (isExternal ? 'url' : 'upload');
                   const setMode = (m: 'upload' | 'url') => {
-                    // Switching modes doesn't clobber the current URL — the
-                    // operator may want to compare and pick, and reverting
-                    // is a single click. Explicit "Remove" clears the row.
-                    if (m === 'url' && !isExternal && d.url) return; // keep current uploaded url visible on URL side too
-                    setDoc(i, { url: '' });
+                    if (m === mode) return;
+                    // Clear the URL on mode switch — a stale /uploads/ URL
+                    // on the Link side (or an https:// on the Upload side)
+                    // just confuses. Explicit `source` is what carries the
+                    // mode forward when the URL is empty.
+                    setDoc(i, { url: '', name: '', source: m });
                   };
                   return (
-                  <div className="doc-up" key={i} style={{ flexWrap: 'wrap' }}>
-                    <select className="input" style={{ width: 170 }} value={d.type} onChange={(e) => setDoc(i, { type: e.target.value })}>{DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-                    <div className="seg" style={{ marginRight: 8 }}>
-                      <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload PDF</button>
-                      <button type="button" className={mode === 'url' ? 'on' : ''} onClick={() => setMode('url')}>External URL</button>
+                  <div className="doc-up" key={i}>
+                    <select className="input" value={d.type} onChange={(e) => setDoc(i, { type: e.target.value })}>
+                      {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div className="doc-src">
+                      <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')} title="Upload a PDF onto our storage">
+                        <Icon name="upload" size={13} /> PDF
+                      </button>
+                      <button type="button" className={mode === 'url' ? 'on' : ''} onClick={() => setMode('url')} title="Paste a SEBI / exchange URL (no PDF needed)">
+                        <Icon name="external" size={13} /> Link
+                      </button>
                     </div>
                     {mode === 'upload' ? (
                       <>
-                        <div className="doc-file">{d.url ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></> : <span className="muted" style={{ fontSize: 13 }}>No file chosen</span>}</div>
-                        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                        <div className="doc-file">
+                          {d.url
+                            ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></>
+                            : <span className="muted" style={{ fontSize: 13 }}>No file chosen — click Upload, or switch to Link.</span>}
+                        </div>
+                        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           {docBusy === i ? 'Uploading…' : d.url ? 'Replace' : <><Icon name="upload" size={14} /> Upload</>}
                           <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={(e) => onDocFile(i, e.target.files?.[0])} />
                         </label>
@@ -1768,11 +1804,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     ) : (
                       <input
                         className="input mono"
-                        style={{ flex: 1, minWidth: 320, fontSize: 12.5 }}
+                        style={{ fontSize: 12.5 }}
                         placeholder="https://www.sebi.gov.in/…/rhp.pdf"
                         value={d.url}
                         onChange={(e) => setDoc(i, { url: e.target.value.trim(), name: e.target.value.trim().split('/').pop() ?? '' })}
-                        title="Paste the SEBI / exchange URL for this document. It opens in a new tab on the public detail page."
+                        title="Paste the SEBI / exchange URL. Opens in a new tab on the public detail page."
                       />
                     )}
                     <button type="button" className="icon-btn danger" onClick={() => set({ documents: form.documents.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
@@ -2026,6 +2062,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           onApply={onApplyPreanchor}
         />
       )}
+      {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </div>
   );
 }

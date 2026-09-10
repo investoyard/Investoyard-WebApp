@@ -56,6 +56,16 @@ function has(v: unknown): boolean {
   return true;
 }
 
+/** Fresh / OFS leg is filled when its `basis` isn't 'none' and its value
+ *  is a positive number. The form stores { basis, value } where basis is
+ *  'amount' | 'percent' | 'shares' | 'none' — 'none' means the operator
+ *  hasn't declared this leg exists on the issue. */
+function legFilled(leg: any): boolean {
+  if (!leg || leg.basis === 'none' || leg.basis == null) return false;
+  const v = Number(leg.value ?? leg.amountCr ?? 0);
+  return Number.isFinite(v) && v > 0;
+}
+
 /** Reservation table filled = the map exists AND its `pct` values sum near 100. */
 function reservationFilled(extra: any): boolean {
   const t = extra?.shareResv;
@@ -88,7 +98,9 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     { key: 'symbol',     label: 'Symbol',                    group: 'Identity', filled: has(ipo?.symbol) },
     { key: 'name',       label: 'Full name',                 group: 'Identity', filled: has(ipo?.name) },
     { key: 'category',   label: 'Category (Board + type)',   group: 'Identity', filled: has(ipo?.type) && (has(extra?.categoryName) || ipo.type === 'mainboard' || ipo.type === 'sme') },
-    { key: 'faceValue',  label: 'Face value',                group: 'Identity', filled: has(ipo?.faceValue) },
+    // Face value is persisted in `extra.faceValue` (the form field); some
+    // records also carry a top-level `faceValue`. Check both.
+    { key: 'faceValue',  label: 'Face value',                group: 'Identity', filled: has(ipo?.faceValue) || has(extra?.faceValue) },
     { key: 'isin',       label: 'ISIN',                      group: 'Identity', filled: has(ipo?.isin) },
 
     // Pricing (4)
@@ -97,9 +109,11 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     { key: 'lotSize',    label: 'Lot size',                  group: 'Pricing',  filled: has(ipo?.lotSize) },
     { key: 'issueSize',  label: 'Issue size (₹ Cr)',         group: 'Pricing',  filled: has(ipo?.issueSizeCr) || has(extra?.issueSizeCr) || has(ipo?.issueSize) },
 
-    // Structure (3)
-    { key: 'freshCr',    label: 'Fresh issue (₹ Cr)',        group: 'Structure', filled: has(extra?.freshIssueCr) || has(extra?.fresh?.amountCr) },
-    { key: 'ofsCr',      label: 'OFS (₹ Cr)',                group: 'Structure', filled: has(extra?.ofsCr) || has(extra?.ofs?.amountCr) },
+    // Structure (3). Fresh / OFS are saved as `{ basis, value }` under
+    // `extra.fresh` / `extra.ofs` — `basis` says whether `value` is in
+    // ₹ Cr, %, or shares. Any non-'none' basis + positive value counts.
+    { key: 'freshCr',    label: 'Fresh issue (₹ Cr)',        group: 'Structure', filled: legFilled(extra?.fresh) || has(extra?.freshIssueCr) },
+    { key: 'ofsCr',      label: 'OFS (₹ Cr)',                group: 'Structure', filled: legFilled(extra?.ofs) || has(extra?.ofsCr) },
     { key: 'shareResv',  label: 'Reservation table',        group: 'Structure', filled: reservationFilled(extra) },
 
     // Dates (5)

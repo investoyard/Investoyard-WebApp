@@ -365,12 +365,27 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                     </div>
                   ))}
 
-                {(ex.companyPromoter || ipo.promoters) && (
-                  <div style={{ marginTop: 18 }}>
-                    <h3 style={{ fontSize: 14 }}>Promoters</h3>
-                    <div className="row" style={{ marginTop: 8, gap: 8 }}>{(ex.companyPromoter ? [String(ex.companyPromoter)] : ipo.promoters!).map((p: string) => <span className="chip" key={p}>{p}</span>)}</div>
-                  </div>
-                )}
+                {(() => {
+                  // Operators enter promoter names as a free-text string on the
+                  // IPO form ("Alice, Bob, and Carol") — the whole string used
+                  // to land in ONE chip, which then blew past the container
+                  // width on issues with 5+ promoters (Prasol's ten was the
+                  // trigger). Split on commas + trailing "and" so each name
+                  // gets its own chip and the row wraps naturally.
+                  const raw = ex.companyPromoter ? String(ex.companyPromoter) : null;
+                  const names = raw
+                    ? raw.split(/,\s*(?:and\s+)?|\s+and\s+/i).map((s) => s.trim()).filter(Boolean)
+                    : (ipo.promoters ?? []);
+                  if (!names.length) return null;
+                  return (
+                    <div style={{ marginTop: 18 }}>
+                      <h3 style={{ fontSize: 14 }}>Promoters</h3>
+                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                        {names.map((p) => <span className="chip" key={p}>{p}</span>)}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {rich(ex.contactInfo) && (
                   <div style={{ marginTop: 18 }}>
