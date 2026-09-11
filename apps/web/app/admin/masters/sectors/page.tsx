@@ -21,19 +21,30 @@ export default function SectorsPage() {
       sub="The broad grouping shown on IPOs and used by the sector-wise reports. Add one here, or straight from the IPO form's Sector box."
       extraLabel="Industries mapped"
       renderExtra={(form, upd) => (
-        <div className="field" style={{ gridColumn: 'span 2' }}>
-          <label>Industries that roll up here</label>
-          <textarea
-            className="input" rows={4}
-            value={(form.industries ?? []).join('\n')}
-            onChange={(e) => upd({ industries: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-            placeholder={'Pharmaceuticals\nBiotechnology\nPharmacy Retail'}
-          />
-          <span className="hint">
-            One per line, matching the exchange&rsquo;s industry wording. Used to derive an IPO&rsquo;s
-            sector from its industry — leave blank to set the sector by hand only.
-          </span>
-        </div>
+        <>
+          <div className="field" style={{ gridColumn: 'span 2' }}>
+            <label>Industries that roll up here</label>
+            <textarea
+              className="input" rows={4}
+              value={(form.industries ?? []).join('\n')}
+              onChange={(e) => upd({ industries: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
+              placeholder={'Pharmaceuticals\nBiotechnology\nPharmacy Retail'}
+            />
+            <span className="hint">
+              One per line, matching the exchange&rsquo;s industry wording. Used to derive an IPO&rsquo;s
+              sector from its industry — leave blank to set the sector by hand only.
+            </span>
+          </div>
+          <div className="field" style={{ gridColumn: 'span 2' }}>
+            <label>Description</label>
+            <input className="input" value={form.description ?? ''} onChange={(e) => upd({ description: e.target.value })} placeholder="Short prose for the sector page header" />
+          </div>
+          <div className="field">
+            <label>Rank</label>
+            <input className="input mono" value={form.rank ?? ''} onChange={(e) => upd({ rank: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} placeholder="100" />
+            <span className="hint">Sort order on report filters (lower = earlier).</span>
+          </div>
+        </>
       )}
       extraCell={(r) => (
         r.industries?.length

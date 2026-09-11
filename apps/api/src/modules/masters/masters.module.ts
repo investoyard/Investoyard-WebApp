@@ -33,8 +33,20 @@ class MasterDto {
   @IsOptional() @IsString() categoryId?: string;   // issue-types only: → IpoCategoryMaster
   @IsOptional() @IsBoolean() allowMultiple?: boolean; // relationships only: repeatable per account
   @IsOptional() @IsString() type?: string;   // anchors only: Mutual Fund | FPI | Insurance | AIF | Other
-  @IsOptional() @IsString() notes?: string;  // anchors only
+  @IsOptional() @IsString() notes?: string;  // orgs + anchors: free-text operator notes
   @IsOptional() industries?: string[];       // sectors only: the Basic-Industry values rolling up here
+  // Reporting extras (2026-09-11) — accepted by API + admin form + bulk upload.
+  @IsOptional() @IsString() sebiRegNo?: string;      // orgs: SEBI merchant-banker / RTA registration
+  @IsOptional() foundedYear?: number;                // orgs: year founded
+  @IsOptional() @IsString() website?: string;        // orgs + anchors
+  @IsOptional() @IsString() linkedin?: string;       // orgs: LinkedIn company URL
+  @IsOptional() aumCr?: number;                      // anchors: AUM in ₹ Cr
+  @IsOptional() @IsString() country?: string;        // anchors
+  @IsOptional() @IsString() sebiCode?: string;       // anchors: SEBI / FPI category code
+  @IsOptional() firstAnchorYear?: number;            // anchors
+  @IsOptional() @IsString() description?: string;    // sectors + ipo-categories + issue-types + relationships
+  @IsOptional() rank?: number;                       // sectors + ipo-categories
+  @IsOptional() @IsString() defaultRegulationBasis?: string; // issue-types: icdr_6_1 | icdr_6_2
   @IsOptional() @IsBoolean() active?: boolean;
 }
 class MasterPatchDto extends MasterDto {
@@ -102,16 +114,18 @@ export class MastersController {
 
   private clean(kind: string, dto: Record<string, any>) {
     const fields = ORG_KINDS.has(kind)
-      ? ['name', 'shortCode', 'contactPerson', 'mobile', 'email', 'phone', 'gstin', 'address1', 'address2', 'city', 'state', 'pincode', 'active']
+      ? ['name', 'shortCode', 'contactPerson', 'mobile', 'email', 'phone', 'gstin', 'address1', 'address2', 'city', 'state', 'pincode', 'active',
+         // Reporting extras common to Registrars + Lead Managers (2026-09-11).
+         'sebiRegNo', 'foundedYear', 'website', 'linkedin', 'notes']
       : ['name', 'active'];
     if (kind === 'registrars') fields.push('allotmentUrl');
-    if (kind === 'ipo-categories') fields.push('baseType');
-    if (kind === 'issue-types') fields.push('categoryId');
-    if (kind === 'relationships') fields.push('allowMultiple');
-    if (kind === 'anchors') fields.push('type', 'notes');
+    if (kind === 'ipo-categories') fields.push('baseType', 'description', 'rank');
+    if (kind === 'issue-types') fields.push('categoryId', 'description', 'defaultRegulationBasis');
+    if (kind === 'relationships') fields.push('allowMultiple', 'description');
+    if (kind === 'anchors') fields.push('type', 'notes', 'aumCr', 'country', 'sebiCode', 'firstAnchorYear', 'website');
     // `industries` is the roll-up: which Basic-Industry values belong to this
     // sector. Held as data so the operator can correct a mapping without a deploy.
-    if (kind === 'sectors') fields.push('industries');
+    if (kind === 'sectors') fields.push('industries', 'description', 'rank');
     const data: Record<string, any> = {};
     for (const f of fields) if (dto[f] !== undefined) data[f] = typeof dto[f] === 'string' ? dto[f].trim() : dto[f];
     if (typeof data.shortCode === 'string') data.shortCode = data.shortCode.toUpperCase();

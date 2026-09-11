@@ -32,7 +32,19 @@ export default function IpoCategoryPage() {
           title="IPO Categories"
           sub=""
           extraLabel=''
-          renderExtra={() => null}
+          renderExtra={(form, upd) => (
+            <>
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <label>Description</label>
+                <input className="input" value={form.description ?? ''} onChange={(e) => upd({ description: e.target.value })} placeholder="Short prose shown on filter tooltips" />
+              </div>
+              <div className="field">
+                <label>Rank</label>
+                <input className="input mono" value={form.rank ?? ''} onChange={(e) => upd({ rank: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} placeholder="100" />
+                <span className="hint">Sort on filters (lower = earlier).</span>
+              </div>
+            </>
+          )}
         />
       ) : (
         <SimpleMaster
@@ -43,12 +55,27 @@ export default function IpoCategoryPage() {
           sub=""
           extraLabel="IPO Category"
           renderExtra={(form, upd) => (
-            <Field label="IPO Category" required>
-              <select className="input" value={form.categoryId ?? ''} onChange={(e) => upd({ categoryId: e.target.value })}>
-                <option value="">— select category —</option>
-                {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
+            <>
+              <Field label="IPO Category" required>
+                <select className="input" value={form.categoryId ?? ''} onChange={(e) => upd({ categoryId: e.target.value })}>
+                  <option value="">— select category —</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+              <div className="field">
+                <label>Default regulation basis</label>
+                <select className="input" value={form.defaultRegulationBasis ?? ''} onChange={(e) => upd({ defaultRegulationBasis: e.target.value || null })}>
+                  <option value="">— none —</option>
+                  <option value="icdr_6_1">ICDR 6(1) — QIB ≤ 50%</option>
+                  <option value="icdr_6_2">ICDR 6(2) — QIB ≥ 75%</option>
+                </select>
+                <span className="hint">Pre-fills the reservation split when the operator picks this issue type on Add IPO.</span>
+              </div>
+              <div className="field" style={{ gridColumn: 'span 3' }}>
+                <label>Description</label>
+                <input className="input" value={form.description ?? ''} onChange={(e) => upd({ description: e.target.value })} placeholder="Short hint on the Issue Type picker" />
+              </div>
+            </>
           )}
           extraCell={(r) => (r.category ? <span className="mst-badge">{r.category.name}</span> : <span className="muted">—</span>)}
         />

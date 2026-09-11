@@ -495,8 +495,20 @@ export interface MasterRow {
   category?: MasterRow | null;  // issue-types (joined)
   allowMultiple?: boolean;      // relationships: repeatable per account
   type?: string | null;         // anchors: Mutual Fund | FPI | Insurance | AIF | Other
-  notes?: string | null;        // anchors
-  industries?: string[];        // sectors: the Basic-Industry values rolling up here
+  notes?: string | null;        // orgs + anchors
+  industries?: string[];        // sectors
+  // Reporting extras added 2026-09-11.
+  sebiRegNo?: string | null;               // orgs
+  foundedYear?: number | null;             // orgs
+  website?: string | null;                 // orgs + anchors
+  linkedin?: string | null;                // orgs
+  aumCr?: number | null;                   // anchors
+  country?: string | null;                 // anchors
+  sebiCode?: string | null;                // anchors
+  firstAnchorYear?: number | null;         // anchors
+  description?: string | null;             // sectors + ipo-categories + issue-types + relationships
+  rank?: number | null;                    // sectors + ipo-categories
+  defaultRegulationBasis?: string | null;  // issue-types
   active: boolean;
 }
 export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors' | 'sectors';

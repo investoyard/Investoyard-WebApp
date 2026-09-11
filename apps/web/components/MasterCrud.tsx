@@ -201,6 +201,14 @@ export function MasterCrud({ kind, title, sub, withUrl, bulk }: {
             <Field label="City"><input className="input" value={modal.form.city ?? ''} onChange={(e) => upd({ city: e.target.value })} /></Field>
             <Field label="State"><input className="input" value={modal.form.state ?? ''} onChange={(e) => upd({ state: e.target.value })} /></Field>
             <Field label="Pincode"><input className="input mono" value={modal.form.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} /></Field>
+            {/* Reporting extras (2026-09-11) — SEBI registration, founded
+                year, web presence, and free-text notes. Optional on both
+                Registrars and Lead Managers. */}
+            <Field label="SEBI Reg. No" hint="INM… / INR… — for regulator-facing exports"><input className="input mono" value={modal.form.sebiRegNo ?? ''} onChange={(e) => upd({ sebiRegNo: e.target.value.toUpperCase() })} placeholder="INMxxxxxxxx" /></Field>
+            <Field label="Founded year"><input className="input mono" value={modal.form.foundedYear ?? ''} onChange={(e) => upd({ foundedYear: e.target.value ? Number(e.target.value.replace(/\D/g, '').slice(0, 4)) : null })} placeholder="1998" /></Field>
+            <Field label="Website"><input className="input" value={modal.form.website ?? ''} onChange={(e) => upd({ website: e.target.value })} placeholder="https://…" /></Field>
+            <Field label="LinkedIn"><input className="input" value={modal.form.linkedin ?? ''} onChange={(e) => upd({ linkedin: e.target.value })} placeholder="https://linkedin.com/company/…" /></Field>
+            <Field label="Notes" span={2} hint="operator-only, never shown on the public site"><textarea className="input" rows={2} value={modal.form.notes ?? ''} onChange={(e) => upd({ notes: e.target.value })} /></Field>
           </div>
           <FormActions>
             <button className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : modal.id ? 'Save changes' : 'Add'}</button>
@@ -247,6 +255,15 @@ function MasterViewModal({ row, withUrl, onClose, onEdit }: {
             ? <a href={row.allotmentUrl} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{row.allotmentUrl}</a>
             : null} />
         )}
+        <Row k="SEBI Reg. No" v={row.sebiRegNo ? <span className="mono">{row.sebiRegNo}</span> : null} />
+        <Row k="Founded year" v={row.foundedYear ?? null} />
+        <Row k="Website" v={row.website
+          ? <a href={row.website} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{row.website}</a>
+          : null} />
+        <Row k="LinkedIn" v={row.linkedin
+          ? <a href={row.linkedin} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{row.linkedin}</a>
+          : null} />
+        <Row k="Notes" v={row.notes ? <span style={{ whiteSpace: 'pre-wrap' }}>{row.notes}</span> : null} />
       </div>
       <FormActions>
         {onEdit && <button className="btn" onClick={onEdit}><Icon name="edit" size={14} /> Edit</button>}

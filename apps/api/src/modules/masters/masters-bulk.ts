@@ -19,7 +19,7 @@ import { BadRequestException } from '@nestjs/common';
 export type BulkKind = 'registrars' | 'lead-managers' | 'anchors';
 export const BULK_KINDS = new Set<string>(['registrars', 'lead-managers', 'anchors']);
 
-export interface BulkColumn { header: string; field: string; required?: boolean; bool?: boolean }
+export interface BulkColumn { header: string; field: string; required?: boolean; bool?: boolean; int?: boolean; decimal?: boolean }
 
 /** Column layout per kind. Headers are the operator's words, not field names. */
 export function columnsFor(kind: string): BulkColumn[] {
@@ -28,6 +28,11 @@ export function columnsFor(kind: string): BulkColumn[] {
       { header: 'Name *', field: 'name', required: true },
       { header: 'Type', field: 'type' },
       { header: 'Notes', field: 'notes' },
+      { header: 'AUM (₹ Cr)', field: 'aumCr', decimal: true },
+      { header: 'Country', field: 'country' },
+      { header: 'SEBI / FPI code', field: 'sebiCode' },
+      { header: 'First anchor year', field: 'firstAnchorYear', int: true },
+      { header: 'Website', field: 'website' },
       { header: 'Active (Y/N)', field: 'active', bool: true },
     ];
   }
@@ -49,7 +54,16 @@ export function columnsFor(kind: string): BulkColumn[] {
     { header: 'Pincode', field: 'pincode' },
   ];
   if (kind === 'registrars') org.push({ header: 'Allotment URL', field: 'allotmentUrl' });
-  org.push({ header: 'Active (Y/N)', field: 'active', bool: true });
+  // Reporting extras common to both org kinds (SEBI reg no, founded year,
+  // website, LinkedIn, notes) — operator ask 2026-09-11.
+  org.push(
+    { header: 'SEBI Reg. No', field: 'sebiRegNo' },
+    { header: 'Founded year', field: 'foundedYear', int: true },
+    { header: 'Website', field: 'website' },
+    { header: 'LinkedIn', field: 'linkedin' },
+    { header: 'Notes', field: 'notes' },
+    { header: 'Active (Y/N)', field: 'active', bool: true },
+  );
   return org;
 }
 
@@ -119,8 +133,23 @@ export function parseSheet(buf: Buffer, kind: string): { rows: ParsedRow[]; head
       const v = pick(r, c.header);
       if (c.bool) { const b = truthy(v); if (b !== undefined) data[c.field] = b; continue; }
       const s = str(v);
-      if (s) data[c.field] = s;
-      else if (c.required) errors.push(`${c.header.replace(' *', '')} is required`);
+      if (!s) { if (c.required) errors.push(`${c.header.replace(' *', '')} is required`); continue; }
+      // Numeric coercion for the new reporting columns — an operator who
+      // types "1998" for a year or "2500.5" for AUM shouldn't have their
+      // row rejected because it lands as a string on a numeric column.
+      if (c.int) {
+        const n = parseInt(String(s).replace(/[^\d-]/g, ''), 10);
+        if (Number.isFinite(n)) data[c.field] = n;
+        else errors.push(`${c.header} should be a whole number`);
+        continue;
+      }
+      if (c.decimal) {
+        const n = Number(String(s).replace(/[^\d.-]/g, ''));
+        if (Number.isFinite(n)) data[c.field] = n;
+        else errors.push(`${c.header} should be a number`);
+        continue;
+      }
+      data[c.field] = s;
     }
     if (typeof data.shortCode === 'string') data.shortCode = data.shortCode.toUpperCase();
     if (data.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email)) errors.push('Email looks wrong');

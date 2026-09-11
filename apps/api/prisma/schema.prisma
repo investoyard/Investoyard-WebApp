@@ -326,6 +326,9 @@ model RelationshipMaster {
   id            String   @id @default(uuid())
   name          String   @unique
   allowMultiple Boolean  @default(false)
+  /// Human explanation of when to use this relationship — appears as a hint
+  /// under the picker on the investor profile form.
+  description   String?
   sortOrder     Int      @default(100)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -354,13 +357,24 @@ model Post {
 /// Anchor-investor master — institutions reusable across IPOs (picked per IPO
 /// with a ₹ amount in the IPO form; shown on the public detail page).
 model AnchorMaster {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  type      String? // Mutual Fund | FPI | Insurance | AIF | Other
-  notes     String?
-  sortOrder Int      @default(100)
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id              String   @id @default(uuid())
+  name            String   @unique
+  type            String? // Mutual Fund | FPI | Insurance | AIF | Bank | Corporate | Other
+  notes           String?
+  /// Assets under management in ₹ Cr — for the anchor participation report.
+  aumCr           Decimal? @db.Decimal(14, 2)
+  /// Country of registration — India for domestic, US / SG / etc. for FPIs.
+  country         String?
+  /// SEBI / FPI category code — helpful for regulatory classification reports.
+  sebiCode        String?
+  /// First year this institution participated as an anchor on any Indian IPO —
+  /// grounds a "how long has this anchor been active" chart in reports.
+  firstAnchorYear Int?
+  /// Optional homepage / SEBI-listing URL.
+  website         String?
+  sortOrder       Int      @default(100)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
 }
 
 /// Broad sector — Finance, Pharma, IT, Bank. The operator's list, editable.
@@ -375,6 +389,12 @@ model SectorMaster {
   /// Basic-Industry values that roll up here, so the mapping is data the
   /// operator can correct rather than a table buried in code.
   industries String[] @default([])
+  /// Short prose describing the sector — used as a subtitle on sector-wise
+  /// report pages and hover tooltips.
+  description String?
+  /// Rank the sectors when the report picker sorts by "operator's preferred
+  /// order" rather than alphabetically (lower = earlier).
+  rank      Int      @default(100)
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -391,23 +411,36 @@ model UpiHandleMaster {
 }
 
 model IpoCategoryMaster {
-  id         String            @id @default(uuid())
-  name       String            @unique // e.g. "Main Board IPO", "SME IPO"
-  baseType   String            @default("mainboard") // engine mapping: 'mainboard' | 'sme'
-  active     Boolean           @default(true)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  issueTypes IssueTypeMaster[]
+  id          String            @id @default(uuid())
+  name        String            @unique // e.g. "Main Board IPO", "SME IPO"
+  baseType    String            @default("mainboard") // engine mapping: 'mainboard' | 'sme'
+  /// Human explanation of the category — surfaces as a tooltip / subtitle on
+  /// the picker and report filters.
+  description String?
+  /// Sort rank on filters and reports (lower = earlier). Alphabetical when
+  /// several rows share the same rank.
+  rank        Int               @default(100)
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  issueTypes  IssueTypeMaster[]
 }
 
 model IssueTypeMaster {
-  id         String             @id @default(uuid())
-  name       String             @unique // e.g. "IPO", "FPO", "Rights Issue", "OFS"
-  categoryId String?
-  category   IpoCategoryMaster? @relation(fields: [categoryId], references: [id])
-  active     Boolean            @default(true)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id                       String             @id @default(uuid())
+  name                     String             @unique // e.g. "IPO", "FPO", "Rights Issue", "OFS"
+  categoryId               String?
+  category                 IpoCategoryMaster? @relation(fields: [categoryId], references: [id])
+  /// Short prose describing when this issue type applies — surfaces on the
+  /// entry form Issue Type picker as a hint.
+  description              String?
+  /// Default ICDR regulation basis — icdr_6_1 (QIB ≤ 50%) or icdr_6_2 (QIB
+  /// ≥ 75%). The form pre-fills the reservation split from this when the
+  /// operator picks the issue type; still overridable per issue.
+  defaultRegulationBasis   String?
+  active                   Boolean            @default(true)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
 }
 
 model LeadManager {
@@ -428,6 +461,17 @@ model LeadManager {
   city          String?
   state         String?
   pincode       String?
+  /// SEBI Merchant Banker registration number (INMxxxxxxxx). Useful in
+  /// syndicate-member reports and regulator-facing exports.
+  sebiRegNo     String?
+  /// Year the firm was founded — a small reporting datum.
+  foundedYear   Int?
+  /// Corporate homepage.
+  website       String?
+  /// LinkedIn company URL.
+  linkedin      String?
+  /// Free-text operator notes — never surfaced to the public site.
+  notes         String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -448,6 +492,17 @@ model Registrar {
   state         String?
   pincode       String?
   allotmentUrl  String? // IPO allotment-status check URL
+  /// SEBI Registrar & Transfer Agent registration number (INR000...). Used
+  /// in registrar-wise reports and regulator-facing exports.
+  sebiRegNo     String?
+  /// Year the firm was founded.
+  foundedYear   Int?
+  /// Corporate homepage.
+  website       String?
+  /// LinkedIn company URL.
+  linkedin      String?
+  /// Free-text operator notes.
+  notes         String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
