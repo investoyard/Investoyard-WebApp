@@ -61,143 +61,16 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-const MOCK: IpoDetail[] = [
-  {
-    id: '1', symbol: 'ACME', name: 'Acme Technologies Ltd', type: 'mainboard', status: 'open',
-    openDate: '2026-07-01', closeDate: '2026-07-08', allotmentDate: '2026-07-11', listingDate: '2026-07-15',
-    priceBandMin: 100, priceBandMax: 105, lotSize: 142, minAmount: 14910, issueSize: '₹500 Cr', registrar: 'Link Intime',
-    subscriptionTimes: 12.4, gmp: 18, gmpPct: 17.1,
-    about: 'Acme Technologies is a cloud infrastructure company serving enterprise customers across India and South-East Asia.',
-    objectsOfIssue: 'Repayment of borrowings, capital expenditure for data centres, and general corporate purposes.',
-    subscription: [
-      { category: 'qib', timesSubscribed: 24.1, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 9.8, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 6.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 12.4, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹1,240 Cr' },
-      { label: 'PAT (FY25)', value: '₹186 Cr' },
-      { label: 'RoNW', value: '18.4%' },
-      { label: 'P/E (upper)', value: '32.1x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '2', symbol: 'BETA', name: 'Beta Industries Ltd', type: 'sme', status: 'upcoming',
-    openDate: '2026-07-10', closeDate: '2026-07-12', allotmentDate: '2026-07-15', listingDate: '2026-07-18',
-    priceBandMin: 55, priceBandMax: 58, lotSize: 2000, minAmount: 116000, issueSize: '₹42 Cr', registrar: 'Bigshare',
-    gmp: 6, gmpPct: 10.3,
-    about: 'Beta Industries manufactures precision auto components for OEMs.',
-    objectsOfIssue: 'Working capital, plant & machinery, and general corporate purposes.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 18, gcpPct: 9 },
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹118 Cr' },
-      { label: 'PAT (FY25)', value: '₹14.2 Cr' },
-      { label: 'RoNW', value: '21.0%' },
-      { label: 'P/E (upper)', value: '16.4x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '3', symbol: 'ZETA', name: 'Zeta Foods Ltd', type: 'mainboard', status: 'listed',
-    openDate: '2026-06-05', closeDate: '2026-06-09', allotmentDate: '2026-06-11', listingDate: '2026-06-13',
-    priceBandMin: 220, priceBandMax: 230, lotSize: 65, minAmount: 14950, issueSize: '₹820 Cr', registrar: 'KFin Technologies',
-    listingGainPct: 14.2, subscriptionTimes: 48.7, gmp: 31, gmpPct: 13.5,
-    about: 'Zeta Foods is a packaged-foods brand with a national distribution network and a fast-growing exports business.',
-    objectsOfIssue: 'Brand building, capacity expansion and general corporate purposes.',
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹2,010 Cr' },
-      { label: 'PAT (FY25)', value: '₹240 Cr' },
-      { label: 'RoNW', value: '22.7%' },
-      { label: 'P/E (upper)', value: '28.5x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '4', symbol: 'NIMBUS', name: 'Nimbus Renewables Ltd', type: 'mainboard', status: 'open',
-    openDate: '2026-07-02', closeDate: '2026-07-09', allotmentDate: '2026-07-12', listingDate: '2026-07-16',
-    priceBandMin: 312, priceBandMax: 328, lotSize: 45, minAmount: 14760, issueSize: '₹1,150 Cr', registrar: 'KFin Technologies',
-    subscriptionTimes: 3.1, gmp: 42, gmpPct: 12.8,
-    about: 'Nimbus Renewables develops and operates utility-scale solar and wind assets across western India.',
-    objectsOfIssue: 'Funding capacity additions, debt repayment and general corporate purposes.',
-    subscription: [
-      { category: 'qib', timesSubscribed: 5.4, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 2.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 1.9, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 3.1, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹980 Cr' },
-      { label: 'PAT (FY25)', value: '₹141 Cr' },
-      { label: 'RoNW', value: '12.9%' },
-      { label: 'P/E (upper)', value: '34.0x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '5', symbol: 'VERDANT', name: 'Verdant Agritech Ltd', type: 'sme', status: 'open',
-    openDate: '2026-06-30', closeDate: '2026-07-07', allotmentDate: '2026-07-10', listingDate: '2026-07-14',
-    priceBandMin: 90, priceBandMax: 95, lotSize: 1200, minAmount: 114000, issueSize: '₹38 Cr', registrar: 'Bigshare',
-    subscriptionTimes: 27.6, gmp: 22, gmpPct: 23.2,
-    about: 'Verdant Agritech makes biological crop-protection inputs distributed to farmers across India.',
-    objectsOfIssue: 'Capacity expansion, working capital and general corporate purposes.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 12, gcpPct: 8 },
-    subscription: [
-      { category: 'qib', timesSubscribed: 18.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 41.3, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 30.1, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 27.6, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '6', symbol: 'HELIOS', name: 'Helios Financial Services Ltd', type: 'mainboard', status: 'upcoming',
-    openDate: '2026-07-14', closeDate: '2026-07-16', allotmentDate: '2026-07-18', listingDate: '2026-07-22',
-    priceBandMin: 440, priceBandMax: 462, lotSize: 32, minAmount: 14784, issueSize: '₹2,400 Cr', registrar: 'Link Intime',
-    gmp: 28, gmpPct: 6.1,
-    about: 'Helios Financial Services is a retail-focused NBFC offering secured and unsecured lending across 14 states.',
-    objectsOfIssue: 'Augmenting the capital base for onward lending and general corporate purposes.',
-    financials: [
-      { label: 'AUM (FY25)', value: '₹18,200 Cr' },
-      { label: 'PAT (FY25)', value: '₹612 Cr' },
-      { label: 'RoNW', value: '15.8%' },
-      { label: 'P/B (upper)', value: '3.1x' },
-    ],
-    documents: [{ type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '7', symbol: 'AURELIA', name: 'Aurelia Lifesciences Ltd', type: 'mainboard', status: 'upcoming',
-    openDate: '2026-07-17', closeDate: '2026-07-19', allotmentDate: '2026-07-23', listingDate: '2026-07-25',
-    priceBandMin: 178, priceBandMax: 188, lotSize: 78, minAmount: 14664, issueSize: '₹690 Cr', registrar: 'KFin Technologies',
-    about: 'Aurelia Lifesciences is a specialty API and CDMO player supplying regulated markets.',
-    objectsOfIssue: 'Capex for a new API block, debt repayment and general corporate purposes.',
-    documents: [{ type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '8', symbol: 'ORION', name: 'Orion Logistics Ltd', type: 'mainboard', status: 'listed',
-    openDate: '2026-05-28', closeDate: '2026-06-01', allotmentDate: '2026-06-03', listingDate: '2026-06-05',
-    priceBandMin: 145, priceBandMax: 152, lotSize: 98, minAmount: 14896, issueSize: '₹560 Cr', registrar: 'Bigshare',
-    listingGainPct: -4.6, subscriptionTimes: 2.3,
-    about: 'Orion Logistics runs an asset-light third-party logistics and warehousing network.',
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹1,420 Cr' },
-      { label: 'PAT (FY25)', value: '₹58 Cr' },
-      { label: 'RoNW', value: '9.2%' },
-      { label: 'P/E (upper)', value: '41.0x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '9', symbol: 'KESARI', name: 'Kesari Textiles Ltd', type: 'sme', status: 'listed',
-    openDate: '2026-05-30', closeDate: '2026-06-03', allotmentDate: '2026-06-05', listingDate: '2026-06-09',
-    priceBandMin: 66, priceBandMax: 70, lotSize: 1600, minAmount: 112000, issueSize: '₹29 Cr', registrar: 'Bigshare',
-    listingGainPct: 36.4, subscriptionTimes: 96.2,
-    about: 'Kesari Textiles is an integrated home-textiles exporter.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 0, gcpPct: 14 },
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-];
+/**
+ * Front-site fallback data was DELETED on 2026-09-16 (operator decision).
+ * Previously this held a small demo catalog (ACME / BETA / ZETA / KESARI …)
+ * that safeGet returned when the API was unreachable at build time; the
+ * browser then re-fetched live data on hydration. The failure mode was
+ * ugly: an unreachable API at build time produced a static export shipping
+ * FAKE company names to users. Empty state is honest — the page shows
+ * "No IPOs" if the API is truly down, rather than lying.
+ */
+const MOCK: IpoDetail[] = [];
 
 async function safeGet<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -406,7 +279,11 @@ function enrich(ipo: IpoDetail): IpoFull {
   return f;
 }
 
+// MOCK is empty (front-site demo data removed on 2026-09-16), so FULL is [].
+// Kept as a named constant only so mockIpos()'s type signature stays stable
+// for any external caller — never populated.
 const FULL: IpoFull[] = MOCK.map(enrich);
+void FULL; // silence unused-var lint
 
 /** Published news posts (public; empty on failure). */
 export interface PostView {
@@ -460,32 +337,37 @@ export async function getArchive(q: {
 }
 
 export async function getIpos(): Promise<IpoListItem[]> {
-  // API returns IpoDetail[] (mapped to the shared contract); enrich each into a full card.
-  // On any failure safeGet returns the base MOCK, which is enriched the same way.
-  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  // API returns IpoDetail[] (mapped to the shared contract); enrich each into a card.
+  // On failure safeGet returns [] — empty state, no fake demo rows.
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
   return list.map(enrich);
 }
 
 export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined> {
+  // Live API only — no MOCK fallback (the placeholder-symbol page renders "not found"
+  // when the API is unreachable rather than serving a fake company card).
   const fromApi = await safeGet<IpoDetail | null>(`/ipos/by-symbol/${symbol}`, null);
   if (fromApi) return { ...enrich(fromApi), live: true };
-  return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
+  return undefined;
 }
 
-/** Synchronous mock lookup for client components (apply flow runs on seeded data). */
-export function mockIpoBySymbol(symbol: string): IpoFull | undefined {
-  return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
-}
-export function mockIpos(): IpoFull[] { return FULL; }
+/** Kept as no-ops so existing callers (Portfolio watchlist / lifecycle deriver)
+ *  compile — they already handle undefined / empty. Real detail lookups go
+ *  through getIpoDetail against the live API. */
+export function mockIpoBySymbol(_symbol: string): IpoFull | undefined { return undefined; }
+export function mockIpos(): IpoFull[] { return []; }
 
-/** Symbols to statically generate — the live DB list at build time. Never empty:
- *  `output: export` rejects a dynamic route with zero params, so when the catalog is
- *  empty we fall back to placeholder symbols (their pages are simply unreachable from
- *  the empty home until real IPOs are added). */
+/** Symbols to statically generate — the live DB list at build time.
+ *  `output: export` rejects a dynamic route with zero params, so when the
+ *  catalog is empty at build time we emit a single lightweight placeholder
+ *  handle (`no-ipos`) so the build succeeds; the route's page falls back to
+ *  a client-side live fetch, which is what actually populates it in a
+ *  browser once the API is reachable. */
+const PLACEHOLDER = ['no-ipos'];
 export async function ipoSymbols(): Promise<string[]> {
-  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
   const symbols = list.map((i) => i.symbol);
-  return symbols.length ? symbols : MOCK.map((i) => i.symbol);
+  return symbols.length ? symbols : PLACEHOLDER;
 }
 
 /**
@@ -494,11 +376,11 @@ export async function ipoSymbols(): Promise<string[]> {
  * External bookmarks still work; new internal links prefer the slug.
  */
 export async function ipoUrlHandles(): Promise<string[]> {
-  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
   const handles = new Set<string>();
   for (const i of list) {
     if (i.symbol) handles.add(i.symbol);
     if (i.slug) handles.add(i.slug);
   }
-  return handles.size ? [...handles] : MOCK.map((i) => i.symbol);
+  return handles.size ? [...handles] : PLACEHOLDER;
 }
