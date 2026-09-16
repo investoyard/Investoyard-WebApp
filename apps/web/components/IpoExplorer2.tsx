@@ -279,11 +279,31 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
       <div className={`h2-grid${view === 'table' ? ' full' : ''}`}>
         <div className="h2-main">
           {filtered.length === 0 ? (
-            <div className="empty">
-              <div className="emoji">🔍</div>
-              <h3>No IPOs match</h3>
-              <p className="muted">Try clearing the search or switching filters.</p>
-            </div>
+            ipos.length === 0 ? (
+              <div className="empty">
+                <div className="emoji">🗓️</div>
+                <h3>No IPOs available right now</h3>
+                <p className="muted">
+                  We update the catalog as soon as new issues are announced.
+                  Come back soon — or explore issues that have listed in the past.
+                </p>
+                <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <a className="btn" href="/ipos/archive">Browse past IPOs</a>
+                  <a className="btn btn-secondary" href="/subscription">Live subscription</a>
+                </div>
+              </div>
+            ) : (
+              <div className="empty">
+                <div className="emoji">🔍</div>
+                <h3>No IPOs match your filters</h3>
+                <p className="muted">Try clearing the search or switching the board / status tabs above.</p>
+                <div style={{ marginTop: 14 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setQuery(''); setType('all'); setStatus('all'); }}>
+                    Clear all filters
+                  </button>
+                </div>
+              </div>
+            )
           ) : view === 'table' ? (
             <IpoCompareTable ipos={filtered as any} lang={lang} shortNames />
           ) : (

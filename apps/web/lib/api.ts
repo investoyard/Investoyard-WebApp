@@ -248,28 +248,34 @@ function enrich(ipo: IpoDetail): IpoFull {
     }
   }
 
-  // Financials (4-year, synthesized from a deterministic base)
-  const baseRev = Math.max(90, cr * 1.4 + (hash(ipo.symbol) % 200));
-  const g = 1.14 + (hash(ipo.symbol + 'g') % 9) / 100;
-  const rev = [0, 1, 2, 3].map((i) => baseRev / Math.pow(g, i));
-  const pm = 0.08 + (hash(ipo.symbol + 'p') % 9) / 100, em = pm + 0.09;
-  f.financialYears = ['FY26', 'FY25', 'FY24', 'FY23'];
-  f.financialRows = [
-    { metric: 'Total Income', values: rev.map(r2) },
-    { metric: 'EBITDA', values: rev.map((r) => r2(r * em)) },
-    { metric: 'Profit After Tax', values: rev.map((r) => r2(r * pm)) },
-    { metric: 'Net Worth', values: rev.map((r) => r2(r * 0.42)) },
-    { metric: 'Total Assets', values: rev.map((r) => r2(r * 0.75)) },
-    { metric: 'Total Borrowing', values: rev.map((r) => r2(r * 0.22)) },
-  ];
-
-  f.objects = [
-    { text: ipo.objectsOfIssue ?? 'Capacity expansion and capital expenditure', amount: cr ? `₹${Math.round(cr * 0.6)} Cr` : undefined },
-    { text: 'General corporate purposes' },
-  ];
-  f.strengths = ['Experienced promoters and management team', 'Diversified, marquee customer base', 'Integrated and cost-efficient operations', 'Consistent growth in revenue and margins'];
-  f.strategies = ['Expand capacity and product range', 'Deepen distribution and grow exports', 'Invest in automation and technology', 'Strengthen the balance sheet'];
-  f.promoters = [`${ipo.name.split(' ')[0]} Holdings Pvt Ltd`, 'Promoter Family (individuals)'];
+  // Financials / objects / strengths / strategies / promoters are OPERATOR-ENTERED
+  // only. If the operator hasn't filled them in via the admin IPO form, the
+  // detail page simply omits those sections — an honest absence is better
+  // than a fabricated table of 4-year revenue or a generic "Experienced
+  // promoters and management team" string presented as if it came from the
+  // RHP. Removed on 2026-09-16 alongside the MOCK catalog cleanup.
+  if (Array.isArray(exAll?.financialRows) && exAll.financialRows.length) {
+    f.financialRows = exAll.financialRows;
+    f.financialYears = Array.isArray(exAll?.financialYears) && exAll.financialYears.length
+      ? exAll.financialYears
+      : ['FY26', 'FY25', 'FY24', 'FY23'];
+  }
+  if (Array.isArray(exAll?.objects) && exAll.objects.length) {
+    f.objects = exAll.objects;
+  }
+  // ipo.objectsOfIssue (operator's rich HTML) renders on its own path in
+  // IpoDetailView — no synthesis needed here.
+  if (Array.isArray(exAll?.strengths) && exAll.strengths.length) {
+    f.strengths = exAll.strengths.filter(Boolean).map((s: any) => String(s));
+  }
+  if (Array.isArray(exAll?.strategies) && exAll.strategies.length) {
+    f.strategies = exAll.strategies.filter(Boolean).map((s: any) => String(s));
+  }
+  if (Array.isArray((ipo as any).promoters) && (ipo as any).promoters.length) {
+    f.promoters = (ipo as any).promoters;
+  } else if (Array.isArray(exAll?.promoters) && exAll.promoters.length) {
+    f.promoters = exAll.promoters.filter(Boolean).map((s: any) => String(s));
+  }
   f.faqs = [
     { q: `What is the minimum investment in the ${ipo.name} IPO?`, a: `One lot of ${lot} shares — ₹${(ipo.minAmount ?? 0).toLocaleString('en-IN')} at the upper price band of ₹${upper}.` },
     { q: 'How many bids can I place?', a: 'Up to 3 bids per application. Retail applications are capped at ₹2,00,000; above that you must apply in the HNI category.' },
