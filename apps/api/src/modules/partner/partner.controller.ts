@@ -114,6 +114,33 @@ export class PartnerReportsAdminController {
     res.setHeader('Content-Disposition', `attachment; filename="partner-prints-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csv);
   }
+
+  /**
+   * Dry-run of POST /partner/v1/print-forms — powers the Test button on the
+   * Partner API docs page. No API key required (uses the operator's session);
+   * no rows are persisted; form numbers are not consumed.
+   */
+  @Post('test-print')
+  @RequirePermissions('partner-api.prints.view')
+  testPrint(@Req() req: any, @Body() dto: PartnerPrintFormsDto) {
+    return this.partner.previewForms({ sub: req.user?.sub, username: req.user?.username }, dto);
+  }
+
+  /**
+   * Full request-side detail for one API-printed application, for the View
+   * modal in the Print report. Scope-checked in the service — a partner
+   * cannot fetch another tenant's record.
+   *
+   * URL is `print-detail?id=<uuid>` rather than `prints/<uuid>` because a
+   * UUID-in-path pattern was being intercepted upstream (Cloudflare cache /
+   * WAF rule) and returning 404 before the request reached iisnode. Moving
+   * the id to a query parameter on a distinct path avoids the intercept.
+   */
+  @Get('print-detail')
+  @RequirePermissions('partner-api.prints.view')
+  printDetail(@Query('id') id: string) {
+    return this.partner.printDetail(id);
+  }
 }
 
 /**

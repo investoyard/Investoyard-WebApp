@@ -200,6 +200,58 @@ export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: n
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+/** Dry-run of the Partner API print-forms endpoint — no key needed, no rows persisted. */
+export interface PartnerTestPrintResult {
+  ipoSymbol: string;
+  batchId: string;
+  dryRun: true;
+  applications: Array<{ applicationRef: string; formNo: string; fullName?: string; category?: string; lots?: number; amount?: number }>;
+  filename: string;
+  pdfBase64: string;
+}
+export const testPartnerPrint = (body: unknown) =>
+  authed<PartnerTestPrintResult>(`${API}/admin/partner-api/test-print`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+
+/** Full detail for one API-printed application — powers the View modal on the Print report. */
+export interface PartnerPrintDetail {
+  applicationRef: string;
+  at: string;
+  partner: string;
+  partnerSlug: string;
+  ipoSymbol: string;
+  ipoName: string;
+  batchId: string | null;
+  formNo: string | null;
+  /** true when the row carries an immutable snapshot of the received payload
+   *  (all API prints from this fix onwards); false for legacy rows where the
+   *  modal falls back to the current InvestorProfile. */
+  snapshot: boolean;
+  fullName: string;
+  pan: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  depository: string | null;
+  dpId: string | null;
+  clientId: string | null;
+  bankAccount: string | null;
+  bankName: string | null;
+  branchName: string | null;
+  category: string;
+  lots: number;
+  shareQty: number | null;
+  bidPrice: number | null;
+  amount: number;
+  familyGroup: string | null;
+}
+export const fetchPartnerPrintDetail = (id: string) =>
+  authed<PartnerPrintDetail>(`${API}/admin/partner-api/print-detail?id=${encodeURIComponent(id)}`, { method: 'GET' });
 export const updateTenant = (slug: string, body: Partial<{
   name: string; status: string; brandColor: string; goldColor: string; logoUrl: string;
   customDomain: string; profile: Record<string, any>; commissionRate: number | null;

@@ -248,6 +248,116 @@ export class ApplicationsService {
     return { buffer: await mergePdfs(built.map((b) => b.buffer)), filename: `${sym}_family_${built.length}.pdf` };
   }
 
+  /**
+   * Build one ASBA PDF straight from a payload object — no Application row, no
+   * InvestorProfile, no vault. Extracted so both the Test button (formNo="TEST",
+   * nothing persisted) and the real partner-API print (allocated formNo, no
+   * profile mutation) share the exact same template-picking + fill ladder.
+   */
+  async buildAsbaFromPayload(ipo: any, a: any, formNo: string): Promise<Buffer> {
+    const amount = Number(a.amount ?? 0);
+    const applicantType =
+      a.category === 'Shareholder' ? 'shareholder'
+      : a.category === 'Employee' ? 'employee' : 'individual';
+    const address = [a.address, a.city, a.state].filter(Boolean).join(', ') || null;
+    const shares = a.shareQty ?? ((a.lots ?? 0) * (ipo.lotSize ?? 0));
+    const template = this.pickAsbaTemplate(ipo, amount, applicantType);
+    if (template) {
+      const bytes = readFileSync(template);
+      const acro = await fillAsbaAcroForm(bytes, {
+        formNo,
+        fullName: a.fullName ?? null,
+        address, pincode: a.pincode ?? null,
+        email: a.email ?? null, mobile: a.mobile ?? null,
+        pan: a.pan ?? null,
+        depository: a.depository ?? 'CDSL',
+        dpId: a.dpId ?? null, clientId: a.clientId ?? null,
+        shares, bidPrice: a.sharePrice ?? (ipo.priceBandMax != null ? Number(ipo.priceBandMax) : null),
+        amount,
+        bankAccount: a.bankAccount ?? null,
+        bankName: a.bankName ?? null,
+        branchName: a.branchName ?? null,
+        familyGroup: a.familyGroup ?? null,
+        subBrokerCode: null,
+        ipoSymbol: ipo.symbol ?? null,
+      });
+      if (acro) return acro;
+      return fillAsbaForm(bytes, {
+        formNo,
+        applicant: {
+          fullName: a.fullName ?? null, pan: a.pan ?? null,
+          depository: a.depository ?? 'CDSL', dpId: a.dpId ?? null, clientId: a.clientId ?? null,
+          address: a.address ?? null, city: a.city ?? null, state: a.state ?? null, pincode: a.pincode ?? null,
+          email: a.email ?? null, mobile: a.mobile ?? null,
+        },
+        bid: { shares, atCutoff: false, bidPrice: a.sharePrice != null ? Number(a.sharePrice) : null, amount },
+        bank: {
+          account: a.bankAccount ?? null, ifsc: null,
+          bankName: a.bankName ?? null, branchName: a.branchName ?? null, upi: null,
+        },
+      });
+    }
+    return buildAsbaPdf({
+      applicationId: formNo,
+      channelName: 'Investoyard',
+      ipo: {
+        symbol: ipo.symbol, name: ipo.name,
+        priceBandMin: ipo.priceBandMin as any, priceBandMax: ipo.priceBandMax as any,
+        lotSize: ipo.lotSize,
+        closeDate: ipo.closeDate ? ipo.closeDate.toISOString().slice(0, 10) : null,
+      },
+      applicant: {
+        fullName: a.fullName ?? '', pan: a.pan ?? '', relationship: '',
+        depository: a.depository ?? 'CDSL', dpId: a.dpId ?? '', clientId: a.clientId ?? '',
+      },
+      bid: {
+        lots: a.lots ?? 0, shares, atCutoff: false,
+        bidPrice: a.sharePrice != null ? Number(a.sharePrice) : null,
+        amount, category: a.category ?? '', applicantType,
+      },
+      bank: { account: a.bankAccount ?? '', ifsc: '' },
+    });
+  }
+
+  /**
+   * Preview forms — dry-run for the Test button. No form-number allocation,
+   * no persistence, every form prints with formNo="TEST".
+   */
+  async previewFormsPdf(ipo: any, applicants: any[]): Promise<{ buffer: Buffer; filename: string }> {
+    if (!applicants.length) throw new NotFoundException('At least one applicant is required to preview.');
+    const bufs: Buffer[] = [];
+    for (const a of applicants) bufs.push(await this.buildAsbaFromPayload(ipo, a, 'TEST'));
+    const buffer = bufs.length === 1 ? bufs[0] : await mergePdfs(bufs);
+    return { buffer, filename: `${ipo.symbol}_TEST.pdf` };
+  }
+
+  /**
+   * Real partner-API print — one PDF per applicant, form numbers allocated
+   * from the IPO's active print series and stamped back onto each Application.
+   * Uses the payload data DIRECTLY (not the InvestorProfile), so a repeat
+   * print for the same PAN with corrected details produces a correct PDF
+   * without overwriting the shared profile row.
+   */
+  async generatePartnerFormsPdf(
+    ipo: any,
+    apps: Array<{ id: string; payload: any }>,
+  ): Promise<{ buffer: Buffer; filename: string; formNos: Map<string, string | null> }> {
+    if (!apps.length) throw new NotFoundException('No applications to print.');
+    const bufs: Buffer[] = [];
+    const formNos = new Map<string, string | null>();
+    for (const { id, payload } of apps) {
+      const formNo = await this.allocateAsbaFormNo(ipo, id, null);
+      formNos.set(id, formNo);
+      bufs.push(await this.buildAsbaFromPayload(ipo, payload, formNo ?? id.slice(0, 8)));
+    }
+    const buffer = bufs.length === 1 ? bufs[0] : await mergePdfs(bufs);
+    const sym = ipo.symbol ?? 'IPO';
+    const filename = apps.length === 1
+      ? `${sym}_${formNos.get(apps[0].id) ?? apps[0].id.slice(0, 8)}.pdf`
+      : `${sym}_family_${apps.length}.pdf`;
+    return { buffer, filename, formNos };
+  }
+
   /** Fill one application onto its ASBA form (AcroForm fill → overlay → placeholder). */
   private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
     const template = this.pickAsbaTemplate(app.ipo, Number(app.amount), app.applicantType);
@@ -449,7 +559,13 @@ export class ApplicationsService {
    * Mainboard: ≤₹5L → Resident, above → Syndicate. SME/NCD → single form for any amount.
    * Returns the absolute file path, or null to fall back to the generated placeholder.
    */
-  private pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
+  /**
+   * Public so PartnerService's preview flow can use it: preview() bypasses
+   * the Application row entirely (no DB write, no vault, no form-number
+   * consumption) but still needs the same blank-picking logic to generate
+   * a real-looking PDF.
+   */
+  pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
     const docs: Array<{ type: string; url: string }> = ipo.documents ?? [];
     const toPath = (doc?: { type: string; url: string }): string | null => {
       if (!doc?.url) return null;
@@ -478,7 +594,7 @@ export class ApplicationsService {
    * Allocate the ASBA print-form number from the IPO's active "PDF Printing" series.
    * Reuses the already-assigned number on reprint; returns null if no series is configured.
    */
-  private async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
+  async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
     if (existing) return existing;
     const series: Array<{ member: string; from: string; to: string; active: boolean }> =
       Array.isArray(ipo.extra?.pdfSeries) ? ipo.extra.pdfSeries : [];

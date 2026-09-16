@@ -99,8 +99,8 @@ export default function MyApiKeysPage() {
                   <td className="mono">{k.keyId}</td>
                   <td>{k.label ?? '—'}</td>
                   <td>{k.active
-                    ? <span className="pill" style={{ background: 'var(--pos-soft)', color: 'var(--pos)' }}>active</span>
-                    : <span className="pill">revoked</span>}</td>
+                    ? <span className="st ok">active</span>
+                    : <span className="st mut">revoked</span>}</td>
                   <td>{new Date(k.createdAt).toLocaleDateString('en-IN')}</td>
                   <td>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-IN') : '—'}</td>
                   <td style={{ textAlign: 'right' }}>

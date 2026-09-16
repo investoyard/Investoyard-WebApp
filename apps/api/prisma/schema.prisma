@@ -865,6 +865,13 @@ model Application {
   upiStatusText      String?
   upiStatusAt        DateTime?
   status             ApplicationStatus @default(draft)
+  /// Immutable snapshot of the raw payload that produced this Application, for
+  /// records-only channels (partner API). Populated at print time from the
+  /// received applicant object so the Print report's View modal can reconstruct
+  /// exactly what was received — even when the shared InvestorProfile is later
+  /// touched by a different flow. Nullable: only set by the partner API flow;
+  /// legacy rows and non-partner flows leave it null.
+  partnerPayload     Json?
   idempotencyKey     String            @unique
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt

@@ -2845,11 +2845,24 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
 
 /* status pills (neutral, semantic reserved for money) */
-.st { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: var(--pill); text-transform: capitalize; }
+.st { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: var(--pill); text-transform: capitalize; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .st.ok { background: var(--pos-soft); color: var(--pos); }
+.st.bad { background: var(--neg-soft); color: var(--neg); }
 .st.mut { background: var(--bg-2); color: var(--text-faint); }
 .st.brand { background: var(--brand-50); color: var(--brand); }
 .st.warn { background: var(--warn-soft); color: #7a5800; }
+.st.lock { background: var(--brand-50); color: var(--brand); font-weight: 700; text-transform: none; padding: 4px 12px; border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent); cursor: default; }
+.st.lock .st-key { color: var(--text-muted); font-weight: 600; }
+
+/* --------------------------------------------- Partner API — Print detail modal
+   Two-column key/value grid inside the modal body; each section is a card. */
+.pd-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (max-width: 640px) { .pd-grid { grid-template-columns: 1fr; } }
+.pd-sec { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.pd-sec h4 { margin: 0 0 6px; font-size: 11px; font-weight: 800; color: var(--brand); letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px dashed var(--border); padding-bottom: 6px; }
+.pd-sec dl { display: grid; grid-template-columns: 100px 1fr; gap: 4px 12px; margin: 4px 0 0; font-size: 13px; }
+.pd-sec dt { color: var(--text-muted); font-weight: 600; font-size: 11.5px; align-self: center; }
+.pd-sec dd { margin: 0; color: var(--text); word-break: break-word; }
 
 /* ---------------------------------------------- partner programme (/partner) */
 .pk-hero { padding: 26px 0 8px; }

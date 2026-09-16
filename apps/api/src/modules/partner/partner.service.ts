@@ -82,8 +82,15 @@ export class PartnerService {
     const batchId = randomUUID();
     const created: { id: string; applicant: PartnerApplicantDto }[] = [];
 
+    // Partner API prints are RECORDS-ONLY — a per-request snapshot. The
+    // InvestorProfile is created ONCE per PAN and never updated from this
+    // path (so a later print with corrected details doesn't rewrite what
+    // the earlier print was based on). The exact received payload is
+    // stored on Application.partnerPayload, and the PDF is filled from
+    // that payload — NOT from the shared profile — so a repeat call for
+    // the same PAN with different details still produces a correct PDF.
     for (const a of dto.applicants) {
-      const profile = await this.upsertClientProfile(tenant.id, user.id, a);
+      const profile = await this.getOrCreateClientProfile(tenant.id, user.id, a);
       const app = await this.prisma.application.create({
         data: {
           tenantId: tenant.id,
@@ -101,19 +108,19 @@ export class PartnerService {
           amount: a.amount ?? 0, // exactly as the partner computed it
           applyMethod: 'pdf',
           status: 'submitted',
+          partnerPayload: a as any, // immutable snapshot for the Print report View modal
           idempotencyKey: `partner:${keyId}:${batchId}:${profile.id}`,
-        },
+        } as any,
       });
       created.push({ id: app.id, applicant: a });
     }
 
-    // prefilled PDFs via the standard overlay engine (blank pick + shared series numbering)
-    const { buffer, filename } = await this.apps.generateFormsPdf(user.id, created.map((c) => c.id));
-    const rows = await this.prisma.application.findMany({
-      where: { id: { in: created.map((c) => c.id) } },
-      select: { id: true, asbaFormNo: true },
-    });
-    const formNoById = new Map(rows.map((r) => [r.id, r.asbaFormNo]));
+    // Fill the PDFs from the received payload (not the shared profile) and
+    // allocate form numbers from the IPO's active series.
+    const { buffer, filename, formNos: formNoById } = await this.apps.generatePartnerFormsPdf(
+      ipo,
+      created.map((c) => ({ id: c.id, payload: c.applicant })),
+    );
 
     // audit trail (compliance): who printed what, never the PII itself
     await this.prisma.auditLog.create({
@@ -145,44 +152,173 @@ export class PartnerService {
   }
 
   /**
-   * Find-or-update the partner's client record by PAN (vaulted), else create it.
-   * NO format validation — a missing PAN gets a unique placeholder hash (the
-   * [tenantId, panHash] uniqueness must not collide across no-PAN clients).
+   * Preview forms — dry-run of the print flow used by the admin Test button on
+   * the Partner API docs. Runs the SAME PDF-filling engine against the operator's
+   * session (no API key), but persists NOTHING: no Application row, no InvestorProfile
+   * upsert, no vault write, no form-number consumption. Every form prints with
+   * formNo="TEST" so the sample is unmistakable. An audit-log entry is still
+   * written so a platform admin can see who tested and against which issue.
    */
-  private async upsertClientProfile(tenantId: string, userId: string, a: PartnerApplicantDto) {
+  async previewForms(
+    actor: { sub?: string | null; username?: string | null },
+    dto: PartnerPrintFormsDto,
+  ) {
+    const ipo = await tenantContext.runUnscoped(() =>
+      this.prisma.ipo.findFirst({
+        where: { symbol: { equals: dto.ipoSymbol.trim(), mode: 'insensitive' } },
+        include: { documents: true },
+      }),
+    );
+    if (!ipo) throw new NotFoundException(`IPO '${dto.ipoSymbol}' not found.`);
+    // Deliberately NOT gating on ipo.extra.startPrint — the operator is testing
+    // the payload shape and template layout, not producing a real print.
+
+    const { buffer, filename } = await this.apps.previewFormsPdf(ipo, dto.applicants as any);
+
+    const tid = tenantContext.tenantId();
+    const tenantSlug = tid
+      ? (await tenantContext.runUnscoped(() =>
+          this.prisma.tenant.findUnique({ where: { id: tid }, select: { slug: true } })
+        ))?.slug ?? ''
+      : '';
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'partner.test-print',
+        actorId: actor.sub ?? actor.username ?? 'operator',
+        targetType: 'ipo',
+        targetId: ipo.id,
+        targetLabel: ipo.symbol,
+        tenantSlug,
+        detail: { applicants: dto.applicants.length, dryRun: true } as any,
+      },
+    }).catch(() => { /* best-effort */ });
+
+    return {
+      ipoSymbol: ipo.symbol,
+      batchId: 'DRY-RUN',
+      dryRun: true as const,
+      applications: dto.applicants.map((a) => ({
+        applicationRef: 'TEST',
+        formNo: 'TEST',
+        fullName: a.fullName,
+        category: a.category,
+        lots: a.lots,
+        amount: a.amount,
+      })),
+      filename,
+      pdfBase64: buffer.toString('base64'),
+    };
+  }
+
+  /**
+   * Full detail for one API-printed application — for the View modal in the
+   * Print report. PAN masked (last-3), bank account shown as last-4. Enforces
+   * partner scope: a partner login can only fetch their own tenant's rows.
+   */
+  async printDetail(applicationRef: string) {
+    const scope = await this.reportScope();
+    // runUnscoped is not enough on its own — the pooled Postgres connection we
+    // land on may still carry an `app.current_tenant_id` GUC from an earlier
+    // scoped query in this or a prior request. Application has RLS keyed to
+    // that GUC, so a stale value quietly filters the row out and we return
+    // "not found" for records that clearly exist. Force-clear the GUC (or set
+    // it to the partner's own id when the caller is scope-locked) inside a
+    // single batched transaction, then run findFirst against a clean slate.
+    const app: any = await tenantContext.runUnscoped(async () => {
+      const [, result] = await this.prisma.$transaction([
+        this.prisma
+          .$executeRaw`SELECT set_config('app.current_tenant_id', ${scope ?? ''}, true)`,
+        this.prisma.application.findFirst({
+          where: {
+            id: applicationRef,
+            idempotencyKey: { startsWith: 'partner:' },
+          },
+          include: { profile: true, ipo: { select: { symbol: true, name: true, lotSize: true } } },
+        }),
+      ]);
+      return result;
+    });
+    if (!app) throw new NotFoundException('Print record not found for this reference.');
+    const names = await this.tenantNames([app.tenantId]);
+
+    // Prefer the immutable snapshot on Application.partnerPayload — that's
+    // the exact request we received for THIS print. Fall back to the shared
+    // InvestorProfile only for legacy rows created before the snapshot column
+    // existed (which is what `snapshot` = false signals to the modal).
+    const p = (app.partnerPayload ?? null) as any;
+    const snapshot = !!p;
+    const panMask = (raw: string | null): string | null => {
+      if (!raw) return null;
+      const s = String(raw).trim().toUpperCase();
+      if (s.length < 4) return s;
+      return `${s.slice(0, 5)}${'*'.repeat(Math.max(0, s.length - 6))}${s.slice(-1)}`;
+    };
+    const bankMask = (raw: string | null): string | null =>
+      raw && raw.length >= 4 ? `•••• ${raw.slice(-4)}` : null;
+
+    const pan = snapshot
+      ? (panMask(p.pan) ?? this.vault.mask(await this.vault.resolve(app.profile.panTokenRef)))
+      : this.vault.mask(await this.vault.resolve(app.profile.panTokenRef));
+    const bankAccount = snapshot
+      ? bankMask(p.bankAccount ?? null)
+      : bankMask(app.profile.bankTokenRef ? await this.vault.resolve(app.profile.bankTokenRef) : null);
+
+    const pick = <T,>(payloadValue: T | undefined, profileValue: T | undefined | null): T | null =>
+      snapshot ? ((payloadValue as any) ?? null) : ((profileValue as any) ?? null);
+
+    return {
+      applicationRef: app.id,
+      at: app.createdAt,
+      partner: names.get(app.tenantId)?.name ?? app.tenantId,
+      partnerSlug: names.get(app.tenantId)?.slug ?? '',
+      ipoSymbol: app.ipo.symbol,
+      ipoName: app.ipo.name,
+      batchId: app.batchId,
+      formNo: app.asbaFormNo,
+      snapshot,
+
+      fullName: snapshot ? (p.fullName ?? '') : app.profile.fullName,
+      pan,
+      mobile: pick(p?.mobile, app.profile.mobile),
+      email: pick(p?.email, app.profile.email),
+      address: pick(p?.address, app.profile.address),
+      city: pick(p?.city, app.profile.city),
+      state: pick(p?.state, app.profile.state),
+      pincode: pick(p?.pincode, app.profile.pincode),
+
+      depository: pick(p?.depository, app.profile.depository),
+      dpId: pick(p?.dpId, app.profile.dpId),
+      clientId: pick(p?.clientId, app.profile.clientId),
+
+      bankAccount,
+      bankName: pick(p?.bankName, app.profile.bankName),
+      branchName: pick(p?.branchName, app.profile.branchName),
+
+      category: app.category,
+      lots: app.lots,
+      shareQty: app.shareQty,
+      bidPrice: app.bidPrice != null ? Number(app.bidPrice) : null,
+      amount: Number(app.amount),
+      familyGroup: app.familyGroup,
+    };
+  }
+
+  /**
+   * Find the partner's client record by PAN (vaulted), else create it. The
+   * profile is written ONCE per PAN and NEVER updated from this path — a
+   * later print for the same PAN with corrected details does NOT rewrite
+   * what earlier prints were based on. The per-request payload (including
+   * any changed fields) is stored on Application.partnerPayload and is the
+   * source of truth for both the printed PDF and the Print report modal.
+   *
+   * A missing PAN gets a unique placeholder hash so the `[tenantId, panHash]`
+   * uniqueness constraint doesn't collide across no-PAN clients.
+   */
+  private async getOrCreateClientProfile(tenantId: string, userId: string, a: PartnerApplicantDto) {
     const pan = (a.pan ?? '').trim().toUpperCase();
     const panHash = pan ? this.vault.hash(pan) : this.vault.hash(`nopan:${randomUUID()}`);
-    const contact = {
-      fullName: (a.fullName ?? '').trim(),
-      depository: (a.depository ?? 'CDSL') as 'NSDL' | 'CDSL',
-      dpId: a.depository === 'NSDL' ? (a.dpId ?? '').trim().toUpperCase() : '',
-      clientId: (a.clientId ?? '').trim(),
-      // IFSC removed from the partner API contract — see partner.dto.ts.
-      // The InvestorProfile schema keeps its `ifsc` column (operator-side
-      // rows still populate it), so partner-created rows carry null.
-      ifsc: null,
-      bankName: a.bankName || null,
-      branchName: a.branchName || null,
-      address: a.address || null,
-      city: a.city || null,
-      state: a.state || null,
-      pincode: a.pincode || null,
-      email: a.email || null,
-      mobile: a.mobile || null,
-    };
     const existing = await this.prisma.investorProfile.findFirst({ where: { userId, panHash } });
-    if (existing) {
-      return this.prisma.investorProfile.update({
-        where: { id: existing.id },
-        data: {
-          ...contact,
-          ...(a.bankAccount ? { bankTokenRef: await this.vault.tokenize(a.bankAccount) } : {}),
-          // upiId dropped from the partner API contract — see partner.dto.ts.
-          // The InvestorProfile.upiTokenRef column stays (operator-side rows
-          // still use it); partner-created rows just leave it null.
-        },
-      });
-    }
+    if (existing) return existing;
     return this.prisma.investorProfile.create({
       data: {
         tenantId,
@@ -190,7 +326,20 @@ export class PartnerService {
         relationship: 'other',
         panTokenRef: await this.vault.tokenize(pan),
         panHash,
-        ...contact,
+        fullName: (a.fullName ?? '').trim(),
+        depository: (a.depository ?? 'CDSL') as 'NSDL' | 'CDSL',
+        dpId: a.depository === 'NSDL' ? (a.dpId ?? '').trim().toUpperCase() : '',
+        clientId: (a.clientId ?? '').trim(),
+        // IFSC removed from the partner API contract — see partner.dto.ts.
+        ifsc: null,
+        bankName: a.bankName || null,
+        branchName: a.branchName || null,
+        address: a.address || null,
+        city: a.city || null,
+        state: a.state || null,
+        pincode: a.pincode || null,
+        email: a.email || null,
+        mobile: a.mobile || null,
         bankTokenRef: a.bankAccount ? await this.vault.tokenize(a.bankAccount) : null,
         upiTokenRef: null,
       },
