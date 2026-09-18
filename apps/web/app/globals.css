@@ -3798,11 +3798,34 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    min-content which lets a wide table push the panel past 1fr, spilling
    the card on the right of narrow desktop / tablet screens. `minmax(0,...)`
    on tracks + min-width:0 on the panel forces the table to scroll INSIDE
-   its wrap instead of dragging the whole panel out. */
-.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
-.subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; }
+   its wrap instead of dragging the whole panel out.
+
+   Track proportions: share-wise (4-col with two-line cells) needs ~500px
+   for comfortable fit, app-wise (4-col) needs ~300px, lot ladder (3-col)
+   ~280px. Weighting 1.7 / 1.15 / 1.15 gives them more breathing room
+   than the earlier 2 / 1 / 1 which starved the app-wise Times column
+   at 1200-1400px viewports. */
+.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.15fr) minmax(0, 1.15fr); }
+.subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; overflow: hidden; }
+.subv2-solo .subv2-det-in .subv2-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 1100px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 @media (max-width: 700px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+
+/* v2 phone (< 480px) — share-wise 4-col table gets extra tight. Hide the
+   ₹Cr subtitle under Book Size / Subscription AND tighten cell padding
+   / font so the 4-col numeric table fits without any horizontal scroll
+   on 375px viewports. Category cell drops the subcat indent to 8px too. */
+@media (max-width: 480px) {
+  .subv2-solo .subv2-tbl .subv2-2l .small { display: none; }
+  .subv2-solo .subv2-tbl { font-size: 10.5px; }
+  .subv2-solo .subv2-tbl th { padding: 4px 2px; font-size: 8.5px; }
+  .subv2-solo .subv2-tbl td { padding: 5px 2px; }
+  .subv2-solo .subv2-tbl td:first-child { padding-left: 4px; }
+  .subv2-solo .subv2-tbl tr.subcat td:first-child { padding-left: 8px; }
+  .subv2-solo .subv2-2l .big { font-size: 10px; }
+  .subv2-solo .subv2-tbl-wrap { margin: 0; }
+  .subv2-solo .subv2-det-panel { padding: 8px 8px; }
+}
 .subv2-det-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
 .subv2-det-panel header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .subv2-det-panel h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 6px; }

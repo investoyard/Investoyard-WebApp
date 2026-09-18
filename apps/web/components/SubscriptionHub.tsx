@@ -459,8 +459,10 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
           <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
           <tbody>
             {appRows.map((r) => {
-              const req1x = r.applicationsTimes && r.applicationsTimes > 0 && r.bidCount
-                ? Math.round(r.bidCount / r.applicationsTimes) : 0;
+              // req1x now sourced from subscriptionTable() with the correct
+              // per-bucket divisor (HNI ÷ sHNI-min, Retail ÷ lotSize). No
+              // more bidCount ÷ applicationsTimes back-derivation.
+              const req1x = r.req1x ?? 0;
               return (
                 <tr key={r.key}>
                   <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
@@ -633,8 +635,7 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
                 <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
                 <tbody>
                   {appRows.map((r) => {
-                    const req1x = r.applicationsTimes && r.applicationsTimes > 0 && r.bidCount
-                      ? Math.round(r.bidCount / r.applicationsTimes) : 0;
+                    const req1x = r.req1x ?? 0;
                     return (
                       <tr key={r.key}>
                         <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
@@ -734,7 +735,7 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
               <thead><tr><th>Category</th><th>NSE</th><th>BSE</th><th>Total</th><th>Req 1×</th><th>Times</th></tr></thead>
               <tbody>
                 {appRows.map((r) => {
-                  const req1x = r.applicationsTimes && r.applicationsTimes > 0 && r.bidCount ? Math.round(r.bidCount / r.applicationsTimes) : 0;
+                  const req1x = r.req1x ?? 0;
                   return (
                     <tr key={r.key}>
                       <td><span className={`sc-cat-dot ${dotClassFor(r.key ?? '')}`} />{r.cat}</td>

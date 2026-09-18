@@ -144,9 +144,16 @@ export interface SubRowT {
   subscribed: number;
   times: number;
   /** Applications-wise times (bids ÷ max allottees) — drives the second
-   * ipopremium-style breakup table under the shares grid. */
+   * ipopremium-style breakup table under the shares grid. Overridden on the
+   * front side using the correct per-bucket shares-per-app divisor so the
+   * display updates without waiting for a pool cycle. */
   applicationsTimes?: number;
   bidCount?: number;
+  /** Applications-for-1× — `bookSize ÷ shares-per-app-for-this-bucket`.
+   * shares-per-app = `lotSize` for Retail/Employee, `sHNI-min` for HNI/HNI2
+   * (min shares for a ≥ ₹2 L bid). Computed here so all display sites read
+   * the same value. */
+  req1x?: number;
   /** Per-exchange breakdown (shares demanded) — present once the API is
    * populating the new IpoSubscription columns; both undefined = legacy row. */
   nseShares?: number;
@@ -242,19 +249,40 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // the shareResv doesn't produce a bucket value — this stops the display
   // from disagreeing with what the operator typed.
   const offered = offeredByBucket(ipo);
+  // Shares-per-application divisor (see SubRowT.req1x doc). Retail / Employee /
+  // Shareholder use `lotSize`; HNI (both 10L+ and 2-10L) use the min shares
+  // needed for a ≥ ₹2 L bid = ceil(2L ÷ (lot × priceMax)) × lot.
+  const lot = ipo.lotSize ?? 0;
+  const priceMax = up(ipo);
+  const shniMin = lot > 0 && priceMax > 0
+    ? Math.ceil(200_000 / (lot * priceMax)) * lot
+    : 0;
+  const sharesPerApp = (cat: string): number => {
+    if (cat === 'hni' || cat === 'hni2' || cat === 'nii') return shniMin;
+    return lot > 0 ? lot : 0;
+  };
   const rows: SubRowT[] = subs.map((r) => {
     const book = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
-    // Times comes straight from the API for now; step 4 will derive it here
-    // from (r.nseShares + r.bseShares) / book once the front-site cutover is
-    // complete and the API can stop computing timesSubscribed at write time.
+    // req1x = book ÷ shares-per-app-for-bucket. Re-derived here so it's
+    // right even when the API's `applicationsSubscribed` still reflects
+    // the old lot-size-for-everyone divisor (fixed 2026-09-18 spec).
+    const spa = sharesPerApp(r.category);
+    const req1xVal = spa > 0 && book > 0 ? Math.round(book / spa) : undefined;
+    // applicationsTimes = bidCount ÷ req1x. Falls back to the API's value
+    // when we can't compute (e.g., missing lot/price).
+    const bidCount = (r as any).bidCount as number | undefined;
+    const localAppTimes = req1xVal && req1xVal > 0 && bidCount != null
+      ? +(bidCount / req1xVal).toFixed(2)
+      : undefined;
     return {
       key: r.category,
       cat: subCatLabel(r.category),
       bookSize: Math.round(book),
       subscribed: Math.round(book * r.timesSubscribed),
       times: r.timesSubscribed,
-      applicationsTimes: (r as any).applicationsSubscribed,
-      bidCount: (r as any).bidCount,
+      applicationsTimes: localAppTimes ?? (r as any).applicationsSubscribed,
+      bidCount,
+      req1x: req1xVal,
       nseShares: (r as any).nseShares,
       bseShares: (r as any).bseShares,
       nseBids: (r as any).nseBids,

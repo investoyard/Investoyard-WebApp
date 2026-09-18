@@ -377,7 +377,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       }
 
       const { buckets } = bucketize(nseRows, bseRows);
-      const subs = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined);
+      const subs = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, Number(row?.priceBandMax ?? 0) || undefined);
       this.lastFetchAt.set(ipo.id, Date.now());
       if (subs.length === 0) {
         // Either the issue has no demand yet (early minutes), or the IPO row is
@@ -506,7 +506,16 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
    * category breakdown so the front-site can render "HNI (10L+) / HNI (2-10L)"
    * alongside the combined NII figure. Two metrics per row:
    *   timesSubscribed        = (nseShares + bseShares) ÷ offered[bucket]
-   *   applicationsSubscribed = (nseBids   + bseBids  ) ÷ (offered[bucket] ÷ lotSize)
+   *   applicationsSubscribed = (nseBids   + bseBids  ) ÷ (offered[bucket] ÷ shares-per-app)
+   *
+   * Shares-per-app varies by bucket:
+   *   - Retail / Employee / Shareholder — shares-per-app = `lotSize` (1 lot).
+   *   - HNI (10L+ AND 2-10L) — shares-per-app = min shares for a ≥ ₹2 L bid
+   *     = ceil(2_00_000 ÷ (lotSize × priceBandMax)) × lotSize. Same divisor
+   *     for BOTH HNI categories (matches ipopremium's convention and the
+   *     operator's spec on 2026-09-18: e.g. NSE lotSize=8 × price=₹1785 →
+   *     15 lots × 8 sh = 120 sh min HNI application).
+   *   - QIB — no per-application ratio meaningful (institutional).
    *
    * We also emit a synthetic `nii` row (Big + Small combined) — the compact home
    * card wants one NII line, and the aggregate is cheaper to compute here than
@@ -516,8 +525,20 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     buckets: Map<Bucket, CatAgg>,
     offeredByBucket: Map<Bucket, number> | null,
     lotSize?: number,
+    priceBandMax?: number,
   ): SubRow[] {
     if (!offeredByBucket || offeredByBucket.size === 0 || buckets.size === 0) return [];
+
+    // Min shares for a ≥ ₹2 L HNI application. Used as the denominator for
+    // applications-for-1× on both HNI categories per operator convention.
+    const HNI_MIN_AMOUNT = 200_000;
+    const shniMinShares = (lotSize && lotSize > 0 && priceBandMax && priceBandMax > 0)
+      ? Math.ceil(HNI_MIN_AMOUNT / (lotSize * priceBandMax)) * lotSize
+      : 0;
+    const sharesPerApp = (category: string): number => {
+      if (category === 'hni' || category === 'hni2' || category === 'nii') return shniMinShares;
+      return lotSize && lotSize > 0 ? lotSize : 0;
+    };
 
     interface Rolled { d: number; o: number; b: number; ns: number; bs: number; nb: number; bb: number }
     const zero = (): Rolled => ({ d: 0, o: 0, b: 0, ns: 0, bs: 0, nb: 0, bb: 0 });
@@ -547,8 +568,9 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     const mk = (category: string, r: Rolled): SubRow => {
       const row: SubRow = { category, timesSubscribed: round2(r.d / r.o) };
       if (r.b > 0) row.bidCount = r.b;
-      if (lotSize && lotSize > 0 && r.b > 0) {
-        const maxAllottees = r.o / lotSize;
+      const spa = sharesPerApp(category);
+      if (spa > 0 && r.b > 0) {
+        const maxAllottees = r.o / spa;
         if (maxAllottees > 0) row.applicationsSubscribed = round2(r.b / maxAllottees);
       }
       // Per-exchange columns — always emit when we saw any demand on that side,
