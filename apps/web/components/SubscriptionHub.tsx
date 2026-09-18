@@ -5,6 +5,7 @@ import { subscriptionTable, lotLadder, type SubRowT, subCatLabel } from '@/lib/i
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
+import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { titleCase, shortName } from '@investoyard/shared-types';
 
 /**
@@ -265,6 +266,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
         <Icon name="check" size={14} />
         <span>Saved</span>
       </div>
+      <SubscriptionDisclaimer />
     </div>
   );
 }
@@ -279,7 +281,7 @@ function SectionHead({ label, boardClass, count }: { label: string; boardClass: 
   );
 }
 
-function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; onShare: (i: IpoFull) => void }) {
+export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; onShare?: (i: IpoFull) => void }) {
   const table = subscriptionTable(ipo);
   const t = table?.total.times ?? ipo.subscriptionTimes ?? 0;
   const tc = tone(t);
@@ -347,11 +349,13 @@ function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; onShare:
           <div><span className="k">Subscribed</span><span className={`v tone-${tc}`}>{subCr > 0 ? fmtCr(subCr) : '—'}</span></div>
           <div><span className="k">Applications</span><span className="v">{totalApps > 0 ? fmtIn(totalApps) : '—'}</span></div>
         </div>
-        <div className="subv2-ln-act">
-          <button className="subv2-share" type="button" title="Share snapshot" aria-label={`Share ${ipo.name}`} onClick={() => onShare(ipo)}>
-            <Icon name="share" size={14} />
-          </button>
-        </div>
+        {onShare && (
+          <div className="subv2-ln-act">
+            <button className="subv2-share" type="button" title="Share snapshot" aria-label={`Share ${ipo.name}`} onClick={() => onShare(ipo)}>
+              <Icon name="share" size={14} />
+            </button>
+          </div>
+        )}
       </article>
       {table && (
         <div className="subv2-ln-detail">
