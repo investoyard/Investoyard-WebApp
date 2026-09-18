@@ -135,19 +135,97 @@ export function reservation(ipo: IpoFull): ResRow[] {
     .filter((r) => r.pct > 0); // an all-zero table would render an empty bar
 }
 
-export interface SubRowT { cat: string; bookSize: number; subscribed: number; times: number; }
+export interface SubRowT {
+  /** Bucket key from the API — one of qib/hni/hni2/nii/retail/employee/shareholder/total. */
+  key: string;
+  /** Display label — "QIB" / "HNI (10L+)" / "HNI (2-10L)" / "Retail" / etc. */
+  cat: string;
+  bookSize: number;
+  subscribed: number;
+  times: number;
+  /** Applications-wise times (bids ÷ max allottees) — drives the second
+   * ipopremium-style breakup table under the shares grid. */
+  applicationsTimes?: number;
+  bidCount?: number;
+  /** Per-exchange breakdown (shares demanded) — present once the API is
+   * populating the new IpoSubscription columns; both undefined = legacy row. */
+  nseShares?: number;
+  bseShares?: number;
+  /** Per-exchange bid/application counts — BSE is derived (see subscription.service.ts). */
+  nseBids?: number;
+  bseBids?: number;
+}
+/** Category label as the ipopremium-style breakup shows it. */
+export function subCatLabel(key: string): string {
+  switch (key) {
+    case 'qib': return 'QIB';
+    case 'hni': return 'HNI (10L+)';
+    case 'hni2': return 'HNI (2-10L)';
+    case 'nii': return 'NII';
+    case 'retail': return 'Retail';
+    case 'employee': return 'Employee';
+    case 'shareholder': return 'Shareholder';
+    case 'total': return 'Total';
+    default: return key.toUpperCase();
+  }
+}
 export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT } | null {
   const total = parseIssueValue(ipo.issueSize);
-  const subs = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
+  // Drop `total` (rendered separately). Keep the synthetic `nii` roll-up ONLY
+  // when BOTH split rows (`hni` and `hni2`) are present — Share-wise renders
+  // `nii` as a combined "HNI" subtotal above the two split rows (operator
+  // spec, 2026-09-18). If only one split row exists, `nii` = that same value,
+  // and rendering both would duplicate — so drop it in that case.
+  const all = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
+  const hasHni = all.some((r) => r.category === 'hni');
+  const hasHni2 = all.some((r) => r.category === 'hni2');
+  const subs = (hasHni && hasHni2) ? all : all.filter((r) => r.category !== 'nii');
   if (!subs.length || !total) return null;
   const totalShares = total / (up(ipo) || 1);
   const rows: SubRowT[] = subs.map((r) => {
     const book = (totalShares * (r.reservedPct ?? 0)) / 100;
-    return { cat: r.category.toUpperCase(), bookSize: Math.round(book), subscribed: Math.round(book * r.timesSubscribed), times: r.timesSubscribed };
+    // Times comes straight from the API for now; step 4 will derive it here
+    // from (r.nseShares + r.bseShares) / book once the front-site cutover is
+    // complete and the API can stop computing timesSubscribed at write time.
+    return {
+      key: r.category,
+      cat: subCatLabel(r.category),
+      bookSize: Math.round(book),
+      subscribed: Math.round(book * r.timesSubscribed),
+      times: r.timesSubscribed,
+      applicationsTimes: (r as any).applicationsSubscribed,
+      bidCount: (r as any).bidCount,
+      nseShares: (r as any).nseShares,
+      bseShares: (r as any).bseShares,
+      nseBids: (r as any).nseBids,
+      bseBids: (r as any).bseBids,
+    };
   });
   const bookSum = rows.reduce((a, b) => a + b.bookSize, 0);
   const subSum = rows.reduce((a, b) => a + b.subscribed, 0);
-  return { rows, total: { cat: 'Total', bookSize: bookSum, subscribed: subSum, times: bookSum ? +(subSum / bookSum).toFixed(2) : 0 } };
+  // Roll per-exchange totals across categories — used by the "NSE / BSE split"
+  // footnote in <LiveSubscription>. Any category without the breakdown
+  // (legacy row) contributes 0; the footnote hides itself when both are 0.
+  const nseSum = rows.reduce((a, b) => a + (b.nseShares ?? 0), 0);
+  const bseSum = rows.reduce((a, b) => a + (b.bseShares ?? 0), 0);
+  const nseBidSum = rows.reduce((a, b) => a + (b.nseBids ?? 0), 0);
+  const bseBidSum = rows.reduce((a, b) => a + (b.bseBids ?? 0), 0);
+  const bidSum = rows.reduce((a, b) => a + (b.bidCount ?? 0), 0);
+  return {
+    rows,
+    total: {
+      key: 'total',
+      cat: 'Total',
+      bookSize: bookSum,
+      subscribed: subSum,
+      times: bookSum ? +(subSum / bookSum).toFixed(2) : 0,
+      bidCount: bidSum > 0 ? bidSum : undefined,
+      nseShares: nseSum > 0 ? nseSum : undefined,
+      bseShares: bseSum > 0 ? bseSum : undefined,
+      nseBids: nseBidSum > 0 ? nseBidSum : undefined,
+      bseBids: bseBidSum > 0 ? bseBidSum : undefined,
+    },
+  };
 }
 
 export interface TlItem { label: string; date?: string; }

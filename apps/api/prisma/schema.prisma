@@ -747,8 +747,18 @@ model IpoSubscription {
   ipo                    Ipo      @relation(fields: [ipoId], references: [id])
   category               String
   timesSubscribed        Decimal // subscription by SHARES (demand qty ÷ offered)
-  bidCount               Int? // number of applications/bids in this category (from catwise)
+  bidCount               Int? // number of applications/bids in this category (from catwise); = nseBids + bseBids
   applicationsSubscribed Decimal? // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
+  // Per-exchange breakdown — additive columns for the day-wise report page and
+  // to enable computing times at display time from raw demand (matches the
+  // operator's legacy C# workflow: fetch both, save raw, derive at read).
+  // BSE per-category bid counts are back-solved from NSE's shares-per-bid
+  // ratio (see `bucketize` in subscription.service.ts) — BSE only ships
+  // `totalapplication` as a scalar for the whole issue.
+  nseShares              Decimal? // shares demanded from NSE catwise for this bucket
+  bseShares              Decimal? // shares demanded from BSE demandschedule for this bucket
+  nseBids                Int? // bid count from NSE catwise for this bucket
+  bseBids                Int? // derived BSE bid count (nse-avg-ratio for hni/hni2/shareholder; residual of totalapplication for retail)
   asOf                   DateTime @default(now())
 
   @@index([ipoId, asOf])

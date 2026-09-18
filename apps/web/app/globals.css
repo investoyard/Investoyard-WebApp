@@ -27,8 +27,10 @@
   /* investor-category colour system (Reserve / Lots / Subscription panels) */
   --c-qib: #2f66d0;
   --c-retail: #3c2e7e;
-  --c-hni1: #e0a200;
-  --c-hni2: #7c4dff;
+  --c-hni1: #e0a200;      /* Big HNI (>₹10 L, SEBI 2/3 of NII) */
+  --c-hni2: #7c4dff;      /* Small HNI (₹2-10 L) */
+  --c-emp: #0f766e;       /* Employee — teal, distinct from all four above */
+  --c-shareholder: #be185d; /* Shareholder / policy-holder — rose */
 
   /* neutral foundation (layered) */
   --bg: #f4f3f8;
@@ -3131,8 +3133,8 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 /* ── v2 card tweaks ── */
 /* board badges go pastel — the solid indigo/gold pair shouted louder than the
    status chip beside them, which is the badge that actually changes */
-.ipocard.v2 .ic-tag.mb { background: #E7E0FF; color: #4b3aa0; }
-.ipocard.v2 .ic-tag.sme { background: #FFEFC9; color: #8a6d1f; }
+.ipocard.v2 .ic-tag.mb, .subv2 .ic-tag.mb { background: #E7E0FF; color: #4b3aa0; }
+.ipocard.v2 .ic-tag.sme, .subv2 .ic-tag.sme { background: #FFEFC9; color: #8a6d1f; }
 /* the rotating third KPI */
 .ipocard.v2 .ic-rot .v, .ipocard.v2 .ic-rot .k { transition: opacity .22s var(--ease); }
 .ipocard.v2 .ic-rot.out .v, .ipocard.v2 .ic-rot.out .k { opacity: 0; }
@@ -3660,3 +3662,351 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* the report's row actions — kept on one line so the column never wraps */
 .bid-acts { display: flex; gap: 5px; }
 .bid-acts .icon-btn:disabled { opacity: .32; cursor: not-allowed; }
+
+/* ================================================================================
+ * Subscription Hub v2 — /subscription
+ * Ports ipoSubscription_iy_v2.html to production. Namespaced .subv2-* to avoid
+ * the class-collision problems this file has been bitten by (see CLAUDE.md).
+ * Category dot colours read from --c-qib / --c-hni1 / --c-hni2 / --c-retail /
+ * --c-emp / --c-shareholder so the palette stays consistent with IpoCard and
+ * detail-page reservation / lots panels.
+ * ============================================================================== */
+.subv2 { max-width: 1360px; margin: 0 auto; padding: 8px 0 40px; }
+
+/* filter row + search */
+.subv2-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.subv2-seg { display: inline-flex; background: var(--surface); padding: 4px; border-radius: 999px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(14,11,30,.04); }
+.subv2-seg button { all: unset; padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: 12.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 7px; line-height: 1; transition: color .15s, background .15s; cursor: pointer; }
+.subv2-seg button:hover { color: var(--text); }
+.subv2-seg button.on { background: var(--brand); color: #fff; box-shadow: 0 4px 12px -6px rgba(60,46,126,.5); }
+.subv2-seg button .c { display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 99px; background: var(--bg-2); font-size: 10.5px; color: var(--text-muted); font-weight: 700; }
+.subv2-seg button.on .c { background: rgba(255,255,255,.22); color: #fff; }
+.subv2-search { position: relative; margin-left: auto; width: 260px; max-width: 100%; }
+.subv2-search input { width: 100%; height: 34px; padding: 0 10px 0 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font-size: 13px; font-family: inherit; }
+.subv2-search input:focus { outline: none; border-color: var(--brand); background: var(--surface); }
+.subv2-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+
+/* section header per board */
+.subv2-sec-head { display: flex; align-items: center; gap: 12px; margin: 20px 0 12px; }
+.subv2-sec-head h3 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.005em; display: flex; align-items: center; gap: 10px; }
+.subv2-board-badge { font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; background: var(--brand-100); color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent); }
+.subv2-board-badge.sme { background: var(--gold-50); color: var(--gold-600); border-color: color-mix(in srgb, var(--gold-600) 32%, transparent); }
+.subv2-sec-head .count { font-size: 11.5px; color: var(--text-muted); font-weight: 600; padding: 3px 10px; border-radius: 99px; background: var(--bg-2); border: 1px solid var(--border); }
+.subv2-sec-head .hair { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+/* list of cards */
+.subv2-list { display: flex; flex-direction: column; gap: 14px; }
+
+/* card + summary row */
+.subv2-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(14,11,30,.04); transition: box-shadow .2s, border-color .2s; }
+.subv2-card:hover { box-shadow: 0 8px 30px -10px rgba(14,11,30,.14); border-color: var(--border-2); }
+.subv2-ln { display: grid; grid-template-columns: minmax(240px, 1.15fr) 220px minmax(240px, 1fr) 44px; gap: 24px; align-items: center; padding: 16px 22px; position: relative; border-bottom: 1px solid var(--border); }
+.subv2-ln::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; }
+.subv2-ln.subv2-t-hot::before { background: var(--pos); }
+.subv2-ln.subv2-t-warm::before { background: var(--gold-600); }
+.subv2-ln.subv2-t-cool::before { background: var(--warn); }
+.subv2-ln.subv2-t-cold::before { background: var(--text-faint); }
+@media (max-width: 1100px) {
+  .subv2-ln { grid-template-columns: 1fr 1fr; gap: 18px; }
+  .subv2-ln-l { grid-column: 1 / span 2; }
+  .subv2-ln-r { grid-column: 1 / span 2; }
+  .subv2-ln-act { position: absolute; top: 14px; right: 14px; }
+}
+
+/* left: avatar + name + meta chips */
+.subv2-ln-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.subv2-avatar { width: 46px; height: 46px; border-radius: 12px; flex: none; overflow: hidden; background: var(--bg-2); }
+.subv2-ln-name { min-width: 0; flex: 1; }
+.subv2-ln-name h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.005em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Two meta rows under the company name — row 1 = board + status chips (via the
+   site-wide `.ic-tag` / `.ic-status` families), row 2 = discrete info pills for
+   dates / price band / lot. Updated timestamp is now floated top-right of the
+   whole card (see .subv2-updated below) — the info row no longer carries it. */
+.subv2-ln-meta { margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); }
+.subv2-ln-meta .dot-sep { color: var(--text-faint); }
+.subv2-ln-meta .muted { color: var(--text-faint); }
+.subv2-ln-info { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.subv2-info-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+.subv2-info-pill .k { color: var(--text-faint); font-weight: 500; }
+.subv2-info-pill svg { color: var(--text-faint); }
+/* Updated stamp — top-right of the summary row, sitting to the left of the
+   share button. Absolute so it never re-flows the info row and always reads at
+   the top of the card, matching the operator's "top right" ask. */
+.subv2-updated { position: absolute; top: 8px; right: 52px; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-faint); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+.subv2-updated::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pos) 20%, transparent); animation: subv2-pulse 1.8s ease-in-out infinite; }
+@keyframes subv2-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .subv2-updated::before { animation: none; } }
+@media (max-width: 700px) { .subv2-updated { position: static; margin-top: 6px; } }
+/* Board + status chips use the site-wide `.ic-tag mb/sme` and `.ic-status …`
+ * families (see IpoCard). No local overrides — keep the palette universal.
+ * The old .subv2-tag rules were retired 2026-09-18 after operator flagged the
+ * subscription hub chips didn't match card/detail chips.
+ */
+
+/* middle: times + meter + status */
+.subv2-ln-m { display: flex; flex-direction: column; gap: 6px; }
+.subv2-ln-times { display: flex; align-items: baseline; gap: 1px; }
+.subv2-ln-times .tx-n { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.subv2-ln-times .tx-x { font-size: 14px; color: var(--text-muted); margin-left: 2px; }
+.subv2-ln.subv2-t-hot .tx-n { color: var(--pos); }
+.subv2-ln.subv2-t-warm .tx-n { color: var(--gold-600); }
+.subv2-ln.subv2-t-cool .tx-n { color: var(--warn); }
+.subv2-ln.subv2-t-cold .tx-n { color: var(--neg); }
+.subv2-ln-meter { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.subv2-ln-track { position: relative; height: 6px; border-radius: 99px; background: var(--bg-2); overflow: hidden; border: 1px solid var(--border); }
+.subv2-ln-track > span { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: linear-gradient(90deg, var(--brand), #4d3d9a 50%, var(--gold)); transition: width .5s cubic-bezier(.2,.7,.2,1); }
+.subv2-ln.subv2-t-hot .subv2-ln-track > span { background: linear-gradient(90deg, var(--pos), color-mix(in srgb, var(--pos) 60%, var(--gold))); }
+.subv2-ln.subv2-t-warm .subv2-ln-track > span { background: linear-gradient(90deg, var(--warn), var(--gold)); }
+.subv2-ln.subv2-t-cool .subv2-ln-track > span { background: linear-gradient(90deg, var(--warn), var(--gold-600)); }
+.subv2-ln.subv2-t-cold .subv2-ln-track > span { background: var(--neg); }
+.subv2-ln-tk { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.subv2-ln-status { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.subv2-ln.subv2-t-hot .subv2-ln-status { color: var(--pos); }
+.subv2-ln.subv2-t-warm .subv2-ln-status { color: var(--gold-600); }
+.subv2-ln.subv2-t-cool .subv2-ln-status { color: var(--warn); }
+.subv2-ln.subv2-t-cold .subv2-ln-status { color: var(--neg); }
+
+/* right: 3 stat tiles */
+.subv2-ln-r { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.subv2-ln-r > div { display: flex; flex-direction: column; gap: 2px; }
+.subv2-ln-r .k { font-size: 10px; color: var(--text-muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.subv2-ln-r .v { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.subv2-ln-r .v.tone-hot { color: var(--pos); }
+.subv2-ln-r .v.tone-warm { color: var(--gold-600); }
+.subv2-ln-r .v.tone-cool { color: var(--warn); }
+.subv2-ln-r .v.tone-cold { color: var(--neg); }
+
+/* share button */
+.subv2-ln-act { display: flex; align-items: center; justify-content: flex-end; }
+.subv2-share { all: unset; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-muted); cursor: pointer; transition: background .12s, color .12s, border-color .12s; border: 1px solid transparent; }
+.subv2-share:hover { background: var(--brand-100); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 15%, transparent); }
+.subv2-share.spinning svg { animation: subv2-spin .8s linear infinite; }
+@keyframes subv2-spin { to { transform: rotate(360deg); } }
+
+/* detail panels area — three panels SIDE BY SIDE (operator ask round-3
+   correction, 2026-09-18): Share-wise | Application-wise | Lot ladder.
+   Share-wise gets 2fr because its 4-col two-line-cell layout needs more room
+   than the compact 4-col App-wise and 3-col Lot ladder. Falls back to 2 cols
+   under 1100px (Share-wise gets its own row alongside App+Lot stacked),
+   single col under 700px so phones stay usable. */
+.subv2-ln-detail { background: var(--surface-2); }
+.subv2-det-in { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; padding: 14px 18px 16px; align-items: start; }
+@media (max-width: 1100px) { .subv2-det-in { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .subv2-det-in { grid-template-columns: 1fr; } }
+.subv2-det-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.subv2-det-panel header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.subv2-det-panel h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 6px; }
+.subv2-det-panel h4::before { content: ""; display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
+.subv2-det-panel header .muted { font-size: 10.5px; color: var(--text-muted); }
+.subv2-tbl-wrap { overflow-x: auto; margin: 0 -6px; }
+.subv2-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.subv2-tbl th { text-align: left; padding: 6px 8px; white-space: nowrap; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.subv2-tbl th:not(:first-child) { text-align: right; }
+.subv2-tbl td { padding: 8px 8px; border-top: 1px solid var(--border); vertical-align: top; white-space: nowrap; }
+.subv2-tbl td:not(:first-child) { text-align: right; }
+.subv2-tbl tbody tr:hover td { background: var(--surface-2); }
+.subv2-tbl tr.tot td { background: var(--brand-100); border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); font-weight: 800; padding-top: 10px; padding-bottom: 10px; color: var(--brand); }
+.subv2-tbl tr.tot:hover td { background: var(--brand-100); }
+.subv2-tbl tr.tot td:first-child { color: var(--brand); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+
+/* two-line cells inside the 4-col Share-wise table (shares big, ₹ Cr small)
+ * — also reused by the Lot ladder's Lot-&-Share and Amount cells (lots big,
+ *   shares small; min-amount big, max-amount small). */
+.subv2-2l { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.subv2-2l .big { font-size: 12.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.subv2-2l .small { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 1px; }
+
+/* Lot ladder category cell — category label stacked over the (min-max) /
+ * (min) hint. Left-aligned (unlike .subv2-2l which is right-aligned for the
+ * numeric cells). */
+.subv2-ll-cat { display: flex; flex-direction: column; line-height: 1.2; }
+.subv2-ll-cat b { color: var(--text); font-size: 12px; font-weight: 700; }
+.subv2-ll-cat small { color: var(--text-muted); font-size: 10.5px; font-weight: 500; margin-top: 1px; }
+
+/* category dot */
+.subv2-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 8px; vertical-align: middle; }
+.subv2-dot.qib { background: var(--c-qib); }
+.subv2-dot.hni { background: var(--c-hni1); }
+.subv2-dot.hni2 { background: var(--c-hni2); }
+.subv2-dot.retail { background: var(--c-retail); }
+.subv2-dot.emp { background: var(--c-emp); }
+.subv2-dot.shareholder { background: var(--c-shareholder); }
+
+/* tone applied to a Times cell */
+.subv2-tbl .tone-hot { color: var(--pos); }
+.subv2-tbl .tone-warm { color: var(--gold-600); }
+.subv2-tbl .tone-cool { color: var(--warn); }
+.subv2-tbl .tone-cold { color: var(--neg); }
+
+/* Sub-category rows in Share-wise — HNI (10L+) and HNI (2-10L) sit under a
+   plain "HNI" combined row. Pale sky-blue bg (2026-09-18 operator ask: swap
+   away from the previous peach) + small left indent on the label cell hint
+   at the parent/child relationship. The sky-blue reads as a subtle grouping
+   tint distinct from every existing status colour on the page (indigo /
+   gold / red / green / teal / purple / rose). */
+.subv2-tbl tr.subcat td { background: #E0F2FE; color: var(--text); }
+.subv2-tbl tr.subcat:hover td { background: #BAE6FD; }
+.subv2-tbl tr.subcat td:first-child { padding-left: 22px; }
+
+/* View toggle segment (Full view / Application-wise) — sits between the board
+   filters and the search, styled identically to .subv2-seg so the two feel
+   like the same control family. */
+.subv2-viewseg { display: inline-flex; background: var(--surface); padding: 4px; border-radius: 999px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(14,11,30,.04); }
+.subv2-viewseg button { all: unset; padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: 12.5px; color: var(--text-muted); line-height: 1; transition: color .15s, background .15s; cursor: pointer; }
+.subv2-viewseg button:hover { color: var(--text); }
+.subv2-viewseg button.on { background: var(--brand); color: #fff; box-shadow: 0 4px 12px -6px rgba(60,46,126,.5); }
+
+/* Page-level Application-wise view — one card per open IPO with its own
+   application-wise table. Compact header (avatar + name + chips + updated),
+   then a wide 6-col table. Similar visual weight to the summary cards but
+   without the meter/stats overhead — this view is a report. Two cards per
+   row on wide screens (operator ask, 2026-09-18), collapse to one column
+   below 1000px. */
+/* Always 3-per-row on any reasonable screen (operator ask: "all 3 cards in
+   single line"). Only fall back to 2 below 900px and to 1 below 640px so
+   phones stay usable. */
+.subv2-aw-page { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .subv2-aw-page { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .subv2-aw-page { grid-template-columns: 1fr; } }
+.subv2-aw-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px 18px 16px; position: relative; box-shadow: 0 1px 2px rgba(14,11,30,.04); }
+.subv2-aw-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-bottom: 10px; padding-right: 180px; border-bottom: 1px solid var(--border); }
+.subv2-aw-head .subv2-avatar { width: 34px; height: 34px; border-radius: 10px; }
+.subv2-aw-head-title { min-width: 0; flex: 1; }
+.subv2-aw-head-title h3 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subv2-aw-head-chips { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.subv2-aw-card .subv2-updated { top: 12px; right: 18px; }
+.subv2-aw-total { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); }
+.subv2-aw-total b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* empty state */
+.subv2-empty { padding: 44px 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-2); border-radius: 16px; background: var(--surface); }
+.subv2-empty h3 { margin: 0 0 6px; color: var(--text); font-weight: 700; }
+
+/* Share/canvas snapshot — off-screen 1080-wide renderer used by html2canvas.
+ * Colours are inlined (not CSS vars) because html2canvas needs computed values
+ * for the exact pixels the sharer sees. Matches ipoSubscription_iy_v2.html. */
+.subv2-canvas { position: fixed; left: -99999px; top: -99999px; width: 1080px; background: #ffffff; color: #0e0b1e; font-family: 'Inter', system-ui, sans-serif; }
+.subv2-canvas .sc-inner { padding: 36px 44px 30px; background: radial-gradient(700px 300px at 100% 0%, rgba(255,203,50,.14), transparent 60%), radial-gradient(700px 300px at 0% 100%, rgba(60,46,126,.09), transparent 60%), linear-gradient(180deg, #ffffff 0%, #fafafd 100%); }
+.subv2-canvas .sc-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 3px solid #ffcb32; margin-bottom: 22px; }
+.subv2-canvas .sc-brand { font-size: 22px; font-weight: 800; color: #3c2e7e; letter-spacing: -.01em; }
+.subv2-canvas .sc-kicker { font-size: 12px; color: #3c2e7e; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 9px; }
+.subv2-canvas .sc-kicker::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #0f9d58; box-shadow: 0 0 0 3px rgba(15,157,88,.18); }
+.subv2-canvas .sc-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 26px; padding: 18px 0 22px; margin-bottom: 20px; }
+.subv2-canvas .sc-hero { flex: 1; min-width: 0; }
+.subv2-canvas .sc-tag { display: inline-block; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 8px; }
+.subv2-canvas .sc-tag.mb { background: #f3f1fb; color: #3c2e7e; border: 1px solid rgba(60,46,126,.22); }
+.subv2-canvas .sc-tag.sme { background: #fff7df; color: #e6ad12; border: 1px solid rgba(230,173,18,.32); }
+.subv2-canvas .sc-name { margin: 0; font-size: 28px; font-weight: 800; color: #0e0b1e; line-height: 1.15; }
+.subv2-canvas .sc-hero-r { flex: 0 0 auto; text-align: right; padding-left: 24px; border-left: 3px solid #ffcb32; }
+.subv2-canvas .sc-times { font-family: 'JetBrains Mono', monospace; line-height: 1; font-weight: 700; }
+.subv2-canvas .sc-times .n { font-size: 52px; letter-spacing: -.03em; }
+.subv2-canvas .sc-times .x { font-size: 24px; color: #8b849f; font-weight: 600; }
+.subv2-canvas .sc-status { display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; }
+.subv2-canvas .sc-section { margin-bottom: 24px; }
+.subv2-canvas .sc-section:last-of-type { margin-bottom: 0; }
+.subv2-canvas .sc-section h3 { margin: 0 0 12px; font-size: 14px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; color: #3c2e7e; padding-bottom: 8px; border-bottom: 2px solid #ffcb32; display: inline-block; padding-right: 24px; }
+.subv2-canvas .sc-tbl { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #ebe7f2; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px -8px rgba(14,11,30,.10); }
+.subv2-canvas .sc-tbl th { padding: 12px 14px; text-align: left; background: #f6f5fb; color: #3c2e7e; font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; border-bottom: 2px solid #ebe7f2; }
+.subv2-canvas .sc-tbl th:not(:first-child) { text-align: right; }
+.subv2-canvas .sc-tbl td { padding: 14px 14px; border-bottom: 1px solid #ebe7f2; font-family: 'JetBrains Mono', monospace; font-size: 16px; color: #0e0b1e; }
+.subv2-canvas .sc-tbl td:not(:first-child) { text-align: right; }
+.subv2-canvas .sc-tbl tr:last-child td { border-bottom: none; }
+.subv2-canvas .sc-tbl td:first-child { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px; }
+.subv2-canvas .sc-tbl .sc-tot td { background: #3c2e7e; color: #ffffff; font-weight: 800; font-size: 17px; padding: 16px 14px; border-top: 3px solid #ffcb32; border-bottom: none; }
+.subv2-canvas .sc-tbl .sc-tot td:first-child { color: #ffcb32; font-family: 'Inter', sans-serif; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; }
+.subv2-canvas .sc-cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 9px; vertical-align: middle; }
+.subv2-canvas .sc-cat-dot.qib { background: #2f66d0; }
+.subv2-canvas .sc-cat-dot.hni { background: #e0a200; }
+.subv2-canvas .sc-cat-dot.hni2 { background: #7c4dff; }
+.subv2-canvas .sc-cat-dot.retail { background: #3c2e7e; }
+.subv2-canvas .sc-cat-dot.emp { background: #0f766e; }
+.subv2-canvas .sc-cat-dot.shareholder { background: #be185d; }
+.subv2-canvas .sc-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; margin-top: 24px; border-top: 2px solid #ebe7f2; font-size: 12px; }
+.subv2-canvas .sc-foot .sc-time { color: #615a80; font-weight: 600; }
+.subv2-canvas .sc-foot .sc-url { color: #3c2e7e; font-weight: 800; font-size: 16px; letter-spacing: .02em; display: inline-flex; align-items: center; gap: 8px; }
+.subv2-canvas .sc-foot .sc-url::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ffcb32; }
+
+/* toast used by share flow */
+.subv2-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(100px); opacity: 0; background: #1a1638; color: #fff; padding: 11px 18px; border-radius: 99px; display: inline-flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 600; box-shadow: 0 30px 80px -30px rgba(60,46,126,.35); z-index: 200; transition: transform .28s, opacity .28s; }
+.subv2-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* ================================================================================
+ * NSE IPO landing (/subscription/v2) — single-issue premium page for the
+ * National Stock Exchange of India IPO. Namespaced .nsev2-* to avoid the
+ * class-collision problems this file has been bitten by (see CLAUDE.md).
+ * Reuses the .subv2-tbl / .subv2-det-panel styling for the tables via the
+ * three panels exported from SubscriptionHub.
+ * ============================================================================== */
+.nsev2 { max-width: 1360px; margin: 0 auto; padding: 12px 0 60px; }
+
+/* HERO */
+.nsev2-hero { position: relative; margin: 4px 0 22px; border-radius: 20px; overflow: hidden;
+  background: linear-gradient(140deg, #f5f2ff 0%, #fff9e6 60%, #ffffff 100%);
+  border: 1px solid var(--border); box-shadow: 0 20px 60px -30px rgba(60,46,126,.25); }
+.nsev2-hero::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px;
+  background: linear-gradient(180deg, var(--brand), var(--gold-600)); }
+.nsev2-hero.nsev2-t-hot::before { background: linear-gradient(180deg, var(--pos), var(--gold)); }
+.nsev2-hero.nsev2-t-warm::before { background: linear-gradient(180deg, var(--gold-600), var(--gold)); }
+.nsev2-hero.nsev2-t-cool::before { background: linear-gradient(180deg, var(--warn), var(--gold-600)); }
+.nsev2-hero.nsev2-t-cold::before { background: linear-gradient(180deg, var(--neg), var(--warn)); }
+.nsev2-hero-in { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; padding: 28px 32px 26px 40px; align-items: center; }
+@media (max-width: 800px) { .nsev2-hero-in { grid-template-columns: 1fr; padding: 22px 20px; } }
+
+.nsev2-hero-brand { display: flex; align-items: center; gap: 22px; min-width: 0; }
+.nsev2-hero-logo { width: 72px; height: 72px; flex: none; border-radius: 16px; overflow: hidden;
+  background: var(--surface); box-shadow: 0 8px 24px -12px rgba(60,46,126,.35); border: 1px solid var(--border); display: grid; place-items: center; padding: 4px; }
+.nsev2-hero-title { min-width: 0; flex: 1; }
+.nsev2-hero-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 8px; }
+.nsev2-hero-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.nsev2-hero h1 { margin: 4px 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -.015em; line-height: 1.15; color: var(--text); }
+.nsev2-hero-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nsev2-hero-dates { font-size: 12px; font-weight: 600; color: var(--text-muted); padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-variant-numeric: tabular-nums; }
+
+.nsev2-hero-live { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.nsev2-gauge { position: relative; width: 220px; }
+.nsev2-gauge svg { display: block; width: 100%; height: auto; }
+.nsev2-gauge-value { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; line-height: 1; }
+.nsev2-gauge-value .n { font-size: 40px; font-weight: 800; letter-spacing: -.03em; color: var(--text); }
+.nsev2-gauge-value .x { font-size: 20px; color: var(--text-muted); margin-left: 2px; font-weight: 600; }
+.nsev2-hero.nsev2-t-hot .nsev2-gauge-value .n { color: var(--pos); }
+.nsev2-hero.nsev2-t-warm .nsev2-gauge-value .n { color: var(--gold-600); }
+.nsev2-hero.nsev2-t-cool .nsev2-gauge-value .n { color: var(--warn); }
+.nsev2-hero.nsev2-t-cold .nsev2-gauge-value .n { color: var(--neg); }
+.nsev2-hero-status { font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; color: var(--text-muted); margin-top: -6px; }
+.nsev2-hero.nsev2-t-hot .nsev2-hero-status { color: var(--pos); }
+.nsev2-hero.nsev2-t-warm .nsev2-hero-status { color: var(--gold-600); }
+.nsev2-hero.nsev2-t-cool .nsev2-hero-status { color: var(--warn); }
+.nsev2-hero.nsev2-t-cold .nsev2-hero-status { color: var(--neg); }
+.nsev2-hero-meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; font-size: 11.5px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.nsev2-hero-pulse { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.nsev2-hero-pulse::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pos) 20%, transparent); animation: nsev2-pulse 1.8s ease-in-out infinite; }
+@keyframes nsev2-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .nsev2-hero-pulse::before { animation: none; } }
+.nsev2-hero-count { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-weight: 500; }
+.nsev2-hero-count b { color: var(--text); font-weight: 800; }
+
+/* KPI STRIP */
+.nsev2-kpi-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 0 0 20px; }
+@media (max-width: 1000px) { .nsev2-kpi-strip { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .nsev2-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+.nsev2-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 1px 2px rgba(14,11,30,.04); }
+.nsev2-kpi .k { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.nsev2-kpi .v { font-size: 15px; font-weight: 800; letter-spacing: -.01em; color: var(--text); font-variant-numeric: tabular-nums; word-break: break-word; }
+.nsev2-kpi .v.tone-hot { color: var(--pos); }
+.nsev2-kpi .v.tone-warm { color: var(--gold-600); }
+.nsev2-kpi .v.tone-cool { color: var(--warn); }
+.nsev2-kpi .v.tone-cold { color: var(--neg); }
+
+/* SPLIT — Share-wise wide + right column (App-wise + Lot ladder stacked) */
+.nsev2-split { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .nsev2-split { grid-template-columns: 1fr; } }
+.nsev2-share, .nsev2-side { min-width: 0; }
+.nsev2-side { display: flex; flex-direction: column; gap: 16px; }
+/* Panels here inherit .subv2-det-panel styling; we just override the container
+   so they sit inside the split grid. */
+
+/* No-data + about + empty */
+.nsev2-nodata { padding: 22px; background: var(--surface); border: 1px dashed var(--border-2); border-radius: 14px; text-align: center; }
+.nsev2-about { margin-top: 22px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+.nsev2-empty { padding: 44px 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-2); border-radius: 16px; background: var(--surface); }
+.nsev2-empty h2 { margin: 0 0 6px; color: var(--text); font-weight: 800; font-size: 20px; }

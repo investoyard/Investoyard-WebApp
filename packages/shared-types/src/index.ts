@@ -128,13 +128,28 @@ export interface IpoGmpView {
 }
 
 export interface SubscriptionRow {
-  category: 'qib' | 'nii' | 'retail' | 'employee' | 'total';
-  /** number of applications/bids in this category (from NSE catwise) */
+  // The full ipopremium-style breakdown:
+  //   qib     — QIB (institutional)
+  //   hni     — HNI (10 L+, Big / "HNIAT")
+  //   hni2    — HNI (2-10 L, Small / "HNIBT")
+  //   nii     — combined hni + hni2, for compact readers that want one NII line
+  //   retail / employee / shareholder / total
+  category: 'qib' | 'hni' | 'hni2' | 'nii' | 'retail' | 'employee' | 'shareholder' | 'total';
+  /** number of applications/bids in this category (= nseBids + bseBids) */
   bidCount?: number;
   /** subscription by APPLICATIONS (bids ÷ max allottees) — retail allotment-odds driver */
   applicationsSubscribed?: number;
   timesSubscribed: number;
   asOf: string;
+  // Per-exchange breakdown — matches the additive IpoSubscription columns
+  // populated by the poller. Useful for the day-wise report page and for a
+  // "NSE / BSE split" view under the LiveSubscription card. BSE per-category
+  // bid counts are back-solved from NSE's shares-per-bid ratio (see the
+  // `bucketize` note in apps/api subscription.service.ts).
+  nseShares?: number;
+  bseShares?: number;
+  nseBids?: number;
+  bseBids?: number;
 }
 
 export interface ProfileView {

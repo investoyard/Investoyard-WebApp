@@ -86,8 +86,12 @@ async function safeGet<T>(path: string, fallback: T): Promise<T> {
 
 /* ----------------------------------------------------------- live-data enrichment */
 function hash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
-const RESERVED: Record<string, number> = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
-const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
+// Fallback reservation splits when the operator hasn't entered a real one on the
+// IPO. Used only as a LAST resort — enrich() reads `ipo.extra.shareResv[cat].pct`
+// first so per-IPO percentages drive the display, matching the ipopremium
+// breakup (QIB / HNI-10L+ / HNI-2-10L / Retail / Employee / Shareholder).
+const RESERVED: Record<string, number> = { qib: 50, hni: 10, hni2: 5, nii: 15, retail: 35, employee: 5, shareholder: 0, total: 100 };
+const RESERVED_SME: Record<string, number> = { qib: 0, hni: 33.3, hni2: 16.7, nii: 50, retail: 50, employee: 0, shareholder: 0, total: 100 };
 const ANCHOR_NAMES = ['Govt Pension Fund Global', 'HDFC Mutual Fund', 'SBI Life Insurance', 'Nomura Funds', 'Abu Dhabi Inv. Authority', 'ICICI Prudential MF', 'Morgan Stanley Asia'];
 
 function gmpSeries(symbol: string, end: number): { day: string; value: number }[] {
@@ -136,11 +140,29 @@ function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate
 function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
   const ex: any = (ipo as any).extra ?? {};
+  // Prefer the IPO's OWN reservation percentages when the operator has entered
+  // them — this is the same source the poller uses for its offered denominator,
+  // so the "book size" cells on the card can't disagree with the "times" they
+  // sit next to. The generic RESERVED map only fills in when a category is
+  // missing (e.g. legacy imported rows).
+  const shareResv: any = ex.shareResv ?? {};
+  const pctFor = (cat: string): number => {
+    if (cat === 'total') return 100;
+    // Synthetic 'nii' row from the poller = hni + hni2 combined.
+    if (cat === 'nii') {
+      const a = Number(shareResv.hni?.pct); const b = Number(shareResv.hni2?.pct);
+      if (a > 0 || b > 0) return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0);
+    } else {
+      const p = Number(shareResv[cat]?.pct);
+      if (p > 0) return p;
+    }
+    return res[cat] ?? 0;
+  };
   const f: IpoFull = {
     ...ipo,
     status: effectiveStatus(ipo),
     logo: (ipo as any).logoUrl ?? (ipo as any).logo, // API sends logoUrl; cards/hero read `logo`
-    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
+    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: pctFor(s.category) })),
     leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),
     // The API now sends what the issue ACTUALLY lists on. Only guess when it
     // is absent, and guess ONE SME platform — assuming both is what made every

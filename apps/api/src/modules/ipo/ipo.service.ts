@@ -51,11 +51,20 @@ function toDetail(ipo: any) {
     listingGainPct: num(ipo.listingGainPct),
     subscriptionTimes: total ? Number(total.timesSubscribed) : undefined,
     gmp, gmpPct: gmp != null && upper ? Math.round((gmp / upper) * 1000) / 10 : undefined,
-    subscription: subs.map((s) => ({
+    subscription: subs.map((s: any) => ({
       category: s.category,
       timesSubscribed: Number(s.timesSubscribed),
       bidCount: s.bidCount ?? undefined,
       applicationsSubscribed: s.applicationsSubscribed != null ? Number(s.applicationsSubscribed) : undefined,
+      // Per-exchange breakdown from the poller (populated by
+      // `subscription.service.ts` after the step-2 migration). `s.<field>` is
+      // typed `any` here because the Prisma client is regenerated at the
+      // deploy handshake, not on every schema push — the runtime values still
+      // land under the correct column, and typecheck stays happy.
+      nseShares: s.nseShares != null ? Number(s.nseShares) : undefined,
+      bseShares: s.bseShares != null ? Number(s.bseShares) : undefined,
+      nseBids: s.nseBids ?? undefined,
+      bseBids: s.bseBids ?? undefined,
       asOf: s.asOf.toISOString(),
     })),
     subscriptionAsOf: ipo.subscriptionAsOf ? ipo.subscriptionAsOf.toISOString() : undefined,

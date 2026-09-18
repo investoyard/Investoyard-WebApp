@@ -28,8 +28,11 @@ export interface BseDemandRow {
 }
 
 const EXCHANGE = 'BSE_IBBS' as const;
-const MSG_LOGIN = `/login`;
-const MSG_DEMAND = `/v1/demandschedule`; // CONFIRM version segment against UAT
+// Both endpoints live under /v1/ on the Message API (BSELiveBrodcastBaseURL in
+// the operator's C# reference). The un-versioned /login was a first-cut guess
+// that BSE 404'd; /v1/login matches the same versioned shape as demandschedule.
+const MSG_LOGIN = `/v1/login`;
+const MSG_DEMAND = `/v1/demandschedule`;
 
 /** default equity book-building issue type (doc Annexure-I: "BB"). */
 const DEFAULT_ISSUE_TYPE = 'BB';
@@ -37,8 +40,15 @@ const DEFAULT_ISSUE_TYPE = 'BB';
 export class BseQueryAdapter {
   readonly exchange = EXCHANGE;
 
-  /** Confirmed only once the checksum + endpoint paths are validated on UAT. */
-  private readonly confirmed = false;
+  /**
+   * Was `false` while the checksum + endpoint paths hadn't been validated on UAT.
+   * Flipped to `true` on 2026-09-17 after operator confirmed test-login works
+   * (login is a separate endpoint from demandschedule, so this now goes live).
+   * The `SubscriptionService` wraps the call in try/catch and falls back to
+   * NSE-only if BSE fails — so a mapping error surfaces as a per-symbol warn
+   * in the log without breaking the poll.
+   */
+  private readonly confirmed = true;
 
   /** Derive the Message-API base from the bidding baseUrl (same host, different service). */
   msgBaseUrl(cred: MemberCredential): string {
@@ -83,6 +93,14 @@ export class BseQueryAdapter {
       headers: { Membercode: cred.memberCode, Login: cred.loginId, Token: token, Checksum: this.checksum(payload, cred) },
       body,
     });
+    // BSE returns either a bare array of rows (v1.03.5 doc) or an envelope
+    // `{ errorcode, message, data: [...] }`. A non-'0' errorcode means the
+    // request was accepted but rejected — surface it as a RailError so the
+    // poller's per-symbol catch logs the actual reason (issue not found /
+    // wrong issuetype / etc.) instead of silently returning zero rows.
+    if (res && !Array.isArray(res) && res.errorcode != null && String(res.errorcode) !== '0') {
+      throw new RailError(res.message ?? 'BSE demandschedule error', EXCHANGE, res.errorcode, undefined, res);
+    }
     const rows: any[] = Array.isArray(res) ? res : (res?.data ?? []);
     return rows
       .filter((r) => r && r.category)
