@@ -142,18 +142,29 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
 
 /**
  * Per-bucket offered shares from OUR IPO metadata (the reservation table the
- * operator enters). Per bucket, two possible sources — prefer the direct one:
+ * operator enters). Per bucket, three possible sources — prefer the direct
+ * ones over the compound-derived one:
  *
- *   1. `shareResv[bucket].sharesLower`  — the operator's per-bucket offered
- *      share count. ONE field, ONE failure point.
- *   2. issueSize (₹) ÷ priceBandMax (₹/share) × pct ÷ 100  — derived. Compound
- *      of THREE inputs (issueSize, priceBandMax, pct); a single stale/missing
- *      one silently multiplies the divisor by orders of magnitude. In the
- *      wild (2026-09-17 cross-check against ipopremium.in), SONA and JSIPL
- *      shipped with `issueSize = ₹1 Cr` placeholders — real values ~₹99 Cr /
- *      ~₹87 Cr — so the derived route reported subscription at 100× real.
- *      HNI/HNI2 `sharesLower` fields matched ipopremium exactly on every
- *      sampled IPO, which is why source (1) wins.
+ *   1. `shareResv[bucket].sharesLower` (or `sharesUpper` — same field, two
+ *      naming conventions) — the operator's per-bucket offered share count.
+ *      ONE field, ONE failure point.
+ *   2. `derivedTotal × pct ÷ 100` where `derivedTotal` is inferred from ANY
+ *      bucket that has BOTH a share count AND a pct (e.g. qib.sharesUpper=
+ *      6.32 Cr at pct=50% implies total=12.64 Cr shares; that same total
+ *      is then used to compute hni/hni2 offered when THEIR own share counts
+ *      are missing or zero). Self-consistent — takes the largest implied
+ *      total across all buckets so an under-populated bucket doesn't shrink
+ *      the divisor.
+ *   3. `issueSize (₹) ÷ priceBandMax (₹/share) × pct ÷ 100` — the raw
+ *      compound derivation. Only used when NO bucket carries a share count.
+ *      Compound of three inputs; a single stale/missing one silently multiplies
+ *      the divisor by orders of magnitude (see NSE IPO 2026-09: issueSize
+ *      shipped with 4 extra zeros → times ≈ 0 for every category).
+ *
+ * The two naming conventions (`sharesLower` / `sharesUpper`) exist because
+ * older data-entry entered lower-price-band offered qty and newer data-entry
+ * enters upper-price-band. Both are legitimate — for a "how oversubscribed?"
+ * ratio either bound is close enough (the price hasn't been fixed yet).
  *
  * Returns null when NO bucket produced a usable offered — the caller then
  * skips the times-subscribed math for this cycle rather than fabricating one.
@@ -163,23 +174,49 @@ function offeredFromIpo(
   priceBandMax: number | null | undefined,
   extra: any,
 ): Map<Bucket, number> | null {
-  const size = Number(issueSize);
-  const price = Number(priceBandMax);
-  const totalOffered = size > 0 && price > 0 ? size / price : 0;
   const resv = extra?.shareResv;
   if (!resv || typeof resv !== 'object') return null;
+  const BUCKETS: Bucket[] = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
+  const directOf = (row: any): number => {
+    const lower = Number(row?.sharesLower);
+    if (lower > 0) return lower;
+    const upper = Number(row?.sharesUpper);
+    if (upper > 0) return upper;
+    return 0;
+  };
+
+  // Derive a self-consistent totalOffered by picking the largest implied
+  // total from any bucket with both a share count and a pct. Larger wins
+  // so a mis-entered small bucket doesn't shrink the divisor for others.
+  let derivedTotal = 0;
+  for (const b of BUCKETS) {
+    const row = resv[b];
+    if (!row) continue;
+    const shares = directOf(row);
+    const pct = Number(row.pct);
+    if (shares > 0 && pct > 0) {
+      const implied = shares / (pct / 100);
+      if (implied > derivedTotal) derivedTotal = implied;
+    }
+  }
+  // Last-resort fallback — raw issueSize × pct. Only kicks in when no bucket
+  // has a share count entered at all (rare, legacy imports).
+  if (derivedTotal <= 0) {
+    const size = Number(issueSize);
+    const price = Number(priceBandMax);
+    if (size > 0 && price > 0) derivedTotal = size / price;
+  }
+
   const out = new Map<Bucket, number>();
-  for (const b of ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'] as Bucket[]) {
+  for (const b of BUCKETS) {
     const row = resv[b];
     if (!row || row.on === false) continue;
-    // Source 1: direct sharesLower — wins whenever it's a real number.
-    const sharesLower = Number(row.sharesLower);
-    if (sharesLower > 0) { out.set(b, sharesLower); continue; }
-    // Source 2 (fallback): derive from issueSize × pct. Only used when the
-    // bucket has NO sharesLower entered — many legacy imports carry pct only.
+    // Source 1: direct sharesLower/Upper — wins whenever present.
+    const direct = directOf(row);
+    if (direct > 0) { out.set(b, direct); continue; }
+    // Source 2: derived total × this bucket's pct.
     const pct = Number(row.pct);
-    if (!(pct > 0) || totalOffered <= 0) continue;
-    out.set(b, (totalOffered * pct) / 100);
+    if (pct > 0 && derivedTotal > 0) out.set(b, (derivedTotal * pct) / 100);
   }
   return out.size > 0 ? out : null;
 }

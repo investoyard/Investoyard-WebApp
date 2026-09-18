@@ -3839,13 +3839,12 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-tbl .tone-cold { color: var(--neg); }
 
 /* Sub-category rows in Share-wise — HNI (10L+) and HNI (2-10L) sit under a
-   plain "HNI" combined row. Pale sky-blue bg (2026-09-18 operator ask: swap
-   away from the previous peach) + small left indent on the label cell hint
-   at the parent/child relationship. The sky-blue reads as a subtle grouping
-   tint distinct from every existing status colour on the page (indigo /
-   gold / red / green / teal / purple / rose). */
-.subv2-tbl tr.subcat td { background: #E0F2FE; color: var(--text); }
-.subv2-tbl tr.subcat:hover td { background: #BAE6FD; }
+   plain "HNI" combined row. Neutral pale-ash bg reads as a pure "hierarchy"
+   tint with no status connotation (2026-09-18 operator: dropped the earlier
+   sky-blue since it felt too coloured). Small left indent on the label
+   cell hints at the parent/child relationship. */
+.subv2-tbl tr.subcat td { background: #F3F4F6; color: var(--text); }
+.subv2-tbl tr.subcat:hover td { background: #E5E7EB; }
 .subv2-tbl tr.subcat td:first-child { padding-left: 22px; }
 
 /* View toggle segment (Full view / Application-wise) — sits between the board
@@ -4019,3 +4018,112 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .sub-disclaimer { margin: 26px 0 8px; padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--gold); border-radius: 12px; }
 .sub-disclaimer h4 { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
 .sub-disclaimer p { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--text-muted); }
+
+/* ================================================================================
+ * Subscription hub v2 + NSE landing — MOBILE RESPONSIVE.
+ * The desktop rules above assume a 1360-wide canvas; below 900px the 3-panel
+ * detail area, the 6-tile KPI strip, the multi-column card summary row, and
+ * the horizontal filter+search bar all need to reflow. This block layers on
+ * mobile-first breakpoints in decreasing width. Scoped to .subv2 / .nsev2 so
+ * it can't leak.
+ * ============================================================================== */
+
+/* — Tablet-ish (< 900px) — hide the sub-hub side padding, gentler chip padding */
+@media (max-width: 900px) {
+  .subv2 { padding: 8px 12px 40px; max-width: 100%; }
+  .subv2-filters { gap: 10px; }
+  .subv2-sec-head { margin: 16px 0 10px; }
+  .subv2-sec-head h3 { font-size: 14px; }
+  /* Detail area — already stacks to single col below 700px; between 700–900
+     let App-wise + Lot ladder pair up under the (wider) Share-wise. */
+  .subv2-det-in { grid-template-columns: 1fr; padding: 12px 14px 14px; gap: 12px; }
+}
+
+/* — Small tablet / large phone (< 700px) — filter row stacks, summary row becomes
+   a single column, tables tighten */
+@media (max-width: 700px) {
+  .subv2-filters { flex-direction: column; align-items: stretch; }
+  .subv2-seg { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 3px; scrollbar-width: none; }
+  .subv2-seg::-webkit-scrollbar { display: none; }
+  .subv2-seg button { flex: none; white-space: nowrap; padding: 6px 12px; font-size: 12px; }
+  .subv2-viewseg { align-self: stretch; }
+  .subv2-viewseg button { flex: 1; text-align: center; justify-content: center; padding: 7px 10px; }
+  .subv2-search { width: 100%; margin-left: 0; }
+
+  /* Card summary row — collapse all four columns to one; times / meter row
+     gets its own line; the 3 stat tiles keep a 3-across row so they don't
+     use too much vertical space. Share button moves to top-right absolute. */
+  .subv2-ln { grid-template-columns: 1fr; gap: 14px; padding: 44px 16px 16px; }
+  .subv2-ln-l, .subv2-ln-m, .subv2-ln-r { grid-column: 1; }
+  .subv2-ln-r { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .subv2-ln-act { position: absolute; top: 12px; right: 12px; }
+  .subv2-updated { position: absolute; top: 12px; right: 52px; margin-top: 0; font-size: 10px; }
+
+  /* Avatar + name a touch smaller */
+  .subv2-avatar { width: 40px; height: 40px; }
+  .subv2-ln-name h3 { font-size: 14px; }
+  .subv2-ln-times .tx-n { font-size: 22px; }
+  .subv2-ln-times .tx-x { font-size: 12px; }
+
+  /* Info pills wrap comfortably */
+  .subv2-ln-info { gap: 4px; }
+  .subv2-info-pill { font-size: 10px; padding: 2px 7px; }
+
+  /* Tables — smaller type, less padding so 4-col Share-wise cells don't clip */
+  .subv2-det-panel { padding: 10px 12px; }
+  .subv2-tbl { font-size: 11.5px; }
+  .subv2-tbl th { padding: 5px 6px; font-size: 9.5px; }
+  .subv2-tbl td { padding: 6px 6px; }
+  .subv2-tbl tr.subcat td:first-child { padding-left: 16px; }
+  .subv2-2l .big { font-size: 11.5px; }
+  .subv2-2l .small { font-size: 10px; }
+  .subv2-ll-cat b { font-size: 11.5px; }
+  .subv2-ll-cat small { font-size: 10px; }
+
+  /* Section header + count chip a touch smaller */
+  .subv2-sec-head .count { font-size: 10.5px; padding: 2px 8px; }
+  .subv2-board-badge { padding: 3px 8px; font-size: 9.5px; }
+
+  /* Application-wise page grid becomes 1-col already at 640px; between
+     640–700 keep 1 to avoid awkward 2-col squish */
+  .subv2-aw-page { grid-template-columns: 1fr; }
+  .subv2-aw-card { padding: 12px 14px; }
+  .subv2-aw-head { padding-right: 130px; gap: 10px; }
+  .subv2-aw-head-title h3 { font-size: 13px; }
+  .subv2-aw-card .subv2-updated { top: 12px; right: 14px; }
+
+  /* Disclaimer tighter margins on phones */
+  .sub-disclaimer { padding: 12px 14px; margin: 18px 0 4px; }
+  .sub-disclaimer p { font-size: 11px; }
+}
+
+/* — Phone (< 480px) — really tight; stack the 3 stat tiles 2+1 */
+@media (max-width: 480px) {
+  .subv2 { padding: 6px 10px 32px; }
+  .subv2-ln { padding: 40px 12px 14px; }
+  .subv2-ln-r { grid-template-columns: 1fr 1fr; }
+  .subv2-ln-r > div:nth-child(3) { grid-column: 1 / span 2; }
+  .subv2-ln-name h3 { font-size: 13.5px; }
+  .subv2-info-pill { font-size: 9.5px; padding: 2px 6px; }
+  .subv2-updated { font-size: 9.5px; }
+  .subv2-tbl { font-size: 11px; }
+  .subv2-tbl th { font-size: 9px; letter-spacing: .04em; padding: 4px 4px; }
+  .subv2-tbl td { padding: 6px 4px; }
+  .subv2-tbl td:last-child, .subv2-tbl th:last-child { padding-right: 2px; }
+  .subv2-tbl tr.subcat td:first-child { padding-left: 10px; }
+  .subv2-2l .big { font-size: 11px; }
+  .subv2-2l .small { font-size: 9.5px; }
+  .subv2-det-panel { padding: 8px 10px; }
+  .subv2-tbl-wrap { margin: 0 -4px; }
+  .subv2-aw-head { padding-right: 0; flex-direction: column; align-items: flex-start; }
+  .subv2-aw-head-chips { margin-top: 6px; }
+  .subv2-aw-card .subv2-updated { position: static; margin-top: 8px; }
+  /* Times value in the meter zone shouldn't dominate */
+  .subv2-ln-times .tx-n { font-size: 20px; }
+}
+
+/* — NSE landing (v2) hero + KPI reflow — the landing page IS just an IpoRow now
+   (post-2026-09-18 refactor), so it inherits all the .subv2 mobile rules
+   above. The old .nsev2-hero / .nsev2-kpi-strip CSS is dead code but kept
+   in the file until a follow-up sweep — its selectors don't fire because
+   NseIpoLanding doesn't render those elements. */

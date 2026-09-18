@@ -169,6 +169,61 @@ export function subCatLabel(key: string): string {
     default: return key.toUpperCase();
   }
 }
+/** Direct offered-share count on a shareResv row — prefers `sharesLower`,
+ *  falls back to `sharesUpper` (two data-entry conventions in the wild).
+ *  Zero when neither is a real number. Mirrors the API poller's `directOf`. */
+function directOffered(row: any): number {
+  const lower = Number(row?.sharesLower);
+  if (lower > 0) return lower;
+  const upper = Number(row?.sharesUpper);
+  if (upper > 0) return upper;
+  return 0;
+}
+
+/** Per-bucket offered shares for an IPO — mirrors apps/api's `offeredFromIpo`
+ *  so the front-site Book Size can never disagree with the poller's times.
+ *  Same three-tier resolution: direct `sharesLower/Upper` first, then
+ *  self-consistent `derivedTotal × pct`, then `issueSize/price × pct` last.
+ *  Also emits `nii` = hni + hni2 for the synthetic combined "HNI" row. */
+export function offeredByBucket(ipo: IpoFull): Record<string, number> {
+  const resv: any = (ipo as any).extra?.shareResv;
+  if (!resv || typeof resv !== 'object') return {};
+  const BUCKETS = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
+  // Derive a self-consistent total from any bucket with both shares + pct.
+  // Take the LARGEST implied total so a mis-entered small bucket doesn't
+  // shrink the divisor for the others.
+  let derivedTotal = 0;
+  for (const b of BUCKETS) {
+    const row = resv[b]; if (!row) continue;
+    const shares = directOffered(row);
+    const pct = Number(row.pct);
+    if (shares > 0 && pct > 0) {
+      const implied = shares / (pct / 100);
+      if (implied > derivedTotal) derivedTotal = implied;
+    }
+  }
+  // Last-resort fallback — raw issueSize ÷ priceMax.
+  if (derivedTotal <= 0) {
+    const total = parseIssueValue(ipo.issueSize);
+    const priceMax = up(ipo);
+    if (total && priceMax) derivedTotal = total / priceMax;
+  }
+  const out: Record<string, number> = {};
+  for (const b of BUCKETS) {
+    const row = resv[b]; if (!row || row.on === false) continue;
+    const direct = directOffered(row);
+    if (direct > 0) { out[b] = direct; continue; }
+    const pct = Number(row.pct);
+    if (pct > 0 && derivedTotal > 0) out[b] = (derivedTotal * pct) / 100;
+  }
+  // Synthetic combined HNI (nii) row — used by ShareWisePanel when both
+  // split rows are present.
+  if (out.hni > 0 && out.hni2 > 0) out.nii = out.hni + out.hni2;
+  else if (out.hni > 0) out.nii = out.hni;
+  else if (out.hni2 > 0) out.nii = out.hni2;
+  return out;
+}
+
 export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT } | null {
   const total = parseIssueValue(ipo.issueSize);
   // Drop `total` (rendered separately). Keep the synthetic `nii` roll-up ONLY
@@ -182,8 +237,13 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const subs = (hasHni && hasHni2) ? all : all.filter((r) => r.category !== 'nii');
   if (!subs.length || !total) return null;
   const totalShares = total / (up(ipo) || 1);
+  // Book Size sourced from OUR operator-entered shareResv (sharesLower or
+  // sharesUpper). Falls back to `totalShares × reservedPct / 100` only when
+  // the shareResv doesn't produce a bucket value — this stops the display
+  // from disagreeing with what the operator typed.
+  const offered = offeredByBucket(ipo);
   const rows: SubRowT[] = subs.map((r) => {
-    const book = (totalShares * (r.reservedPct ?? 0)) / 100;
+    const book = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
     // Times comes straight from the API for now; step 4 will derive it here
     // from (r.nseShares + r.bseShares) / book once the front-site cutover is
     // complete and the API can stop computing timesSubscribed at write time.
@@ -201,16 +261,29 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       bseBids: (r as any).bseBids,
     };
   });
-  const bookSum = rows.reduce((a, b) => a + b.bookSize, 0);
-  const subSum = rows.reduce((a, b) => a + b.subscribed, 0);
+  // Total sums SKIP the synthetic `nii` row when both hni + hni2 are present
+  // — otherwise HNI demand double-counts (once via the parent combined row,
+  // once via each split row). The API's raw `total` row is the authoritative
+  // times value; we prefer it over the locally-computed ratio.
+  const summable = rows.filter((r) => r.key !== 'nii');
+  const bookSum = summable.reduce((a, b) => a + b.bookSize, 0);
+  const subSum = summable.reduce((a, b) => a + b.subscribed, 0);
   // Roll per-exchange totals across categories — used by the "NSE / BSE split"
   // footnote in <LiveSubscription>. Any category without the breakdown
   // (legacy row) contributes 0; the footnote hides itself when both are 0.
-  const nseSum = rows.reduce((a, b) => a + (b.nseShares ?? 0), 0);
-  const bseSum = rows.reduce((a, b) => a + (b.bseShares ?? 0), 0);
-  const nseBidSum = rows.reduce((a, b) => a + (b.nseBids ?? 0), 0);
-  const bseBidSum = rows.reduce((a, b) => a + (b.bseBids ?? 0), 0);
-  const bidSum = rows.reduce((a, b) => a + (b.bidCount ?? 0), 0);
+  const nseSum = summable.reduce((a, b) => a + (b.nseShares ?? 0), 0);
+  const bseSum = summable.reduce((a, b) => a + (b.bseShares ?? 0), 0);
+  const nseBidSum = summable.reduce((a, b) => a + (b.nseBids ?? 0), 0);
+  const bseBidSum = summable.reduce((a, b) => a + (b.bseBids ?? 0), 0);
+  const bidSum = summable.reduce((a, b) => a + (b.bidCount ?? 0), 0);
+  // Prefer the API's authoritative `total` row for the times value — the
+  // poller computes it from the raw NSE+BSE demand across all categories.
+  // Falling back to bookSum/subSum ratio only when the API doesn't ship a
+  // total row (rare — always present since 2026-09-17 rewrite).
+  const apiTotal = (ipo.subscription ?? []).find((r) => r.category === 'total');
+  const totalTimes = apiTotal && apiTotal.timesSubscribed
+    ? Number(apiTotal.timesSubscribed)
+    : (bookSum ? +(subSum / bookSum).toFixed(2) : 0);
   return {
     rows,
     total: {
@@ -218,7 +291,7 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       cat: 'Total',
       bookSize: bookSum,
       subscribed: subSum,
-      times: bookSum ? +(subSum / bookSum).toFixed(2) : 0,
+      times: totalTimes,
       bidCount: bidSum > 0 ? bidSum : undefined,
       nseShares: nseSum > 0 ? nseSum : undefined,
       bseShares: bseSum > 0 ? bseSum : undefined,
