@@ -51,11 +51,12 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
   }
 
   return (
-    <div className="subv2">
+    <div className="subv2 subv2-solo">
       <div className="subv2-list">
         {/* Single card, same shell as /subscription. Share button hidden
             (no onShare prop) — one-issue page doesn't need the aggregate
-            hub's canvas-snapshot flow. */}
+            hub's canvas-snapshot flow. `subv2-solo` marker unlocks
+            single-issue mobile tweaks (3-across stat tiles etc.). */}
         <IpoRow ipo={ipo} today={istTodayYmd()} />
       </div>
       <SubscriptionDisclaimer />

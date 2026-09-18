@@ -3793,6 +3793,16 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-det-in { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; padding: 14px 18px 16px; align-items: start; }
 @media (max-width: 1100px) { .subv2-det-in { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) { .subv2-det-in { grid-template-columns: 1fr; } }
+
+/* v2 (.subv2-solo) — safer track shrinking. Grid tracks default to
+   min-content which lets a wide table push the panel past 1fr, spilling
+   the card on the right of narrow desktop / tablet screens. `minmax(0,...)`
+   on tracks + min-width:0 on the panel forces the table to scroll INSIDE
+   its wrap instead of dragging the whole panel out. */
+.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; }
+@media (max-width: 1100px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 700px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
 .subv2-det-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
 .subv2-det-panel header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .subv2-det-panel h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 6px; }
@@ -4097,12 +4107,20 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .sub-disclaimer p { font-size: 11px; }
 }
 
-/* — Phone (< 480px) — really tight; stack the 3 stat tiles 2+1 */
+/* — Phone (< 480px) — really tight; stack the 3 stat tiles 2+1 on the hub
+   (where cards stack vertically and vertical space is cheap), 3-across on
+   the single-IPO /subscription/v2 (marked `.subv2-solo`) so the one card
+   stays compact at a glance. */
 @media (max-width: 480px) {
   .subv2 { padding: 6px 10px 32px; }
   .subv2-ln { padding: 40px 12px 14px; }
   .subv2-ln-r { grid-template-columns: 1fr 1fr; }
   .subv2-ln-r > div:nth-child(3) { grid-column: 1 / span 2; }
+  /* v2 override — all three tiles in a single row (operator ask 2026-09-18). */
+  .subv2-solo .subv2-ln-r { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .subv2-solo .subv2-ln-r > div:nth-child(3) { grid-column: auto; }
+  .subv2-solo .subv2-ln-r .k { font-size: 9px; letter-spacing: .06em; }
+  .subv2-solo .subv2-ln-r .v { font-size: 11.5px; }
   .subv2-ln-name h3 { font-size: 13.5px; }
   .subv2-info-pill { font-size: 9.5px; padding: 2px 6px; }
   .subv2-updated { font-size: 9.5px; }
