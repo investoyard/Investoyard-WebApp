@@ -83,13 +83,16 @@ function emptyAgg(): CatAgg { return { nseShares: 0, bseShares: 0, nseBids: 0, b
  *   bseBids[hni]         = round( bseShares[hni]         ÷ (nseShares[hni]         ÷ nseBids[hni]) )
  *   bseBids[hni2]        = round( bseShares[hni2]        ÷ (nseShares[hni2]        ÷ nseBids[hni2]) )
  *   bseBids[shareholder] = round( bseShares[shareholder] ÷ (nseShares[shareholder] ÷ nseBids[shareholder]) )
- *   bseBids[retail]      = totalapplication − (hni + hni2 + shareholder)
+ *   bseBids[employee]    = round( bseShares[employee]    ÷ (nseShares[employee]    ÷ nseBids[employee]) )
+ *   bseBids[retail]      = totalapplication − (hni + hni2 + shareholder + employee)
  *
- * QIB and employee BSE bids stay 0 — institutional app counts are naturally
- * tiny beside retail, and folding them into the retail residual is the same
- * approximation the old system ran on. When NSE has no bids yet (early
- * minutes), the ratio blows up — in that case we skip the fudge for the
- * affected bucket and let retail absorb the full BSE totalapplication.
+ * QIB BSE bids stay 0 — institutional app counts are naturally tiny beside
+ * retail, and folding them into the retail residual keeps the approximation
+ * simple. Employee was previously excluded here too (operator report,
+ * 2026-09-21: NSE showed 12k+ Employee BSE bids missing — extracted below).
+ * When NSE has no bids yet (early minutes), the ratio blows up — we skip
+ * the fudge for the affected bucket and let retail absorb the full BSE
+ * totalapplication.
  */
 function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
   buckets: Map<Bucket, CatAgg>;
@@ -123,8 +126,10 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
   }
 
   // Back-solve BSE per-category bids from NSE's shares-per-bid ratio.
+  // Employee added 2026-09-21 (operator report: NSE had 12,057 BSE Employee
+  // bids getting silently folded into Retail's residual).
   let nonRetailBseBids = 0;
-  for (const b of ['hni', 'hni2', 'shareholder'] as Bucket[]) {
+  for (const b of ['hni', 'hni2', 'shareholder', 'employee'] as Bucket[]) {
     const a = buckets.get(b);
     if (!a || a.bseShares <= 0 || a.nseShares <= 0 || a.nseBids <= 0) continue;
     const nseAvg = a.nseShares / a.nseBids;
