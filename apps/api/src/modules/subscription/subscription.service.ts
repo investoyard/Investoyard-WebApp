@@ -9,8 +9,18 @@ const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;        // ba
 const NORMAL_MS = Number(process.env.SUBSCRIPTION_NORMAL_MS) || 20_000;    // per-IPO cadence, normal
 const FAST_MS = Number(process.env.SUBSCRIPTION_FAST_MS) || 10_000;        // per-IPO cadence, closing rush
 const FAST_WINDOW_MIN = Number(process.env.SUBSCRIPTION_FAST_WINDOW_MIN) || 90; // final N min → fast
-const OPEN_FROM_MIN = 10 * 60; // 10:00 IST
-const OPEN_TO_MIN = 17 * 60;   // 17:00 IST
+const OPEN_FROM_MIN = Number(process.env.SUBSCRIPTION_POLL_FROM_MIN) || 10 * 60; // 10:00 IST
+// Poller window CLOSES at 18:00 IST — 1 hour past the 17:00 bidding cutoff.
+// NSE catwise and BSE demand-schedule continue to serve consolidated /
+// finalized numbers for ~30-60 min after 5pm on the closing day; without
+// this grace hour the last-day final subscription never gets written.
+// Operator ask 2026-09-21. Override with SUBSCRIPTION_POLL_TO_MIN if needed.
+const OPEN_TO_MIN = Number(process.env.SUBSCRIPTION_POLL_TO_MIN) || 18 * 60;   // 18:00 IST
+// BIDDING cutoff (SEBI): 17:00 IST — the fast-cadence "closing rush" is
+// timed against THIS, not the poller cutoff. Keeps fast mode kicking in
+// at 15:30 IST (17:00 − 90 min) as before, even though the poller now
+// keeps running until 18:00.
+const BIDDING_CLOSE_MIN = 17 * 60;
 
 /**
  * The seven buckets that come out of merging NSE + BSE (matches the operator's
@@ -465,7 +475,10 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   private intervalMs(ipo: OpenIpo, ist: IstParts): number {
     if (ipo.closeDate) {
       const closeYmd = this.istYmd(ipo.closeDate);
-      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= OPEN_TO_MIN - FAST_WINDOW_MIN) return FAST_MS;
+      // Fast mode from BIDDING close − FAST_WINDOW (15:30 IST default) and
+      // ALL THE WAY through the poller's post-bidding grace hour, since the
+      // final consolidated numbers are exactly what we want to catch fast.
+      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= BIDDING_CLOSE_MIN - FAST_WINDOW_MIN) return FAST_MS;
     }
     return NORMAL_MS;
   }
