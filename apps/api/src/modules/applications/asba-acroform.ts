@@ -1,4 +1,4 @@
-import { PDFDocument, PDFTextField, PDFName, PDFString, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFTextField, PDFName, PDFString, StandardFonts, rgb } from 'pdf-lib';
 
 /**
  * AcroForm fill engine — used when the operator's uploaded ASBA blank is a
@@ -234,22 +234,109 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
 
   // appearances: per-field best effort — one odd field must not block the rest.
   // On blanks with /DR properly declared, this succeeds and lets us flatten.
-  // On the ARDEE-style blanks it throws; /NeedAppearances above then carries
-  // the render on the viewer side.
+  // On the ARDEE-style blanks it throws; the burn-in fallback below draws
+  // each field's value at its widget rectangle directly, then removes the
+  // AcroForm entirely so the output is fully-flat.
   let appearancesOk = 0;
   for (const f of form.getFields()) {
-    try { (f as any).defaultUpdateAppearances?.(); appearancesOk++; } catch { /* viewer regenerates via /NeedAppearances */ }
+    try { (f as any).defaultUpdateAppearances?.(); appearancesOk++; } catch { /* burned in below */ }
   }
-  // Only flatten when appearances actually built — flattening without them
-  // paints empty boxes over the values. Falling back to a read-only form
-  // still prints correctly because viewers honour /NeedAppearances.
-  if (flatten && appearancesOk === form.getFields().length) {
-    try { form.flatten({ updateFieldAppearances: false }); }
-    catch {
-      for (const f of form.getFields()) { try { (f as any).enableReadOnly(); } catch { /* best effort */ } }
+  // Flatten via pdf-lib when appearances all built — that's the fast happy
+  // path. When any appearance failed (ARDEE-style), or when pdf-lib's
+  // flatten throws (rare — appearances built but flatten broke), fall back
+  // to manual burn-in: draw each value at its widget's /Rect using the
+  // embedded Helvetica, then drop the AcroForm.
+  //
+  // Why this matters: /NeedAppearances tells the viewer to regenerate the
+  // appearance streams at open time. Adobe Reader / Chrome / iOS Files
+  // honour that. WhatsApp's in-app media viewer (Android + iOS)
+  // historically DOES NOT — it renders whatever appearance stream sits in
+  // the PDF, and when none is baked in, the fields print blank when a
+  // customer opens the forwarded PDF (operator report, 2026-09-21). Burning
+  // in the values ourselves produces a viewer-independent PDF that renders
+  // identically in every viewer, including WhatsApp.
+  if (flatten) {
+    if (appearancesOk === form.getFields().length) {
+      try { form.flatten({ updateFieldAppearances: false }); }
+      catch {
+        burnInFields(doc, form, font);
+        try { doc.catalog.delete(PDFName.of('AcroForm')); } catch { /* leave form intact if delete fails */ }
+      }
+    } else {
+      burnInFields(doc, form, font);
+      try { doc.catalog.delete(PDFName.of('AcroForm')); } catch { /* leave form intact if delete fails */ }
     }
   } else {
+    // Caller explicitly asked to keep the form (e.g. preview flow that
+    // wants the fields still editable). Read-only + /NeedAppearances is
+    // the desktop-viewer path — not for forwarding.
     for (const f of form.getFields()) { try { (f as any).enableReadOnly(); } catch { /* best effort */ } }
   }
   return Buffer.from(await doc.save({ updateFieldAppearances: false }));
+}
+
+/**
+ * Manual burn-in — draw each PDFTextField's current value at its widget's
+ * /Rect using the embedded font, so the resulting PDF renders identically
+ * in every viewer (including WhatsApp) without relying on /NeedAppearances.
+ *
+ * Mirrors the overlay path's flattenAcroForm() so the two engines produce
+ * the same visual output on the same widget positions. Only difference:
+ * we read the value from the field (already set by our fill pass) rather
+ * than from a caller-supplied map — the caller has already set the value.
+ *
+ * Handles combed fields (each character in its own box, common on SEBI
+ * counterfoils) and same-named multi-widget fields (one widget per copy
+ * on the sheet). Silent per-widget try/catch — one malformed widget must
+ * not stop the rest of the sheet from printing.
+ */
+function burnInFields(doc: PDFDocument, form: any, font: any): void {
+  const pageByRef = new Map<string, any>();
+  for (const pg of doc.getPages()) pageByRef.set(pg.ref.toString(), pg);
+  const ink = rgb(0.05, 0.05, 0.2);
+
+  for (const field of form.getFields()) {
+    if (!(field instanceof PDFTextField)) continue;
+    let value = '';
+    try { value = field.getText() ?? ''; } catch { continue; }
+    if (!value) continue;
+
+    let comb = false;
+    try { comb = field.isCombed(); } catch { /* not combed */ }
+    let maxLen = 0;
+    try { maxLen = field.getMaxLength() || 0; } catch { /* no cap */ }
+
+    let widgets: any[] = [];
+    try { widgets = field.acroField.getWidgets(); } catch { continue; }
+    for (const w of widgets) {
+      let r: any; try { r = w.getRectangle(); } catch { continue; }
+      if (!r || !r.width || !r.height) continue;
+      // The widget's /P entry (page ref) tells us which page it lives on;
+      // multi-page sheets need this or every widget lands on page 1.
+      let page: any;
+      try {
+        const pref = w.dict.get(PDFName.of('P'));
+        page = (pref && pageByRef.get(pref.toString())) || doc.getPages()[0];
+      } catch { page = doc.getPages()[0]; }
+
+      const size = Math.max(6, Math.min(10, r.height * 0.55));
+      const y = r.y + (r.height - size) / 2 + size * 0.12;
+
+      if (comb && maxLen > 0) {
+        const cw = r.width / maxLen;
+        const s = String(value).slice(0, maxLen);
+        for (let i = 0; i < s.length; i++) {
+          const chw = font.widthOfTextAtSize(s[i], size);
+          try {
+            page.drawText(s[i], { x: r.x + i * cw + Math.max(0, (cw - chw) / 2), y, size, font, color: ink });
+          } catch { /* one bad glyph must not fail the print */ }
+        }
+      } else {
+        let t = String(value);
+        while (t.length && font.widthOfTextAtSize(t, size) > r.width - 3) t = t.slice(0, -1);
+        try { page.drawText(t, { x: r.x + 2, y, size, font, color: ink }); }
+        catch { /* one bad glyph must not fail the print */ }
+      }
+    }
+  }
 }
