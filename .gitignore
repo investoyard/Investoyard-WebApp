@@ -34,6 +34,18 @@ coverage/
 .pii-vault.key
 *.pii-vault.key
 
+# Secrets pasted into the repo by mistake — API keys, credential dumps, etc.
+# The proper home for these is admin → Integrations (vaulted) or apps/api/.env
+# (already gitignored via .env). This blocklist catches the common accidents.
+API_Key.txt
+API_KEY.txt
+api_key.txt
+*.apikey
+*.api-key
+*.secret
+secrets.txt
+credentials.txt
+
 # editor/os
 .DS_Store
 Thumbs.db
