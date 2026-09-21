@@ -249,9 +249,14 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // the shareResv doesn't produce a bucket value — this stops the display
   // from disagreeing with what the operator typed.
   const offered = offeredByBucket(ipo);
-  // Shares-per-application divisor (see SubRowT.req1x doc). Retail / Employee /
-  // Shareholder use `lotSize`; HNI (both 10L+ and 2-10L) use the min shares
-  // needed for a ≥ ₹2 L bid = ceil(2L ÷ (lot × priceMax)) × lot.
+  // Shares-per-application divisor (see SubRowT.req1x doc). Retail uses
+  // `lotSize` (SEBI's strict 1-lot minimum for retail bids); HNI (both
+  // 10L+ and 2-10L) use the min shares needed for a ≥ ₹2 L bid =
+  // ceil(2L ÷ (lot × priceMax)) × lot. Employee / Shareholder have no
+  // standard minimum-bid rule that would let us derive "applications for
+  // 1×" — bidding patterns vary too widely — so we return 0 and let the
+  // display show 0 for both Req 1× and Times columns (operator ask,
+  // 2026-09-21, matching what other IPO information sources show).
   const lot = ipo.lotSize ?? 0;
   const priceMax = up(ipo);
   const shniMin = lot > 0 && priceMax > 0
@@ -259,7 +264,9 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     : 0;
   const sharesPerApp = (cat: string): number => {
     if (cat === 'hni' || cat === 'hni2' || cat === 'nii') return shniMin;
-    return lot > 0 ? lot : 0;
+    if (cat === 'retail') return lot > 0 ? lot : 0;
+    // employee / shareholder / other → not derivable → 0
+    return 0;
   };
   // Anchor-share deduction — QIB rows are stored GROSS (matching how the
   // reservation table reads: "QIB (Anchor Included) 50% of the offer, N
@@ -311,21 +318,32 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     // req1x = book ÷ shares-per-app-for-bucket. Re-derived here so it's
     // right even when the API's `applicationsSubscribed` still reflects
     // the old lot-size-for-everyone divisor (fixed 2026-09-18 spec).
+    // When sharesPerApp returns 0 (employee / shareholder — no standard
+    // minimum-bid rule) we do NOT derive: req1x stays 0 and Times stays 0
+    // on those rows, matching how other IPO information sources show
+    // these categories (operator ask, 2026-09-21).
     const spa = sharesPerApp(r.category);
-    const req1xVal = spa > 0 && book > 0 ? Math.round(book / spa) : undefined;
+    const canDerive = spa > 0;
+    const req1xVal = canDerive && book > 0 ? Math.round(book / spa) : 0;
     // applicationsTimes = bidCount ÷ req1x. Falls back to the API's value
-    // when we can't compute (e.g., missing lot/price).
+    // ONLY for derivable categories — for non-derivable ones we force 0.
     const bidCount = (r as any).bidCount as number | undefined;
-    const localAppTimes = req1xVal && req1xVal > 0 && bidCount != null
+    const localAppTimes = canDerive && req1xVal > 0 && bidCount != null
       ? +(bidCount / req1xVal).toFixed(2)
       : undefined;
+    // For non-derivable categories (employee / shareholder) force Times to 0
+    // rather than falling back to the API's `applicationsSubscribed` — those
+    // rows show 0 for both Req 1× and Times per the operator ask.
+    const applicationsTimesVal = canDerive
+      ? (localAppTimes ?? (r as any).applicationsSubscribed)
+      : 0;
     return {
       key: r.category,
       cat: subCatLabel(r.category),
       bookSize: Math.round(book),
       subscribed: actualBidShares,
       times: displayTimes,
-      applicationsTimes: localAppTimes ?? (r as any).applicationsSubscribed,
+      applicationsTimes: applicationsTimesVal,
       bidCount,
       req1x: req1xVal,
       nseShares: (r as any).nseShares,

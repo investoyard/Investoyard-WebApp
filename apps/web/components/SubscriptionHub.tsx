@@ -459,14 +459,16 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
           <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
           <tbody>
             {appRows.map((r) => {
-              // req1x now sourced from subscriptionTable() with the correct
-              // per-bucket divisor (HNI ÷ sHNI-min, Retail ÷ lotSize). No
-              // more bidCount ÷ applicationsTimes back-derivation.
+              // req1x from subscriptionTable() — HNI ÷ sHNI-min, Retail ÷ lot
+              // for derivable categories; explicit 0 for employee / shareholder
+              // (no standard minimum-bid rule). Render literal 0 rather than
+              // em-dash so those rows read as intentionally zero, not missing
+              // (operator ask, 2026-09-21).
               const req1x = r.req1x ?? 0;
               return (
                 <tr key={r.key}>
                   <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                  <td>{req1x > 0 ? fmtIn(req1x) : '—'}</td>
+                  <td>{fmtIn(req1x)}</td>
                   <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
                   <td className={`tone-${tone(r.applicationsTimes ?? 0)}`}><b>{(r.applicationsTimes ?? 0).toFixed(2)}×</b></td>
                 </tr>
@@ -639,7 +641,7 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
                     return (
                       <tr key={r.key}>
                         <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                        <td>{req1x > 0 ? fmtIn(req1x) : '—'}</td>
+                        <td>{fmtIn(req1x)}</td>
                         <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
                         <td className={`tone-${tone(r.applicationsTimes ?? 0)}`}><b>{(r.applicationsTimes ?? 0).toFixed(2)}×</b></td>
                       </tr>
@@ -742,7 +744,7 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
                       <td>{r.nseBids != null ? fmtIn(r.nseBids) : '—'}</td>
                       <td>{r.bseBids != null ? fmtIn(r.bseBids) : '—'}</td>
                       <td style={{ fontWeight: 800 }}>{fmtIn(r.bidCount ?? 0)}</td>
-                      <td>{req1x > 0 ? fmtIn(req1x) : '—'}</td>
+                      <td>{fmtIn(req1x)}</td>
                       <td style={{ color: (tone(r.applicationsTimes ?? 0) === 'hot' ? '#0f9d58' : tone(r.applicationsTimes ?? 0) === 'warm' ? '#e6ad12' : tone(r.applicationsTimes ?? 0) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{(r.applicationsTimes ?? 0).toFixed(2)}×</td>
                     </tr>
                   );
