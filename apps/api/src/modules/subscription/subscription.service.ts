@@ -2,24 +2,24 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { BseDemandRow, BseQueryAdapter, CatwiseRow, MemberCredential, NseQueryAdapter } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
+import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
 
-// ── tunables (env-overridable) ────────────────────────────────────────────────
-const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;        // base loop cadence
-const NORMAL_MS = Number(process.env.SUBSCRIPTION_NORMAL_MS) || 20_000;    // per-IPO cadence, normal
-const FAST_MS = Number(process.env.SUBSCRIPTION_FAST_MS) || 10_000;        // per-IPO cadence, closing rush
-const FAST_WINDOW_MIN = Number(process.env.SUBSCRIPTION_FAST_WINDOW_MIN) || 90; // final N min → fast
-const OPEN_FROM_MIN = Number(process.env.SUBSCRIPTION_POLL_FROM_MIN) || 10 * 60; // 10:00 IST
-// Poller window CLOSES at 18:00 IST — 1 hour past the 17:00 bidding cutoff.
-// NSE catwise and BSE demand-schedule continue to serve consolidated /
-// finalized numbers for ~30-60 min after 5pm on the closing day; without
-// this grace hour the last-day final subscription never gets written.
-// Operator ask 2026-09-21. Override with SUBSCRIPTION_POLL_TO_MIN if needed.
-const OPEN_TO_MIN = Number(process.env.SUBSCRIPTION_POLL_TO_MIN) || 18 * 60;   // 18:00 IST
-// BIDDING cutoff (SEBI): 17:00 IST — the fast-cadence "closing rush" is
-// timed against THIS, not the poller cutoff. Keeps fast mode kicking in
-// at 15:30 IST (17:00 − 90 min) as before, even though the poller now
-// keeps running until 18:00.
+// ── tunables ─────────────────────────────────────────────────────────────────
+// Base loop cadence — how often tick() runs. NOT the per-IPO refresh; that
+// comes from the runtime tuning below. Env-only (rarely changed).
+const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;
+// Per-IPO cadence DEFAULTS. These are the fallback when nothing's saved in
+// admin → Integrations → Live subscription poller. Every value below is
+// live-overridable via that admin card (operator ask, 2026-09-21).
+const DEFAULT_NORMAL_SEC = 60;   // refresh once a minute during the bidding window
+const DEFAULT_FAST_SEC = 5;      // closing rush: every 5s
+const DEFAULT_FAST_WINDOW_MIN = 90;
+const DEFAULT_POLL_FROM_MIN = 10 * 60;   // 10:00 IST — matches SEBI bidding open
+const DEFAULT_POLL_TO_MIN = 18 * 60;     // 18:00 IST — 1h grace past 17:00 bidding close
+// BIDDING cutoff (SEBI): 17:00 IST — drives the fast-cadence "closing rush"
+// trigger (fast mode kicks in at 17:00 − fastWindowMin, e.g. 15:30 IST for
+// the default 90-min window). Fixed by regulation; NOT tunable.
 const BIDDING_CLOSE_MIN = 17 * 60;
 
 /**
@@ -270,10 +270,13 @@ interface SweepCreds {
  * SubscriptionService — live IPO subscription poller (NSE catwise + BSE demandschedule → `ipoSubscription`).
  *
  * A single ${TICK_MS}ms loop, gated so it only calls the exchanges when it should:
- *   • market window  — 10:00–17:00 IST, Mon–Fri, not an NSE holiday (holidaymaster)
+ *   • market window  — 10:00–18:00 IST default (last hour is a grace window
+ *                      for post-close settlement), Mon–Fri, not an NSE holiday
  *   • per IPO        — open-date ≤ today ≤ close-date, `hidden:false`, `autoPollSubscription:true`
- *   • adaptive       — each IPO refreshes every ${NORMAL_MS/1000}s, tightening to ${FAST_MS/1000}s
- *                      in the final ${FAST_WINDOW_MIN} min of its closing day
+ *   • adaptive       — each IPO refreshes every ${DEFAULT_NORMAL_SEC}s, tightening to ${DEFAULT_FAST_SEC}s
+ *                      in the final ${DEFAULT_FAST_WINDOW_MIN} min before the 17:00 bidding cutoff
+ *                      (and through the post-close grace hour). All four values are
+ *                      live-tunable via admin → Integrations → Live subscription poller
  *   • cheap          — holidays cached once/day; DB rows rewritten only on snapshot change
  *
  * Buckets match the operator's legacy C# workflow — 7 categories
@@ -301,7 +304,41 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   // daily holiday cache (keyed by IST yyyy-mm-dd)
   private holidayCache: { day: string; dates: Set<string> } | null = null;
 
-  constructor(private prisma: PrismaService, private rail: RailService) {}
+  constructor(
+    private prisma: PrismaService,
+    private rail: RailService,
+    private providers: ProviderConfigService,
+  ) {}
+
+  /**
+   * Live tuning read from admin → Integrations → Live subscription poller
+   * (provider key `subscription`). Every knob has an env fallback, so an
+   * unconfigured deploy behaves exactly as before this card existed. The
+   * ProviderConfigService caches with a 60s TTL, so reading on every 10s
+   * tick is effectively free. Missing / non-numeric / <=0 values fall back
+   * to defaults so a bad admin entry can't stall the poller.
+   */
+  private async tuning(): Promise<{
+    normalMs: number; fastMs: number; fastWindowMin: number;
+    fromMin: number; toMin: number;
+  }> {
+    let s: Record<string, any> = {};
+    try {
+      const cfg = await this.providers.effective('subscription');
+      s = (cfg?.settings ?? {}) as Record<string, any>;
+    } catch { /* provider not configured — env/defaults win */ }
+    const positive = (v: any, def: number): number => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : def;
+    };
+    return {
+      normalMs: positive(s.normalSec, Number(process.env.SUBSCRIPTION_NORMAL_SEC) || DEFAULT_NORMAL_SEC) * 1000,
+      fastMs: positive(s.fastSec, Number(process.env.SUBSCRIPTION_FAST_SEC) || DEFAULT_FAST_SEC) * 1000,
+      fastWindowMin: positive(s.fastWindowMin, Number(process.env.SUBSCRIPTION_FAST_WINDOW_MIN) || DEFAULT_FAST_WINDOW_MIN),
+      fromMin: positive(s.fromMin, Number(process.env.SUBSCRIPTION_POLL_FROM_MIN) || DEFAULT_POLL_FROM_MIN),
+      toMin: positive(s.toMin, Number(process.env.SUBSCRIPTION_POLL_TO_MIN) || DEFAULT_POLL_TO_MIN),
+    };
+  }
 
   onModuleInit() {
     if (process.env.SUBSCRIPTION_POLL_DISABLED === 'true') return;
@@ -316,8 +353,9 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   private async tick(): Promise<void> {
     const ist = this.istParts();
     if (!this.isTradingDay(ist)) return;                 // Sat/Sun (holiday check happens after cred)
+    const t = await this.tuning();
     const mins = ist.hour * 60 + ist.minute;
-    if (mins < OPEN_FROM_MIN || mins >= OPEN_TO_MIN) return; // outside 10:00–17:00 IST
+    if (mins < t.fromMin || mins >= t.toMin) return;     // outside operator-configured window
 
     await tenantContext.runUnscoped(async () => {
       const sweep = await this.resolveSweep();
@@ -331,7 +369,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       if (ipos.length === 0) return;
 
       const now = Date.now();
-      const due = ipos.filter((i) => now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist));
+      const due = ipos.filter((i) => now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist, t));
       if (due.length === 0) return;
 
       for (const ipo of due) await this.refreshIpo(ipo, sweep);
@@ -472,15 +510,19 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Per-IPO cadence: tighten to FAST_MS in the last FAST_WINDOW_MIN minutes of the closing day. */
-  private intervalMs(ipo: OpenIpo, ist: IstParts): number {
+  private intervalMs(
+    ipo: OpenIpo,
+    ist: IstParts,
+    t: { normalMs: number; fastMs: number; fastWindowMin: number },
+  ): number {
     if (ipo.closeDate) {
       const closeYmd = this.istYmd(ipo.closeDate);
-      // Fast mode from BIDDING close − FAST_WINDOW (15:30 IST default) and
-      // ALL THE WAY through the poller's post-bidding grace hour, since the
-      // final consolidated numbers are exactly what we want to catch fast.
-      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= BIDDING_CLOSE_MIN - FAST_WINDOW_MIN) return FAST_MS;
+      // Fast mode from BIDDING close − fastWindowMin (15:30 IST default)
+      // and ALL THE WAY through the poller's post-bidding grace hour —
+      // the final consolidated numbers are exactly what we want fast.
+      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= BIDDING_CLOSE_MIN - t.fastWindowMin) return t.fastMs;
     }
-    return NORMAL_MS;
+    return t.normalMs;
   }
 
   /** Resolve both exchanges' active credentials for a sweep; BSE also gets a Message-API token. */

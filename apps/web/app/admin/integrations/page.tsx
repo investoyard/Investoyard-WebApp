@@ -88,6 +88,30 @@ const SPECS = [
     },
   },
   {
+    key: 'subscription', label: 'Live subscription poller — cadence & window',
+    hint: 'Auto-refresh knobs for the NSE + BSE live subscription poller. Defaults: refresh every 60s during 10:00–18:00 IST, tightening to 5s in the last 90 min before the 17:00 SEBI bidding cutoff (and through the post-close grace hour). Turn Enabled to apply an override; leave disabled to keep defaults. Non-numeric / blank values fall back to defaults per field.',
+    fields: [
+      { name: 'normalSec', label: 'Refresh interval (seconds)', placeholder: '60' },
+      { name: 'fastSec', label: 'Closing-rush interval (seconds)', placeholder: '5' },
+      { name: 'fastWindowMin', label: 'Fast mode: minutes before 17:00 close', placeholder: '90' },
+      { name: 'fromMin', label: 'Poll from — minutes since IST midnight', placeholder: '600  (=10:00)' },
+      { name: 'toMin', label: 'Poll until — minutes since IST midnight', placeholder: '1080  (=18:00)' },
+    ],
+    secretFields: [],
+    guide: {
+      title: 'Tuning the live subscription poller',
+      note: 'The base loop runs every 10 seconds; these settings control per-IPO refresh cadence and the daily poll window. Values take effect within about a minute (60s config cache TTL). No pool restart needed.',
+      steps: [
+        'Refresh interval (default 60s) — how often each open IPO is polled during the normal bidding window. Lower = fresher numbers, higher API load. 60s is safe for both NSE and BSE rate limits.',
+        'Closing-rush interval (default 5s) — cadence during the final N minutes before 17:00 close AND through the post-close grace hour. When bids surge in the last few minutes, 5s is needed to keep the display current.',
+        'Fast-mode window (default 90 min) — how many minutes before 17:00 to switch from normal → closing-rush cadence. Increase if you want fast mode to start earlier.',
+        'Poll from / until — the daily window (in minutes since IST midnight) during which the poller runs. Defaults: 10:00 = 600, 18:00 = 1080. Extend the upper bound if exchanges are still finalizing after 6pm.',
+        'Turn Enabled on and click Save. Leaving any single field blank keeps the default for that one field.',
+      ],
+      footer: 'These knobs apply to the platform poller — white-label tenants share the same live sweep, so this card is superadmin-only. Env vars (SUBSCRIPTION_NORMAL_SEC, etc.) still work as a fallback for anything not saved here.',
+    },
+  },
+  {
     key: 'ai', label: 'Claude AI — chatbot brain (Level 2)',
     hint: 'Adds natural-language answers to the WhatsApp bot, grounded on your live IPO catalog. Optional — Level 1 (menu/list/GMP) works without it. API key is vaulted.',
     fields: [
