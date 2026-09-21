@@ -261,8 +261,26 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     if (cat === 'hni' || cat === 'hni2' || cat === 'nii') return shniMin;
     return lot > 0 ? lot : 0;
   };
+  // Anchor-share deduction — QIB rows are stored GROSS (matching how the
+  // reservation table reads: "QIB (Anchor Included) 50% of the offer, N
+  // Shares"). Exchange APIs report QIB `timesSubscribed` against NET QIB
+  // (anchor is pre-allocated, never enters the public bidding window), so
+  // Book Size × Times only cross-checks with Subscribed when Book is also
+  // NET. Deduction reads the operator's own values — `extra.anchorShares`
+  // first, else `extra.anchorPct` × gross QIB / 100. If the operator hasn't
+  // entered either, we leave gross alone rather than assume 60% — a silent
+  // no-op is safer than fabricating a deduction (operator ask, 2026-09-21).
+  const ex: any = (ipo as any).extra ?? {};
+  const anchorSharesInput = Number(ex.anchorShares) || 0;
+  const anchorPctInput = Number(ex.anchorPct) || 0;
   const rows: SubRowT[] = subs.map((r) => {
-    const book = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
+    let book = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
+    if (r.category === 'qib' && book > 0) {
+      const deduct = anchorSharesInput > 0
+        ? anchorSharesInput
+        : anchorPctInput > 0 ? Math.round((book * anchorPctInput) / 100) : 0;
+      if (deduct > 0 && deduct < book) book = book - deduct;
+    }
     // req1x = book ÷ shares-per-app-for-bucket. Re-derived here so it's
     // right even when the API's `applicationsSubscribed` still reflects
     // the old lot-size-for-everyone divisor (fixed 2026-09-18 spec).
