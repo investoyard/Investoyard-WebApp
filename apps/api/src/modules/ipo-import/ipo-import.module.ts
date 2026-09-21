@@ -16,6 +16,7 @@ import { parsePreanchor } from './nse-parsers/preanchor';
 import { parseAnchor } from './nse-parsers/anchor';
 import { parseIpoNote } from './nse-parsers/ipo-note';
 import { IpoNoteRewriteService } from './ipo-note-rewrite.service';
+import { AnchorVisionService } from './anchor-vision.service';
 import { resolveMaster } from '@investoyard/shared-types';
 
 /**
@@ -52,6 +53,7 @@ export class IpoImportController {
     private readonly svc: IpoImportService,
     private readonly upd: CatalogUpdateService,
     private readonly rewrite: IpoNoteRewriteService,
+    private readonly anchorVision: AnchorVisionService,
   ) {}
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
@@ -149,10 +151,21 @@ export class IpoImportController {
    *  two separate rows on the operator's own IPO record. */
   @Post('parse/anchor')
   @RequirePermissions('ipos.import')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   async parseAnchor(@UploadedFile() file: any) {
     if (!file?.buffer) throw new BadRequestException('No file uploaded.');
-    const raw = await parseAnchor(file.buffer);
+    // Fast path — text-based extraction for born-digital letters.
+    let raw = await parseAnchor(file.buffer);
+    // Fallback — some issuers (notably NSE itself) file the intimation as a
+    // SCANNED PDF, which has no text layer for pdfjs to read. When the text
+    // parser yields nothing usable, hand the PDF to Claude Vision — same
+    // ParsedAnchor shape returns, review modal is none the wiser. If the
+    // 'ai' provider isn't configured we surface the friendly error rather
+    // than silently leave the operator with an empty roster.
+    const noHeader = raw.totalShares == null && raw.allocationPrice == null;
+    if (noHeader && raw.investors.length === 0) {
+      raw = await this.anchorVision.parse(file.buffer);
+    }
     const anchors = await this.svc['prisma'].anchorMaster.findMany({
       where: { active: true }, select: { id: true, name: true },
     });
@@ -230,6 +243,6 @@ export class IpoImportController {
 @Module({
   imports: [JwtModule.register({})],
   controllers: [IpoImportController],
-  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, PrismaService, JwtAuthGuard, PermissionsGuard],
+  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, AnchorVisionService, PrismaService, JwtAuthGuard, PermissionsGuard],
 })
 export class IpoImportModule {}
