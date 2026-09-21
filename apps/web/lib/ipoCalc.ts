@@ -274,13 +274,40 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const anchorSharesInput = Number(ex.anchorShares) || 0;
   const anchorPctInput = Number(ex.anchorPct) || 0;
   const rows: SubRowT[] = subs.map((r) => {
-    let book = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
+    // grossBook is what the reservation table gave the bucket, exchange-side
+    // (QIB includes anchor here — that matches how NSE/BSE report `times`
+    // for the QIB category: `times = actual_bids ÷ gross_QIB`).
+    const grossBook = offered[r.category] ?? (totalShares * (r.reservedPct ?? 0)) / 100;
+    // Displayed Book Size — net of anchor for QIB (operator ask, 2026-09-21).
+    // Other buckets don't have anchor, so book == grossBook.
+    let book = grossBook;
     if (r.category === 'qib' && book > 0) {
       const deduct = anchorSharesInput > 0
         ? anchorSharesInput
         : anchorPctInput > 0 ? Math.round((book * anchorPctInput) / 100) : 0;
       if (deduct > 0 && deduct < book) book = book - deduct;
     }
+    // Subscribed = ACTUAL bid shares from the exchange side.
+    // Prefer the raw per-exchange totals the poller records (nse+bse); fall
+    // back to `grossBook × exchange_times` when a legacy row doesn't carry
+    // the split. NEVER `netBook × times` — the exchange's `times` is against
+    // GROSS QIB (anchor inclusive), so multiplying by net undercounts QIB
+    // bids by the anchor portion (~60%). That was the 2026-09-21 report:
+    // sir saw 12.77 Cr shown for an actual 31.97 Cr QIB subscription.
+    const nseSh = Number((r as any).nseShares || 0);
+    const bseSh = Number((r as any).bseShares || 0);
+    const actualBidShares = (nseSh + bseSh) > 0
+      ? nseSh + bseSh
+      : Math.round(grossBook * r.timesSubscribed);
+    // Displayed times — recomputed from what we show, so Book × Times ==
+    // Subscribed always cross-checks. For QIB with net Book this yields a
+    // HIGHER value than the exchange's raw `timesSubscribed` (which is
+    // against gross); that's the honest oversubscription against
+    // truly-available shares. For every other bucket book === grossBook and
+    // this equals r.timesSubscribed anyway.
+    const displayTimes = book > 0
+      ? +(actualBidShares / book).toFixed(2)
+      : r.timesSubscribed;
     // req1x = book ÷ shares-per-app-for-bucket. Re-derived here so it's
     // right even when the API's `applicationsSubscribed` still reflects
     // the old lot-size-for-everyone divisor (fixed 2026-09-18 spec).
@@ -296,8 +323,8 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       key: r.category,
       cat: subCatLabel(r.category),
       bookSize: Math.round(book),
-      subscribed: Math.round(book * r.timesSubscribed),
-      times: r.timesSubscribed,
+      subscribed: actualBidShares,
+      times: displayTimes,
       applicationsTimes: localAppTimes ?? (r as any).applicationsSubscribed,
       bidCount,
       req1x: req1xVal,
@@ -322,14 +349,17 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const nseBidSum = summable.reduce((a, b) => a + (b.nseBids ?? 0), 0);
   const bseBidSum = summable.reduce((a, b) => a + (b.bseBids ?? 0), 0);
   const bidSum = summable.reduce((a, b) => a + (b.bidCount ?? 0), 0);
-  // Prefer the API's authoritative `total` row for the times value — the
-  // poller computes it from the raw NSE+BSE demand across all categories.
-  // Falling back to bookSum/subSum ratio only when the API doesn't ship a
-  // total row (rare — always present since 2026-09-17 rewrite).
+  // Total times = subSum / bookSum, so the displayed Total row cross-checks
+  // exactly the same way category rows do (Book × Times == Subscribed).
+  // The poller ships an `apiTotal` row too — kept as a last-resort fallback
+  // for legacy rows that don't carry per-exchange share splits — but we
+  // prefer the derived value because the poller's total is against GROSS
+  // QIB and would disagree with the categories now that QIB Book Size shows
+  // NET (operator ask, 2026-09-21).
   const apiTotal = (ipo.subscription ?? []).find((r) => r.category === 'total');
-  const totalTimes = apiTotal && apiTotal.timesSubscribed
-    ? Number(apiTotal.timesSubscribed)
-    : (bookSum ? +(subSum / bookSum).toFixed(2) : 0);
+  const totalTimes = bookSum > 0
+    ? +(subSum / bookSum).toFixed(2)
+    : (apiTotal ? Number(apiTotal.timesSubscribed) : 0);
   return {
     rows,
     total: {
