@@ -1,4 +1,4 @@
-import { PDFDocument, PDFTextField, PDFName, PDFString, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFTextField, PDFName, PDFString, PDFRef, PDFDict, StandardFonts, rgb } from 'pdf-lib';
 
 /**
  * AcroForm fill engine — used when the operator's uploaded ASBA blank is a
@@ -259,12 +259,10 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
     if (appearancesOk === form.getFields().length) {
       try { form.flatten({ updateFieldAppearances: false }); }
       catch {
-        burnInFields(doc, form, font);
-        try { doc.catalog.delete(PDFName.of('AcroForm')); } catch { /* leave form intact if delete fails */ }
+        burnInAndStrip(doc, form, font);
       }
     } else {
-      burnInFields(doc, form, font);
-      try { doc.catalog.delete(PDFName.of('AcroForm')); } catch { /* leave form intact if delete fails */ }
+      burnInAndStrip(doc, form, font);
     }
   } else {
     // Caller explicitly asked to keep the form (e.g. preview flow that
@@ -273,6 +271,63 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
     for (const f of form.getFields()) { try { (f as any).enableReadOnly(); } catch { /* best effort */ } }
   }
   return Buffer.from(await doc.save({ updateFieldAppearances: false }));
+}
+
+/**
+ * Burn values in AND fully strip the form — draws each PDFTextField's value
+ * at its widget rects, then removes every field from the form (which unlinks
+ * widget annotations from each page's /Annots), then deletes the AcroForm
+ * shell from the catalog. Result is a fully-flat PDF with no residual
+ * annotations: no viewer sees clickable field boxes, no third-party tool
+ * detects a form.
+ *
+ * The widget-removal step matters more than it looks — an earlier version of
+ * this fallback only did steps 1 + 3 (draw + delete AcroForm), and every page
+ * kept its 38 widget annotations. Viewers rendered highlighted empty boxes
+ * OVER the drawn values, and the operator (correctly) called that "still not
+ * flattened" (2026-09-21).
+ */
+function burnInAndStrip(doc: PDFDocument, form: any, font: any): void {
+  burnInFields(doc, form, font);
+  // form.removeField() detaches the field from the form AND removes its
+  // widget annotations from whichever page they sit on. Iterate a snapshot
+  // since removeField mutates the underlying array.
+  for (const f of [...form.getFields()]) {
+    try { form.removeField(f); } catch { /* skip malformed field */ }
+  }
+  // Belt-and-braces: sweep every page's /Annots array for
+  //   (a) surviving /Subtype = /Widget dicts (form.removeField misses these
+  //       when the widget's /P entry is absent — pdf-lib can't find which
+  //       page to strip from), AND
+  //   (b) dangling PDFRefs pointing to objects the earlier "bad widget"
+  //       removal (line ~128) already deleted — these appear in inspection
+  //       as "no dict" and still render as empty highlight boxes in some
+  //       viewers.
+  // Widget annotations belong only to forms; after the AcroForm is gone,
+  // anything of that subtype (or a ref to a now-deleted object) is dead
+  // weight over the burned-in text.
+  for (const page of doc.getPages()) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    const arr = annots.asArray();
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const item = arr[i];
+      let dict: PDFDict | undefined;
+      try {
+        if (item instanceof PDFRef) dict = doc.context.lookup(item) as PDFDict;
+        else if (item instanceof PDFDict) dict = item;
+      } catch { dict = undefined; }
+      // Case (b): dangling ref → object gone → drop it.
+      if (!dict) { try { annots.remove(i); } catch { /* best effort */ } continue; }
+      // Case (a): live widget dict → drop it.
+      let subtype: any;
+      try { subtype = dict.get(PDFName.of('Subtype')); } catch { continue; }
+      if (subtype && String(subtype) === '/Widget') {
+        try { annots.remove(i); } catch { /* best effort */ }
+      }
+    }
+  }
+  try { doc.catalog.delete(PDFName.of('AcroForm')); } catch { /* leave form intact if delete fails */ }
 }
 
 /**
