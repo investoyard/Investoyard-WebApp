@@ -6,7 +6,6 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { CountdownDial } from '@/components/CountdownDial';
 import { SectionTabs } from '@/components/SectionTabs';
 import { LiveSubscription } from '@/components/LiveSubscription';
-import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { GmpTrend } from '@/components/GmpTrend';
 import { Icon } from '@/components/Icon';
 import * as calc from '@/lib/ipoCalc';
@@ -242,15 +241,11 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
           {ipo.subscription && subT && (
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
-              <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} />
-              {/* Day-wise evolution — real data from the poller's per-day log.
-                  Column format: NII spans bHNI (10L+) + sHNI (2-10L). Each day
-                  row is expandable — click to reveal the hourly snapshots for
-                  that day, from `extra.subLogHour` (72-entry rolling window,
-                  operator ask 2026-09-22). */}
-              {Array.isArray(ex.subLog) && ex.subLog.length > 0 && (
-                <DayWiseSubscription subLog={ex.subLog} subLogHour={Array.isArray(ex.subLogHour) ? ex.subLogHour : []} />
-              )}
+              <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} />
+              {/* Day-wise + hourly drill-down moved to /subscription/v2 (2026-09-22).
+                  Operator ask: keep the detail page slim; a "View detail" link on
+                  the Live Subscription card sends the reader over to
+                  /subscription/v2?symbol=<sym> for the fuller history. */}
               {/* The old app-wise panel here was a legacy renderer of
                   `ipo.appWise` that duplicated the ApplicationWise panel now
                   rendered INSIDE LiveSubscription. Removed 2026-09-22

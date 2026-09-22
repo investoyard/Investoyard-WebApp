@@ -3920,6 +3920,29 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .lsx-tile-v { font-size: 13.5px; }
   .lsx-times-n { font-size: 34px; }
 }
+.lsx-detail-btn {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 8px;
+  color: var(--text-muted); background: var(--surface);
+  border: 1px solid var(--border);
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
+  text-decoration: none;
+}
+.lsx-detail-btn:hover, .lsx-detail-btn:focus-visible {
+  background: var(--brand-50); color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+  outline: none; transform: translateX(1px);
+}
+/* Note-line inside the Live Subscription card — tighter margins than the
+   site's generic .note-line (operator report 2026-09-22: extra padding
+   below the card). No top margin because the panels above already carry
+   their own bottom padding. */
+.lsx-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
 
 /* share button */
 .subv2-ln-act { display: flex; align-items: center; justify-content: flex-end; }

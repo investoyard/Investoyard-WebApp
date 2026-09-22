@@ -107,7 +107,11 @@ export class IpoService {
           : {}),
         ...(f.includeCatalogOnly ? {} : { hidden: false }),
       },
-      include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+      // documents included so admin catalog's completeness check sees the
+      // full list (operator report 2026-09-22: DRHP saved to IpoDocument
+      // table but the ?all=1 list omitted documents from the response,
+      // stranding the completeness bar at "missing" for every row).
+      include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 }, documents: true },
       // NEWEST first, and it has to be. `take` defaults to 500, so the sort
       // decides which 500 of the catalog a caller gets — not merely their order.
       // Ascending was harmless at twelve rows; at 1,207 it returned Jan-2016 to

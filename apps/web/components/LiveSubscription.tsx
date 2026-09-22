@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { ShareWisePanel, AppWisePanel } from '@/components/SubscriptionHub';
+import { Icon } from '@/components/Icon';
 import type { SubRowT } from '@/lib/ipoCalc';
 
 /**
@@ -27,7 +28,7 @@ import type { SubRowT } from '@/lib/ipoCalc';
  * Below the hero: Share-Wise + Application-Wise panels (unchanged).
  */
 export function LiveSubscription({
-  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType,
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol,
 }: {
   rows: SubRowT[];
   total: SubRowT;
@@ -37,6 +38,7 @@ export function LiveSubscription({
   priceMax?: number;
   totalApps?: number;
   ipoType?: string;
+  symbol?: string;
 }) {
   const live = status === 'open';
   const hasBand = !!priceMin && !!priceMax && priceMin !== priceMax;
@@ -57,8 +59,10 @@ export function LiveSubscription({
 
   return (
     <div className="subv2 subv2-detail">
-      {/* Compact top strip — status + timestamp on left, band toggle on right.
-          Keeps the busy status controls OFF the hero, so the hero can breathe. */}
+      {/* Compact top strip — status + timestamp on left, band toggle and
+          detail-view icon on right. The icon-link takes the reader to
+          /subscription/v2?symbol=<sym> for the fuller day-wise + hourly
+          history (operator ask, 2026-09-22). */}
       <div className="lsx-top">
         <div className="lsx-status-line">
           <span className={`ic-status ${live ? 'live' : 'closed'}`}>
@@ -67,12 +71,24 @@ export function LiveSubscription({
           </span>
           {asOf && <span className="lsx-asof">Updated {asOf}</span>}
         </div>
-        {hasBand && (
-          <div className="seg lsx-band" role="tablist" aria-label="Price band">
-            <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')} type="button">Upper ₹{priceMax}</button>
-            <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')} type="button">Lower ₹{priceMin}</button>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {hasBand && (
+            <div className="seg lsx-band" role="tablist" aria-label="Price band">
+              <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')} type="button">Upper ₹{priceMax}</button>
+              <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')} type="button">Lower ₹{priceMin}</button>
+            </div>
+          )}
+          {symbol && (
+            <a
+              href={`/subscription/v2?symbol=${encodeURIComponent(symbol)}`}
+              className="lsx-detail-btn"
+              title="Open full detail view — day-wise + hourly"
+              aria-label={`Open detail view for ${symbol}`}
+            >
+              <Icon name="arrow-right" size={14} />
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Hero — big times centered, three tiles across the row */}
@@ -114,7 +130,7 @@ export function LiveSubscription({
         </div>
       </div>
 
-      <p className="note-line" style={{ marginTop: 10 }}>
+      <p className="lsx-note">
         *QIB Book Size is Net (post anchor).
         {hasBand && ` Amounts at the ${band} band (₹${price}).`}
         {' '}Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
