@@ -1,150 +1,109 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { catColor, segTextColor, shC } from '@/lib/catColor';
+import { useState } from 'react';
 import { Icon } from '@/components/Icon';
+import { ShareWisePanel, AppWisePanel } from '@/components/SubscriptionHub';
+import type { SubRowT } from '@/lib/ipoCalc';
 
-type Row = {
-  /** Bucket key from the API (qib / hni / hni2 / retail / employee / shareholder / total). */
-  key?: string;
-  cat: string;
-  bookSize: number;
-  subscribed: number;
-  times: number;
-  /** Application-wise times (bids ÷ max allottees). Drives the second breakup
-   * table under the shares grid. */
-  applicationsTimes?: number;
-  bidCount?: number;
-  // Per-exchange breakdown from the poller. Both may be absent on legacy rows;
-  // the footnote hides itself when neither side has demand yet.
-  nseShares?: number;
-  bseShares?: number;
-  nseBids?: number;
-  bseBids?: number;
-};
-
-/** Numbers-first subscription: toolbar (live · band toggle · refresh) → total
-    banner → per-category card-rows. Upper/Lower recomputes the ₹ amounts; live
-    figures gently auto-refresh while the IPO is open. */
-export function LiveSubscription({ rows, total, status, asOf, priceMin, priceMax, totalApps }: {
-  rows: Row[]; total: Row; status: string; asOf?: string; priceMin?: number; priceMax?: number; totalApps?: number;
+/**
+ * Live Subscription — detail-page section.
+ *
+ * Reuses the `/subscription/v2` hub's ShareWisePanel + AppWisePanel so
+ * the vocabulary, math and visual language are identical across every
+ * subscription surface (operator ask, 2026-09-22: "make proper UI as per
+ * our"). The 2026-09-05 mock-drift animation (`(1 + drift * 0.004)` on
+ * real times) was removed at the same time — it was inflating the poller's
+ * real numbers by up to 8 % over two minutes on a live IPO. Numbers now
+ * display exactly what the poller wrote.
+ *
+ * Layout (matches the operator's reference):
+ *   1. Status pill  — Live / Final + asOf timestamp + Upper/Lower band toggle
+ *   2. Hero        — big Times number, meter, Book / Subscribed / Apps tiles
+ *   3. ShareWisePanel — 4-col category table, exact copy of the hub's
+ *   4. AppWisePanel   — Req 1x / Applied / Times per HNI/Retail/Employee row
+ */
+export function LiveSubscription({
+  rows, total, status, asOf, priceMin, priceMax, totalApps,
+}: {
+  rows: SubRowT[];
+  total: SubRowT;
+  status: string;
+  asOf?: string;
+  priceMin?: number;
+  priceMax?: number;
+  totalApps?: number;
 }) {
   const live = status === 'open';
-  const [drift, setDrift] = useState(0);
-  const [band, setBand] = useState<'upper' | 'lower'>('upper');
-  useEffect(() => {
-    if (!live) return;
-    const id = setInterval(() => setDrift((d) => Math.min(20, d + 1)), 7000);
-    return () => clearInterval(id);
-  }, [live]);
-  const f = live ? 1 + drift * 0.004 : 1;
-  const totalX = total.times * f;
-  const price = (band === 'lower' ? (priceMin ?? priceMax) : (priceMax ?? priceMin)) ?? 0;
   const hasBand = !!priceMin && !!priceMax && priceMin !== priceMax;
+  const [band, setBand] = useState<'upper' | 'lower'>('upper');
+  const price = (band === 'lower' ? (priceMin ?? priceMax) : (priceMax ?? priceMin)) ?? 0;
 
-  const n = (v: number) => Math.round(v).toLocaleString('en-IN');
-  const cr = (sh: number) => (price ? `₹${((sh * price) / 1e7).toFixed(2)} Cr` : '');
-  // "NSE 62% · BSE 38%" split label. Shown under a row's Subscription cell
-  // (and once at the total) when the poller has recorded per-exchange demand.
-  // Falls silent while either side is still absent — a legacy row (both
-  // undefined) reads identically to a fresh row with no demand yet, so we
-  // gate on having ANY non-zero exchange figure.
-  const split = (r: Pick<Row, 'nseShares' | 'bseShares'>) => {
-    const nse = r.nseShares ?? 0;
-    const bse = r.bseShares ?? 0;
-    if (nse + bse <= 0) return null;
-    const total = nse + bse;
-    return `NSE ${Math.round((nse / total) * 100)}% · BSE ${Math.round((bse / total) * 100)}%`;
-  };
+  const t = total.times ?? 0;
+  const meterPct = Math.min(100, (t / 3) * 100);
+  const tc = t >= 3 ? 'hot' : t >= 1 ? 'warm' : t >= 0.5 ? 'cool' : 'cold';
 
-  // Application-wise rows — ipopremium's second table shows only the buckets
-  // where a per-application ratio is meaningful (HNI-10L+, HNI-2-10L, Retail,
-  // Employee). QIB is off-book (institutional); shareholder/other stay hidden
-  // when the field isn't populated.
-  const APP_ORDER = ['hni', 'hni2', 'retail', 'employee'];
-  const appRows = rows
-    .filter((r) => r.applicationsTimes != null && r.bidCount != null && APP_ORDER.includes(r.key ?? ''))
-    .sort((a, b) => APP_ORDER.indexOf(a.key ?? '') - APP_ORDER.indexOf(b.key ?? ''));
-  const appTotalBids = appRows.reduce((s, r) => s + (r.bidCount ?? 0), 0);
+  const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
+  const fmtCr = (n: number) => (n >= 1000 ? `₹${Math.round(n).toLocaleString('en-IN')} Cr` : `₹${n.toFixed(2)} Cr`);
+
+  const bookCr = total.bookSize > 0 && price > 0 ? (total.bookSize * price) / 1e7 : 0;
+  const subCr = total.subscribed > 0 && price > 0 ? (total.subscribed * price) / 1e7 : 0;
+  const apps = totalApps ?? total.bidCount ?? 0;
 
   return (
-    <div className="panel subx-panel">
-      <div className="subx-bar">
-        <div className="subx-title">
-          {live && <span className="live-dot" />}
-          <b>{live ? 'Live now' : 'Final'}</b>
-          {asOf && <span className="subx-asof">as on {asOf}</span>}
-        </div>
-        <div className="subx-tools">
-          {hasBand && (
-            <div className="seg" role="tablist" aria-label="Price band">
-              <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')}>Upper</button>
-              <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')}>Lower</button>
+    <div className="subv2 subv2-detail">
+      <article className={`subv2-ln subv2-t-${tc}`}>
+        <div className="subv2-ln-l">
+          <div className="subv2-ln-name" style={{ minWidth: 0 }}>
+            <div className="subv2-ln-meta">
+              <span className={`ic-status ${live ? 'live' : 'closed'}`}>
+                {live && <span className="pd" />}
+                {live ? 'Live now' : 'Final'}
+              </span>
+              {asOf && <span className="muted" style={{ fontSize: 12 }}>Updated {asOf}</span>}
             </div>
-          )}
-          {live && <button className="subx-ref" onClick={() => setDrift((d) => d + 1)} aria-label="Refresh figures"><Icon name="refresh" size={16} strokeWidth={2} /></button>}
-        </div>
-      </div>
-
-      <div className="subx-total">
-        <div className="l"><div className="big mono">{totalX.toFixed(2)}<span>×</span></div><div className="cap">Total subscription</div></div>
-        <div className="r">
-          <div className="row2"><span>Applied</span><b>{shC(total.subscribed * f)} sh</b></div>
-          <div className="row2"><span>Book size</span><b>{shC(total.bookSize)} sh</b></div>
-        </div>
-      </div>
-
-      <div className="subx">
-        <div className="subx-h"><span>Category</span><span>Book size</span><span>Subscription</span><span className="r">No. of times</span></div>
-        {rows.map((r) => {
-          const s = split(r);
-          // Colour key must be the bucket KEY (hni vs hni2 both contain "hni"
-          // in the display label, so passing r.cat would collapse both to the
-          // same colour). r.key is the API's lowercase bucket id.
-          const colourKey = r.key ?? r.cat;
-          return (
-            <div className="subx-row" key={r.key ?? r.cat} style={{ ['--cc' as string]: catColor(colourKey) } as React.CSSProperties}>
-              <div><span className="cat-chip">{r.cat}</span></div>
-              <div className="subx-num" data-k="Book size">{n(r.bookSize)}<small>{cr(r.bookSize)}</small></div>
-              <div className="subx-num" data-k="Subscription">
-                {n(r.subscribed * f)}
-                <small>{cr(r.subscribed * f)}</small>
-                {s && <small className="muted" style={{ marginTop: 2 }}>{s}</small>}
-              </div>
-              <div className="r"><span className="x-badge" style={{ color: segTextColor(colourKey) }}>{(r.times * f).toFixed(2)}×</span></div>
+            <div className="subv2-ln-info" style={{ marginTop: 6 }}>
+              {hasBand && (
+                <div className="seg" role="tablist" aria-label="Price band">
+                  <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')} type="button">Upper ₹{priceMax}</button>
+                  <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')} type="button">Lower ₹{priceMin}</button>
+                </div>
+              )}
             </div>
-          );
-        })}
-      </div>
-
-      {/* Application-wise breakup — mirrors ipopremium's second table. Hidden
-          until the poll has populated `applicationsSubscribed` on at least one
-          non-QIB bucket. Uses the same row shell as the shares grid but a
-          different header, so the connection reads at a glance. */}
-      {appRows.length > 0 && (
-        <div className="subx" style={{ marginTop: 12 }}>
-          <div className="subx-h">
-            <span>Application-wise</span><span>Reserved apps</span><span>Applied</span><span className="r">No. of times</span>
           </div>
-          {appRows.map((r) => {
-            const reserved = r.applicationsTimes && r.applicationsTimes > 0 && r.bidCount
-              ? Math.round(r.bidCount / r.applicationsTimes) : 0;
-            const colourKey = r.key ?? r.cat;
-            return (
-              <div className="subx-row" key={'app-' + (r.key ?? r.cat)} style={{ ['--cc' as string]: catColor(colourKey) } as React.CSSProperties}>
-                <div><span className="cat-chip">{r.cat}</span></div>
-                <div className="subx-num" data-k="Reserved apps">{reserved > 0 ? n(reserved) : '—'}</div>
-                <div className="subx-num" data-k="Applied apps">{r.bidCount != null ? n(r.bidCount) : '—'}</div>
-                <div className="r"><span className="x-badge" style={{ color: segTextColor(colourKey) }}>{(r.applicationsTimes ?? 0).toFixed(2)}×</span></div>
-              </div>
-            );
-          })}
-          {appTotalBids > 0 && (
-            <p className="note-line" style={{ marginTop: 6 }}>Total applications: <b>{n(appTotalBids)}</b></p>
-          )}
         </div>
-      )}
+        <div className="subv2-ln-m">
+          <div className="subv2-ln-times">
+            <span className="tx-n">{t.toFixed(2)}</span><span className="tx-x">×</span>
+          </div>
+          <div className="subv2-ln-meter">
+            <div className="subv2-ln-track"><span style={{ width: `${meterPct}%` }} /></div>
+            <div className="subv2-ln-tk"><span>0×</span><span>1×</span><span>2×</span><span>3×+</span></div>
+          </div>
+          <div className="subv2-ln-status">
+            {t >= 3 ? 'Heavily subscribed' : t >= 1 ? 'Fully subscribed' : t >= 0.5 ? 'Picking up' : 'In progress'}
+          </div>
+        </div>
+        <div className="subv2-ln-r">
+          <div><span className="k">Book</span><span className="v">{bookCr > 0 ? fmtCr(bookCr) : '—'}</span></div>
+          <div><span className="k">Subscribed</span><span className={`v tone-${tc}`}>{subCr > 0 ? fmtCr(subCr) : '—'}</span></div>
+          <div><span className="k">Applications</span><span className="v">{apps > 0 ? fmtIn(apps) : '—'}</span></div>
+        </div>
+      </article>
 
-      <p className="note-line">*Excluding anchor{totalApps ? ` · ~${totalApps.toLocaleString('en-IN')} total applications` : ''}.{hasBand ? ` Amounts at the ${band} band (₹${band === 'lower' ? priceMin : priceMax}).` : ''}{split(total) ? ` Overall split: ${split(total)}.` : ''}{live ? ' Live figures are simulated for the demo.' : ''}</p>
+      {/* Share-wise + Application-wise — same components /subscription/v2 uses.
+          Passing price = the operator-selected band, so the ₹ Cr subtitles under
+          each shares cell recompute when the user toggles Upper/Lower. */}
+      <div className="subv2-ln-detail" style={{ marginTop: 12 }}>
+        <div className="subv2-det-in">
+          <ShareWisePanel rows={rows} total={total} price={price} />
+          <AppWisePanel rows={rows} />
+        </div>
+      </div>
+
+      <p className="note-line" style={{ marginTop: 10 }}>
+        *QIB Book Size is Net (post anchor).
+        {hasBand && ` Amounts at the ${band} band (₹${price}).`}
+        {' '}Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
+      </p>
     </div>
   );
 }
