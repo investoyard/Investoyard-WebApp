@@ -3772,6 +3772,8 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-avatar { width: 46px; height: 46px; border-radius: 12px; flex: none; overflow: hidden; background: var(--bg-2); }
 .subv2-ln-name { min-width: 0; flex: 1; }
 .subv2-ln-name h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.005em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subv2-name-link { color: inherit; text-decoration: none; transition: color .15s ease; }
+.subv2-name-link:hover, .subv2-name-link:focus-visible { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1.5px; outline: none; }
 /* Two meta rows under the company name — row 1 = board + status chips (via the
    site-wide `.ic-tag` / `.ic-status` families), row 2 = discrete info pills for
    dates / price band / lot. Updated timestamp is now floated top-right of the

@@ -307,7 +307,16 @@ export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; o
         <div className="subv2-ln-l">
           <div className="subv2-avatar"><IpoLogo logo={(ipo as any).logo} name={ipo.name} size={46} /></div>
           <div className="subv2-ln-name">
-            <h3 title={titleCase(ipo.name)}>{displayName}</h3>
+            {/* IPO name links to the single-issue detail view — operator ask
+                2026-09-22: clicking any IPO on /subscription lands on
+                /subscription/v2 for that specific IPO with day-wise + hourly
+                drill-down. `subv2-name-link` keeps the h3 styling but adds
+                hover/focus states appropriate for a link. */}
+            <h3 title={titleCase(ipo.name)}>
+              <a href={`/subscription/v2?symbol=${encodeURIComponent(ipo.symbol)}`} className="subv2-name-link">
+                {displayName}
+              </a>
+            </h3>
             {/* Row 1 — board + status chips using the SITE-WIDE ic-tag / ic-status
                 families (same as IpoCard and IpoDetailView). Closing Today / Open
                 Today / Live are all derived by statusChip() so the palette stays
@@ -349,13 +358,23 @@ export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; o
           <div><span className="k">Subscribed</span><span className={`v tone-${tc}`}>{subCr > 0 ? fmtCr(subCr) : '—'}</span></div>
           <div><span className="k">Applications</span><span className="v">{totalApps > 0 ? fmtIn(totalApps) : '—'}</span></div>
         </div>
-        {onShare && (
-          <div className="subv2-ln-act">
+        <div className="subv2-ln-act">
+          {onShare && (
             <button className="subv2-share" type="button" title="Share snapshot" aria-label={`Share ${ipo.name}`} onClick={() => onShare(ipo)}>
               <Icon name="share" size={14} />
             </button>
-          </div>
-        )}
+          )}
+          {/* Detail-view link — mirrors tapping the IPO name. Operator ask
+              2026-09-22: 'add detail view icon below share button'. */}
+          <a
+            className="subv2-share"
+            href={`/subscription/v2?symbol=${encodeURIComponent(ipo.symbol)}`}
+            title="Open detail view (day-wise + hourly)"
+            aria-label={`Detail view for ${ipo.name}`}
+          >
+            <Icon name="arrow-right" size={14} />
+          </a>
+        </div>
       </article>
       {table && (
         <div className="subv2-ln-detail">

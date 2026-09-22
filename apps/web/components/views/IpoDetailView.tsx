@@ -248,7 +248,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                   row is expandable — click to reveal the hourly snapshots for
                   that day, from `extra.subLogHour` (72-entry rolling window,
                   operator ask 2026-09-22). */}
-              {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
+              {Array.isArray(ex.subLog) && ex.subLog.length > 0 && (
                 <DayWiseSubscription subLog={ex.subLog} subLogHour={Array.isArray(ex.subLogHour) ? ex.subLogHour : []} />
               )}
               {/* The old app-wise panel here was a legacy renderer of
