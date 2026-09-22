@@ -1421,6 +1421,54 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <span className="muted">{derived.rulePack.label}</span>
                 </div>
               )}
+              {/* Autofill button — computes shares from % × issue size / band
+                  price (industry convention: reservation tables on Bumtaria /
+                  Chittorgarh / IPOPremium / mainboard sheets all display shares
+                  at the UPPER band, since that's the offered-shares count the
+                  exchanges themselves use for their times computation).
+                  Operator ask 2026-09-22: VARMORA reservation counts didn't
+                  match other providers because a manual entry divided by the
+                  midband price. This button fills both overrides in one click. */}
+              {(() => {
+                const num = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+                const cap = derived.scenarios.cap;
+                const floor = derived.scenarios.floor ?? derived.scenarios.cap;
+                const canFill = !!cap && !!floor && Number(form.issueSizeCr) > 0 && Number(form.priceBandMax) > 0 && Number(form.lotSize) > 0;
+                const anyPctSet = RESV_ROWS.some((r) => num(form.shareResv[r.key]?.pct) > 0);
+                if (!canFill || !anyPctSet) return null;
+                const autofill = () => {
+                  const anyOverride = RESV_ROWS.some((r) =>
+                    (form.shareResv[r.key].sharesLower ?? '').trim() !== '' ||
+                    (form.shareResv[r.key].sharesUpper ?? '').trim() !== '');
+                  if (anyOverride) {
+                    const ok = window.confirm('Overwrite existing share-count overrides with values derived from % × Issue Size ÷ band price? Manual entries in every row will be replaced.');
+                    if (!ok) return;
+                  }
+                  const next = { ...form.shareResv };
+                  for (const r of RESV_ROWS) {
+                    const catCap = cap!.categories.find((c: any) => c.key === r.key);
+                    const catFloor = floor!.categories.find((c: any) => c.key === r.key);
+                    if (catCap || catFloor) {
+                      next[r.key] = {
+                        ...next[r.key],
+                        sharesUpper: catCap ? String(catCap.shares) : (next[r.key].sharesUpper ?? ''),
+                        sharesLower: catFloor ? String(catFloor.shares) : (next[r.key].sharesLower ?? ''),
+                      };
+                    }
+                  }
+                  set({ shareResv: next });
+                };
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>
+                      Autofill share counts for every row using the percentages above and both band prices (industry convention).
+                    </span>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={autofill}>
+                      Fill shares from %
+                    </button>
+                  </div>
+                );
+              })()}
               {/* Both bands' share counts are shown side-by-side (operator ask
                   2026-09-10). NSE PREANCHOR prints its figures at the LOWER
                   band, so `sharesLower` is what the parser fills; the upper-

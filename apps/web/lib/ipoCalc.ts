@@ -220,14 +220,23 @@ export function subCatLabel(key: string): string {
     default: return key.toUpperCase();
   }
 }
-/** Direct offered-share count on a shareResv row — prefers `sharesLower`,
- *  falls back to `sharesUpper` (two data-entry conventions in the wild).
- *  Zero when neither is a real number. Mirrors the API poller's `directOf`. */
+/** Direct offered-share count on a shareResv row.
+ *
+ * Prefers `sharesUpper` (industry convention on Bumtaria / Chittorgarh /
+ * IPOPremium and the offered-shares figure the exchanges' own subscription
+ * APIs report — shares at the upper band). Falls back to `sharesLower`
+ * (NSE PREANCHOR prints figures at the lower band) for records that only
+ * have preanchor data. Zero when neither is a real number.
+ *
+ * Was preferring sharesLower until 2026-09-22 — flipped when the reservation
+ * normalisation script rewrote both bands from the operator's percentages so
+ * every IPO's shareResv holds both bands cleanly. sharesUpper is now the
+ * authoritative field. */
 function directOffered(row: any): number {
-  const lower = Number(row?.sharesLower);
-  if (lower > 0) return lower;
   const upper = Number(row?.sharesUpper);
   if (upper > 0) return upper;
+  const lower = Number(row?.sharesLower);
+  if (lower > 0) return lower;
   return 0;
 }
 

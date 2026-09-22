@@ -192,11 +192,16 @@ function offeredFromIpo(
   const resv = extra?.shareResv;
   if (!resv || typeof resv !== 'object') return null;
   const BUCKETS: Bucket[] = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
+  // Prefer sharesUpper (industry convention on Bumtaria / Chittorgarh /
+  // IPOPremium and the offered-shares figure exchanges' subscription APIs
+  // report — shares at the upper band). Falls back to sharesLower (NSE
+  // PREANCHOR prints at the lower band). Flipped 2026-09-22 when the
+  // reservation normalisation script rewrote both bands from percentages.
   const directOf = (row: any): number => {
-    const lower = Number(row?.sharesLower);
-    if (lower > 0) return lower;
     const upper = Number(row?.sharesUpper);
     if (upper > 0) return upper;
+    const lower = Number(row?.sharesLower);
+    if (lower > 0) return lower;
     return 0;
   };
 
