@@ -28,7 +28,18 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
   const search = useSearchParams();
   const router = useRouter();
   const requested = (search?.get('symbol') ?? '').toUpperCase();
-  const [ipo, setIpo] = useState<IpoFull | null>(baked);
+  // Don't seed with `baked` when the URL asks for a DIFFERENT IPO — that
+  // was flashing NSE content on the initial render of any /subscription/v2
+  // ?symbol=X page and, if the client-side fetch failed, kept NSE showing
+  // permanently for a requested symbol (operator report 2026-09-22).
+  const [ipo, setIpo] = useState<IpoFull | null>(() => {
+    if (requested && baked && (baked.symbol ?? '').toUpperCase() !== requested) return null;
+    return baked;
+  });
+  // Track whether we've completed at least one live fetch — used to
+  // distinguish 'still loading' (don't render empty state yet) from
+  // 'fetched and nothing matched' (render empty state).
+  const [loaded, setLoaded] = useState<boolean>(baked != null && (!requested || (baked.symbol ?? '').toUpperCase() === requested));
 
   useEffect(() => {
     let alive = true;
@@ -38,13 +49,40 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
       const found = live.find((i: any) => (i.symbol ?? '').toUpperCase() === target);
       if (found) setIpo(found as IpoFull);
       else if (requested) setIpo(null); // requested but missing → empty state
-    }).catch(() => {});
+      setLoaded(true);
+    }).catch(() => { setLoaded(true); });
     load();
     const t = setInterval(load, 60_000);
     return () => { alive = false; clearInterval(t); };
   }, [requested]);
 
+  // Client-side title update — the server-rendered <title> is generic
+  // ('NSE IPO Live Subscription — …' from static metadata). When we know
+  // which IPO the reader is looking at, replace it. Operator report
+  // 2026-09-22: /v2?symbol=VARMORA was showing the NSE title.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (ipo?.name) {
+      document.title = `${titleCase(ipo.name)} — Live Subscription | Investoyard`;
+    } else if (requested) {
+      document.title = `${requested} — Live Subscription | Investoyard`;
+    }
+  }, [ipo, requested]);
+
+  // While the initial fetch is in flight for a requested symbol we can't
+  // tell 'not found' from 'still loading' -- render a light placeholder
+  // instead of the wrong-IPO or the empty state. Once `loaded` flips true
+  // we know we've heard back from the catalogue and can decide.
   if (!ipo) {
+    if (!loaded) {
+      return (
+        <div className="subv2">
+          <div className="subv2-empty" style={{ minHeight: 200 }}>
+            <p className="muted" style={{ margin: 0 }}>Loading {requested || 'NSE'}…</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="subv2">
         <div className="subv2-empty">
