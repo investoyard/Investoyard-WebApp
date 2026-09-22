@@ -400,6 +400,24 @@ model SectorMaster {
   createdAt DateTime @default(now())
 }
 
+/// Basic-Industry values (the exchanges' fine-grained classification beneath
+/// sector — "Ferro & Silica Manganese", "Plywood Boards / Laminates", etc.).
+/// Its own master (operator ask, 2026-09-22) — was previously a plain text
+/// input on the IPO form; now a picker with inline "+ Add new". A row here
+/// can optionally name its rolling-up sector for reports.
+model IndustryMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  /// The sector this industry rolls up into (free text — matches
+  /// SectorMaster.name if the operator has that sector defined).
+  sector    String?
+  description String?
+  rank      Int      @default(100)
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
 /// Allowed UPI handles (the part after '@' in a UPI ID, e.g. "okaxis", "ybl").
 /// Profile UPI IDs are accepted only when their handle is an active row here.
 model UpiHandleMaster {

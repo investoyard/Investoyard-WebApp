@@ -401,6 +401,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // Sector master (Masters → Sectors) — the dropdown can also create into it
   const [sectorOpts, setSectorOpts] = useState<api.MasterRow[]>([]);
   useEffect(() => { api.fetchMaster('sectors').then(setSectorOpts).catch(() => {}); }, []);
+  // Industry master (Masters → Industries) — same picker pattern as sector
+  const [industryOpts, setIndustryOpts] = useState<api.MasterRow[]>([]);
+  useEffect(() => { api.fetchMaster('industries').then(setIndustryOpts).catch(() => {}); }, []);
   const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', file?: File | null) => {
     if (!file) return;
     setAsbaBusy(slot); setErr(null);
@@ -1149,8 +1152,20 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   />
                 </Field>
                 <Field label="Industry" hint="the exchange's detailed classification, beneath the sector">
-                  <input className="input" value={form.industry} placeholder="Specialty Chemicals"
-                    onChange={(e) => set({ industry: e.target.value })} />
+                  <SearchSelect
+                    options={industryOpts.filter((o) => o.active).map((o) => ({ value: o.name, label: o.name }))}
+                    value={form.industry}
+                    onChange={(v) => set({ industry: v })}
+                    placeholder="Search industries…"
+                    createLabel={(n) => `+ Add "${n}" as a new industry`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('industries', { name });
+                        setIndustryOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
                 </Field>
                 <Field label="Issue Type" required value={form.issueType}><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
                 <Field label="IPO Category" required value={form.categoryName || form.type}>

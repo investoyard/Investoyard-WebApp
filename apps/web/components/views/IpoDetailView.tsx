@@ -6,6 +6,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { CountdownDial } from '@/components/CountdownDial';
 import { SectionTabs } from '@/components/SectionTabs';
 import { LiveSubscription } from '@/components/LiveSubscription';
+import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { GmpTrend } from '@/components/GmpTrend';
 import { Icon } from '@/components/Icon';
 import * as calc from '@/lib/ipoCalc';
@@ -243,46 +244,12 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
               <div className="section-title">{tr('detail.liveSubscription')}</div>
               <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} />
               {/* Day-wise evolution — real data from the poller's per-day log.
-                  Column format matches the operator's reference: NII spans two
-                  sub-columns for bHNI (10L+) and sHNI (2-10L), with the combined
-                  NII value shown above (operator ask 2026-09-22). */}
+                  Column format: NII spans bHNI (10L+) + sHNI (2-10L). Each day
+                  row is expandable — click to reveal the hourly snapshots for
+                  that day, from `extra.subLogHour` (72-entry rolling window,
+                  operator ask 2026-09-22). */}
               {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <h3>Day-wise subscription</h3>
-                  <div className="fin-scroll" style={{ marginTop: 10 }}>
-                    <table className="fin-tab day-wise-sub">
-                      <thead>
-                        <tr>
-                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Date</th>
-                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>QIB</th>
-                          <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border)' }}>NII</th>
-                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Retail</th>
-                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Total</th>
-                        </tr>
-                        <tr>
-                          <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>bHNI</th>
-                          <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>sHNI</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...ex.subLog].reverse().map((e: any) => (
-                          <tr key={e.d}>
-                            <td>{/^\d{4}-\d{2}-\d{2}$/.test(String(e.d)) ? new Date(`${e.d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : e.d}</td>
-                            <td className="mono">{e.qib != null ? `${e.qib}×` : '—'}</td>
-                            <td className="mono" style={{ fontSize: 12.5 }}>
-                              {e.hni != null ? `${e.hni}×` : e.nii != null ? `${e.nii}×` : '—'}
-                            </td>
-                            <td className="mono" style={{ fontSize: 12.5 }}>
-                              {e.hni2 != null ? `${e.hni2}×` : '—'}
-                            </td>
-                            <td className="mono">{e.retail != null ? `${e.retail}×` : '—'}</td>
-                            <td className="mono" style={{ fontWeight: 700 }}>{e.total != null ? `${e.total}×` : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <DayWiseSubscription subLog={ex.subLog} subLogHour={Array.isArray(ex.subLogHour) ? ex.subLogHour : []} />
               )}
               {/* section eyebrow kept for scroll-nav consistency */}
               {ipo.appWise && (

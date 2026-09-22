@@ -442,21 +442,36 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       const snap = JSON.stringify(subs);
       const changed = this.lastSnapshot.get(ipo.id) !== snap;
       if (changed) {
-        // Day-wise trend log — the front-site detail page reads `qib/nii/retail/total`;
-        // we also record `hni/hni2/employee/shareholder` for the fuller breakdown
-        // once the UI grows the extra columns. Extra keys are ignored by the
-        // current reader, so no coordination is needed.
-        const day = this.istParts().ymd;
+        // Day-wise trend log — one entry per day (the latest snapshot each
+        // day wins, capped at 14 days). Front-site detail page's day-wise
+        // table reads this. Extra keys ignored by legacy readers.
+        const istNow = this.istParts();
+        const day = istNow.ymd;
         const pick = (c: string): number | null => { const s = subs.find((x) => x.category === c); return s ? Number(s.timesSubscribed) : null; };
+        const snapshot = {
+          total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail'),
+          hni: pick('hni'), hni2: pick('hni2'),
+          employee: pick('employee'), shareholder: pick('shareholder'),
+        };
         const subLog = [
           ...(Array.isArray(ex.subLog) ? ex.subLog : []).filter((e: any) => e?.d !== day),
-          {
-            d: day,
-            total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail'),
-            hni: pick('hni'), hni2: pick('hni2'),
-            employee: pick('employee'), shareholder: pick('shareholder'),
-          },
+          { d: day, ...snapshot },
         ].slice(-14);
+
+        // Hourly rolling window (2026-09-22 operator ask) — one snapshot per
+        // (day, hour). The LATEST snapshot within each hour wins, so the
+        // 60s poller writes ~60x per hour but only the last value sticks.
+        // Cap at 72 entries = 3 days × 24 hours (operator confirmed).
+        // Front-site expands each day-wise row to reveal the hourly trail.
+        const hh = String(istNow.hour).padStart(2, '0');
+        const t = `${hh}:00`;
+        const hourKey = `${day}T${hh}`;
+        const subLogHour = [
+          ...(Array.isArray(ex.subLogHour) ? ex.subLogHour : [])
+            .filter((e: any) => `${e?.d}T${String(e?.t ?? '').slice(0, 2)}` !== hourKey),
+          { d: day, t, ...snapshot },
+        ].slice(-72);
+
         await this.prisma.$transaction([
           this.prisma.ipoSubscription.deleteMany({ where: { ipoId: ipo.id } }),
           this.prisma.ipoSubscription.createMany({
@@ -467,7 +482,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
               nseBids: s.nseBids, bseBids: s.bseBids,
             })),
           }),
-          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now, extra: { ...ex, subLog } } }),
+          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now, extra: { ...ex, subLog, subLogHour } } }),
         ]);
         this.lastSnapshot.set(ipo.id, snap);
       } else {

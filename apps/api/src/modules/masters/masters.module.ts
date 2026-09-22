@@ -35,6 +35,7 @@ class MasterDto {
   @IsOptional() @IsString() type?: string;   // anchors only: Mutual Fund | FPI | Insurance | AIF | Other
   @IsOptional() @IsString() notes?: string;  // orgs + anchors: free-text operator notes
   @IsOptional() industries?: string[];       // sectors only: the Basic-Industry values rolling up here
+  @IsOptional() @IsString() sector?: string; // industries only: the rolling-up sector name
   // Reporting extras (2026-09-11) — accepted by API + admin form + bulk upload.
   @IsOptional() @IsString() sebiRegNo?: string;      // orgs: SEBI merchant-banker / RTA registration
   @IsOptional() foundedYear?: number;                // orgs: year founded
@@ -63,6 +64,7 @@ const KINDS = {
   'upi-handles': 'upiHandleMaster',
   anchors: 'anchorMaster',
   sectors: 'sectorMaster',
+  industries: 'industryMaster',
 } as const;
 type Kind = keyof typeof KINDS;
 
@@ -82,6 +84,7 @@ const KIND_PERM: Record<string, string> = {
   'upi-handles': 'masters.upi-handles.manage',
   anchors: 'masters.anchors.manage',
   sectors: 'masters.sectors.manage',
+  industries: 'masters.industries.manage',
 };
 const ALL_MASTER_PERMS = Object.values(KIND_PERM).filter((v, i, a) => a.indexOf(v) === i);
 
@@ -126,6 +129,9 @@ export class MastersController {
     // `industries` is the roll-up: which Basic-Industry values belong to this
     // sector. Held as data so the operator can correct a mapping without a deploy.
     if (kind === 'sectors') fields.push('industries', 'description', 'rank');
+    // Industry master (2026-09-22) — same shape as sectors minus the
+    // roll-up array. `sector` names the rolling-up sector for reports.
+    if (kind === 'industries') fields.push('sector', 'description', 'rank');
     const data: Record<string, any> = {};
     for (const f of fields) if (dto[f] !== undefined) data[f] = typeof dto[f] === 'string' ? dto[f].trim() : dto[f];
     if (typeof data.shortCode === 'string') data.shortCode = data.shortCode.toUpperCase();
@@ -173,7 +179,7 @@ export class MastersController {
   @Post(':kind')
   @RequireAnyPermission(
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
-    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage', 'masters.industries.manage',
   )
   async create(@Req() req: any, @Param('kind') kind: string, @Body() dto: MasterDto) {
     await this.assertKindPerm(req.user.sub, kind);
@@ -211,7 +217,7 @@ export class MastersController {
   @Post(':kind/bulk/parse')
   @RequireAnyPermission(
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
-    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage', 'masters.industries.manage',
   )
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async bulkParse(@Req() req: any, @Param('kind') kind: string, @UploadedFile() file: any) {
@@ -263,7 +269,7 @@ export class MastersController {
   @Post(':kind/bulk')
   @RequireAnyPermission(
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
-    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage', 'masters.industries.manage',
   )
   async bulkCommit(@Req() req: any, @Param('kind') kind: string, @Body() body: { rows?: { data: Record<string, any> }[] }) {
     await this.assertKindPerm(req.user.sub, kind);
@@ -293,7 +299,7 @@ export class MastersController {
   @Patch(':kind/:id')
   @RequireAnyPermission(
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
-    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage', 'masters.industries.manage',
   )
   async update(@Req() req: any, @Param('kind') kind: string, @Param('id') id: string, @Body() dto: MasterPatchDto) {
     await this.assertKindPerm(req.user.sub, kind);
@@ -320,7 +326,7 @@ export class MastersController {
   @Delete(':kind/:id')
   @RequireAnyPermission(
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.ipo-category.manage',
-    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.relationships.manage', 'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage', 'masters.industries.manage',
   )
   async remove(@Req() req: any, @Param('kind') kind: string, @Param('id') id: string) {
     // Superadmin-only — mirrors admin.service.callerScope's own predicate

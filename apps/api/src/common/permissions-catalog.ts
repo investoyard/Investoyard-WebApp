@@ -75,6 +75,7 @@ export const PERMISSION_CATALOG = [
   { key: 'masters.upi-handles.manage',     label: 'UPI Handles',                                                                                  group: 'Masters' },
   { key: 'masters.anchors.manage',         label: 'Anchor Investors',                                                                             group: 'Masters' },
   { key: 'masters.sectors.manage',         label: 'Sectors',                                                                                      group: 'Masters' },
+  { key: 'masters.industries.manage',      label: 'Industries',                                                                                   group: 'Masters' },
   { key: 'masters.exchanges.manage',       label: 'Exchanges',                                                                                    group: 'Masters' },
   { key: 'masters.ipo-category.manage',    label: 'IPO Category (referenced from IPO Management sidebar)',                                        group: 'Masters' },
 

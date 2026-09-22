@@ -26,7 +26,7 @@ const ADMIN_PERMS = [
   'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
   'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.relationships.manage',
   'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
-  'masters.exchanges.manage', 'masters.ipo-category.manage',
+  'masters.industries.manage', 'masters.exchanges.manage', 'masters.ipo-category.manage',
   // Admin gets roles.view (can see who has what) but NOT roles.manage —
   // creating or editing a role is superadmin-only (see permissions-catalog).
   'users.view', 'users.manage', 'roles.view', 'audit.view',
@@ -42,6 +42,7 @@ const STAFF_PERMS = [
   // action 403s and the picker looks broken (operator report,
   // 2026-09-22: staff clicking Sector saw an error).
   'masters.sectors.manage',
+  'masters.industries.manage',
   'masters.lead-managers.manage',
   'masters.anchors.manage',
   'masters.registrars.manage',
