@@ -36,6 +36,16 @@ const ADMIN_PERMS = [
 const STAFF_PERMS = [
   'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view',
   'clients.view', 'reports.view', 'allotment.view',
+  // Masters used inline during IPO entry — the pickers on the IPO form
+  // let the operator create a new sector / lead / anchor / registrar
+  // right where they need it. Without these perms the "+ Add new"
+  // action 403s and the picker looks broken (operator report,
+  // 2026-09-22: staff clicking Sector saw an error).
+  'masters.sectors.manage',
+  'masters.lead-managers.manage',
+  'masters.anchors.manage',
+  'masters.registrars.manage',
+  'masters.ipo-category.manage',
 ];
 
 /** Partner-tenant Admin — sensible perms for a partner or white-label
