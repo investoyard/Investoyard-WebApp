@@ -128,11 +128,32 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     { key: 'leads',      label: 'Lead managers',             group: 'Parties',   filled: leads.length > 0 },
     { key: 'exchanges',  label: 'Exchanges',                 group: 'Parties',   filled: exchanges.length > 0 },
 
-    // Documents (2) — form saves types as UPPERCASE ('DRHP', 'RHP' — see
-    // IpoForm.tsx DOC_TYPES). Compare case-insensitively so a filled document
-    // doesn't leave the check stuck at pending (operator report, 2026-09-22).
-    { key: 'drhp',       label: 'DRHP link / file',          group: 'Documents', filled: has(ipo?.drhpUrl) || docs.some((d) => String(d?.type ?? '').toLowerCase() === 'drhp' && has(d?.url)) },
-    { key: 'rhp',        label: 'RHP link / file',           group: 'Documents', filled: has(ipo?.rhpUrl) || docs.some((d) => { const t = String(d?.type ?? '').toLowerCase(); return (t === 'rhp' || t === 'prospectus') && has(d?.url); }) },
+    // Documents (2) — a row counts as filled when EITHER the type matches
+    // AND the row has a URL (uploaded PDF or external link), OR the URL
+    // itself mentions the doc kind. Any Prospectus / RHP / DRHP counts for
+    // the corresponding check regardless of source (operator ask
+    // 2026-09-22: 'either PDF upload OR add link — both should be done').
+    //
+    // Compare case-insensitively (form saves 'DRHP' / 'RHP' uppercase per
+    // DOC_TYPES). Also check the URL for 'drhp' / 'rhp' fragments — a
+    // link mislabeled as 'Other' with a SEBI DRHP URL should still count.
+    { key: 'drhp',       label: 'DRHP link / file',          group: 'Documents', filled:
+        has(ipo?.drhpUrl) ||
+        docs.some((d) => {
+          const t = String(d?.type ?? '').toLowerCase();
+          const u = String(d?.url ?? '').toLowerCase();
+          return has(d?.url) && (t === 'drhp' || u.includes('drhp'));
+        }) },
+    { key: 'rhp',        label: 'RHP link / file',           group: 'Documents', filled:
+        has(ipo?.rhpUrl) ||
+        docs.some((d) => {
+          const t = String(d?.type ?? '').toLowerCase();
+          const u = String(d?.url ?? '').toLowerCase();
+          if (!has(d?.url)) return false;
+          if (t === 'rhp' || t === 'prospectus') return true;
+          // /rhp filename or "prospectus" in the URL path
+          return /(?:^|\/|_|-)rhp[._-]/.test(u) || u.includes('prospectus');
+        }) },
 
     // Application rail (3) — dropped for closed issues
     { key: 'asba',       label: 'Application PDF template',  group: 'Application rail', filled: docs.some((d) => typeof d?.type === 'string' && d.type.startsWith('asba_form') && has(d?.url)), skipped: closed },

@@ -242,7 +242,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
           {ipo.subscription && subT && (
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
-              <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} />
+              <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} />
               {/* Day-wise evolution — real data from the poller's per-day log.
                   Column format: NII spans bHNI (10L+) + sHNI (2-10L). Each day
                   row is expandable — click to reveal the hourly snapshots for

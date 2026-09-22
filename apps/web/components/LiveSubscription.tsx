@@ -27,7 +27,7 @@ import type { SubRowT } from '@/lib/ipoCalc';
  * Below the hero: Share-Wise + Application-Wise panels (unchanged).
  */
 export function LiveSubscription({
-  rows, total, status, asOf, priceMin, priceMax, totalApps,
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType,
 }: {
   rows: SubRowT[];
   total: SubRowT;
@@ -36,6 +36,7 @@ export function LiveSubscription({
   priceMin?: number;
   priceMax?: number;
   totalApps?: number;
+  ipoType?: string;
 }) {
   const live = status === 'open';
   const hasBand = !!priceMin && !!priceMax && priceMin !== priceMax;
@@ -106,7 +107,10 @@ export function LiveSubscription({
       <div className="subv2-ln-detail" style={{ marginTop: 14 }}>
         <div className="subv2-det-in">
           <ShareWisePanel rows={rows} total={total} price={price} />
-          <AppWisePanel rows={rows} />
+          {/* Application-wise is mainboard-only. SME reads that count off
+              the Lot Ladder's Reserved column, so a separate table is
+              redundant (operator ask, 2026-09-22). */}
+          {ipoType !== 'sme' && <AppWisePanel rows={rows} />}
         </div>
       </div>
 

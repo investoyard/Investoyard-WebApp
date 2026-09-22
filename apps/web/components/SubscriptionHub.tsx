@@ -365,7 +365,11 @@ export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; o
                 with two-line cells) to sit as its own column alongside
                 Share-wise and Application-wise. */}
             <ShareWisePanel rows={table.rows} total={table.total} price={price} />
-            <AppWisePanel rows={table.rows} />
+            {/* Application-wise panel is mainboard-only. SME's per-category
+                application count is folded into the Lot Ladder's Reserved
+                column, so a separate Application-wise table would just
+                repeat the same numbers (operator ask, 2026-09-22). */}
+            {ipo.type !== 'sme' && <AppWisePanel rows={table.rows} />}
             <LotLadderPanel ipo={ipo} />
           </div>
         </div>
@@ -501,6 +505,50 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
  *  max, S-HNI min, S-HNI max, B-HNI min); we collapse them here. */
 export function LotLadderPanel({ ipo }: { ipo: IpoFull }) {
   const rows = lotLadder(ipo);
+  const isSme = ipo.type === 'sme';
+  // SME variant: single row per category with a Reserved column (Req 1× from
+  // the subscription table) — operator ask 2026-09-22 matching the reference
+  // in ipoSubscription_iy_v2.html:
+  //   CATEGORY | LOT(S) | QTY | AMOUNT | RESERVED
+  //   INDIVIDUAL  2  2400  ₹2,54,400  405
+  //   sHNI        3  3600  ₹3,81,600   39
+  //   bHNI        8  9600  ₹10,17,600  77
+  if (isSme) {
+    if (rows.length < 3) return null;
+    const rupees = (n: number): string => n > 0 ? `₹${Math.round(n).toLocaleString('en-IN')}` : '—';
+    const table = subscriptionTable(ipo);
+    // Category key → SubRowT.req1x (retail → 'retail', sHNI → 'hni2', bHNI → 'hni')
+    const req = (k: string) => table?.rows.find((r) => r.key === k)?.req1x ?? 0;
+    const reserved: Record<string, number> = {
+      Individual: req('retail'),
+      sHNI: req('hni2'),
+      bHNI: req('hni'),
+    };
+    return (
+      <section className="subv2-det-panel">
+        <header>
+          <h4>Lot ladder</h4>
+          <span className="muted">SME</span>
+        </header>
+        <div className="subv2-tbl-wrap">
+          <table className="subv2-tbl">
+            <thead><tr><th>Category</th><th>Lot(s)</th><th>Qty</th><th>Amount</th><th>Reserved</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.cat}>
+                  <td><b>{r.cat}</b></td>
+                  <td>{r.lots}</td>
+                  <td>{fmtIn(r.shares)}</td>
+                  <td>{rupees(r.amount)}</td>
+                  <td>{fmtIn(reserved[r.cat] ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
   if (rows.length < 5) return null;
   const [rMin, rMax, sMin, sMax, bMin] = rows;
   /** Full-rupee format ("₹14,850", "₹10,02,300") — Indian comma grouping, no

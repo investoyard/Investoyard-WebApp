@@ -95,11 +95,28 @@ export function lotLadder(ipo: IpoFull): LotRow[] {
   const perLot = lot * up(ipo);
   if (!perLot) return [];
   const th = packFor(ipo).thresholds;
+  const isSme = ipo.type === 'sme';
+  const mk = (cat: string, sub: string, lots: number): LotRow => ({ cat, sub, lots, shares: lots * lot, amount: lots * perLot });
+  if (isSme) {
+    // SEBI SME framework (post-2024 amendment, operator ask 2026-09-22):
+    // retail min is 2 lots — not the 1-lot mainboard convention. sHNI = min
+    // bid above retail cutoff (2 + 1 lot at least, or wherever ₹2 L would
+    // land, whichever is higher). bHNI = first lot count where the bid
+    // amount crosses ₹10 L. Single-row-per-category ladder (no min-max
+    // range) because SME retail is effectively a fixed 2-lot bid.
+    const indMin = 2;
+    const sMin = Math.max(indMin + 1, Math.ceil((th.hni2?.above ?? 200_000) / perLot));
+    const bMin = Math.max(sMin + 1, Math.ceil((th.hni?.above ?? 1_000_000) / perLot));
+    return [
+      mk('Individual', 'up to ₹2 L', indMin),
+      mk('sHNI', '₹2 L to ₹10 L', sMin),
+      mk('bHNI', 'Above ₹10 L', bMin),
+    ];
+  }
   const rMax = Math.max(1, Math.floor((th.hni2?.above ?? 0) / perLot));
   const sMin = rMax + 1;
   const sMax = Math.max(sMin, Math.floor((th.hni?.above ?? 0) / perLot));
   const bMin = sMax + 1;
-  const mk = (cat: string, sub: string, lots: number): LotRow => ({ cat, sub, lots, shares: lots * lot, amount: lots * perLot });
   return [
     mk('Retail', 'Up to ₹2 L', 1),
     mk('Retail', 'Up to ₹2 L', rMax),
