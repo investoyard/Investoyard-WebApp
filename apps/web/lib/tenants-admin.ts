@@ -549,6 +549,7 @@ export interface MasterRow {
   type?: string | null;         // anchors: Mutual Fund | FPI | Insurance | AIF | Other
   notes?: string | null;        // orgs + anchors
   industries?: string[];        // sectors
+  sector?: string | null;       // industries: rolling-up sector name
   // Reporting extras added 2026-09-11.
   sebiRegNo?: string | null;               // orgs
   foundedYear?: number | null;             // orgs

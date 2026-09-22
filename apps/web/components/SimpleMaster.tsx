@@ -62,6 +62,7 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
     'upi-handles': 'masters.upi-handles.manage',
     anchors: 'masters.anchors.manage',
     sectors: 'masters.sectors.manage',
+    industries: 'masters.industries.manage',
   };
   const mkPerm = KIND_PERM[kind] ?? 'ipos.view';
 
