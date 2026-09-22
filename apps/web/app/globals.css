@@ -3835,8 +3835,15 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* ── Live Subscription detail-page section (operator revision 2026-09-22)
       Cleaner header layout — status/timestamp on their own row, hero in
       its own row, three tiles across. Uses .lsx-* classnames so it does
-      not fight the shared .subv2-ln-* grid the /subscription/v2 hub uses. */
-.subv2-detail { display: flex; flex-direction: column; }
+      not fight the shared .subv2-ln-* grid the /subscription/v2 hub uses.
+      Overrides .subv2's standalone-page paddings (40px bottom, 1360px max-
+      width, centred margin) so this section fits inside the detail-page
+      column naturally — operator report 2026-09-22 noted an extra gap
+      below the card that came from the base .subv2 rules. */
+.subv2-detail {
+  display: flex; flex-direction: column;
+  padding: 0; max-width: none; margin: 0;
+}
 .lsx-top {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 12px 18px; background: var(--surface-2);
