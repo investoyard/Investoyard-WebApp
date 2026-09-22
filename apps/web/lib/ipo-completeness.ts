@@ -128,9 +128,11 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     { key: 'leads',      label: 'Lead managers',             group: 'Parties',   filled: leads.length > 0 },
     { key: 'exchanges',  label: 'Exchanges',                 group: 'Parties',   filled: exchanges.length > 0 },
 
-    // Documents (2)
-    { key: 'drhp',       label: 'DRHP link / file',          group: 'Documents', filled: has(ipo?.drhpUrl) || docs.some((d) => d?.type === 'drhp' && has(d?.url)) },
-    { key: 'rhp',        label: 'RHP link / file',           group: 'Documents', filled: has(ipo?.rhpUrl) || docs.some((d) => d?.type === 'rhp' && has(d?.url)) },
+    // Documents (2) — form saves types as UPPERCASE ('DRHP', 'RHP' — see
+    // IpoForm.tsx DOC_TYPES). Compare case-insensitively so a filled document
+    // doesn't leave the check stuck at pending (operator report, 2026-09-22).
+    { key: 'drhp',       label: 'DRHP link / file',          group: 'Documents', filled: has(ipo?.drhpUrl) || docs.some((d) => String(d?.type ?? '').toLowerCase() === 'drhp' && has(d?.url)) },
+    { key: 'rhp',        label: 'RHP link / file',           group: 'Documents', filled: has(ipo?.rhpUrl) || docs.some((d) => { const t = String(d?.type ?? '').toLowerCase(); return (t === 'rhp' || t === 'prospectus') && has(d?.url); }) },
 
     // Application rail (3) — dropped for closed issues
     { key: 'asba',       label: 'Application PDF template',  group: 'Application rail', filled: docs.some((d) => typeof d?.type === 'string' && d.type.startsWith('asba_form') && has(d?.url)), skipped: closed },

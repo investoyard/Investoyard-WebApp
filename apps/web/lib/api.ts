@@ -3,8 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { computeIssue, EXCHANGES, exchangeLabels } from '@investoyard/shared-types';
-import { issueInputsFor } from '@/lib/ipoCalc';
+import { EXCHANGES, exchangeLabels } from '@investoyard/shared-types';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -20,6 +19,11 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   faceValue?: number;
   freshIssue?: string;
   offerForSale?: string;
+  /** Share counts to display alongside the ₹ amounts on the detail page.
+   *  Derived from the ₹ figure and the upper price band. Present only when
+   *  both inputs are available. */
+  freshIssueShares?: number;
+  offerForSaleShares?: number;
   /** Applications needed for 1× — derived from the operator's REAL reservation
    *  table + real lot size; a category is absent when we can't compute it. */
   formsFor1x?: { retail?: number; sHni?: number; bHni?: number };
@@ -207,6 +211,11 @@ function enrich(ipo: IpoDetail): IpoFull {
   const ofsCr = legCr(exAll?.ofs);
   if (freshCr != null) f.freshIssue = `₹${Math.round(freshCr)} Cr`;
   if (ofsCr != null) f.offerForSale = `₹${Math.round(ofsCr)} Cr`;
+  // Share counts alongside the ₹ amounts — operator ask 2026-09-22, matches
+  // the Mehul Bumtaria issue sheets. Compute from ₹ ÷ upper band; only present
+  // when both inputs land, so the display gracefully hides them otherwise.
+  if (freshCr != null && upper > 0) f.freshIssueShares = Math.round((freshCr * 1e7) / upper);
+  if (ofsCr != null && upper > 0) f.offerForSaleShares = Math.round((ofsCr * 1e7) / upper);
 
   /**
    * Applications required for 1× subscription — REAL data only.
@@ -232,19 +241,27 @@ function enrich(ipo: IpoDetail): IpoFull {
       pct > 0 && lots > 0 ? Math.max(1, Math.round((totalShares * pct / 100) / (lots * lot))) : undefined;
 
     /**
-     * Applications for 1x, from the ONE shared engine.
-     *
-     * Replaces a local copy that used Math.round — which under-reported the
-     * figure whenever the division was not exact, since reaching 1x needs a
-     * whole extra application, not a rounded one.
+     * Applications for 1x — same formula the subscription page uses (see
+     * ipoCalc.ts::subscriptionTable): Retail ÷ lotSize, HNI ÷ sHNI-min-shares
+     * where sHNI-min = ceil(₹2L / (lot × priceMax)) × lot. Bypasses
+     * `computeIssue.appsFor1x` which returned undefined for many records —
+     * operator report 2026-09-22: the block was silently hidden on every IPO.
      */
-    // ONE mapper, shared with ipoCalc.ts — the public figures and the admin/card
-    // panels can no longer be derived from differently-shaped inputs.
-    const derived = computeIssue(issueInputsFor(ipo as any));
-    const catOf = (k: string) => derived.primary?.categories.find((c: any) => c.key === k);
-    const retail = catOf('retail')?.appsFor1x;
-    const sHni = catOf('hni2')?.appsFor1x;
-    const bHni = catOf('hni')?.appsFor1x;
+    const shniMin = lot > 0 && upper > 0
+      ? Math.ceil(200_000 / (lot * upper)) * lot
+      : 0;
+    const bookOf = (k: string): number => {
+      const row = resv?.[k];
+      if (!row) return 0;
+      const direct = Number(row.sharesLower) > 0 ? Number(row.sharesLower)
+        : Number(row.sharesUpper) > 0 ? Number(row.sharesUpper) : 0;
+      if (direct > 0) return direct;
+      const p = pctOf(k);
+      return p > 0 ? (totalShares * p) / 100 : 0;
+    };
+    const retail = (() => { const b = bookOf('retail'); return b > 0 && lot > 0 ? Math.round(b / lot) : undefined; })();
+    const sHni = (() => { const b = bookOf('hni2'); return b > 0 && shniMin > 0 ? Math.round(b / shniMin) : undefined; })();
+    const bHni = (() => { const b = bookOf('hni'); return b > 0 && shniMin > 0 ? Math.round(b / shniMin) : undefined; })();
     if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
     // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
     if (ipo.subscription?.length) {

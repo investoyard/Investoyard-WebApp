@@ -151,14 +151,14 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 <div className="between"><h3>Issue reservation</h3>{ipo.issueSize && <span className="muted mono" style={{ fontSize: 13 }}>{ipo.issueSize}</span>}</div>
                 <div className="alloc" style={{ marginTop: 14 }}>
                   {resRows.map((r) => (
-                    <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
+                    <span key={r.key} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
                       {segLabel(r.cat, r.pct, false)}
                     </span>
                   ))}
                 </div>
                 <div className="alloc-legend" style={{ marginTop: 12 }}>
                   {resRows.map((r) => (
-                    <div className="al" key={r.cat}>
+                    <div className="al" key={r.key}>
                       <span className="swatch" style={{ background: catColor(r.cat) }} />
                       <div className="al-txt"><div className="who">{r.cat}</div><div className="num">{shC(r.shares)} sh · {calc.crOrInr(r.amount)}</div></div>
                       <span className="pct">{r.pct}%</span>
@@ -215,8 +215,16 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 <h3>Issue details</h3>
                 <div style={{ marginTop: 8 }}>
                   <div className="kv"><span className="k">Lead managers</span><span className="v" style={{ fontSize: 14 }}>{ipo.leadManagers?.join(', ') ?? '—'}</span></div>
-                  {ipo.freshIssue && <div className="kv"><span className="k">Fresh issue</span><span className="v mono">{ipo.freshIssue}</span></div>}
-                  {ipo.offerForSale && <div className="kv"><span className="k">Offer for sale</span><span className="v mono">{ipo.offerForSale}</span></div>}
+                  {ipo.freshIssue && (
+                    <div className="kv"><span className="k">Fresh issue</span><span className="v mono">
+                      {ipo.freshIssueShares ? `${ipo.freshIssueShares.toLocaleString('en-IN')} sh · ` : ''}{ipo.freshIssue}
+                    </span></div>
+                  )}
+                  {ipo.offerForSale && (
+                    <div className="kv"><span className="k">Offer for sale</span><span className="v mono">
+                      {ipo.offerForSaleShares ? `${ipo.offerForSaleShares.toLocaleString('en-IN')} sh · ` : ''}{ipo.offerForSale}
+                    </span></div>
+                  )}
                   <div className="kv"><span className="k">Face value</span><span className="v mono">₹{ipo.faceValue ?? 10}</span></div>
                   <div className="kv"><span className="k">Listing on</span><span className="v">{ipo.exchanges?.join(' · ') ?? '—'}</span></div>
                   <div className="kv"><span className="k">Registrar</span><span className="v" style={{ fontSize: 14 }}>{ipo.registrar ?? '—'}</span></div>
@@ -234,19 +242,39 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
               <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} />
-              {/* day-wise evolution — from the poller's per-day log (real data only) */}
+              {/* Day-wise evolution — real data from the poller's per-day log.
+                  Column format matches the operator's reference: NII spans two
+                  sub-columns for bHNI (10L+) and sHNI (2-10L), with the combined
+                  NII value shown above (operator ask 2026-09-22). */}
               {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
                 <div className="panel" style={{ marginTop: 14 }}>
                   <h3>Day-wise subscription</h3>
                   <div className="fin-scroll" style={{ marginTop: 10 }}>
-                    <table className="fin-tab">
-                      <thead><tr><th>Date</th><th>QIB</th><th>NII</th><th>Retail</th><th>Total</th></tr></thead>
+                    <table className="fin-tab day-wise-sub">
+                      <thead>
+                        <tr>
+                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Date</th>
+                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>QIB</th>
+                          <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid var(--border)' }}>NII</th>
+                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Retail</th>
+                          <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Total</th>
+                        </tr>
+                        <tr>
+                          <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>bHNI</th>
+                          <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>sHNI</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {[...ex.subLog].reverse().map((e: any) => (
                           <tr key={e.d}>
                             <td>{/^\d{4}-\d{2}-\d{2}$/.test(String(e.d)) ? new Date(`${e.d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : e.d}</td>
                             <td className="mono">{e.qib != null ? `${e.qib}×` : '—'}</td>
-                            <td className="mono">{e.nii != null ? `${e.nii}×` : '—'}</td>
+                            <td className="mono" style={{ fontSize: 12.5 }}>
+                              {e.hni != null ? `${e.hni}×` : e.nii != null ? `${e.nii}×` : '—'}
+                            </td>
+                            <td className="mono" style={{ fontSize: 12.5 }}>
+                              {e.hni2 != null ? `${e.hni2}×` : '—'}
+                            </td>
                             <td className="mono">{e.retail != null ? `${e.retail}×` : '—'}</td>
                             <td className="mono" style={{ fontWeight: 700 }}>{e.total != null ? `${e.total}×` : '—'}</td>
                           </tr>

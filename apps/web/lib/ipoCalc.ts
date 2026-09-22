@@ -109,28 +109,72 @@ export function lotLadder(ipo: IpoFull): LotRow[] {
   ];
 }
 
-export interface ResRow { cat: string; pct: number; shares: number; amount: number; }
+export interface ResRow { key: string; cat: string; pct: number; shares: number; amount: number; }
+/**
+ * Reservation bar segments — one per category, summing to ≈100%.
+ *
+ * DIRECT read of `extra.shareResv` (the operator's own table), not through
+ * the shared engine — that engine's residual allocator has been synthesizing
+ * a duplicate `nii` roll-up when both `hni` and `hni2` are present (visual
+ * bug: total > 100%, 2026-09-22 operator report on NSE). Reading the table
+ * directly avoids that: we take what the operator entered, no residuals.
+ *
+ * Rules:
+ *   • Drop the synthetic `nii` row when BOTH split rows (`hni` + `hni2`) are
+ *     present — otherwise it double-counts HNI demand (10% + 5% + 15% = 30%
+ *     for the same slice).
+ *   • For any row with a blank `pct` but a real `sharesLower`, derive the
+ *     pct as `sharesLower ÷ totalShares × 100`. Skip if both are missing.
+ *   • Label rows via `subCatLabel()` so the bar reads "HNI (10L+)" / "HNI
+ *     (2-10L)" / "Retail" — matching the subscription page's vocabulary
+ *     (was showing raw "HNI2" / uppercased "RETAIL").
+ */
 export function reservation(ipo: IpoFull): ResRow[] {
-  /**
-   * Shares come from the ENGINE, which floors each category to a whole number
-   * of lots and gives the rounding residual to one named category. This used
-   * to be Math.round(amount / price) — a share count that was not a whole lot
-   * and did not agree with the same figure on the public page.
-   */
-  const d = derive(ipo);
-  if (d.primary?.categories.length) {
-    return d.primary.categories.map((c) => ({ cat: c.label, pct: c.pct, shares: c.shares, amount: c.amount }));
+  const priceMax = up(ipo) || 1;
+  const totalShares = parseIssueValue(ipo.issueSize) / priceMax || 0;
+  const resv: any = (ipo as any).extra?.shareResv;
+  if (resv && typeof resv === 'object') {
+    const hasHni = !!(resv.hni && (Number(resv.hni.sharesLower) > 0 || Number(resv.hni.sharesUpper) > 0 || Number(resv.hni.pct) > 0));
+    const hasHni2 = !!(resv.hni2 && (Number(resv.hni2.sharesLower) > 0 || Number(resv.hni2.sharesUpper) > 0 || Number(resv.hni2.pct) > 0));
+    const buckets = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'other'];
+    const rows: ResRow[] = [];
+    for (const k of buckets) {
+      // Dedupe synthetic 'nii' — but we don't iterate 'nii' anyway (not in
+      // the operator's table). Kept below for completeness in case a caller
+      // extends the buckets list.
+      if (k === ('nii' as any) && hasHni && hasHni2) continue;
+      const row = resv[k];
+      if (!row || row.on === false) continue;
+      const shares = Number(row.sharesLower) > 0
+        ? Number(row.sharesLower)
+        : Number(row.sharesUpper) > 0 ? Number(row.sharesUpper) : 0;
+      let pct = Number(row.pct);
+      if (!Number.isFinite(pct) || pct <= 0) {
+        // pct blank — derive from sharesLower ÷ totalShares (2026-09-22 fix:
+        // Employee had sharesLower=433437 but pct='' → an earlier engine
+        // gave it a phantom 5%. Deriving from what's actually entered is
+        // honest; skip if neither is present).
+        pct = totalShares > 0 && shares > 0
+          ? +((shares / totalShares) * 100).toFixed(2)
+          : 0;
+      }
+      if (pct <= 0 && shares <= 0) continue;
+      const amount = pct > 0 ? (parseIssueValue(ipo.issueSize) * pct) / 100 : shares * priceMax;
+      const effShares = shares > 0 ? shares : Math.round((totalShares * pct) / 100);
+      rows.push({ key: k, cat: subCatLabel(k), pct, shares: effShares, amount });
+    }
+    if (rows.length) return rows;
   }
   // no reservation table yet — fall back to the exchange's own category split
   const total = parseIssueValue(ipo.issueSize);
   if (!total) return [];
-  const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
+  const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total' && r.category !== 'nii');
   if (!rows.length) return [];
   return rows
     .map((r) => {
       const pct = (r as any).reservedPct ?? 0;
       const amount = (total * pct) / 100;
-      return { cat: r.category.toUpperCase(), pct, shares: Math.round(amount / (up(ipo) || 1)), amount };
+      return { key: r.category, cat: subCatLabel(r.category), pct, shares: Math.round(amount / priceMax), amount };
     })
     .filter((r) => r.pct > 0); // an all-zero table would render an empty bar
 }
