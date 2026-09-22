@@ -251,24 +251,13 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
               {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
                 <DayWiseSubscription subLog={ex.subLog} subLogHour={Array.isArray(ex.subLogHour) ? ex.subLogHour : []} />
               )}
-              {/* section eyebrow kept for scroll-nav consistency */}
-              {ipo.appWise && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="between"><h3>App-wise subscription</h3>{ipo.totalApps && <span className="muted mono" style={{ fontSize: 13 }}>~{ipo.totalApps.toLocaleString('en-IN')} apps</span>}</div>
-                  <div className="subx">
-                    <div className="subx-h"><span>Category</span><span>Total apps</span><span>Forms / 1×</span><span className="r">App-wise ×</span></div>
-                    {ipo.appWise.map((a) => (
-                      <div className="subx-row" key={a.key} style={{ ['--cc' as string]: catColor(a.label) } as React.CSSProperties}>
-                        <div><span className="cat-chip">{a.label}</span></div>
-                        <div className="subx-num" data-k="Total apps">{a.apps.toLocaleString('en-IN')}</div>
-                        <div className="subx-num" data-k="Forms / 1×">{a.formsFor1x.toLocaleString('en-IN')}<small>for 1×</small></div>
-                        <div className="r"><span className="x-badge" style={{ color: segTextColor(a.label) }}>{a.times}×</span></div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="note-line">App-wise figures estimate applicants per category from the forms required for 1× subscription.</p>
-                </div>
-              )}
+              {/* The old app-wise panel here was a legacy renderer of
+                  `ipo.appWise` that duplicated the ApplicationWise panel now
+                  rendered INSIDE LiveSubscription. Removed 2026-09-22
+                  (operator report: "extra application wise card panel
+                  shown"). ipo.appWise is still populated on the API side —
+                  harmless — but the detail page reads Application-wise only
+                  through LiveSubscription's AppWisePanel. */}
             </section>
           )}
 

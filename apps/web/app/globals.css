@@ -3776,6 +3776,95 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-ln-r .v.tone-cool { color: var(--warn); }
 .subv2-ln-r .v.tone-cold { color: var(--neg); }
 
+/* ── Live Subscription detail-page section (operator revision 2026-09-22)
+      Cleaner header layout — status/timestamp on their own row, hero in
+      its own row, three tiles across. Uses .lsx-* classnames so it does
+      not fight the shared .subv2-ln-* grid the /subscription/v2 hub uses. */
+.subv2-detail { display: flex; flex-direction: column; }
+.lsx-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 12px 18px; background: var(--surface-2);
+  border: 1px solid var(--border); border-bottom: 0;
+  border-top-left-radius: 12px; border-top-right-radius: 12px;
+}
+.lsx-status-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lsx-asof { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lsx-band { display: inline-flex; }
+.lsx-band button {
+  font-size: 12px; font-weight: 600; padding: 5px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.lsx-hero {
+  display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center;
+  padding: 20px 22px 18px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+  min-height: 118px;
+}
+.lsx-hero-l { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lsx-times { display: flex; align-items: baseline; gap: 2px; }
+.lsx-times-n {
+  font-size: 40px; font-weight: 800; letter-spacing: -.02em; line-height: 1;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.lsx-times-x { font-size: 18px; color: var(--text-muted); margin-left: 2px; }
+.lsx-hero-hot .lsx-times-n { color: var(--pos); }
+.lsx-hero-warm .lsx-times-n { color: var(--gold-600); }
+.lsx-hero-cool .lsx-times-n { color: var(--warn); }
+.lsx-hero-cold .lsx-times-n { color: var(--neg); }
+.lsx-meter { max-width: 380px; }
+.lsx-meter-track {
+  height: 6px; border-radius: 999px; background: var(--surface-3);
+  overflow: hidden;
+}
+.lsx-meter-track > span {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--brand-400), var(--brand));
+  transition: width .35s ease;
+}
+.lsx-hero-hot .lsx-meter-track > span { background: linear-gradient(90deg, #4ade80, var(--pos)); }
+.lsx-hero-warm .lsx-meter-track > span { background: linear-gradient(90deg, var(--gold-400), var(--gold-600)); }
+.lsx-hero-cool .lsx-meter-track > span { background: linear-gradient(90deg, #fdba74, var(--warn)); }
+.lsx-hero-cold .lsx-meter-track > span { background: linear-gradient(90deg, #fca5a5, var(--neg)); }
+.lsx-meter-tk {
+  display: flex; justify-content: space-between; margin-top: 4px;
+  font-size: 10px; color: var(--text-muted); font-weight: 600;
+}
+.lsx-tone {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; margin-top: 2px;
+}
+.lsx-tone-hot { color: var(--pos); }
+.lsx-tone-warm { color: var(--gold-600); }
+.lsx-tone-cool { color: var(--warn); }
+.lsx-tone-cold { color: var(--neg); }
+.lsx-tiles {
+  display: grid; grid-template-columns: repeat(3, auto); gap: 28px;
+  align-items: center;
+}
+.lsx-tile { display: flex; flex-direction: column; gap: 4px; min-width: 100px; }
+.lsx-tile-k {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.lsx-tile-v {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.lsx-tile-v.tone-hot { color: var(--pos); }
+.lsx-tile-v.tone-warm { color: var(--gold-600); }
+.lsx-tile-v.tone-cool { color: var(--warn); }
+.lsx-tile-v.tone-cold { color: var(--neg); }
+
+@media (max-width: 780px) {
+  .lsx-top { flex-direction: column; align-items: stretch; gap: 10px; }
+  .lsx-hero { grid-template-columns: 1fr; gap: 18px; }
+  .lsx-tiles { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .lsx-tile { min-width: 0; }
+  .lsx-tile-v { font-size: 13.5px; }
+  .lsx-times-n { font-size: 34px; }
+}
+
 /* share button */
 .subv2-ln-act { display: flex; align-items: center; justify-content: flex-end; }
 .subv2-share { all: unset; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-muted); cursor: pointer; transition: background .12s, color .12s, border-color .12s; border: 1px solid transparent; }
