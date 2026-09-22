@@ -36,6 +36,10 @@ const ADMIN_PERMS = [
 const STAFF_PERMS = [
   'dashboard.view', 'ipos.view', 'ipos.manage', 'bids.view',
   'clients.view', 'reports.view', 'allotment.view',
+  // Import + parsers used from the IPO form's toolbar: PREANCHOR, Anchor
+  // Intimation, IPO Note. Without this, staff clicking "Fill from Anchor
+  // Intimation" 403s (operator report 2026-09-22).
+  'ipos.import',
   // Masters used inline during IPO entry — the pickers on the IPO form
   // let the operator create a new sector / lead / anchor / registrar
   // right where they need it. Without these perms the "+ Add new"

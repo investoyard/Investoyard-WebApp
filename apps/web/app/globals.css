@@ -520,7 +520,24 @@ h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.012em; margin: 0; }
 /* ----------------------------------------------------------------- CARDS / PANELS */
 .card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px; box-shadow: var(--sh-sm); transition: border-color .18s var(--ease), box-shadow .18s var(--ease), transform .18s var(--ease); }
 a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow: var(--sh-md); transform: translateY(-3px); }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--sh-sm); }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.03);
+  transition: box-shadow .2s ease;
+}
+.panel:hover { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.05); }
+.panel h3 {
+  font-size: 15px; font-weight: 700;
+  letter-spacing: -.01em; color: var(--text);
+  margin: 0 0 4px; position: relative; padding-left: 12px;
+}
+.panel h3::before {
+  content: ''; position: absolute; left: 0; top: 3px; bottom: 3px;
+  width: 3px; background: var(--brand); border-radius: 2px;
+}
 .panel-sub { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px; }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
@@ -563,10 +580,39 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .pager .pinfo { font-size: 13px; color: var(--text-muted); }
 
 /* ----------------------------------------------------------------- METRICS */
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-sm); }
-.metric { background: var(--surface); padding: 17px 19px; }
-.metric .k { font-size: 12px; color: var(--text-faint); font-weight: 500; }
-.metric .v { font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; }
+.metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; padding: 0;
+  background: transparent; border: 0; border-radius: 0; overflow: visible;
+  box-shadow: none;
+}
+.metric {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.metric::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--border);
+  transition: background .18s ease;
+}
+.metric:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  border-color: color-mix(in srgb, var(--brand) 20%, var(--border));
+}
+.metric .k {
+  font-size: 10.5px; color: var(--text-muted); font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.metric .v {
+  font-family: var(--font-display); font-size: 21px; font-weight: 700;
+  letter-spacing: -.025em; margin-top: 6px; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 
 /* subscription bars */
 .subrow { display: grid; grid-template-columns: 78px 1fr 58px; align-items: center; gap: 14px; margin: 13px 0; }
@@ -808,7 +854,15 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .detail-hero .h-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 
 /* ===== detail-page extended sections ===== */
-.metric.hl { background: var(--brand-50); } .metric.hl .v { color: var(--brand); } .metric.hl .k { color: var(--brand-700); }
+.metric.hl {
+  background: linear-gradient(135deg, var(--brand-50) 0%, var(--surface) 100%);
+  border-color: color-mix(in srgb, var(--brand) 25%, var(--border));
+}
+.metric.hl::after { background: var(--brand); }
+.metric.hl .v { color: var(--brand); }
+.metric.hl .k { color: var(--brand-700); }
+.metric:not(.hl)::after { background: var(--border-2, var(--border)); }
+.metric:hover::after { background: var(--brand); }
 .mini-h { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); margin: 16px 0 8px; }
 .note-line { font-size: 11.5px; color: var(--text-faint); margin-top: 12px; line-height: 1.5; }
 
