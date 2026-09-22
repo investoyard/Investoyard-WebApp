@@ -65,9 +65,14 @@ export function DayWiseSubscription({
               <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Retail</th>
               <th rowSpan={2} style={{ verticalAlign: 'bottom' }}>Total</th>
             </tr>
+            {/* bHNI / sHNI sub-headers use the SAME typography as the top-row
+                headers (no fontSize/muted overrides) so the value cells line
+                up under them and the column widths look like the rest of the
+                table (operator report 2026-09-22: bHNI value was floating
+                left of its header because the sub-header font was smaller). */}
             <tr>
-              <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>bHNI</th>
-              <th style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>sHNI</th>
+              <th>bHNI</th>
+              <th>sHNI</th>
             </tr>
           </thead>
           <tbody>
@@ -87,8 +92,8 @@ export function DayWiseSubscription({
                     </td>
                     <td>{fmtDay(e.d)}</td>
                     <td className="mono">{tx(e.qib)}</td>
-                    <td className="mono" style={{ fontSize: 12.5 }}>{tx(e.hni ?? e.nii)}</td>
-                    <td className="mono" style={{ fontSize: 12.5 }}>{tx(e.hni2)}</td>
+                    <td className="mono">{tx(e.hni ?? e.nii)}</td>
+                    <td className="mono">{tx(e.hni2)}</td>
                     <td className="mono">{tx(e.retail)}</td>
                     <td className="mono" style={{ fontWeight: 700 }}>{tx(e.total)}</td>
                   </tr>
