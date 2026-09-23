@@ -3802,7 +3802,9 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-ln.subv2-t-cold::before { background: var(--text-faint); }
 @media (max-width: 1100px) {
   .subv2-ln { grid-template-columns: 1fr 1fr; gap: 18px; }
-  .subv2-ln-l { grid-column: 1 / span 2; }
+  /* the rail floats over the corner here, so the identity block has to keep
+     clear of it — its name / chips / info pills span the full width now. */
+  .subv2-ln-l { grid-column: 1 / span 2; padding-right: 48px; }
   .subv2-ln-r { grid-column: 1 / span 2; }
   .subv2-ln-act { position: absolute; top: 14px; right: 14px; }
 }
@@ -3828,7 +3830,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* Updated stamp — top-right of the summary row, sitting to the left of the
    share button. Absolute so it never re-flows the info row and always reads at
    the top of the card, matching the operator's "top right" ask. */
-.subv2-updated { position: absolute; top: 8px; right: 52px; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-faint); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+/* right: clears the action rail in BOTH layouts — the ≤1100px float (14px
+   inset + 34px button) and the wide grid's 44px column (22px card padding +
+   44px) — with room to spare rather than the 1px the arithmetic alone gives. */
+.subv2-updated { position: absolute; top: 8px; right: 74px; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-faint); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
 .subv2-updated::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pos) 20%, transparent); animation: subv2-pulse 1.8s ease-in-out infinite; }
 @keyframes subv2-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .subv2-updated::before { animation: none; } }
@@ -3992,7 +3997,13 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 }
 
 /* share button */
-.subv2-ln-act { display: flex; align-items: center; justify-content: flex-end; }
+/* Action rail — a COLUMN, not a row. The grid reserves 44px for this slot and
+   the ≤1100px layout floats it over the card's top-right corner beside the
+   "Updated" stamp; both were sized when there was one button. A third (day-wise,
+   2026-09-23) made a horizontal row 102px wide, which overflowed the 44px track
+   on wide screens and ran straight through the timestamp on narrow ones.
+   Stacked, the rail is 34px wide and both layouts hold (operator report). */
+.subv2-ln-act { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; }
 .subv2-share { all: unset; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-muted); cursor: pointer; transition: background .12s, color .12s, border-color .12s; border: 1px solid transparent; }
 .subv2-share:hover { background: var(--brand-100); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 15%, transparent); }
 .subv2-share.spinning svg { animation: subv2-spin .8s linear infinite; }

@@ -96,9 +96,20 @@ export function stageLabel(ipo: StageInput): string {
 /**
  * Sort comparator for catalog lists: stage order first, then the date that
  * matters within that stage (soonest close for live issues, soonest open for
- * upcoming, most recent first for anything already finished).
+ * upcoming, most recent first for anything already finished), and finally the
+ * symbol so the answer is never "these two are equal".
+ *
+ * That last step is not decoration. Four issues sharing a stage AND a close
+ * date is ordinary — 23 Sep 2026 had exactly that — and returning 0 for them
+ * leaves their order to whatever the API happened to send, which is not
+ * guaranteed. The same four then rendered Elevate-first in one build and
+ * Swastika-first in the next, and /subscription could disagree with the home
+ * cards. Symbol is stable, unique and present on every record.
+ *
+ * Deliberately NOT subscription: those numbers change on every poll, so a card
+ * would move under the reader's cursor while they were looking at it.
  */
-export function compareForList(a: StageInput & { closeDate?: string; openDate?: string; listingDate?: string },
+export function compareForList(a: StageInput & { closeDate?: string; openDate?: string; listingDate?: string; symbol?: string },
                                b: typeof a): number {
   const ra = stageRank(a);
   const rb = stageRank(b);
@@ -107,10 +118,12 @@ export function compareForList(a: StageInput & { closeDate?: string; openDate?: 
   const key = (x: typeof a) => (finished ? (x.listingDate ?? x.closeDate ?? '') : (x.closeDate ?? x.openDate ?? ''));
   const ka = key(a);
   const kb = key(b);
-  if (!ka && !kb) return 0;
+  const bySymbol = () => (a.symbol ?? '').localeCompare(b.symbol ?? '');
+  if (!ka && !kb) return bySymbol();
   if (!ka) return 1;
   if (!kb) return -1;
-  return finished ? kb.localeCompare(ka) : ka.localeCompare(kb);
+  const byDate = finished ? kb.localeCompare(ka) : ka.localeCompare(kb);
+  return byDate !== 0 ? byDate : bySymbol();
 }
 
 /** True when the issue is still current — open, upcoming, or recently finished. */

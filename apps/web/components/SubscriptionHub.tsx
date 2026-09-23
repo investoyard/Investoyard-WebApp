@@ -8,7 +8,7 @@ import { statusChip } from '@/components/IpoCard';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
-import { titleCase, shortName, compareForList } from '@investoyard/shared-types';
+import { titleCase, shortName } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -140,12 +140,25 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
     if (filter === 'mainboard' || filter === 'sme') l = l.filter((i) => i.type === filter);
     const q = search.trim().toLowerCase();
     if (q) l = l.filter((i) => `${i.name} ${i.symbol ?? ''}`.toLowerCase().includes(q));
-    // Same order the IPO cards use — `compareForList` (Closing Today → Open
-    // Today → Live, then by close date). It used to sort by most-subscribed
-    // first, which put a quiet issue closing TODAY below a loud one with two
-    // days left: the hub and the home grid listed the same issues in different
-    // orders (operator ask, 2026-09-23).
-    return l.slice().sort(compareForList);
+    // CLOSING DATE order — closing today, then tomorrow, and so on (operator
+    // ask, 2026-09-23). Deliberately NOT `compareForList`, which the IPO cards
+    // use: that ranks by STAGE first, so an issue that opened today and closes
+    // on the 25th outranks one closing on the 24th. On a page about who is
+    // about to close, the date is the only thing that should decide.
+    //
+    // Symbol breaks the tie so four issues sharing a close date can't reshuffle
+    // between renders; an IPO with no close date sorts last rather than first,
+    // which is what an empty string would otherwise do.
+    return l.slice().sort((a, b) => {
+      const ka = a.closeDate ?? '';
+      const kb = b.closeDate ?? '';
+      if (ka !== kb) {
+        if (!ka) return 1;
+        if (!kb) return -1;
+        return ka.localeCompare(kb);
+      }
+      return (a.symbol ?? '').localeCompare(b.symbol ?? '');
+    });
   }, [openList, filter, search, today]);
 
   // Board groupings — sections vanish when their bucket is empty in the
