@@ -71,6 +71,24 @@ export function stageOf(ipo: StageInput): Stage {
 
 export const stageRank = (ipo: StageInput): number => STAGE_RANK[stageOf(ipo)];
 
+/**
+ * The three stages an issue passes through while it is OPEN share one sort
+ * bucket, so a list orders them purely by close date — closing today, then
+ * tomorrow, then the day after (operator ask, 2026-09-23).
+ *
+ * STAGE_RANK still separates them, because the CHIP has to: Closing Today,
+ * Open Today and Live are three different things to read. They just aren't
+ * three different things to sort by, and ranking them made an issue that
+ * opened today and closes on the 25th outrank one closing on the 24th.
+ *
+ * Only the open trio collapses. A blanket "order everything by close date"
+ * would be much worse than the problem: listed issues carry the EARLIEST close
+ * dates in the catalogue, so they would sort to the very top of a home page
+ * that shows a fixed sixteen.
+ */
+const OPEN_STAGES: Stage[] = ['closingtoday', 'opentoday', 'live'];
+const listRank = (s: Stage): number => (OPEN_STAGES.includes(s) ? STAGE_RANK.closingtoday : STAGE_RANK[s]);
+
 /** Customer-facing status label — identical wording on both surfaces. */
 export function stageLabel(ipo: StageInput): string {
   const s = stageOf(ipo);
@@ -111,10 +129,12 @@ export function stageLabel(ipo: StageInput): string {
  */
 export function compareForList(a: StageInput & { closeDate?: string; openDate?: string; listingDate?: string; symbol?: string },
                                b: typeof a): number {
-  const ra = stageRank(a);
-  const rb = stageRank(b);
+  const sa = stageOf(a);
+  const sb = stageOf(b);
+  const ra = listRank(sa);
+  const rb = listRank(sb);
   if (ra !== rb) return ra - rb;
-  const finished = ra >= STAGE_RANK.allotmentout;
+  const finished = STAGE_RANK[sa] >= STAGE_RANK.allotmentout;
   const key = (x: typeof a) => (finished ? (x.listingDate ?? x.closeDate ?? '') : (x.closeDate ?? x.openDate ?? ''));
   const ka = key(a);
   const kb = key(b);
