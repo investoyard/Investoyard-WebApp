@@ -435,7 +435,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       }
 
       const { buckets } = bucketize(nseRows, bseRows);
-      const subs = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, Number(row?.priceBandMax ?? 0) || undefined);
+      const fresh = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, Number(row?.priceBandMax ?? 0) || undefined);
+      const subs = await this.keepKnownFigures(ipo, fresh);
       this.lastFetchAt.set(ipo.id, Date.now());
       if (subs.length === 0) {
         // Either the issue has no demand yet (early minutes), or the IPO row is
@@ -601,6 +602,73 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
    * card wants one NII line, and the aggregate is cheaper to compute here than
    * to re-derive on the client. Downstream readers pick whichever they need.
    */
+  /**
+   * Carry forward a category the exchange said nothing about this tick.
+   *
+   * The write below is DESTRUCTIVE — deleteMany + createMany — so whatever this
+   * returns becomes the whole truth for the issue. A tick that reports no
+   * demand for one category (`computeSubs` emits `timesSubscribed: 0` and no
+   * share columns, because it only sets `nseShares` when `r.ns > 0`) therefore
+   * used to erase a real figure permanently.
+   *
+   * It happened on 2026-09-23: ELEVATE's QIB held 32,25,142 shares — the same
+   * number every other information site showed — and one empty read replaced it
+   * with 0 for the rest of the day. Subscription inside the bidding window is
+   * CUMULATIVE; a category does not go from 3.2 million shares to nothing, so
+   * an empty reading is missing data, not zero demand.
+   *
+   * Deliberately narrow: this only rescues a category that reads as completely
+   * empty (no shares on either exchange, times 0) while a real figure is on
+   * record. A smaller number still overwrites a bigger one, because exchanges
+   * do legitimately revise figures down — clamping to the maximum would freeze
+   * a correction we could then only undo by hand.
+   */
+  private async keepKnownFigures(ipo: { id: string; symbol: string }, fresh: SubRow[]): Promise<SubRow[]> {
+    if (fresh.length === 0) return fresh;
+    const isEmpty = (r?: SubRow) => !r || (!(r.nseShares ?? 0) && !(r.bseShares ?? 0) && !Number(r.timesSubscribed));
+    if (!fresh.some((r) => isEmpty(r))) return fresh;           // nothing to rescue — the common path
+
+    const prev = await this.prisma.ipoSubscription.findMany({ where: { ipoId: ipo.id } });
+    if (prev.length === 0) return fresh;
+    const prevBy = new Map(prev.map((p) => [p.category, p]));
+
+    const out = fresh.map((r) => {
+      if (!isEmpty(r)) return r;
+      const p = prevBy.get(r.category);
+      if (!p || (!(p.nseShares ?? 0) && !(p.bseShares ?? 0) && !Number(p.timesSubscribed))) return r;
+      this.log.warn(`${ipo.symbol}: ${r.category} came back empty — keeping the stored ${Number(p.timesSubscribed)}x (${Number(p.nseShares ?? 0) + Number(p.bseShares ?? 0)} shares)`);
+      return {
+        category: r.category,
+        timesSubscribed: Number(p.timesSubscribed),
+        bidCount: p.bidCount ?? undefined,
+        applicationsSubscribed: p.applicationsSubscribed == null ? undefined : Number(p.applicationsSubscribed),
+        nseShares: p.nseShares ?? undefined,
+        bseShares: p.bseShares ?? undefined,
+        nseBids: p.nseBids ?? undefined,
+        bseBids: p.bseBids ?? undefined,
+      } as SubRow;
+    });
+
+    // A category the exchange dropped from its response entirely never reaches
+    // `fresh`, so it would vanish from the table on the next write.
+    for (const p of prev) {
+      if (out.some((r) => r.category === p.category)) continue;
+      if (!(p.nseShares ?? 0) && !(p.bseShares ?? 0) && !Number(p.timesSubscribed)) continue;
+      this.log.warn(`${ipo.symbol}: ${p.category} missing from this read — keeping the stored row`);
+      out.push({
+        category: p.category,
+        timesSubscribed: Number(p.timesSubscribed),
+        bidCount: p.bidCount ?? undefined,
+        applicationsSubscribed: p.applicationsSubscribed == null ? undefined : Number(p.applicationsSubscribed),
+        nseShares: p.nseShares ?? undefined,
+        bseShares: p.bseShares ?? undefined,
+        nseBids: p.nseBids ?? undefined,
+        bseBids: p.bseBids ?? undefined,
+      } as SubRow);
+    }
+    return out;
+  }
+
   private computeSubs(
     buckets: Map<Bucket, CatAgg>,
     offeredByBucket: Map<Bucket, number> | null,
