@@ -17,6 +17,9 @@ import { useState } from 'react';
  *
  * Column format matches the operator's reference (2026-09-22):
  *   Date | QIB | NII (bHNI + sHNI) | Retail | Total
+ *
+ * The Date cell carries the bidding day alongside the date — "Day 2 · 23 Sept",
+ * and "Day 3 (Last) · 24 Sept" on the close date (operator ask, 2026-09-23).
  */
 
 interface DayEntry {
@@ -34,12 +37,20 @@ const fmtDay = (d?: string) =>
 const tx = (v?: number | null) => (v != null ? `${v}×` : '—');
 
 export function DayWiseSubscription({
-  subLog, subLogHour,
+  subLog, subLogHour, closeDate,
 }: {
   subLog: DayEntry[];
   subLogHour: HourEntry[];
+  /** The issue's close date — the row carrying it is flagged as the last day. */
+  closeDate?: string;
 }) {
   const [openDay, setOpenDay] = useState<string | null>(null);
+  // Day numbers come from the row's POSITION in the ascending log, not from a
+  // date subtraction: a window that straddles a weekend (Fri close → Tue) would
+  // number its three bidding days 1, 4, 5. The poller writes one entry per open
+  // day, so position is the bidding day (operator ask, 2026-09-23).
+  const dayNo = new Map<string, number>();
+  subLog.forEach((e, i) => { if (e.d) dayNo.set(e.d, i + 1); });
   const days = [...subLog].reverse();
   // group hourly by day for O(1) lookup
   const byDay = new Map<string, HourEntry[]>();
@@ -90,7 +101,12 @@ export function DayWiseSubscription({
                     <td style={{ color: hasHourly ? 'var(--brand-500)' : 'var(--muted)', fontSize: 14, textAlign: 'center' }}>
                       {hasHourly ? (isOpen ? '▾' : '▸') : '·'}
                     </td>
-                    <td>{fmtDay(e.d)}</td>
+                    <td>
+                      <b className="dws-day">
+                        Day {dayNo.get(e.d ?? '') ?? '—'}{e.d && e.d === closeDate ? ' (Last)' : ''}
+                      </b>
+                      <span className="dws-date">{fmtDay(e.d)}</span>
+                    </td>
                     <td className="mono">{tx(e.qib)}</td>
                     <td className="mono">{tx(e.hni ?? e.nii)}</td>
                     <td className="mono">{tx(e.hni2)}</td>

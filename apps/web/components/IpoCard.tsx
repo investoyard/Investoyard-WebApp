@@ -128,6 +128,13 @@ export function demandLabel(subX: number, sme: boolean): { label: string; cls: s
 }
 
 /**
+ * One icon per demand tier, in the ladder's own order — still filling, met,
+ * climbing, hot. The card shows this INSTEAD of the words; the words are the
+ * element's accessible name (operator decision, 2026-09-23).
+ */
+const DEMAND_ICON = ['clock', 'check', 'trending', 'flame'] as const;
+
+/**
  * @param v2 the layout under review on /home2 — short names, light board
  *           badges, "Exp. Premium" instead of "GMP", and a rotating third KPI.
  *           Omitted everywhere else, so the live card is untouched while the
@@ -150,8 +157,6 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
 
   const tenant = useTenant();
   const subX = ipo.subscriptionTimes;
-  const demandPct = subX != null ? Math.min(100, (subX / 15) * 100) : 0;
-  const heat = subX == null ? '' : subX < 1 ? 'cool' : subX < 3 ? 'ok' : subX < 10 ? 'warm' : 'hot';
 
   // Listed issues carry the ACTUAL listing price instead of the (now historical) GMP.
   // Price comes from the admin-entered NSE/BSE listing price; gain from the
@@ -233,23 +238,31 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
         {/* v2 drops this: the CountdownDial at the top-right of the card is
             the same reading, and the date row now also carries the premium. */}
         {!v2 && ipo.status === 'open' && <CloseHint ipo={ipo} />}
-        {/* Just the figure here — the word that reads it sits on the demand
-            bar below. Both used to share this row, and any label longer than
-            "strong" pushed the pair onto a second line whatever the dates
-            were: at the two-up breakpoint the row is 283px, the date pill
-            took 188px of it and "51.8× exceptional demand" needed 157px more
-            (operator report 2026-09-23). Beside the bar the word has the
-            whole width and cannot wrap the card. */}
+        {/* Figure + one icon for the tier. The words used to ride here too
+            ("51.8× exceptional demand") and wrapped the row on every
+            subscribed card: at the two-up breakpoint the row is 283px and
+            the date pill alone took 188px. A progress bar under the row read
+            the same tier a second time, so the operator dropped it — the
+            icon IS the reading now (2026-09-23). The word stays as the
+            accessible name, which is also what a hover reports. */}
         {subX != null
-          ? <span className={`ic-subx2 d${demandTier(subX, ipo.type === 'sme')}`}><b className="mono">{subX}×</b></span>
+          ? (() => {
+              const tier = demandTier(subX, ipo.type === 'sme');
+              const word = demandWord(subX, ipo.type === 'sme');
+              return (
+                <span
+                  className={`ic-subx2 d${tier}`}
+                  role="img"
+                  aria-label={`${subX} times subscribed — ${word.toLowerCase()}`}
+                  title={`${subX}× subscribed · ${word}`}
+                >
+                  <b className="mono">{subX}×</b>
+                  <Icon name={DEMAND_ICON[tier]} size={14} />
+                </span>
+              );
+            })()
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}
       </div>
-      {subX != null && (
-        <div className="ic-demand">
-          <div className="ic-track"><span className={heat} style={{ width: `${Math.max(6, demandPct)}%` }} /></div>
-          <span className={`ic-dw d${demandTier(subX, ipo.type === 'sme')}`}>{demandWord(subX, ipo.type === 'sme')}</span>
-        </div>
-      )}
 
       {/* v2 runs the three specs on ONE row and drops Min Application: the
           premium moved up beside the dates, and min application is one lot at

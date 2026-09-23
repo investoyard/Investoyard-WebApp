@@ -8,7 +8,7 @@ type IconName =
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
-  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp' | 'repeat';
+  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp' | 'repeat' | 'flame';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
@@ -72,6 +72,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   'user-plus': <><circle cx="9.5" cy="8" r="3.4" /><path d="M3.5 20a6 6 0 0 1 12 0" /><path d="M19 8v6M16 11h6" /></>,
   pie: <><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M14 3.3A9 9 0 0 1 20.7 10H14V3.3Z" /></>,
   cursor: <path d="M5 3l6 16 2.2-6.8L20 10 5 3Z" />,
+  // the hot-demand mark on IPO cards — top tier of the subscription ladder
+  flame: <path d="M12 2.7c.6 2.4 1.9 3.6 3 4.8A6.9 6.9 0 0 1 17 12.3a5 5 0 0 1-10 0c0-1.4.4-2.4 1.1-3.3.1 1 .6 1.7 1.4 2.1-.2-2.9.9-5.6 2.5-8.4Z" />,
 };
 
 export function Icon({ name, size = 18, style, strokeWidth = 1.75 }: {

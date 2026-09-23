@@ -127,7 +127,7 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
           hasn't written anything at all. */}
       {subLog.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <DayWiseSubscription subLog={subLog} subLogHour={subLogHour} />
+          <DayWiseSubscription subLog={subLog} subLogHour={subLogHour} closeDate={ipo.closeDate} />
         </div>
       )}
       <SubscriptionDisclaimer />
