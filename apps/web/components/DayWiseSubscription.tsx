@@ -37,12 +37,15 @@ const fmtDay = (d?: string) =>
 const tx = (v?: number | null) => (v != null ? `${v}×` : '—');
 
 export function DayWiseSubscription({
-  subLog, subLogHour, closeDate,
+  subLog, subLogHour, closeDate, bare,
 }: {
   subLog: DayEntry[];
   subLogHour: HourEntry[];
   /** The issue's close date — the row carrying it is flagged as the last day. */
   closeDate?: string;
+  /** Drop the `.panel` shell and the heading — for the /subscription modal,
+   *  whose own title bar already says whose day-wise this is and how to use it. */
+  bare?: boolean;
 }) {
   const [openDay, setOpenDay] = useState<string | null>(null);
   // Day numbers come from the row's POSITION in the ascending log, not from a
@@ -63,9 +66,11 @@ export function DayWiseSubscription({
   for (const arr of byDay.values()) arr.sort((a, b) => String(a.t).localeCompare(String(b.t)));
 
   return (
-    <div className="panel" style={{ marginTop: 14 }}>
-      <div className="between"><h3>Day-wise subscription</h3><span className="muted" style={{ fontSize: 12 }}>Click a day to see hourly snapshots</span></div>
-      <div className="fin-scroll" style={{ marginTop: 10 }}>
+    <div className={bare ? undefined : 'panel'} style={bare ? undefined : { marginTop: 14 }}>
+      {!bare && (
+        <div className="between"><h3>Day-wise subscription</h3><span className="muted" style={{ fontSize: 12 }}>Click a day to see hourly snapshots</span></div>
+      )}
+      <div className="fin-scroll" style={{ marginTop: bare ? 0 : 10 }}>
         <table className="fin-tab day-wise-sub">
           <thead>
             <tr>

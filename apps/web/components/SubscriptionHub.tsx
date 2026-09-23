@@ -6,7 +6,9 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
-import { titleCase, shortName } from '@investoyard/shared-types';
+import { DayWiseSubscription } from '@/components/DayWiseSubscription';
+import { Modal } from '@/components/ui/Modal';
+import { titleCase, shortName, compareForList } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -90,6 +92,10 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
   const [view, setView] = useState<ViewMode>('full');
   const [search, setSearch] = useState('');
   const [shareTarget, setShareTarget] = useState<IpoFull | null>(null);
+  // Day-wise opens in a modal on this page rather than sending the reader to
+  // /subscription/v2 (operator ask, 2026-09-23). No fetch is needed: subLog
+  // and subLogHour already ride along on every IPO from `getIpos()`.
+  const [dayWise, setDayWise] = useState<IpoFull | null>(null);
   // The share-canvas is a child component that owns its own ref; we lift the
   // DOM node up via useState so html2canvas can point at it, and so the
   // reference itself is mutable (useRef's `.current` is readonly under
@@ -134,8 +140,12 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
     if (filter === 'mainboard' || filter === 'sme') l = l.filter((i) => i.type === filter);
     const q = search.trim().toLowerCase();
     if (q) l = l.filter((i) => `${i.name} ${i.symbol ?? ''}`.toLowerCase().includes(q));
-    // Default order: most subscribed first (matches design's default sort).
-    return l.slice().sort((a, b) => (b.subscriptionTimes ?? 0) - (a.subscriptionTimes ?? 0));
+    // Same order the IPO cards use — `compareForList` (Closing Today → Open
+    // Today → Live, then by close date). It used to sort by most-subscribed
+    // first, which put a quiet issue closing TODAY below a loud one with two
+    // days left: the hub and the home grid listed the same issues in different
+    // orders (operator ask, 2026-09-23).
+    return l.slice().sort(compareForList);
   }, [openList, filter, search, today]);
 
   // Board groupings — sections vanish when their bucket is empty in the
@@ -244,7 +254,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
             <section>
               <SectionHead label="Mainboard" boardClass="" count={mb.length} />
               <div className="subv2-list">
-                {mb.map((i) => <IpoRow key={i.id} ipo={i} today={today} onShare={onShare} />)}
+                {mb.map((i) => <IpoRow key={i.id} ipo={i} today={today} onShare={onShare} onDayWise={setDayWise} />)}
               </div>
             </section>
           )}
@@ -252,7 +262,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
             <section>
               <SectionHead label="SME" boardClass="sme" count={sme.length} />
               <div className="subv2-list">
-                {sme.map((i) => <IpoRow key={i.id} ipo={i} today={today} onShare={onShare} />)}
+                {sme.map((i) => <IpoRow key={i.id} ipo={i} today={today} onShare={onShare} onDayWise={setDayWise} />)}
               </div>
             </section>
           )}
@@ -262,6 +272,26 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
       {/* Off-screen 1080-wide snapshot rendered on demand. Populated with the
           share-target IPO's data; html2canvas rasterises then removes it. */}
       {shareTarget && <ShareCanvas ipo={shareTarget} onRef={setCanvasEl} />}
+      {dayWise && (
+        <Modal
+          wide
+          title={shortName(titleCase(dayWise.name))}
+          sub="Day-wise subscription — click a day for its hourly snapshots"
+          onClose={() => setDayWise(null)}
+        >
+          <DayWiseSubscription
+            subLog={subLogOf(dayWise)}
+            subLogHour={Array.isArray((dayWise as any).extra?.subLogHour) ? (dayWise as any).extra.subLogHour : []}
+            closeDate={dayWise.closeDate}
+            bare
+          />
+          <p style={{ margin: '12px 0 0' }}>
+            <a className="linklike" href={`/subscription/v2?symbol=${encodeURIComponent(dayWise.symbol)}`}>
+              Open the full page for {shortName(titleCase(dayWise.name))} →
+            </a>
+          </p>
+        </Modal>
+      )}
       <div ref={toastRef} className="subv2-toast" aria-live="polite">
         <Icon name="check" size={14} />
         <span>Saved</span>
@@ -281,7 +311,21 @@ function SectionHead({ label, boardClass, count }: { label: string; boardClass: 
   );
 }
 
-export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; onShare?: (i: IpoFull) => void }) {
+/** Day-wise rows the poller has written for this IPO, if any. */
+export const subLogOf = (ipo: IpoFull): any[] => {
+  const l = (ipo as any).extra?.subLog;
+  return Array.isArray(l) ? l : [];
+};
+
+export function IpoRow({ ipo, today, onShare, onDayWise }: {
+  ipo: IpoFull;
+  today: string;
+  onShare?: (i: IpoFull) => void;
+  /** Present only on /subscription, where day-wise opens in a modal instead of
+   *  sending the reader to /subscription/v2 (operator ask, 2026-09-23). The
+   *  single-issue page omits it — the full table is already below the card. */
+  onDayWise?: (i: IpoFull) => void;
+}) {
   const table = subscriptionTable(ipo);
   const t = table?.total.times ?? ipo.subscriptionTimes ?? 0;
   const tc = tone(t);
@@ -362,6 +406,20 @@ export function IpoRow({ ipo, today, onShare }: { ipo: IpoFull; today: string; o
           {onShare && (
             <button className="subv2-share" type="button" title="Share snapshot" aria-label={`Share ${ipo.name}`} onClick={() => onShare(ipo)}>
               <Icon name="share" size={14} />
+            </button>
+          )}
+          {/* Day-wise in a modal — so the reader can see the history without
+              leaving the hub. Hidden when the poller has written nothing for
+              this IPO yet; an empty modal is worse than no button. */}
+          {onDayWise && subLogOf(ipo).length > 0 && (
+            <button
+              className="subv2-share"
+              type="button"
+              title="Day-wise subscription"
+              aria-label={`Day-wise subscription for ${ipo.name}`}
+              onClick={() => onDayWise(ipo)}
+            >
+              <Icon name="chart" size={14} />
             </button>
           )}
           {/* Detail-view link — mirrors tapping the IPO name. Operator ask
