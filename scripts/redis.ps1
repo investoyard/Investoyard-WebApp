@@ -18,7 +18,9 @@ switch ($cmd) {
   }
   'stop'   { & $cli -p $port shutdown nosave 2>$null; Write-Host 'redis stopped' }
   default  {
+    # `(if ...)` is not an expression in PowerShell 5.1 - it parses, then fails
+    # at runtime. Needs the subexpression form.
     $ping = (& $cli -p $port ping 2>$null)
-    Write-Host (if ($ping) { "redis up on :$port ($ping)" } else { "redis not running on :$port" })
+    Write-Host $(if ($ping) { "redis up on :$port ($ping)" } else { "redis not running on :$port" })
   }
 }
