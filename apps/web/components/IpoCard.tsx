@@ -4,6 +4,7 @@ import type { IpoFull } from '@/lib/api';
 import { priceBand, inr } from '@/lib/format';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { CountdownDial } from '@/components/CountdownDial';
 import { useTenant } from '@/components/TenantProvider';
 import { useStore, store } from '@/lib/store';
@@ -132,7 +133,53 @@ export function demandLabel(subX: number, sme: boolean): { label: string; cls: s
  * climbing, hot. The card shows this INSTEAD of the words; the words are the
  * element's accessible name (operator decision, 2026-09-23).
  */
-const DEMAND_ICON = ['clock', 'check', 'trending', 'flame'] as const;
+const DEMAND_ICON = ['clock-fill', 'check-fill', 'trending-fill', 'flame-fill'] as const;
+
+/**
+ * What the demand chip's tooltip shows — the category split behind the one
+ * headline figure, which is the question the figure raises (operator ask,
+ * 2026-09-23). Built lazily: `Tooltip` only calls this while it is open, so
+ * sixteen cards don't each compute a subscription table on first paint.
+ */
+/**
+ * Reading order for the tooltip's category list. `subscriptionTable` returns
+ * rows in the API's order, which put the synthetic `nii` roll-up AFTER Retail
+ * — in a flat list that reads as one more category rather than as the subtotal
+ * of the two HNI rows. Here NII leads its own splits, which are then indented.
+ */
+const SUB_ORDER = ['qib', 'nii', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'other'];
+const orderedSubRows = (rows: calc.SubRowT[]) => {
+  const rank = (k: string) => { const i = SUB_ORDER.indexOf(k); return i < 0 ? SUB_ORDER.length : i; };
+  return [...rows].sort((a, b) => rank(a.key) - rank(b.key));
+};
+
+function SubTip({ ipo }: { ipo: IpoFull }) {
+  const sme = ipo.type === 'sme';
+  const t = calc.subscriptionTable(ipo);
+  const subX = ipo.subscriptionTimes ?? t?.total.times ?? 0;
+  const asOf = ipo.subscription?.find((s) => s.asOf)?.asOf;
+  return (
+    <div className="tt-sub">
+      <div className="tt-sub-head">
+        <b className="mono">{subX}×</b>
+        <span className={`tt-sub-w d${demandTier(subX, sme)}`}>{demandWord(subX, sme)}</span>
+      </div>
+      {t ? (
+        <ul className="tt-sub-rows">
+          {orderedSubRows(t.rows).map((r) => (
+            <li key={r.key} className={r.key === 'hni' || r.key === 'hni2' ? 'tt-sub-in' : undefined}>
+              <span>{r.cat}</span><b className="mono">{r.times}×</b>
+            </li>
+          ))}
+          <li className="tt-sub-tot"><span>Total</span><b className="mono">{t.total.times}×</b></li>
+        </ul>
+      ) : (
+        <p className="tt-sub-none">Category split not published yet.</p>
+      )}
+      {asOf && <div className="tt-sub-foot">As of {fmtDate(asOf.slice(0, 10))}</div>}
+    </div>
+  );
+}
 
 /**
  * @param v2 the layout under review on /home2 — short names, light board
@@ -238,27 +285,26 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
         {/* v2 drops this: the CountdownDial at the top-right of the card is
             the same reading, and the date row now also carries the premium. */}
         {!v2 && ipo.status === 'open' && <CloseHint ipo={ipo} />}
-        {/* Figure + one icon for the tier. The words used to ride here too
-            ("51.8× exceptional demand") and wrapped the row on every
-            subscribed card: at the two-up breakpoint the row is 283px and
-            the date pill alone took 188px. A progress bar under the row read
-            the same tier a second time, so the operator dropped it — the
-            icon IS the reading now (2026-09-23). The word stays as the
-            accessible name, which is also what a hover reports. */}
+        {/* Figure + one icon for the tier, with the category split a hover (or
+            tap) away. The words used to ride here too ("51.8× exceptional
+            demand") and wrapped the row on every subscribed card: at the
+            two-up breakpoint the row is 283px and the date pill alone took
+            188px. A progress bar under the row read the same tier a second
+            time, so the operator dropped it — the icon IS the reading now,
+            and the tooltip carries the detail (2026-09-23). */}
         {subX != null
           ? (() => {
               const tier = demandTier(subX, ipo.type === 'sme');
               const word = demandWord(subX, ipo.type === 'sme');
               return (
-                <span
+                <Tooltip
                   className={`ic-subx2 d${tier}`}
-                  role="img"
-                  aria-label={`${subX} times subscribed — ${word.toLowerCase()}`}
-                  title={`${subX}× subscribed · ${word}`}
+                  label={`${subX} times subscribed — ${word.toLowerCase()}. Show the category split.`}
+                  render={() => <SubTip ipo={ipo} />}
                 >
                   <b className="mono">{subX}×</b>
                   <Icon name={DEMAND_ICON[tier]} size={14} />
-                </span>
+                </Tooltip>
               );
             })()
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}

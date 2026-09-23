@@ -282,11 +282,36 @@ img, svg { vertical-align: middle; }
 .ic-subx small { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .ic-opens { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ic-opens b { font-weight: 600; color: var(--brand); }
+/* Portal tooltip (components/ui/Tooltip.tsx). Sits above the sticky header (50)
+   and every dropdown (60-80) but UNDER the modal overlay (200) — a tooltip must
+   never float over a dialog it can't belong to. */
+.tt-pop { position: fixed; z-index: 190; min-width: 186px; max-width: 264px;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 12px;
+  box-shadow: var(--sh-lg); padding: 10px 12px; font-size: 12px; color: var(--text);
+  animation: alIn .13s var(--ease) both; }
+.tt-sub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 7px; border-bottom: 1px solid var(--border); }
+.tt-sub-head b { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.tt-sub-w { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.tt-sub-w.d2, .tt-sub-w.d3 { color: var(--pos); }
+.tt-sub-rows { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.tt-sub-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.tt-sub-rows li span { color: var(--text-muted); }
+/* the two HNI splits sit under the NII subtotal that precedes them */
+.tt-sub-rows li.tt-sub-in span { padding-left: 10px; }
+.tt-sub-rows li b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tt-sub-tot { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--border); }
+.tt-sub-tot span, .tt-sub-tot b { color: var(--text); font-weight: 700; }
+.tt-sub-none { margin: 8px 0 0; color: var(--text-muted); }
+.tt-sub-foot { margin-top: 8px; font-size: 10.5px; color: var(--text-faint); }
+
 /* The demand READING is one icon beside the figure — no bar and no words.
    Both of those lived here before: the words wrapped the 283px key row on
    every subscribed card, and the bar under it said the same thing a second
    time (operator decision, 2026-09-23). Tier colours follow the bar's old
    ramp so a hot issue still reads gold at a glance. */
+.ic-subx2 { cursor: help; }
+.ic-subx2:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 3px; border-radius: 7px; }
+.ic-subx2 svg { align-self: center; }
 .ic-subx2.d0 svg { color: var(--text-faint); }
 .ic-subx2.d1 svg { color: var(--text-muted); }
 .ic-subx2.d2 svg { color: var(--pos); }
