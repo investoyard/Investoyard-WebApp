@@ -28,10 +28,13 @@ import type { SubRowT } from '@/lib/ipoCalc';
  * Below the hero: Share-Wise + Application-Wise panels (unchanged).
  */
 export function LiveSubscription({
-  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol,
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0,
 }: {
   rows: SubRowT[];
   total: SubRowT;
+  /** Anchor shares actually taken off QIB — 0 when the record has no anchor
+   *  figure, which changes what the footnote is allowed to claim. */
+  anchorDeducted?: number;
   status: string;
   asOf?: string;
   priceMin?: number;
@@ -130,8 +133,15 @@ export function LiveSubscription({
         </div>
       </div>
 
+      {/* The "Net (post anchor)" line used to print unconditionally — and was
+          FALSE on 5 of the 6 IPOs open on 2026-09-23, because only VARMORA had
+          an anchor figure on its record. Stating which of the two a reader is
+          looking at costs nothing and is the difference between a figure they
+          can check against the exchange and one they cannot. */}
       <p className="lsx-note">
-        *QIB Book Size is Net (post anchor).
+        {anchorDeducted > 0
+          ? '*QIB Book Size is Net (post anchor).'
+          : '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'}
         {hasBand && ` Amounts at the ${band} band (₹${price}).`}
         {' '}Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
       </p>

@@ -301,7 +301,24 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
   return out;
 }
 
-export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT } | null {
+/** Anchor shares totalled off the per-IPO roster (`extra.anchors[].shares`).
+ *
+ *  Returns 0 unless EVERY named investor carries a share count. A half-typed
+ *  roster — ten of fourteen rows priced — would otherwise sum to a number that
+ *  looks like an anchor allocation, deduct too little from QIB, and be wrong in
+ *  a way nothing on the page could reveal. Better to leave QIB gross and say so
+ *  than to net it against a partial total. */
+export function anchorRosterShares(ipo: IpoFull): number {
+  const rows = (ipo as any).extra?.anchors;
+  if (!Array.isArray(rows)) return 0;
+  const named = rows.filter((r: any) => String(r?.name ?? '').trim());
+  if (!named.length) return 0;
+  const n = (v: any) => Number(String(v ?? '').replace(/[,\s]/g, '')) || 0;
+  if (named.some((r: any) => n(r.shares) <= 0)) return 0;   // partially priced
+  return named.reduce((a: number, r: any) => a + n(r.shares), 0);
+}
+
+export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT; anchorDeducted: number } | null {
   const total = parseIssueValue(ipo.issueSize);
   // Drop `total` (rendered separately). Keep the synthetic `nii` roll-up ONLY
   // when BOTH split rows (`hni` and `hni2`) are present — Share-wise renders
@@ -344,12 +361,22 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // (anchor is pre-allocated, never enters the public bidding window), so
   // Book Size × Times only cross-checks with Subscribed when Book is also
   // NET. Deduction reads the operator's own values — `extra.anchorShares`
-  // first, else `extra.anchorPct` × gross QIB / 100. If the operator hasn't
-  // entered either, we leave gross alone rather than assume 60% — a silent
-  // no-op is safer than fabricating a deduction (operator ask, 2026-09-21).
+  // first, else the ROSTER sum (`extra.anchors[].shares`), else
+  // `extra.anchorPct` × gross QIB / 100. If none of the three is there we
+  // leave gross alone rather than assume 60% — a silent no-op is safer than
+  // fabricating a deduction (operator ask, 2026-09-21), and `anchorDeducted`
+  // on the returned object lets a caller say so instead of claiming "Net".
+  //
+  // The roster is read because the IPO form only ever CROSS-CHECKS it against
+  // the total, never sums it in: an operator who typed all fourteen investor
+  // rows from the intimation letter and left the total blank had a record that
+  // looked complete and still published a gross QIB (MPIMANIPAL, found
+  // 2026-09-23). The roster IS the anchor allocation, so summing it invents
+  // nothing.
   const ex: any = (ipo as any).extra ?? {};
-  const anchorSharesInput = Number(ex.anchorShares) || 0;
+  const anchorSharesInput = Number(ex.anchorShares) || anchorRosterShares(ipo);
   const anchorPctInput = Number(ex.anchorPct) || 0;
+  let anchorDeducted = 0;
   const rows: SubRowT[] = subs.map((r) => {
     // grossBook is what the reservation table gave the bucket, exchange-side
     // (QIB includes anchor here — that matches how NSE/BSE report `times`
@@ -362,7 +389,7 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       const deduct = anchorSharesInput > 0
         ? anchorSharesInput
         : anchorPctInput > 0 ? Math.round((book * anchorPctInput) / 100) : 0;
-      if (deduct > 0 && deduct < book) book = book - deduct;
+      if (deduct > 0 && deduct < book) { book = book - deduct; anchorDeducted = deduct; }
     }
     // Subscribed = ACTUAL bid shares from the exchange side.
     // Prefer the raw per-exchange totals the poller records (nse+bse); fall
@@ -462,6 +489,9 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       nseBids: nseBidSum > 0 ? nseBidSum : undefined,
       bseBids: bseBidSum > 0 ? bseBidSum : undefined,
     },
+    // 0 when the record carries no anchor figure at all — the caller must not
+    // then tell the reader QIB Book Size is "Net (post anchor)".
+    anchorDeducted,
   };
 }
 
