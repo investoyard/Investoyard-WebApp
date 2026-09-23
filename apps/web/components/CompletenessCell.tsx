@@ -44,7 +44,6 @@ export function CompletenessCell({ ipo, editHref }: { ipo: any; editHref: string
 function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
   completeness: Completeness; ipo: any; editHref: string; onClose: () => void;
 }) {
-  const railClosed = c.checks.some((k) => k.group === 'Application rail' && k.skipped);
   return (
     <Modal title={`${ipo.symbol ?? ipo.name} — Detail completeness (${c.filled}/${c.total})`} wide onClose={onClose}>
       <div className="cc-modal">
@@ -85,13 +84,6 @@ function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
           })}
         </div>
 
-        {/* Application-rail checks are hidden entirely for closed issues.
-            Say so explicitly so the operator sees WHY the denominator dropped. */}
-        {railClosed && (
-          <div className="cc-note">
-            Application-rail checks (PDF template · print series · bid rail) are excluded — this issue has closed.
-          </div>
-        )}
       </div>
     </Modal>
   );

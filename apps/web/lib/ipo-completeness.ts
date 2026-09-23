@@ -6,14 +6,19 @@
  * WHICH fields are missing, with a jump-to-edit link per group.
  *
  * Design:
- *   - 25 checks, grouped into 7 buckets, EQUAL WEIGHT (4% each). One perm
- *     per check keeps the score transparent — an operator ticks off items
- *     one by one and the bar moves in obvious steps.
- *   - Once the issue has CLOSED (stage ∈ awaiting / allotment-out / listed /
- *     withdrawn), the three "Application rail" checks — ASBA templates,
- *     print form series, bid config — DROP OUT of both numerator and
- *     denominator. They're irrelevant to a closed issue and shouldn't
- *     drag the bar down after the window has passed.
+ *   - 22 checks, grouped into 6 buckets, EQUAL WEIGHT. One perm per check
+ *     keeps the score transparent — an operator ticks off items one by one
+ *     and the bar moves in obvious steps.
+ *   - The score measures the DETAIL a reader sees. It deliberately excludes
+ *     the operational rail — ASBA PDF template, print form series, bid rail
+ *     integration — which were three of the original 25 checks and dropped
+ *     out for closed issues. They gate whether an issue can be APPLIED for,
+ *     not whether its page is complete, and no report reads them (operator
+ *     decision, 2026-09-23). Mixing the two made the bar answer a question
+ *     nobody was asking: a fully documented issue sat at 88% because nobody
+ *     had uploaded an ASBA template for it.
+ *   - `skipped` survives on the Check type: the mechanism is sound and the
+ *     next conditional check should reuse it rather than reinvent it.
  *   - "Filled" is deliberately LIBERAL — a truthy scalar, a non-empty
  *     array, an object with keys — so the bar reflects "did the operator
  *     enter something" rather than "did they enter the RIGHT thing"
@@ -24,10 +29,9 @@
  * completeness. If mobile ever grows an admin console, promote to
  * packages/shared-types.
  */
-import { ipoPhase } from '@/lib/format';
 
 export type CompletenessGroup =
-  | 'Identity' | 'Pricing' | 'Structure' | 'Dates' | 'Parties' | 'Documents' | 'Application rail';
+  | 'Identity' | 'Pricing' | 'Structure' | 'Dates' | 'Parties' | 'Documents';
 
 export interface CompletenessCheck {
   key: string;
@@ -76,12 +80,6 @@ function reservationFilled(extra: any): boolean {
   return sum >= 99.5 && sum <= 100.5;
 }
 
-/** Are we past the close date? Uses the shared phase engine. */
-function isClosed(ipo: any): boolean {
-  const ph = ipoPhase(ipo).phase;
-  return ph === 'closed' || ph === 'allotment' || ph === 'listed' || ph === 'withdrawn';
-}
-
 /**
  * Compute the completeness score. `ipo` is a full row from `fetchIpos({all:true})`
  * — the admin catalog page already holds this shape.
@@ -91,7 +89,6 @@ export function computeIpoCompleteness(ipo: any): Completeness {
   const docs: any[] = Array.isArray(ipo?.documents) ? ipo.documents : [];
   const leads: any[] = Array.isArray(extra?.leads) ? extra.leads : Array.isArray(ipo?.leadManagers) ? ipo.leadManagers : [];
   const exchanges: string[] = Array.isArray(ipo?.exchanges) ? ipo.exchanges : [];
-  const closed = isClosed(ipo);
 
   const raw: CompletenessCheck[] = [
     // Identity (5)
@@ -155,10 +152,9 @@ export function computeIpoCompleteness(ipo: any): Completeness {
           return /(?:^|\/|_|-)rhp[._-]/.test(u) || u.includes('prospectus');
         }) },
 
-    // Application rail (3) — dropped for closed issues
-    { key: 'asba',       label: 'Application PDF template',  group: 'Application rail', filled: docs.some((d) => typeof d?.type === 'string' && d.type.startsWith('asba_form') && has(d?.url)), skipped: closed },
-    { key: 'series',     label: 'Application series for PDF', group: 'Application rail', filled: has(extra?.printFormSeries) || has(extra?.pdfSeries) || has(extra?.printSeries), skipped: closed },
-    { key: 'bid',        label: 'Bid rail integration',       group: 'Application rail', filled: has(extra?.bidding) || has(extra?.exchangeSymbol) || ipo?.startBid === true, skipped: closed },
+    // Application rail (ASBA PDF template · print form series · bid rail)
+    // used to be three more checks here. Removed 2026-09-23 — see the note at
+    // the top of this file. They are operational gates, not page detail.
   ];
 
   const active = raw.filter((c) => !c.skipped);
@@ -171,5 +167,5 @@ export function computeIpoCompleteness(ipo: any): Completeness {
 
 /** Groups in display order — mirrors the operator's IPO form tab flow. */
 export const COMPLETENESS_GROUPS: CompletenessGroup[] = [
-  'Identity', 'Pricing', 'Structure', 'Dates', 'Parties', 'Documents', 'Application rail',
+  'Identity', 'Pricing', 'Structure', 'Dates', 'Parties', 'Documents',
 ];
