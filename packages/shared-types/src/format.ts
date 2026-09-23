@@ -176,13 +176,30 @@ export const CATEGORY_LABEL: Record<string, string> = {
   total: 'Total',
 };
 
+/**
+ * Demand tier 0-3, calibrated per board (SME oversubscription runs an order
+ * of magnitude hotter than Mainboard — the same × means different things).
+ * Surfaces colour off the INDEX so the thresholds live in one place.
+ */
+export function demandTier(subX: number, sme: boolean): 0 | 1 | 2 | 3 {
+  const th = sme ? [1, 10, 50] : [1, 3, 10];
+  return subX < th[0] ? 0 : subX < th[1] ? 1 : subX < th[2] ? 2 : 3;
+}
+
+/**
+ * Demand in plain words, one entry per tier.
+ *
+ * Kept SHORT on purpose. The words used to be "Steady demand" / "Strong
+ * demand" / "Exceptional demand" — the noun repeated what the × figure
+ * beside it already says, and at 18 characters the longest one was wider
+ * than the room the IPO card had for it (operator report 2026-09-23).
+ * Longest entry is now 11 characters.
+ */
+export const DEMAND_WORD = ['Building up', 'Steady', 'Strong', 'Very strong'] as const;
+
 /** Demand in plain words, calibrated per board (SME runs an order hotter). */
 export function demandWord(subX: number, sme: boolean): string {
-  const th = sme ? [1, 10, 50] : [1, 3, 10];
-  if (subX < th[0]) return 'Building up';
-  if (subX < th[1]) return 'Steady demand';
-  if (subX < th[2]) return 'Strong demand';
-  return 'Exceptional demand';
+  return DEMAND_WORD[demandTier(subX, sme)];
 }
 
 /**

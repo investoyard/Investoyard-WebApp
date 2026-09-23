@@ -10,19 +10,31 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf, stageOf } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier } from '@investoyard/shared-types';
 
 export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
 
-/** ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe. */
+/**
+ * ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe.
+ *
+ * The year is printed ONCE, at the end, and the month once when both dates
+ * fall in it: "19–23 Sep 2026" · "28 Sep – 2 Oct 2026" · "30 Dec – 2 Jan 2027".
+ * Spelling it out on both ends ("19 Sep 2026 – 23 Sep 2026") measured 188px of
+ * the 283px the card's key row has at the two-up breakpoint, which left no
+ * room for the subscription figure beside it — that row then wrapped and the
+ * card grew ~48px taller than its neighbours (operator report 2026-09-23).
+ * An IPO window is a handful of days, so the closing year dates both ends
+ * unambiguously.
+ */
 function fmtRange(open?: string, close?: string): string {
   const p = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? { y: +s.slice(0, 4), m: +s.slice(5, 7) - 1, d: +s.slice(8, 10) } : null);
   const a = p(open), b = p(close);
-  const f = (x: { y: number; m: number; d: number }) => `${String(x.d).padStart(2, '0')} ${MON[x.m]} ${x.y}`;
+  const f = (x: { y: number; m: number; d: number }) => `${x.d} ${MON[x.m]} ${x.y}`;
   if (!a && !b) return '—';
-  if (a && b) return `${f(a)} – ${f(b)}`;
-  return f(a ?? b!);
+  if (!a || !b) return f(a ?? b!);
+  if (a.y === b.y && a.m === b.m) return `${a.d}–${b.d} ${MON[b.m]} ${b.y}`;
+  return `${a.d} ${MON[a.m]} – ${b.d} ${MON[b.m]} ${b.y}`;
 }
 
 /** Share the IPO detail link (native share sheet, else copy to clipboard). */
@@ -104,15 +116,15 @@ export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: 
 }
 
 /**
- * Demand in plain words, calibrated per board (SME oversubscription runs an
- * order of magnitude hotter than Mainboard — same × means different things).
+ * Demand in plain words + the tier class that colours it.
+ *
+ * The thresholds and the wording are NOT redeclared here — `demandTier` /
+ * `demandWord` in shared-types are the one copy, so the card, the compare
+ * table, the banner and mobile can never drift apart. This card printed its
+ * own lowercase copy of the ladder until 2026-09-23.
  */
 export function demandLabel(subX: number, sme: boolean): { label: string; cls: string } {
-  const t = sme ? [1, 10, 50] : [1, 3, 10];
-  if (subX < t[0]) return { label: 'building up', cls: 'd0' };
-  if (subX < t[1]) return { label: 'steady demand', cls: 'd1' };
-  if (subX < t[2]) return { label: 'strong demand', cls: 'd2' };
-  return { label: 'exceptional demand', cls: 'd3' };
+  return { label: demandWord(subX, sme), cls: `d${demandTier(subX, sme)}` };
 }
 
 /**
@@ -221,14 +233,22 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
         {/* v2 drops this: the CountdownDial at the top-right of the card is
             the same reading, and the date row now also carries the premium. */}
         {!v2 && ipo.status === 'open' && <CloseHint ipo={ipo} />}
+        {/* Just the figure here — the word that reads it sits on the demand
+            bar below. Both used to share this row, and any label longer than
+            "strong" pushed the pair onto a second line whatever the dates
+            were: at the two-up breakpoint the row is 283px, the date pill
+            took 188px of it and "51.8× exceptional demand" needed 157px more
+            (operator report 2026-09-23). Beside the bar the word has the
+            whole width and cannot wrap the card. */}
         {subX != null
-          ? (() => { const dm = demandLabel(subX, ipo.type === 'sme'); return (
-              <span className={`ic-subx2 ${dm.cls}`}><b className="mono">{subX}×</b> {dm.label}</span>
-            ); })()
+          ? <span className={`ic-subx2 d${demandTier(subX, ipo.type === 'sme')}`}><b className="mono">{subX}×</b></span>
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}
       </div>
       {subX != null && (
-        <div className="ic-track"><span className={heat} style={{ width: `${Math.max(6, demandPct)}%` }} /></div>
+        <div className="ic-demand">
+          <div className="ic-track"><span className={heat} style={{ width: `${Math.max(6, demandPct)}%` }} /></div>
+          <span className={`ic-dw d${demandTier(subX, ipo.type === 'sme')}`}>{demandWord(subX, ipo.type === 'sme')}</span>
+        </div>
       )}
 
       {/* v2 runs the three specs on ONE row and drops Min Application: the
