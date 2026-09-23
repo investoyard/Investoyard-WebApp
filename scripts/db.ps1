@@ -25,15 +25,27 @@ function Test-PgPort {
   return [bool]$c
 }
 
+# The authoritative "is it usable" test: it CONNECTS. Everything else here is
+# circumstantial. In particular it is the only check that survives the service
+# model - see Test-PgLive.
+function Test-PgAccepting {
+  & "$bin\pg_isready.exe" -h 127.0.0.1 -p $port -t 3 > $null 2>&1
+  return $?
+}
+
+# pg_ctl exits non-zero when no postmaster owns the data directory - but ALSO
+# when it cannot inspect the one that does. Under the service the postmaster
+# runs as LocalSystem, and a standard user cannot open a handle to it, so this
+# reports "no server running" for a perfectly healthy database. Useful only for
+# the pg_ctl fallback path; never trust it on its own.
 function Test-PgLive {
-  # pg_ctl exits non-zero when no postmaster owns the data directory.
   & "$bin\pg_ctl.exe" -D $data status > $null 2>&1
   return $?
 }
 
 function Wait-PgReady([int]$seconds = 60) {
   for ($i = 0; $i -lt $seconds; $i++) {
-    if ((Test-PgPort) -and (Test-PgLive)) { return $true }
+    if (Test-PgAccepting) { return $true }
     Start-Sleep -Seconds 1
   }
   return $false
@@ -46,6 +58,10 @@ function Wait-PgReady([int]$seconds = 60) {
 # healthy server to anyone who hasn't seen it before. Cleaning is safe ONLY in
 # that exact combination, so all three conditions are required.
 function Clear-PgZombie {
+  # A zombie is by definition a server that does NOT accept connections. That
+  # guard comes first and makes the rest safe: it is what stops this killing a
+  # healthy service, whose postmaster Test-PgLive cannot see.
+  if (Test-PgAccepting) { return $false }
   $procs = @(Get-Process postgres -ErrorAction SilentlyContinue)
   if ((Test-PgLive) -or $procs.Count -eq 0 -or -not (Test-PgPort)) { return $false }
 
@@ -71,10 +87,13 @@ function Show-Status {
   $s = Get-PgService
   if ($s) { Write-Host ("service  : {0} ({1}, {2})" -f $s.Name, $s.Status, $s.StartType) }
   else    { Write-Host "service  : not registered (pg_ctl mode - run 'db.ps1 register' from an ADMIN shell)" }
-  if (Test-PgLive) { Write-Host "postmaster: running" } else { Write-Host "postmaster: NOT running" }
   if (Test-PgPort) { Write-Host "port $port  : listening" } else { Write-Host "port $port  : closed" }
-  if (-not (Test-PgLive) -and (Test-PgPort)) {
-    Write-Host "ZOMBIE: port held with no postmaster. Run 'db.ps1 start' - it clears this." -ForegroundColor Yellow
+  if (Test-PgAccepting) {
+    Write-Host "postgres : accepting connections" -ForegroundColor Green
+  } elseif (Test-PgPort) {
+    Write-Host "ZOMBIE: :$port is held but nothing answers. Run 'db.ps1 start' - it clears this." -ForegroundColor Yellow
+  } else {
+    Write-Host "postgres : NOT running" -ForegroundColor Red
   }
 }
 
@@ -90,7 +109,7 @@ switch ($cmd) {
       Show-Status
       break
     }
-    if (Test-PgLive) { Write-Host "Already running (pg_ctl)."; Show-Status; break }
+    if (Test-PgAccepting) { Write-Host "Already running (pg_ctl)."; Show-Status; break }
     Clear-PgZombie | Out-Null
     & "$bin\pg_ctl.exe" -D $data -o "-p $port" -l $log -w start
     Show-Status
@@ -117,7 +136,7 @@ switch ($cmd) {
       break
     }
     # The data directory must be free before the service takes ownership of it.
-    if (Test-PgLive) { Write-Host "Stopping the console-started server first..."; & "$bin\pg_ctl.exe" -D $data -w stop }
+    if (Test-PgAccepting) { Write-Host "Stopping the console-started server first..."; & "$bin\pg_ctl.exe" -D $data -w stop }
     Clear-PgZombie | Out-Null
     # -l matters: without it a SERVICE sends stderr to the Windows event log and
     # .pgdata\log.txt stops growing. That file is where every crash so far was
