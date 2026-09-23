@@ -119,13 +119,22 @@ switch ($cmd) {
     # The data directory must be free before the service takes ownership of it.
     if (Test-PgLive) { Write-Host "Stopping the console-started server first..."; & "$bin\pg_ctl.exe" -D $data -w stop }
     Clear-PgZombie | Out-Null
-    & "$bin\pg_ctl.exe" register -N $svc -D $data -o "-p $port" -S auto
+    # -l matters: without it a SERVICE sends stderr to the Windows event log and
+    # .pgdata\log.txt stops growing. That file is where every crash so far was
+    # diagnosed from, so keep the server writing to it.
+    & "$bin\pg_ctl.exe" register -N $svc -D $data -o "-p $port" -l $log -S auto
     if (-not $?) { Write-Host "register failed - see above." -ForegroundColor Red; break }
+    if (-not (Get-PgService)) { Write-Host "pg_ctl reported success but no service '$svc' exists." -ForegroundColor Red; break }
     # Restart-on-failure, so a crash recovers without anyone watching.
     & sc.exe failure $svc reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
     Start-Service -Name $svc
-    if (Wait-PgReady) { Write-Host "Registered and started as service '$svc' (auto-start)." -ForegroundColor Green }
-    else { Write-Host "Service registered but :$port never opened - check $log" -ForegroundColor Red }
+    if (Wait-PgReady) {
+      # pg_isready CONNECTS - a listening port alone has already fooled us once.
+      & "$bin\pg_isready.exe" -h 127.0.0.1 -p $port -t 5
+      Write-Host "Registered and started as service '$svc' (auto-start)." -ForegroundColor Green
+    } else {
+      Write-Host "Service registered but :$port never opened - check $log" -ForegroundColor Red
+    }
     Show-Status
   }
 
