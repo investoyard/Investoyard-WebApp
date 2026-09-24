@@ -1415,8 +1415,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   {derived.scenarios.floor && derived.scenarios.floor.price !== derived.scenarios.cap?.price && (
                     <span><i>Lower band</i>₹{derived.scenarios.floor.price}</span>
                   )}
+                  {/* SHARES, not lots. A stated share count is not lot-aligned,
+                      so the remainder genuinely isn't a whole number of lots —
+                      residualLots printed raw as "1.0297029702970297 lots"
+                      (104 ÷ 101) on VARMORA. Shares is the honest unit and
+                      needs no rounding at all. */}
                   {shown.residualTo && (
-                    <span><i>Residual</i>{shown.residualLots} lot{shown.residualLots === 1 ? '' : 's'} → {CATEGORY_LABELS[shown.residualTo] ?? shown.residualTo}</span>
+                    <span><i>Residual</i>{Math.round(shown.residualLots * (Number(form.lotSize) || 1)).toLocaleString('en-IN')} sh → {CATEGORY_LABELS[shown.residualTo] ?? shown.residualTo}</span>
                   )}
                   <span className="muted">{derived.rulePack.label}</span>
                 </div>

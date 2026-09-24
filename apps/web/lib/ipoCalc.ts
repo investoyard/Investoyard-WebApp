@@ -146,9 +146,30 @@ export interface ResRow { key: string; cat: string; pct: number; shares: number;
  *     (2-10L)" / "Retail" — matching the subscription page's vocabulary
  *     (was showing raw "HNI2" / uppercased "RETAIL").
  */
+/**
+ * Total offered shares at the UPPER band.
+ *
+ * The offer document's own share count wins over `₹ total ÷ price` whenever
+ * the operator has entered it — the form's field says so, `issueInputsFor()`
+ * has always honoured it, and until 2026-09-24 nothing on the public side did.
+ * That left the admin screen and the subscription page derived from two
+ * different totals: VARMORA's stated 4,78,38,855 against 4,78,39,155 from
+ * ₹708.02 Cr ÷ 148, a 300-share gap that showed up as 303 on QIB.
+ *
+ * The stated count is also the more accurate of the two — it is the figure the
+ * exchanges and every information site publish, and it involves no division to
+ * round, which is where the ₹-derived path loses its last few hundred shares.
+ */
+export function totalOfferedShares(ipo: IpoFull): number {
+  const stated = Number(String((ipo as any).extra?.totalShares ?? '').replace(/[,\s]/g, ''));
+  if (Number.isFinite(stated) && stated > 0) return stated;
+  const priceMax = up(ipo);
+  return priceMax > 0 ? parseIssueValue(ipo.issueSize) / priceMax : 0;
+}
+
 export function reservation(ipo: IpoFull): ResRow[] {
   const priceMax = up(ipo) || 1;
-  const totalShares = parseIssueValue(ipo.issueSize) / priceMax || 0;
+  const totalShares = totalOfferedShares(ipo);
   const resv: any = (ipo as any).extra?.shareResv;
   if (resv && typeof resv === 'object') {
     const hasHni = !!(resv.hni && (Number(resv.hni.sharesLower) > 0 || Number(resv.hni.sharesUpper) > 0 || Number(resv.hni.pct) > 0));
@@ -279,12 +300,8 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
       if (implied > derivedTotal) derivedTotal = implied;
     }
   }
-  // Last-resort fallback — raw issueSize ÷ priceMax.
-  if (derivedTotal <= 0) {
-    const total = parseIssueValue(ipo.issueSize);
-    const priceMax = up(ipo);
-    if (total && priceMax) derivedTotal = total / priceMax;
-  }
+  // Last-resort fallback — the stated share count, else raw issueSize ÷ priceMax.
+  if (derivedTotal <= 0) derivedTotal = totalOfferedShares(ipo);
   const out: Record<string, number> = {};
   for (const b of BUCKETS) {
     const row = resv[b]; if (!row || row.on === false) continue;
@@ -330,7 +347,7 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const hasHni2 = all.some((r) => r.category === 'hni2');
   const subs = (hasHni && hasHni2) ? all : all.filter((r) => r.category !== 'nii');
   if (!subs.length || !total) return null;
-  const totalShares = total / (up(ipo) || 1);
+  const totalShares = totalOfferedShares(ipo);
   // Book Size sourced from OUR operator-entered shareResv (sharesLower or
   // sharesUpper). Falls back to `totalShares × reservedPct / 100` only when
   // the shareResv doesn't produce a bucket value — this stops the display

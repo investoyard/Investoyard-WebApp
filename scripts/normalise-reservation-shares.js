@@ -77,8 +77,17 @@ function parseIssueRupees(s) {
     const resv = extra.shareResv;
     if (!resv || typeof resv !== 'object') { skippedNoResv++; continue; }
 
-    const totalAtCap = rupees / priceMax;
-    const totalAtFloor = rupees / priceMin;
+    // The offer document's own share count wins over `₹ ÷ price` when the
+    // operator entered it — same precedence the IPO form and ipoCalc use. It
+    // is the figure the exchanges publish and it involves no division to
+    // round away, which is where the ₹ path loses its last few hundred
+    // shares. The stated count is the count AT THE CAP, so the floor-band
+    // equivalent scales by the band ratio rather than re-dividing the rupees
+    // (which would reintroduce the rounding this is here to avoid).
+    const stated = num(extra.totalShares);
+    const totalAtCap = stated > 0 ? stated : rupees / priceMax;
+    const totalAtFloor = stated > 0 ? (stated * priceMax) / priceMin : rupees / priceMin;
+    if (stated > 0) console.log(`  (${ipo.symbol}: using stated total ${stated.toLocaleString('en-IN')} shares, not ₹${(rupees / 1e7).toFixed(4)} Cr ÷ ${priceMax})`);
 
     const changes = [];
     const nextResv = { ...resv };
