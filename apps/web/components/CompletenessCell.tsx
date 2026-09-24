@@ -65,11 +65,17 @@ function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
             const visible = rows.filter((r) => !r.skipped);
             if (!visible.length) return null;
             const done = visible.filter((r) => r.filled).length;
+            // A group every one of whose checks is `excluded` still shows its
+            // own done/total — the operator wants the rail state at a glance —
+            // but it contributes nothing to the percentage, so say so rather
+            // than let the count read as part of the score.
+            const notCounted = visible.every((r) => r.excluded);
             return (
-              <div className="cc-group" key={g}>
+              <div className={`cc-group${notCounted ? ' cc-group-off' : ''}`} key={g}>
                 <div className="cc-group-head">
                   <span className="cc-group-name">{g}</span>
-                  <span className={`cc-group-count${done === visible.length ? ' ok' : ''}`}>{done}/{visible.length}</span>
+                  {notCounted && <span className="cc-group-note">not counted</span>}
+                  <span className={`cc-group-count${!notCounted && done === visible.length ? ' ok' : ''}`}>{done}/{visible.length}</span>
                 </div>
                 <ul className="cc-checklist">
                   {visible.map((r) => (

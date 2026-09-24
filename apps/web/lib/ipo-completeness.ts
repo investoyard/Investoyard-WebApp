@@ -6,19 +6,21 @@
  * WHICH fields are missing, with a jump-to-edit link per group.
  *
  * Design:
- *   - 22 checks, grouped into 6 buckets, EQUAL WEIGHT. One perm per check
- *     keeps the score transparent — an operator ticks off items one by one
- *     and the bar moves in obvious steps.
- *   - The score measures the DETAIL a reader sees. It deliberately excludes
- *     the operational rail — ASBA PDF template, print form series, bid rail
- *     integration — which were three of the original 25 checks and dropped
- *     out for closed issues. They gate whether an issue can be APPLIED for,
- *     not whether its page is complete, and no report reads them (operator
- *     decision, 2026-09-23). Mixing the two made the bar answer a question
- *     nobody was asking: a fully documented issue sat at 88% because nobody
- *     had uploaded an ASBA template for it.
- *   - `skipped` survives on the Check type: the mechanism is sound and the
- *     next conditional check should reuse it rather than reinvent it.
+ *   - 22 SCORED checks, grouped into 6 buckets, EQUAL WEIGHT. One perm per
+ *     check keeps the score transparent — an operator ticks off items one by
+ *     one and the bar moves in obvious steps.
+ *   - The score measures the DETAIL a reader sees. The three "Application
+ *     rail" checks — ASBA PDF template, print form series, bid rail
+ *     integration — are STILL SHOWN, with their own 2/3 count, but are
+ *     `excluded` from the percentage (operator decision, 2026-09-23). They
+ *     gate whether an issue can be APPLIED for, not whether its page is
+ *     complete, and no report reads them, so a fully documented issue used
+ *     to sit at 88% because nobody had uploaded an ASBA template. Removing
+ *     them outright was the first attempt and was wrong: the operator still
+ *     wants to SEE the rail state at a glance, just not have it move the bar.
+ *   - TWO ways a check leaves the score, and they are not the same:
+ *     `excluded` = shown, never counted. `skipped` = neither shown nor
+ *     counted, for a check that does not apply to this issue at all.
  *   - "Filled" is deliberately LIBERAL — a truthy scalar, a non-empty
  *     array, an object with keys — so the bar reflects "did the operator
  *     enter something" rather than "did they enter the RIGHT thing"
@@ -31,14 +33,16 @@
  */
 
 export type CompletenessGroup =
-  | 'Identity' | 'Pricing' | 'Structure' | 'Dates' | 'Parties' | 'Documents';
+  | 'Identity' | 'Pricing' | 'Structure' | 'Dates' | 'Parties' | 'Documents' | 'Application rail';
 
 export interface CompletenessCheck {
   key: string;
   label: string;
   group: CompletenessGroup;
   filled: boolean;
-  /** True when this check is skipped because the IPO has already closed. */
+  /** Shown in the breakdown with its own count, but kept OUT of the score. */
+  excluded?: boolean;
+  /** Neither shown nor counted — the check doesn't apply to this issue. */
   skipped?: boolean;
 }
 
@@ -152,12 +156,15 @@ export function computeIpoCompleteness(ipo: any): Completeness {
           return /(?:^|\/|_|-)rhp[._-]/.test(u) || u.includes('prospectus');
         }) },
 
-    // Application rail (ASBA PDF template · print form series · bid rail)
-    // used to be three more checks here. Removed 2026-09-23 — see the note at
-    // the top of this file. They are operational gates, not page detail.
+    // Application rail (3) — SHOWN with its own count, never scored.
+    { key: 'asba',       label: 'Application PDF template',  group: 'Application rail', excluded: true, filled: docs.some((d) => typeof d?.type === 'string' && d.type.startsWith('asba_form') && has(d?.url)) },
+    { key: 'series',     label: 'Application series for PDF', group: 'Application rail', excluded: true, filled: has(extra?.printFormSeries) || has(extra?.pdfSeries) || has(extra?.printSeries) },
+    { key: 'bid',        label: 'Bid rail integration',       group: 'Application rail', excluded: true, filled: has(extra?.bidding) || has(extra?.exchangeSymbol) || ipo?.startBid === true },
   ];
 
-  const active = raw.filter((c) => !c.skipped);
+  // `excluded` leaves the score but stays in `checks` so the breakdown can
+  // still render it; `skipped` leaves both.
+  const active = raw.filter((c) => !c.skipped && !c.excluded);
   const filled = active.filter((c) => c.filled).length;
   const total = active.length;
   const pct = total ? Math.round((filled / total) * 100) : 0;
@@ -167,5 +174,5 @@ export function computeIpoCompleteness(ipo: any): Completeness {
 
 /** Groups in display order — mirrors the operator's IPO form tab flow. */
 export const COMPLETENESS_GROUPS: CompletenessGroup[] = [
-  'Identity', 'Pricing', 'Structure', 'Dates', 'Parties', 'Documents',
+  'Identity', 'Pricing', 'Structure', 'Dates', 'Parties', 'Documents', 'Application rail',
 ];
