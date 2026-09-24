@@ -120,7 +120,7 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
         </button>
       )}
       <div className="subv2-list">
-        <IpoRow ipo={ipo} today={istTodayYmd()} />
+        <IpoRow ipo={ipo} today={istTodayYmd()} detailLink={false} />
       </div>
       {/* Day-wise + hourly drill-down — shows even with just Day 1 of data
           (operator ask 2026-09-22). Hidden entirely only when the poller

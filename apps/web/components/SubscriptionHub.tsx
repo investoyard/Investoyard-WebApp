@@ -330,10 +330,13 @@ export const subLogOf = (ipo: IpoFull): any[] => {
   return Array.isArray(l) ? l : [];
 };
 
-export function IpoRow({ ipo, today, onShare, onDayWise }: {
+export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
   ipo: IpoFull;
   today: string;
   onShare?: (i: IpoFull) => void;
+  /** The `→` to /subscription/v2. False on that page itself — it is the
+   *  detail view, so the arrow would just point at the current page. */
+  detailLink?: boolean;
   /** Present only on /subscription, where day-wise opens in a modal instead of
    *  sending the reader to /subscription/v2 (operator ask, 2026-09-23). The
    *  single-issue page omits it — the full table is already below the card. */
@@ -436,15 +439,19 @@ export function IpoRow({ ipo, today, onShare, onDayWise }: {
             </button>
           )}
           {/* Detail-view link — mirrors tapping the IPO name. Operator ask
-              2026-09-22: 'add detail view icon below share button'. */}
-          <a
-            className="subv2-share"
-            href={`/subscription/v2?symbol=${encodeURIComponent(ipo.symbol)}`}
-            title="Open detail view (day-wise + hourly)"
-            aria-label={`Detail view for ${ipo.name}`}
-          >
-            <Icon name="arrow-right" size={14} />
-          </a>
+              2026-09-22: 'add detail view icon below share button'. Suppressed
+              on /subscription/v2, which IS the detail view: there the arrow
+              pointed at the page the reader was already on. */}
+          {detailLink && (
+            <a
+              className="subv2-share"
+              href={`/subscription/v2?symbol=${encodeURIComponent(ipo.symbol)}`}
+              title="Open detail view (day-wise + hourly)"
+              aria-label={`Detail view for ${ipo.name}`}
+            >
+              <Icon name="arrow-right" size={14} />
+            </a>
+          )}
         </div>
       </article>
       {table && (
