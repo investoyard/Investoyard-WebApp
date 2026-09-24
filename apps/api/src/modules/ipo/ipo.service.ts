@@ -8,6 +8,19 @@ import { EXCHANGES, ipoSlug } from '@investoyard/shared-types';
 
 const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice.';
 
+/**
+ * `extra` keys written by the SERVER, never by the admin form.
+ *
+ * The form PATCHes a whole `extra` object assembled from its own fields, so
+ * anything not on the form is dropped on save unless it is carried across.
+ * These four are append-only history the operator cannot re-enter:
+ * the subscription poller's day-wise + hourly trails, the GMP day log, and the
+ * GMP feed's source id.
+ *
+ * Add to this list whenever a background job starts writing a new `extra` key.
+ */
+const SERVER_OWNED_EXTRA = ['subLog', 'subLogHour', 'gmpLog', 'gmpSourceId'] as const;
+
 const num = (d: any): number | undefined => (d == null ? undefined : Number(d));
 const day = (d: Date | null | undefined): string | undefined => (d ? d.toISOString().slice(0, 10) : undefined);
 const crStr = (d: any): string | undefined => {
@@ -279,7 +292,22 @@ export class IpoService {
     }
     try {
       // Symbol is editable (unique in DB); other writes unchanged.
-      await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, dto.symbol, dto.type) });
+      const data = this.mapWrite(dto, dto.symbol, dto.type);
+      // `extra` is a WHOLESALE replace — the admin form sends an object built
+      // from its own field state — so every operator save used to delete the
+      // keys the SERVER owns and the form has never heard of. Measured
+      // 2026-09-24: VARMORA ran 22-24 Sep and its `subLog` held ONE day, the
+      // one the poller had rewritten since the save; ROBOKIDZ ran 19-23 Sep
+      // and held two. The day-wise table then labelled the only row it had
+      // "Day 1 (Last)", which is what the operator reported. `gmpLog` goes the
+      // same way, and neither is recoverable.
+      if (data.extra && typeof data.extra === 'object') {
+        const prev: any = (existing.extra as any) ?? {};
+        const kept: any = {};
+        for (const k of SERVER_OWNED_EXTRA) if (prev[k] !== undefined) kept[k] = prev[k];
+        data.extra = { ...data.extra, ...kept };
+      }
+      await this.prisma.ipo.update({ where: { id }, data });
     } catch (e: any) {
       if (e?.code === 'P2002') throw new ConflictException(`An IPO with symbol '${dto.symbol}' already exists.`);
       throw e;
