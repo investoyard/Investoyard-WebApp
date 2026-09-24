@@ -1674,9 +1674,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                     value={derived.primary?.anchor ? derived.primary.anchor.shares.toLocaleString('en-IN') : ''} />
                 </Field>
-                <Field label="Net QIB after anchor" hint="derived">
+                {/* The PUBLISHED figure, not the allocation one — this is what a
+                    reader checks against the exchange and against our own Book
+                    Size. The allocation basis floors to lot and hands QIB the
+                    residual, which on VARMORA read 95,67,755 against the
+                    broker's 95,67,653 (operator, 2026-09-24). The MF splits
+                    below stay on the allocation basis: they are allocations. */}
+                <Field label="Net QIB after anchor" hint="as published">
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
-                    value={derived.primary?.anchor ? derived.primary.anchor.netQibShares.toLocaleString('en-IN') : ''} />
+                    value={derived.primary?.anchor ? derived.primary.anchor.netQibOffered.toLocaleString('en-IN') : ''} />
                 </Field>
                 {/* The book as ALLOTTED, off the anchor intimation. Two inputs
                     and not one, because the count only means anything beside

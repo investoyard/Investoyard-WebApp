@@ -178,7 +178,8 @@ function IpoDetail() {
       {derivedIssue.primary?.anchor && (
         <div className="dl-label" style={{ marginTop: 14, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           Anchor <span className="mono">{derivedIssue.primary.anchor.shares.toLocaleString('en-IN')}</span> shares
-          {' · '}net QIB <span className="mono">{derivedIssue.primary.anchor.netQibShares.toLocaleString('en-IN')}</span>
+          {/* published basis — same reasoning as the IPO form's field */}
+          {' · '}net QIB <span className="mono">{derivedIssue.primary.anchor.netQibOffered.toLocaleString('en-IN')}</span>
         </div>
       )}
       {derivedIssue.issues.length > 0 && (

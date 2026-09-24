@@ -127,7 +127,18 @@ export interface ScenarioResult {
    * the kind of name that gets read as the other one.
    */
   anchor?: {
-    shares: number; netQibShares: number; anchorMfShares: number; qibMfShares: number;
+    shares: number;
+    /** Net QIB on the ALLOCATION basis — `qib.shares` (floored to lot, residual
+     *  absorbed) minus the anchor. The MF sub-splits divide THIS, because they
+     *  are allocations too. */
+    netQibShares: number;
+    /** Net QIB as the exchange PUBLISHES it — `round(pct × net offer)` minus the
+     *  anchor, no flooring and no residual. This is the figure that matches the
+     *  brokers and our own Book Size, and the one to show a reader: VARMORA
+     *  publishes 95,67,653 where the allocation basis gives 95,67,755, the whole
+     *  102-share gap being the residual QIB absorbed (operator, 2026-09-24). */
+    netQibOffered: number;
+    anchorMfShares: number; qibMfShares: number;
     /** what the book actually took, at the price it struck — reported, not derived */
     allocatedShares?: number; allocationPrice?: number; allocatedAmount?: number;
   };
@@ -291,10 +302,16 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
       ? floorToLot((qib.shares * pctOfQib) / 100, lot)
       : num(inp.anchor?.shares);
     const netQibShares = qib.shares - anchorShares;
+    // The published QIB is the raw percentage of the net offer — no floor, and
+    // no share of the residual. Kept beside the allocation figure rather than
+    // replacing it: absorbing the residual is what makes Σ shares == net offer,
+    // which B01/B04 exist to guarantee.
+    const netQibOffered = Math.round((netOfferShares * qib.pct) / 100) - anchorShares;
     const anchorMfPct = inp.anchor?.mfPct != null ? num(inp.anchor.mfPct) : pack.anchorMfPct;
     anchor = {
       shares: anchorShares,
       netQibShares,
+      netQibOffered,
       // a third of the anchor book goes to domestic mutual funds …
       anchorMfShares: floorToLot((anchorShares * anchorMfPct) / 100, lot),
       // … and 5% of what is left of QIB after the anchor is taken out
