@@ -17,8 +17,11 @@
 //     --dry-run   report what would change, no writes
 //     --apply     actually write. Default is --dry-run.
 //     --only SYM  restrict to a single IPO symbol (VARMORA / NSE / …)
-//     --tolerance N  skip rows whose current shares are within N shares
-//                    of the derived value (default: 1 lot)
+//     --force     ALSO replace cells that already hold a count. Off by
+//                 default: a stored count is the exchange's own figure and a
+//                 derived value is only an approximation of it.
+//     --tolerance N  with --force, skip rows already within N shares of the
+//                    derived value (default: 0)
 //
 // The script prints a per-IPO diff of what would change, plus a summary
 // at the end. Safe to re-run — it's idempotent once every row matches
@@ -31,6 +34,9 @@ const prisma = new PrismaClient({
 
 const args = process.argv.slice(2);
 const DRY = !args.includes('--apply');
+/** Replace cells that ALREADY hold a count. Off by default — see the note at
+ *  the needsUpper/needsLower guard. */
+const FORCE = args.includes('--force');
 const ONLY = (() => { const i = args.indexOf('--only'); return i >= 0 ? args[i + 1] : null; })();
 const TOL_ARG = (() => { const i = args.indexOf('--tolerance'); return i >= 0 ? Number(args[i + 1]) : null; })();
 
@@ -39,7 +45,10 @@ const num = (v) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 /** Floor a share count down to the nearest whole number of lots. */
+/** Still used by nothing here since the 2026-09-24 switch to rounding; kept
+ *  only so the allocation convention stays visible next to the display one. */
 const floorToLot = (n, lot) => (lot > 0 ? Math.floor(n / lot) * lot : Math.round(n));
+void floorToLot;
 
 /**
  * Parse the free-text issueSize field into rupees. The catalog stores this as
@@ -56,7 +65,7 @@ function parseIssueRupees(s) {
 }
 
 (async () => {
-  console.log(`Mode: ${DRY ? 'DRY-RUN (no writes)' : 'APPLY (writes)'}${ONLY ? ` -- only symbol ${ONLY}` : ''}`);
+  console.log(`Mode: ${DRY ? 'DRY-RUN (no writes)' : 'APPLY (writes)'}${FORCE ? ' -- FORCE (replaces existing counts)' : ' -- blank cells only'}${ONLY ? ` -- only symbol ${ONLY}` : ''}`);
   const ipos = await prisma.ipo.findMany({
     where: ONLY ? { symbol: ONLY } : undefined,
     select: { id: true, symbol: true, issueSize: true, priceBandMin: true, priceBandMax: true, lotSize: true, extra: true },
@@ -97,18 +106,28 @@ function parseIssueRupees(s) {
       if (!row || typeof row !== 'object') continue;
       const pct = num(row.pct);
       if (pct <= 0) continue;                       // no pct — skip (nothing to derive from)
-      if (row.source === 'operator') continue;      // operator-locked — respect it
+      // Attributed to a human or to the exchange → never touched, not even by
+      // --force. Only `derived` rows and blanks are this script's to write.
+      if (row.source === 'operator' || row.source === 'exchange') continue;
 
-      const derivedUpper = floorToLot((totalAtCap * pct) / 100, lot);
-      const derivedLower = floorToLot((totalAtFloor * pct) / 100, lot);
+      // ROUNDED, not floored to lot. These are the OFFERED-SHARES figures the
+      // exchanges publish, and those are the raw percentage of the offer:
+      // round(47,838,855 x 50%) = 2,39,19,428 is VARMORA's broker number to the
+      // share, where floor-to-lot gave 2,39,19,426. computeIssue keeps flooring
+      // with residual absorption - that is the spec's ALLOCATION rule, a
+      // different question from what the issue offered (operator, 2026-09-24).
+      const derivedUpper = Math.round((totalAtCap * pct) / 100);
+      const derivedLower = Math.round((totalAtFloor * pct) / 100);
       const currentUpper = num(row.sharesUpper);
       const currentLower = num(row.sharesLower);
 
-      const tol = TOL_ARG != null ? TOL_ARG : lot;   // within one lot = no change
-      const upperOff = currentUpper > 0 && Math.abs(currentUpper - derivedUpper) > tol;
-      const lowerOff = currentLower > 0 && Math.abs(currentLower - derivedLower) > tol;
-      const needsUpper = currentUpper === 0 || upperOff;
-      const needsLower = currentLower === 0 || lowerOff;
+      // BLANK CELLS ONLY unless --force. A stored count is the exchange's own
+      // figure, so replacing one swaps data we trust for an approximation of
+      // it. This script used to rewrite every row that drifted by more than a
+      // lot, and since no row has ever carried `source`, the operator-override
+      // guard below protected nothing at all.
+      const needsUpper = currentUpper === 0 || (FORCE && Math.abs(currentUpper - derivedUpper) > (TOL_ARG != null ? TOL_ARG : 0));
+      const needsLower = currentLower === 0 || (FORCE && Math.abs(currentLower - derivedLower) > (TOL_ARG != null ? TOL_ARG : 0));
 
       if (needsUpper || needsLower) {
         changes.push({
@@ -120,6 +139,10 @@ function parseIssueRupees(s) {
           ...row,
           sharesUpper: String(derivedUpper),
           sharesLower: String(derivedLower),
+          // Say so. An unattributed count is indistinguishable from the
+          // exchange's own figure, which is how this script came to overwrite
+          // those in the first place.
+          source: 'derived',
         };
       }
     }

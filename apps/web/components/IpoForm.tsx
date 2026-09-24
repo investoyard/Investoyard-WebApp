@@ -104,7 +104,22 @@ type Series = { member: string; from: string; to: string; active: boolean; excha
  * loaded with pct as-is (the operator can zero it out or delete) and the
  * legacy `sharesActual` value migrates onto `sharesLower`.
  */
-type Resv = { pct: string; sharesLower?: string; sharesUpper?: string };
+/**
+ * `source` records WHERE a stored share count came from, which is the one thing
+ * the table could never say (2026-09-24). Without it every count looked alike,
+ * so Autofill and `normalise-reservation-shares.js` overwrote exchange figures
+ * with approximations of themselves — and the script's `source === 'operator'`
+ * guard protected nothing, because no row had ever carried the field.
+ *
+ *   exchange — the PREANCHOR / anchor parser, i.e. the exchange's own number
+ *   operator — typed into the cell by hand, usually off the RHP
+ *   derived  — written by Autofill or the script from `pct × total`
+ *
+ * Only `derived` may be replaced without asking. The first two outrank the
+ * derivation whenever they disagree with it.
+ */
+type ResvSource = 'exchange' | 'operator' | 'derived';
+type Resv = { pct: string; sharesLower?: string; sharesUpper?: string; source?: ResvSource };
 const blankResv = (): Resv => ({ pct: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
@@ -306,6 +321,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 // legacy `sharesActual` was the NSE PREANCHOR figure — LOWER band.
                 sharesLower: str(ex.shareResv[r.key]?.sharesLower ?? ex.shareResv[r.key]?.sharesActual),
                 sharesUpper: str(ex.shareResv[r.key]?.sharesUpper),
+                source: ex.shareResv[r.key]?.source as ResvSource | undefined,
               }]))
             // Legacy `reservations` array from older records — kept as
             // hint metadata, but no explicit "on" flag any more (a row is
@@ -488,6 +504,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           pct: c.pct,
           ...(sl ? { sharesLower: sl } : {}),
           ...(su ? { sharesUpper: su } : {}),
+          // Only meaningful alongside a count; a bare pct row has nothing to
+          // attribute, and carrying a stale source would mislabel the next fill.
+          ...((sl || su) && c.source ? { source: c.source } : {}),
         }];
       })),
       resvRemarks: offerRemark || form.resvRemarks,
@@ -544,7 +563,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           // NSE PREANCHOR prints share counts AT THE LOWER BAND (per its
           // own footnote), so the parser fills sharesLower — not the
           // legacy `sharesActual` name, and not the upper-band cell.
-          nextShareResv[cat] = { ...nextShareResv[cat], sharesLower: v };
+          // The exchange's own figure — outranks anything derived from a pct.
+          nextShareResv[cat] = { ...nextShareResv[cat], sharesLower: v, source: 'exchange' };
           shareResvChanged = true;
         }
         continue;
@@ -1436,41 +1456,82 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   midband price. This button fills both overrides in one click. */}
               {(() => {
                 const num = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
-                const cap = derived.scenarios.cap;
-                const floor = derived.scenarios.floor ?? derived.scenarios.cap;
-                const canFill = !!cap && !!floor && Number(form.issueSizeCr) > 0 && Number(form.priceBandMax) > 0 && Number(form.lotSize) > 0;
+                const lot = num(form.lotSize);
+                const pMax = num(form.priceBandMax);
+                const pMin = num(form.priceBandMin) || pMax;
+                // Same precedence as ipoCalc.totalOfferedShares(): the offer
+                // document's stated count beats ₹ ÷ price.
+                const statedTotal = num(form.totalShares);
+                const capTotal = statedTotal > 0 ? statedTotal : (num(form.issueSizeCr) * 1e7) / (pMax || 1);
+                const floorTotal = statedTotal > 0 ? (statedTotal * pMax) / (pMin || 1) : (num(form.issueSizeCr) * 1e7) / (pMin || 1);
+                const canFill = pMax > 0 && lot > 0 && capTotal > 0;
                 const anyPctSet = RESV_ROWS.some((r) => num(form.shareResv[r.key]?.pct) > 0);
                 if (!canFill || !anyPctSet) return null;
-                const autofill = () => {
-                  const anyOverride = RESV_ROWS.some((r) =>
-                    (form.shareResv[r.key].sharesLower ?? '').trim() !== '' ||
-                    (form.shareResv[r.key].sharesUpper ?? '').trim() !== '');
-                  if (anyOverride) {
-                    const ok = window.confirm('Overwrite existing share-count overrides with values derived from % × Issue Size ÷ band price? Manual entries in every row will be replaced.');
+
+                /* ROUNDED, not floored to lot — these cells are the OFFERED-SHARES
+                   figure the exchanges and every information site publish, and
+                   those are the raw percentage of the offer. VARMORA proved it:
+                   round(47,838,855 × 50%) = 2,39,19,428, exactly the broker's
+                   number, where floor-to-lot gave 2,39,19,426. `computeIssue`
+                   keeps flooring with residual absorption — that is the spec's
+                   ALLOCATION rule (you cannot allot a fraction of a lot) and a
+                   different question from what the issue offered. */
+                const shareOf = (total: number, pct: number) => Math.round((total * pct) / 100);
+
+                const filled = (r: { key: string }) =>
+                  (form.shareResv[r.key].sharesUpper ?? '').trim() !== '' ||
+                  (form.shareResv[r.key].sharesLower ?? '').trim() !== '';
+                const entered = RESV_ROWS.filter((r) => num(form.shareResv[r.key]?.pct) > 0 && filled(r));
+                const blanks = RESV_ROWS.filter((r) => num(form.shareResv[r.key]?.pct) > 0 && !filled(r));
+
+                /* Fills BLANK rows only unless `replace` is passed. A stored
+                   count is the exchange's own figure (operator, 2026-09-24), so
+                   overwriting one silently replaces data we trust with an
+                   approximation — which is exactly what this button used to do
+                   on every row after a single confirm. */
+                const autofill = (replace: boolean) => {
+                  const targets = replace ? RESV_ROWS : blanks;
+                  // Rows the SERVER derived can be refreshed silently; an
+                  // exchange or hand-typed figure is the thing being destroyed,
+                  // so only those are worth naming in the prompt.
+                  const authored = entered.filter((r) => form.shareResv[r.key].source !== 'derived');
+                  if (replace && authored.length) {
+                    const ok = window.confirm(
+                      `Replace ${authored.length} count${authored.length === 1 ? '' : 's'} that came from the exchange or were typed by hand?\n\n`
+                      + 'Those outrank a derived value — the derivation only approximates them.',
+                    );
                     if (!ok) return;
                   }
                   const next = { ...form.shareResv };
-                  for (const r of RESV_ROWS) {
-                    const catCap = cap!.categories.find((c: any) => c.key === r.key);
-                    const catFloor = floor!.categories.find((c: any) => c.key === r.key);
-                    if (catCap || catFloor) {
-                      next[r.key] = {
-                        ...next[r.key],
-                        sharesUpper: catCap ? String(catCap.shares) : (next[r.key].sharesUpper ?? ''),
-                        sharesLower: catFloor ? String(catFloor.shares) : (next[r.key].sharesLower ?? ''),
-                      };
-                    }
+                  for (const r of targets) {
+                    const pct = num(form.shareResv[r.key]?.pct);
+                    if (pct <= 0) continue;
+                    next[r.key] = {
+                      ...next[r.key],
+                      sharesUpper: String(shareOf(capTotal, pct)),
+                      sharesLower: String(shareOf(floorTotal, pct)),
+                      source: 'derived',
+                    };
                   }
                   set({ shareResv: next });
                 };
+
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>
-                      Autofill share counts for every row using the percentages above and both band prices (industry convention).
+                      Fill share counts from the percentages above and both band prices.
+                      {entered.length > 0 && <> <b>{entered.length} row{entered.length === 1 ? '' : 's'} already {entered.length === 1 ? 'has' : 'have'} a count</b> and will be left alone.</>}
                     </span>
-                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={autofill}>
-                      Fill shares from %
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }}
+                      disabled={blanks.length === 0} onClick={() => autofill(false)}>
+                      {blanks.length > 0 ? `Fill ${blanks.length} blank row${blanks.length === 1 ? '' : 's'}` : 'No blank rows'}
                     </button>
+                    {entered.length > 0 && (
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px', color: 'var(--neg)' }}
+                        onClick={() => autofill(true)}>
+                        Replace all
+                      </button>
+                    )}
                   </div>
                 );
               })()}
@@ -1511,17 +1572,33 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           const lot = form.lotSize ? Number(form.lotSize) : 1;
                           const upperDrift = hasUpperOv && catCap && Math.abs(upperOv - catCap.shares) > lot;
                           const lowerDrift = hasLowerOv && catFloor && Math.abs(lowerOv - catFloor.shares) > lot;
+                          const src = (hasUpperOv || hasLowerOv) ? form.shareResv[r.key].source : undefined;
+                          const srcLabel = src === 'exchange' ? 'exchange' : src === 'operator' ? 'typed' : 'derived';
                           return (
                             <>
                               <td className="rc-derived r">
-                                <span className="rc-val" title={upperDrift && catCap ? `Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.` : undefined}>
+                                {/* Which side is STALE depends on where the stored
+                                    count came from. A `derived` row that no longer
+                                    matches is an old snapshot — refill it. An
+                                    exchange or hand-typed figure that differs is the
+                                    authority, and the derivation is the approximation
+                                    (operator, 2026-09-24). Without `source` we cannot
+                                    tell, so legacy rows keep the neutral wording. */}
+                                <span className="rc-val" title={upperDrift && catCap ? (
+                                  src === 'derived'
+                                    ? `Stale snapshot: the percentage now derives ${catCap.shares.toLocaleString('en-IN')}. Use Replace all to refresh it.`
+                                    : src
+                                      ? `${srcLabel} figure — it outranks the derivation, which gives ${catCap.shares.toLocaleString('en-IN')}.`
+                                      : `Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.`
+                                ) : undefined}>
                                   {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
                                   {upperDrift && catCap && <sup className="rc-drift-inline"> ±{Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')}</sup>}
                                 </span>
+                                {src && <div className={`rc-src rc-src-${src}`}>{srcLabel}</div>}
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"
                                     value={form.shareResv[r.key].sharesUpper ?? ''}
-                                    onChange={(e) => setResv(r.key, { sharesUpper: e.target.value.replace(/[^\d]/g, '') })}
+                                    onChange={(e) => setResv(r.key, { sharesUpper: e.target.value.replace(/[^\d]/g, ''), source: 'operator' })}
                                     title="Optional override — the exact upper-band share count when it differs from the derived value" />
                                 </div>
                               </td>
@@ -1533,7 +1610,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"
                                     value={form.shareResv[r.key].sharesLower ?? ''}
-                                    onChange={(e) => setResv(r.key, { sharesLower: e.target.value.replace(/[^\d]/g, '') })}
+                                    onChange={(e) => setResv(r.key, { sharesLower: e.target.value.replace(/[^\d]/g, ''), source: 'operator' })}
                                     title="Optional override — NSE PREANCHOR prints figures at the lower band; paste from there when reconciling" />
                                 </div>
                               </td>

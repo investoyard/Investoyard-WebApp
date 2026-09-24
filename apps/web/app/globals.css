@@ -3545,6 +3545,14 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    a cell with drift and one without occupy identical vertical space —
    was breaking alignment between the Upper and Lower share-count columns. */
 .rc-drift-inline { font-size: 9.5px; font-weight: 600; color: #a1670a; margin-left: 3px; }
+/* Provenance chip under a stored share count — the table could not say where a
+   number came from, so Autofill and the normalise script overwrote exchange
+   figures with approximations of themselves (2026-09-24). `exchange` and
+   `typed` outrank the derivation; `derived` is the only one safe to refill. */
+.rc-src { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+.rc-src-exchange { color: #12925a; }
+.rc-src-operator { color: var(--brand); }
+.rc-src-derived  { color: var(--text-faint); }
 
 /* ── IPO form: the Fresh / OFS legs — a basis picker plus its value ──
    Not a plain flex row: `.input` carries width:100%, so the value field fought
