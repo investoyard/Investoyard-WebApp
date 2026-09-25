@@ -4,13 +4,20 @@
 // midband price — didn't match Bumtaria / Chittorgarh / IPOPremium
 // tables. This script walks every IPO with a filled `shareResv[k].pct`
 // and rewrites `sharesUpper` = shares at priceBandMax, `sharesLower` =
-// shares at priceBandMin (both floored to lot).
+// shares at priceBandMin — both ROUNDED, not floored to lot (2026-09-24).
+// These are the OFFERED-shares figures the exchange and every information
+// site publish, and those are the raw percentage of the offer; real offers
+// are routinely not lot-aligned. `computeIssue()` still floors with residual
+// absorption, because ALLOCATION is a different question. Do not unify them.
 //
-// Preserves the operator's overrides via a per-row `source: 'operator'`
-// flag: set that flag on any row you want to keep untouched (edit the
-// row in the admin form and save with the manual value + we'll add a
-// UI marker in a future pass). For now the flag has to be set manually
-// in Prisma Studio if you want to protect a specific row.
+// Provenance decides what may be rewritten. `shareResv[k].source` is
+// `exchange` (the PREANCHOR / anchor parser) · `operator` (typed by hand) ·
+// `derived` (this script or the form's Autofill). Only `derived` rows may be
+// refilled; the other two are refused even under `--force`. All three are set
+// automatically now — the form stamps `operator` on manual entry, the parser
+// stamps `exchange`, and `scripts/backfill-resv-source.js` attributed the
+// legacy rows (155 of 177 as of 2026-09-25). Nothing has to be set by hand in
+// Prisma Studio, and the form shows the provenance as a chip under each count.
 //
 // Usage:
 //   cd apps/api && node ../../scripts/normalise-reservation-shares.js
@@ -47,8 +54,6 @@ const num = (v) => {
 /** Floor a share count down to the nearest whole number of lots. */
 /** Still used by nothing here since the 2026-09-24 switch to rounding; kept
  *  only so the allocation convention stays visible next to the display one. */
-const floorToLot = (n, lot) => (lot > 0 ? Math.floor(n / lot) * lot : Math.round(n));
-void floorToLot;
 
 /**
  * Parse the free-text issueSize field into rupees. The catalog stores this as
