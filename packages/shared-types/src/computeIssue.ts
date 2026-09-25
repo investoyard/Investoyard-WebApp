@@ -235,9 +235,16 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
   for (const c of inp.carveouts ?? []) {
     const v = num(c.value);
     if (v <= 0) continue;
+    /* A carve-out quoted in RUPEES buys shares at ITS OWN price. Employees and
+       shareholders bid at a discount, so dividing by the band price overstates
+       the money and understates the count: RUNWALENTR reserves 1,20,275 shares
+       for ₹3.50 Cr at ₹291 (₹305 less a ₹14 employee discount), and ₹3.50 Cr ÷
+       ₹305 is 1,14,754 — 5,521 shares short, every one of which falls straight
+       through to the net offer and inflates QIB. */
+    const cPrice = price - num(inp.discounts?.[c.key]);
     carveoutShares += c.basis === 'shares' ? floorToLot(v, lot)
       : c.basis === 'pct_of_offer' ? floorToLot((totalOfferShares * v) / 100, lot)
-      : floorToLot((v * CR) / price, lot);
+      : floorToLot((v * CR) / (cPrice > 0 ? cPrice : price), lot);
   }
   const netOfferShares = totalOfferShares - carveoutShares;
   if (netOfferShares <= 0) return null;

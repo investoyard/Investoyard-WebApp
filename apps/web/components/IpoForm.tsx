@@ -15,7 +15,7 @@ import { AnchorReviewModal } from '@/components/AnchorReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, type IssueInputs, type LegBasis } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, type IssueInputs, type LegBasis, type CarveoutBasis } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -145,6 +145,15 @@ interface FormState {
   anchorPct: string;
   /** off-the-top reservations, taken before the category split */
   cvEmployee: string; cvShareholder: string; cvMarketMaker: string;
+  /**
+   * Each carve-out's unit: `amount` (₹ Cr) or `shares`. RHPs state an employee
+   * reservation as a SHARE COUNT — RUNWALENTR reserves 1,20,275 — and that
+   * count is not lot-aligned, so no rupee figure reproduces it exactly. ₹ Cr
+   * was the only option until 2026-09-25, which is why RUNWALENTR's employee
+   * reservation could not be entered at all and its QIB book published 57,376
+   * shares too large while the issue was live.
+   */
+  cvEmployeeBasis: string; cvShareholderBasis: string; cvMarketMakerBasis: string;
   /** per-applicant employee caps, ₹ — the RHP states both */
   empMaxPerApplicant: string; empInitialPerApplicant: string;
   /** anchor detail beyond the % of QIB */
@@ -220,6 +229,8 @@ const blankForm = (): FormState => ({
   exNse: true, exBse: true, issueSizeCr: '',
   tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '', anchorPct: '',
   cvEmployee: '', cvShareholder: '', cvMarketMaker: '',
+  // 'amount' is the back-compatible default — every legacy carve-out is ₹ Cr.
+  cvEmployeeBasis: 'amount', cvShareholderBasis: 'amount', cvMarketMakerBasis: 'amount',
   empMaxPerApplicant: '', empInitialPerApplicant: '',
   anchorMfPct: '', lockin1Pct: '', lockin1Days: '', lockin2Days: '',
   minSubscriptionPct: '', upiMandateCutoff: '',
@@ -270,7 +281,46 @@ function legSumCrOf(f: FormState): string {
 function derivedTotalSharesOf(f: FormState): number {
   const price = fnum(f.priceBandMax) || fnum(f.priceBandMin);
   const cr = fnum(legSumCrOf(f) || f.issueSizeCr);
-  return price > 0 && cr > 0 ? Math.round((cr * 1e7) / price) : 0;
+  if (!(price > 0) || !(cr > 0)) return 0;
+  /* A carve-out sold at a DISCOUNT buys more shares per rupee, so the offer's
+     total share count is NOT simply ₹ ÷ band price. RUNWALENTR: ₹500 Cr with
+     1,20,275 employee shares at ₹291 comes to 1,63,98,963 shares, not the
+     1,63,93,442 that ₹500 Cr ÷ ₹305 gives — and Chittorgarh publishes
+     1,63,98,962. Take the carve-out's rupees out first, divide the rest at the
+     band price, then add the carve-out's shares back. */
+  const cv = carveoutAt(f, price);
+  const publicShares = Math.round((cr * 1e7 - cv.rupees) / price);
+  return publicShares > 0 ? publicShares + cv.shares : 0;
+}
+
+/**
+ * What the carve-outs consume at a given price — in shares AND in rupees,
+ * because the two are needed for different questions and a discount makes them
+ * disagree.
+ *
+ * A SHARES carve-out is taken verbatim: an employee reservation is a stated
+ * count and is routinely not lot-aligned (RUNWALENTR's 1,20,275 against a lot
+ * of 49). `computeIssue` still floors it to a lot — that is the ALLOCATION
+ * rule — while this is the OFFERED figure the exchange and every information
+ * site publish. Same split as the reservation counts: offered rounds,
+ * allocation floors.
+ */
+function carveoutAt(f: FormState, price: number): { shares: number; rupees: number } {
+  if (!(price > 0)) return { shares: 0, rupees: 0 };
+  let shares = 0;
+  let rupees = 0;
+  const add = (value: string, basis: string, discount: string) => {
+    const v = fnum(value);
+    if (v <= 0) return;
+    const p = price - fnum(discount);
+    const at = p > 0 ? p : price;
+    if (basis === 'shares') { shares += Math.round(v); rupees += Math.round(v) * at; }
+    else { const r = v * 1e7; rupees += r; shares += Math.round(r / at); }
+  };
+  add(f.cvEmployee, f.cvEmployeeBasis, f.employeeDiscount);
+  add(f.cvShareholder, f.cvShareholderBasis, f.shareholderDiscount);
+  add(f.cvMarketMaker, f.cvMarketMakerBasis, '');
+  return { shares, rupees };
 }
 
 /**
@@ -285,8 +335,16 @@ function offerTotalsOf(f: FormState): { cap: number; floor: number } {
   const pMin = fnum(f.priceBandMin) || pMax;
   const stated = fnum(f.totalShares) || derivedTotalSharesOf(f);
   if (!(stated > 0) || !(pMax > 0)) return { cap: 0, floor: 0 };
+  /* NET of carve-outs. Every percentage in the reservation table is a
+     percentage of the NET offer — ICDR takes preferential reservations off the
+     top first — and Chittorgarh states it outright for RUNWALENTR: total
+     1,63,98,962, employee 1,20,275, net 1,62,78,687, and QIB's 81,39,344 is
+     50% of the NET (49.63% of the total). Deriving from the gross put 57,376
+     shares too many in QIB on a live issue. */
+  const net = stated - carveoutAt(f, pMax).shares;
+  if (!(net > 0)) return { cap: 0, floor: 0 };
   // The floor-band count is the same MONEY buying cheaper shares.
-  return { cap: stated, floor: pMin > 0 ? (stated * pMax) / pMin : stated };
+  return { cap: net, floor: pMin > 0 ? (net * pMax) / pMin : net };
 }
 
 /** What Autofill writes and what the drift check must compare against. */
@@ -368,6 +426,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
           shareholderDiscount: str(ex.shareholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
           anchorPct: str(ex.anchorPct),
+          cvEmployeeBasis: str(ex.carveoutBasis?.employee) || 'amount',
+          cvShareholderBasis: str(ex.carveoutBasis?.shareholder) || 'amount',
+          cvMarketMakerBasis: str(ex.carveoutBasis?.marketmaker) || 'amount',
           cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
           cvMarketMaker: str(ex.carveouts?.marketmaker),
           empMaxPerApplicant: str(ex.empMaxPerApplicant), empInitialPerApplicant: str(ex.empInitialPerApplicant),
@@ -551,6 +612,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       empMaxPerApplicant: form.empMaxPerApplicant, empInitialPerApplicant: form.empInitialPerApplicant,
       minSubscriptionPct: form.minSubscriptionPct, upiMandateCutoff: form.upiMandateCutoff,
       carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, marketmaker: form.cvMarketMaker },
+      // Kept in a SEPARATE key rather than reshaping `carveouts` to {basis,value}:
+      // three live records already carry the flat shape and the Excel importer
+      // writes it, so a reshape would need every reader migrated in one go.
+      carveoutBasis: { employee: form.cvEmployeeBasis, shareholder: form.cvShareholderBasis, marketmaker: form.cvMarketMakerBasis },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
@@ -819,7 +884,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const derived = useMemo(() => {
     const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
     const reservation: Record<string, number> = {};
-    for (const r of RESV_ROWS) { const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v; }
+    /* Employee is EXCLUDED: it is a carve-out taken off the top, so counting it
+       again among the percentages of the net offer would reserve those shares
+       twice. This is the AUGMONT fault — Σ = 100.691% because the 0.691%
+       employee quota was typed into the table, and the overshoot was absorbed
+       into QIB rather than reported. A legacy record carrying that pct now
+       raises E-EMP below instead of quietly deriving from it. */
+    for (const r of RESV_ROWS) {
+      if (r.key === 'employee') continue;
+      const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v;
+    }
     const inputs: IssueInputs = {
       board: form.type === 'sme' ? 'sme' : 'mainboard',
       mechanism: form.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
@@ -837,10 +911,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         employee: n(form.employeeDiscount),
         shareholder: n(form.shareholderDiscount),
       },
+      // The basis was hardcoded to 'amount' until 2026-09-25, so a reservation
+      // the RHP states in SHARES had to be converted to ₹ by hand — and the
+      // conversion could not be exact, because the count is not lot-aligned.
       carveouts: [
-        { key: 'employee', basis: 'amount' as const, value: n(form.cvEmployee) },
-        { key: 'shareholder', basis: 'amount' as const, value: n(form.cvShareholder) },
-        { key: 'marketmaker', basis: 'amount' as const, value: n(form.cvMarketMaker) },
+        { key: 'employee', basis: (form.cvEmployeeBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvEmployee) },
+        { key: 'shareholder', basis: (form.cvShareholderBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvShareholder) },
+        { key: 'marketmaker', basis: (form.cvMarketMakerBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvMarketMaker) },
       ].filter((c) => c.value > 0),
       // the datetime-local fields carry a time; the rules only want the day
       dates: {
@@ -1054,6 +1131,20 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       if (sum !== sc.netOfferShares) {
         out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
       }
+    }
+    /* A legacy record whose employee quota sits in the reservation table now
+       has it read nowhere: the row is derived and the pct is excluded from the
+       split. Say so loudly rather than letting the reservation evaporate —
+       AUGMONT (0.691%) and NSE (43,33,437 shares) are the two in the
+       catalogue, and both need the figure moved to the carve-out field. */
+    const empPct = fnum(form.shareResv.employee?.pct);
+    const empCount = Number(String(form.shareResv.employee?.sharesUpper ?? '').replace(/[^\d]/g, ''));
+    if ((empPct > 0 || empCount > 0) && !(fnum(form.cvEmployee) > 0)) {
+      out.push({
+        code: 'E-EMP',
+        msg: `This record holds an employee quota in the reservation table (${empPct > 0 ? `${empPct}%` : `${empCount.toLocaleString('en-IN')} shares`}), where nothing reads it. An employee reservation comes off the TOP — move it to the Employee carve-out above, in shares if the RHP states a count.`,
+        blocking: true,
+      });
     }
     return out;
   }, [derived]);
@@ -1542,10 +1633,27 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 </Field>
               </div>
             </Panel>
-            <Panel title="Carve-outs" desc="Shares set aside off the top, before the category split — enter ₹ Cr. A quota exists because shares are reserved for it.">
+            <Panel title="Carve-outs" desc="Shares set aside off the top, BEFORE the category split — so every percentage below is a percentage of what is left. Enter the unit the RHP states.">
               <div className="form-grid">
-                <Field label="Employee (₹ Cr)">
-                  <input className="input mono" value={form.cvEmployee} onChange={(e) => set({ cvEmployee: e.target.value.replace(/[^\d.]/g, '') })} />
+                {/* Shares or ₹ Cr, because RHPs use both and they are not
+                    interchangeable. An employee reservation is quoted as a
+                    share count (RUNWALENTR: 1,20,275) which is typically NOT
+                    lot-aligned, so no rupee figure reproduces it exactly; and a
+                    ₹ figure has to be divided by the DISCOUNTED price, not the
+                    band price, or the count comes out short and the difference
+                    silently inflates QIB. */}
+                <Field label="Employee" hint={form.cvEmployeeBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.employeeDiscount || 0)) || '—'} (band price less the employee discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvEmployee}
+                      onChange={(e) => set({ cvEmployee: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvEmployeeBasis}
+                      onChange={(e) => set({ cvEmployeeBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
                 </Field>
                 {/* Both are per-APPLICANT rupee caps from the RHP, not sizes of
                     the quota: an employee may bid up to the max, of which only
@@ -1556,16 +1664,34 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Employee initial allotment cap (₹)" hint="usually ₹2,00,000">
                   <input className="input mono" value={form.empInitialPerApplicant} onChange={(e) => set({ empInitialPerApplicant: e.target.value.replace(/[^\d]/g, '') })} />
                 </Field>
-                <Field label="Shareholder (₹ Cr)">
-                  <input className="input mono" value={form.cvShareholder} onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                <Field label="Shareholder" hint={form.cvShareholderBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.shareholderDiscount || 0)) || '—'} (band price less the shareholder discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvShareholder}
+                      onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvShareholderBasis}
+                      onChange={(e) => set({ cvShareholderBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
                 </Field>
                 {/* Mainboard issues have no market maker, so the field only
                     appears where it is required — and where leaving it empty
                     is a blocking fault (B18). */}
                 {form.type === 'sme' && (
-                  <Field label="Market maker (₹ Cr)" required
+                  <Field label="Market maker" required
                     hint={`SME issues must reserve at least ${derived.rulePack.marketMakerMinPct}% of the issue`}>
-                    <input className="input mono" value={form.cvMarketMaker} onChange={(e) => set({ cvMarketMaker: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input className="input mono" style={{ flex: 1 }} value={form.cvMarketMaker}
+                        onChange={(e) => set({ cvMarketMaker: e.target.value.replace(/[^\d.]/g, '') })} />
+                      <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvMarketMakerBasis}
+                        onChange={(e) => set({ cvMarketMakerBasis: e.target.value })}>
+                        <option value="amount">₹ Cr</option>
+                        <option value="shares">shares</option>
+                      </select>
+                    </div>
                   </Field>
                 )}
               </div>
@@ -1703,7 +1829,45 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <table className="table resv-table" style={{ width: '100%' }}>
                   <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count (Upper)</th><th className="r">Share Count (Lower)</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
                   <tbody>
-                    {RESV_ROWS.map((r) => (
+                    {RESV_ROWS.map((r) => (r.key === 'employee' ? (
+                      /* Employee is a PREFERENTIAL RESERVATION: ICDR takes it
+                         off the top and the percentages below apply to what is
+                         left. It therefore has exactly one home — the carve-out
+                         field — and this row only reports what that resolved to.
+                         Offering both was a trap: AUGMONT's table sums to
+                         100.691% because the 0.691% employee quota was typed
+                         here instead, and QIB silently absorbed the overshoot.
+                         Shown rather than removed so the table still reads as a
+                         complete picture of the offer. */
+                      <tr key={r.key} className="resv-derived-row">
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>
+                          {r.label}
+                          <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>from carve-out</div>
+                        </td>
+                        {(() => {
+                          const cvCap = carveoutAt(form, fnum(form.priceBandMax) || fnum(form.priceBandMin));
+                          const cvFloor = carveoutAt(form, fnum(form.priceBandMin) || fnum(form.priceBandMax));
+                          const emp = fnum(form.cvEmployee);
+                          const gross = offerTotals.cap + cvCap.shares;
+                          const dash = <span className="muted">—</span>;
+                          const pctOfTotal = emp > 0 && gross > 0
+                            ? ((form.cvEmployeeBasis === 'shares' ? emp : cvCap.shares) / gross) * 100 : 0;
+                          const at = (v: number) => (emp > 0 && v > 0 ? v.toLocaleString('en-IN') : dash);
+                          const shareAt = (cv: { shares: number }) => (form.cvEmployeeBasis === 'shares' ? Math.round(emp) : cv.shares);
+                          return (
+                            <>
+                              <td className="r mono" title="% of the TOTAL issue — a carve-out is not part of the net offer the other rows divide">
+                                {pctOfTotal > 0 ? pctOfTotal.toFixed(3) : dash}
+                              </td>
+                              <td className="rc-derived r">{at(shareAt(cvCap))}</td>
+                              <td className="rc-derived r">{at(shareAt(cvFloor))}</td>
+                              <td className="rc-derived r">{emp > 0 && cvCap.rupees > 0 ? `₹${(cvCap.rupees / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">{dash}</td>
+                            </>
+                          );
+                        })()}
+                      </tr>
+                    ) : (
                       <tr key={r.key}>
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
                         {/* QIB carries the snap: typing 75 or 50 fills every
@@ -1796,7 +1960,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           );
                         })()}
                       </tr>
-                    ))}
+                    )))}
                     {/* The total is the check an operator actually runs: does the
                         split add back up to the offer? Reading it off four rows
                         by eye is exactly how a 100.691% table shipped. */}
@@ -1805,14 +1969,30 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         {/* 6 columns: Category · % · Upper · Lower · Amount · Forms */}
                         <td style={{ fontWeight: 700 }}>Total</td>
                         <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.pct}</td>
-                        <td className="r mono" style={{ fontWeight: 700 }}>
-                          {(derived.scenarios.cap?.categories ?? [])
-                            .reduce((s: number, c: any) => s + (c.shares ?? 0), 0).toLocaleString('en-IN')}
-                        </td>
-                        <td className="r mono" style={{ fontWeight: 700 }}>
-                          {((derived.scenarios.floor?.categories ?? derived.scenarios.cap?.categories) ?? [])
-                            .reduce((s: number, c: any) => s + (c.shares ?? 0), 0).toLocaleString('en-IN')}
-                        </td>
+                        {/* Sum the column ACTUALLY SHOWN, not `computeIssue`'s
+                            scenarios. The engine holds a stated share count
+                            fixed across both price scenarios — right for an
+                            offer quoted in SHARES, and there is not one in the
+                            catalogue: all 35 fresh and 23 OFS legs are quoted
+                            in RUPEES, so the count genuinely moves with the
+                            price. The two totals therefore came out IDENTICAL
+                            while the Lower column beneath them summed to
+                            something else entirely — VARMORA showed
+                            4,78,38,855 over rows adding to 5,05,72,503. A total
+                            that does not equal its own column is a bug whatever
+                            the right model is. */}
+                        {(() => {
+                          const sum = (total: number) => RESV_ROWS.reduce((s, r) => {
+                            const pct = fnum(form.shareResv[r.key]?.pct);
+                            return pct > 0 && total > 0 ? s + derivedCountAt(total, pct) : s;
+                          }, 0);
+                          return (
+                            <>
+                              <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.cap).toLocaleString('en-IN')}</td>
+                              <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.floor).toLocaleString('en-IN')}</td>
+                            </>
+                          );
+                        })()}
                         <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.amount / 1e7).toFixed(2)} Cr</td>
                         <td />
                       </tr>

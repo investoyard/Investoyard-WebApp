@@ -134,6 +134,27 @@ describe('computeIssue — degrades instead of guessing', () => {
     const sum = r.primary!.categories.reduce((a, c) => a + c.shares, 0);
     expect(sum).toBe(r.primary!.netOfferShares);
   });
+
+  /**
+   * A carve-out quoted in RUPEES buys shares at ITS OWN price, and employees
+   * bid at a discount. Dividing by the band price understates the count and
+   * hands the difference to QIB — the fault that had RUNWALENTR publishing a
+   * QIB book 57,376 shares too large while it was live (2026-09-25).
+   */
+  it('converts a ₹ carve-out at the DISCOUNTED price, not the band price', () => {
+    const base = { ...MVELECTRO, carveouts: [{ key: 'employee', basis: 'amount' as const, value: 2 }] };
+    const plain = computeIssue(base).primary!;
+    const discounted = computeIssue({ ...base, discounts: { employee: 25 } }).primary!;
+    // ₹2 Cr buys MORE shares at 400 than at 425, so the carve-out grows …
+    expect(discounted.carveoutShares).toBeGreaterThan(plain.carveoutShares);
+    // … and every extra share comes out of the net offer, not out of thin air
+    expect(discounted.netOfferShares).toBe(discounted.totalOfferShares - discounted.carveoutShares);
+    expect(discounted.categories.reduce((a, c) => a + c.shares, 0)).toBe(discounted.netOfferShares);
+    // a discount that cannot be met falls back to the band price rather than
+    // dividing by zero or going negative
+    const absurd = computeIssue({ ...base, discounts: { employee: 10_000 } }).primary!;
+    expect(absurd.carveoutShares).toBe(plain.carveoutShares);
+  });
 });
 
 describe('computeIssue — legacy amount-only records', () => {
