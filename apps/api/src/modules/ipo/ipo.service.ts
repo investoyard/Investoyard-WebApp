@@ -50,7 +50,13 @@ function toDetail(ipo: any) {
         ? ipo.lotSize * (ipo.type === 'sme' ? 2 : 1) * upper
         : num(ipo.minAmount),
     issueSize: crStr(ipo.issueSize),
-    issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e7) : undefined, // raw ₹cr for admin edit
+    // Raw ₹cr for admin edit. NOT rounded: an issue of ₹150.7098 Cr loaded as
+    // `151` and the next save wrote 151 back to the column, quietly undoing the
+    // operator's correction. Every reservation bucket is `pct × issueSize`, so
+    // a crore of rounding here reaches all four counts.
+    // 4 dp, which is how issue sizes are quoted (₹150.7098 Cr) and enough to
+    // keep a plain `/ 1e7` from handing the input box 805.0000000000001.
+    issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e3) / 1e4 : undefined,
     registrar: ipo.registrar ?? undefined,
     // The exchanges an issue ACTUALLY lists on. This was never sent, so the web
     // fell back to inventing both SME platforms for every SME issue — which is
@@ -480,7 +486,9 @@ export class IpoService {
       priceBandMax: dto.priceBandMax,
       lotSize: dto.lotSize,
       minAmount: dto.minAmount,
-      issueSize: dto.issueSizeCr != null ? dto.issueSizeCr * 1e7 : undefined,
+      // Rounded because the column is RUPEES — a fractional paisa here would
+      // be a new way for the column and `extra.issueSizeCr` to disagree.
+      issueSize: dto.issueSizeCr != null ? Math.round(dto.issueSizeCr * 1e7) : undefined,
       registrar: dto.registrar,
       isin: dto.isin,
       objectsOfIssue: dto.objectsOfIssue,

@@ -437,7 +437,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const payload = (): api.IpoWrite => ({
     name: form.name, type: form.type, status: form.status, instrument: form.instrument,
     priceBandMin: num(form.priceBandMin), priceBandMax: num(form.priceBandMax), lotSize: num(form.lotSize),
-    issueSizeCr: (num(form.issueSizeCr) ?? 0) > 0 ? num(form.issueSizeCr) : undefined,
+    /* The COLUMN has to agree with `extra.issueSizeCr` below, and until
+       2026-09-25 it could not: when both legs are entered the total field
+       goes READ-ONLY and renders `legSumCr`, so `form.issueSizeCr` keeps
+       whatever was typed before that — usually the Fresh leg alone, or
+       nothing at all. Every legged issue therefore desynced by
+       construction. ORIENTCABL published `Issue Size ₹320 Cr` (its Fresh
+       leg) against a ₹552 Cr offer, with the reservation rupee amounts
+       derived off the same wrong figure. Same expression both places. */
+    issueSizeCr: (num(legSumCr || form.issueSizeCr) ?? 0) > 0 ? num(legSumCr || form.issueSizeCr) : undefined,
     // explicit, not invented from the board — an SME issue may list on one platform only
     exchanges: exchangeList(),
     registrar: form.registrar || undefined, isin: form.isin || undefined, logoUrl: form.logoUrl || undefined,
