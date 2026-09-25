@@ -24,7 +24,7 @@ const FORM_WRITES = [
   'dematDate', 'registrarEmail', 'registrarPhone', 'registrarUrl', 'companyWebsite',
   'companyPromoter', 'companyDescription', 'companyStrength', 'companyFinancials', 'contactInfo',
   'faqs', 'leads', 'partners', 'pdfSeries', 'onlineSeries', 'asbaNames', 'anchors',
-  'totalShares', 'anchorShares', 'anchorPrice', 'sponsorBank', 'startBid', 'startPrint',
+  'totalShares', 'totalSharesSource', 'anchorShares', 'anchorPrice', 'sponsorBank', 'startBid', 'startPrint',
   'shareResv', 'resvRemarks',
 ];
 

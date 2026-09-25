@@ -176,6 +176,21 @@ interface FormState {
    * see the `totalShares` note on IssueInputs.
    */
   totalShares: string;
+  /**
+   * Where `totalShares` came from, for the same reason `Resv.source` exists:
+   * once the figure is filled in automatically, nothing else can tell an
+   * offer-document count from one we divided out of a ₹ total.
+   *
+   *   operator — typed by hand, off the RHP. Never overwritten.
+   *   derived  — round(₹ total ÷ upper band). Kept in step automatically.
+   *
+   * The distinction is load-bearing, not bookkeeping. Of the ten records
+   * holding both figures only TWO agree: overwriting a stated count would
+   * have turned VARMORA's 4,78,38,855 into 4,78,39,189 and put back the
+   * 300-share gap fixed in 1d89bc7, and flattened ADROITIND's 1,12,47,000 —
+   * round precisely because the document states it — into 1,12,47,015.
+   */
+  totalSharesSource: string;
   /** anchor book as allotted: the portion in shares and the price it struck */
   anchorShares: string; anchorPrice: string;
   /** the bank that warehouses UPI mandates for this issue */
@@ -220,12 +235,62 @@ const blankForm = (): FormState => ({
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
   anchors: [],
-  totalShares: '', anchorShares: '', anchorPrice: '', sponsorBank: '',
+  totalShares: '', totalSharesSource: '', anchorShares: '', anchorPrice: '', sponsorBank: '',
   instrument: 'ipo', sector: '', industry: '',
 });
 const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
 const toDT = (v: any) => { const s = v == null ? '' : String(v); return s.length === 10 ? s + 'T00:00' : s; };
+
+/** Loose numeric read — the inputs strip punctuation, a paste does not. */
+const fnum = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+
+/**
+ * Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total.
+ * Pure and module-level because three callers need the SAME expression: the
+ * read-only total field, the payload (both the column and `extra` — see the
+ * ORIENTCABL note there) and the share count derived below.
+ */
+function legSumCrOf(f: FormState): string {
+  const price = fnum(f.priceBandMax) || fnum(f.priceBandMin);
+  const leg = (basis: string, v: string) => (basis === 'none' ? 0 : basis === 'amount' ? fnum(v) : price ? (fnum(v) * price) / 1e7 : 0);
+  const sum = leg(f.freshBasis, f.freshValue) + leg(f.ofsBasis, f.ofsValue);
+  return sum > 0 ? sum.toFixed(2) : '';
+}
+
+/**
+ * The offer total in SHARES, from the ₹ total at the upper band.
+ *
+ * ROUNDED, never floored to a lot: this is the count the offer document PRINTS,
+ * and real offers are routinely not lot-aligned (ESDS states 1,76,47,058
+ * against a lot of 34). ₹90.17 Cr ÷ ₹167 = 53,99,401.1976 → 53,99,401, which is
+ * SHAHINVEST's stated figure to the share. Same rule as the reservation counts:
+ * the OFFERED figure rounds, the ALLOCATION figure floors.
+ */
+function derivedTotalSharesOf(f: FormState): number {
+  const price = fnum(f.priceBandMax) || fnum(f.priceBandMin);
+  const cr = fnum(legSumCrOf(f) || f.issueSizeCr);
+  return price > 0 && cr > 0 ? Math.round((cr * 1e7) / price) : 0;
+}
+
+/**
+ * The two totals every reservation count divides out of — at the cap price and
+ * at the floor price. ONE resolver, because three of them disagreed whenever no
+ * count was stated: the public page used the raw quotient (53,99,401.1976),
+ * `computeIssue` floored it to a lot (53,99,370) and Autofill used the quotient
+ * again. `totalShares` is now always populated, so all three divide one number.
+ */
+function offerTotalsOf(f: FormState): { cap: number; floor: number } {
+  const pMax = fnum(f.priceBandMax) || fnum(f.priceBandMin);
+  const pMin = fnum(f.priceBandMin) || pMax;
+  const stated = fnum(f.totalShares) || derivedTotalSharesOf(f);
+  if (!(stated > 0) || !(pMax > 0)) return { cap: 0, floor: 0 };
+  // The floor-band count is the same MONEY buying cheaper shares.
+  return { cap: stated, floor: pMin > 0 ? (stated * pMax) / pMin : stated };
+}
+
+/** What Autofill writes and what the drift check must compare against. */
+const derivedCountAt = (total: number, pct: number) => Math.round((total * pct) / 100);
 
 export function IpoForm({ ipoId }: { ipoId?: string }) {
   const me = useOperator();
@@ -281,7 +346,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 pct: str(a?.pct), amount: String(a?.amount ?? ''),
               }))
             : [],
-          totalShares: str(ex.totalShares), anchorShares: str(ex.anchorShares),
+          totalShares: str(ex.totalShares),
+          // A record saved before the field existed carries a count but no
+          // provenance. Treat that as `operator`: it was typed by hand, since
+          // nothing else could have written it — the opposite default would
+          // let the auto-fill overwrite every RHP count in the catalogue.
+          totalSharesSource: str(ex.totalSharesSource) || (str(ex.totalShares) ? 'operator' : ''),
+          anchorShares: str(ex.anchorShares),
           anchorPrice: str(ex.anchorPrice), sponsorBank: str(ex.sponsorBank),
           instrument: str((d as any).instrument) || 'ipo',
           sector: str(ex.sector), industry: str(ex.industry),
@@ -496,7 +567,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         name: a.name.trim(), shares: a.shares.trim(), pct: a.pct.trim(), amount: a.amount.trim(),
       })),
       // stated share counts — inputs, not derivations (see the note in IssueInputs)
-      totalShares: form.totalShares, anchorShares: form.anchorShares,
+      totalShares: form.totalShares,
+      // Persisted so the form, `computeIssue` and the public page divide ONE
+      // number — see offerTotalsOf. The flag is what keeps a derived count
+      // from later passing as an offer-document figure.
+      totalSharesSource: form.totalShares.trim() ? (form.totalSharesSource || 'operator') : undefined,
+      anchorShares: form.anchorShares,
       anchorPrice: form.anchorPrice, sponsorBank: form.sponsorBank,
       sector: form.sector, industry: form.industry,
       startBid: form.startBid, startPrint: form.startPrint,
@@ -983,13 +1059,58 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   }, [derived]);
 
   /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
-  const legSumCr = (() => {
-    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
-    const price = n(form.priceBandMax) || n(form.priceBandMin);
-    const leg = (basis: string, v: string) => (basis === 'none' ? 0 : basis === 'amount' ? n(v) : price ? (n(v) * price) / 1e7 : 0);
-    const sum = leg(form.freshBasis, form.freshValue) + leg(form.ofsBasis, form.ofsValue);
-    return sum > 0 ? sum.toFixed(2) : '';
-  })();
+  const legSumCr = legSumCrOf(form);
+  const derivedTotalShares = derivedTotalSharesOf(form);
+  const offerTotals = offerTotalsOf(form);
+
+  /**
+   * The offer-size chain, closed: ₹ total → share count → the counts we derived.
+   *
+   * Step 1 keeps `totalShares` in step with the ₹ total and the band whenever
+   * the figure is OURS (`derived`, or still blank). A count the operator typed
+   * is `operator` and is never touched — of the ten records carrying both
+   * figures only two agree, and overwriting is exactly how VARMORA's 300-share
+   * gap would come back.
+   *
+   * Step 2 refreshes the reservation rows WE derived, off whatever total is now
+   * effective. Those are our own snapshots, so nothing the operator entered is
+   * lost; `exchange` and `operator` rows keep their counts and the drift hint
+   * explains which side is stale. That is the whole difference between this and
+   * the single Autofill button Phase 0 removed, which replaced every row alike.
+   *
+   * The updater returns `f` untouched when there is nothing to do, so React
+   * bails out of the render and the effect cannot feed itself.
+   */
+  useEffect(() => {
+    setForm((f) => {
+      let next = f;
+
+      const want = derivedTotalSharesOf(f);
+      if (f.totalSharesSource !== 'operator' && want > 0 && String(want) !== f.totalShares) {
+        next = { ...next, totalShares: String(want), totalSharesSource: 'derived' };
+      }
+
+      const { cap, floor } = offerTotalsOf(next);
+      if (cap > 0) {
+        let resv = next.shareResv;
+        let touched = false;
+        for (const r of RESV_ROWS) {
+          const row = resv[r.key];
+          if (!row || row.source !== 'derived') continue;
+          const pct = fnum(row.pct);
+          if (pct <= 0) continue;
+          const upper = String(derivedCountAt(cap, pct));
+          const lower = String(derivedCountAt(floor, pct));
+          if (row.sharesUpper === upper && row.sharesLower === lower) continue;
+          if (!touched) { resv = { ...resv }; touched = true; }
+          resv[r.key] = { ...row, sharesUpper: upper, sharesLower: lower };
+        }
+        if (touched) next = { ...next, shareResv: resv };
+      }
+      return next;
+    });
+  }, [form.issueSizeCr, form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue,
+    form.priceBandMin, form.priceBandMax, form.totalShares, form.totalSharesSource, form.shareResv]);
 
   /**
    * ISIN check digit (ISO 6166): expand letters to digits, double alternate
@@ -1369,12 +1490,43 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     every category divides out of. A ₹ total only approximates
                     it — it is rounded to two decimals in Cr, and the price is
                     a guess until the issue prices. */}
-                <Field label="Total issue size (shares)"
-                  hint="as the offer document states it — this figure wins over the ₹ total">
+                {/* Auto-filled from the ₹ total at the upper band, and still
+                    EDITABLE — unlike the ₹ field above, which goes read-only
+                    once the legs derive it. The two are not the same case:
+                    legs → ₹ is addition, ₹ → shares is a division by a price
+                    out of a figure already rounded to two decimals in Cr. Of
+                    the ten records holding both counts only two agree, and a
+                    read-only box would make ADROITIND's 1,12,47,000 and
+                    SWASTIKAIN's 86,95,946 impossible to enter at all. */}
+                <Field label="Total issue size (shares)" value={form.totalShares}
+                  hint={form.totalSharesSource === 'operator'
+                    ? (derivedTotalShares > 0 && String(derivedTotalShares) !== form.totalShares
+                        ? `as the offer document states it — it wins over the ₹ total, which derives ${derivedTotalShares.toLocaleString('en-IN')}`
+                        : 'as the offer document states it — this figure wins over the ₹ total')
+                    : `₹${legSumCr || form.issueSizeCr || '0'} Cr ÷ ₹${form.priceBandMax || form.priceBandMin || '—'}, rounded. Type the offer document's count to override it.`}>
                   <input className="input mono" value={form.totalShares} placeholder="1,76,47,058"
-                    onChange={(e) => set({ totalShares: e.target.value.replace(/[^\d]/g, '') })} />
+                    onChange={(e) => set({ totalShares: e.target.value.replace(/[^\d]/g, ''), totalSharesSource: 'operator' })} />
+                  {(form.totalShares || derivedTotalShares > 0) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <span className={`rc-src rc-src-${form.totalSharesSource === 'operator' ? 'operator' : 'derived'}`}>
+                        {form.totalSharesSource === 'operator' ? 'stated' : 'derived'}
+                      </span>
+                      {form.totalSharesSource === 'operator' && derivedTotalShares > 0
+                        && String(derivedTotalShares) !== form.totalShares && (
+                        /* Clearing the field hands it back to the effect, which
+                           refills and re-stamps it — one path, not two. */
+                        <button type="button" className="linklike" style={{ fontSize: 11.5 }}
+                          onClick={() => set({ totalShares: '', totalSharesSource: '' })}>
+                          use derived ({derivedTotalShares.toLocaleString('en-IN')})
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </Field>
-                {form.totalShares && derived.primary && (
+                {/* Only worth showing for a STATED count, where it reconciles
+                    two independently entered figures. Against a derived count
+                    it just reconstitutes the ₹ total it was divided out of. */}
+                {form.totalShares && form.totalSharesSource === 'operator' && derived.primary && (
                   <Field label="Implied at this price" hint="derived — the ₹ value of the stated count">
                     <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                       value={`₹${((Number(form.totalShares) * derived.primary.price) / 1e7).toFixed(2)} Cr @ ₹${derived.primary.price}`} />
@@ -1466,12 +1618,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 const num = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
                 const lot = num(form.lotSize);
                 const pMax = num(form.priceBandMax);
-                const pMin = num(form.priceBandMin) || pMax;
-                // Same precedence as ipoCalc.totalOfferedShares(): the offer
-                // document's stated count beats ₹ ÷ price.
-                const statedTotal = num(form.totalShares);
-                const capTotal = statedTotal > 0 ? statedTotal : (num(form.issueSizeCr) * 1e7) / (pMax || 1);
-                const floorTotal = statedTotal > 0 ? (statedTotal * pMax) / (pMin || 1) : (num(form.issueSizeCr) * 1e7) / (pMin || 1);
+                // ONE resolver, shared with the auto-fill effect and the drift
+                // check below, so the three cannot drift apart again.
+                const { cap: capTotal, floor: floorTotal } = offerTotalsOf(form);
                 const canFill = pMax > 0 && lot > 0 && capTotal > 0;
                 const anyPctSet = RESV_ROWS.some((r) => num(form.shareResv[r.key]?.pct) > 0);
                 if (!canFill || !anyPctSet) return null;
@@ -1575,11 +1724,26 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           const lowerOv = Number(String(form.shareResv[r.key].sharesLower ?? '').replace(/[^\d]/g, ''));
                           const hasUpperOv = Number.isFinite(upperOv) && upperOv > 0;
                           const hasLowerOv = Number.isFinite(lowerOv) && lowerOv > 0;
-                          const upperVal = hasUpperOv ? upperOv : catCap?.shares;
-                          const lowerVal = hasLowerOv ? lowerOv : catFloor?.shares ?? catCap?.shares;
+                          /* This table is the OFFERED reservation, so its derived
+                             count rounds — the same expression Autofill writes.
+                             It used to read `catCap.shares`, which is
+                             computeIssue's ALLOCATION figure: floored to a lot
+                             with the residual absorbed by the largest quota. The
+                             two differ by the residual, which exceeds a lot, so a
+                             perfectly clean record already showed a false drift
+                             marker on QIB — ±102 on VARMORA, ±100 on SHAHINVEST,
+                             immediately after a Replace all. Comparing an offered
+                             count against an allocation count can only mislead.
+                             `derivedRow()` below still uses the allocation figure,
+                             because applications-for-1× IS an allocation question. */
+                          const pct = fnum(form.shareResv[r.key].pct);
+                          const derUpper = pct > 0 && offerTotals.cap > 0 ? derivedCountAt(offerTotals.cap, pct) : catCap?.shares;
+                          const derLower = pct > 0 && offerTotals.floor > 0 ? derivedCountAt(offerTotals.floor, pct) : catFloor?.shares ?? catCap?.shares;
+                          const upperVal = hasUpperOv ? upperOv : derUpper;
+                          const lowerVal = hasLowerOv ? lowerOv : derLower;
                           const lot = form.lotSize ? Number(form.lotSize) : 1;
-                          const upperDrift = hasUpperOv && catCap && Math.abs(upperOv - catCap.shares) > lot;
-                          const lowerDrift = hasLowerOv && catFloor && Math.abs(lowerOv - catFloor.shares) > lot;
+                          const upperDrift = hasUpperOv && derUpper != null && Math.abs(upperOv - derUpper) > lot;
+                          const lowerDrift = hasLowerOv && derLower != null && Math.abs(lowerOv - derLower) > lot;
                           const src = (hasUpperOv || hasLowerOv) ? form.shareResv[r.key].source : undefined;
                           const srcLabel = src === 'exchange' ? 'exchange' : src === 'operator' ? 'typed' : 'derived';
                           return (
@@ -1592,15 +1756,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                     authority, and the derivation is the approximation
                                     (operator, 2026-09-24). Without `source` we cannot
                                     tell, so legacy rows keep the neutral wording. */}
-                                <span className="rc-val" title={upperDrift && catCap ? (
+                                <span className="rc-val" title={upperDrift && derUpper != null ? (
                                   src === 'derived'
-                                    ? `Stale snapshot: the percentage now derives ${catCap.shares.toLocaleString('en-IN')}. Use Replace all to refresh it.`
+                                    ? `Stale snapshot: the percentage now derives ${derUpper.toLocaleString('en-IN')}. Use Replace all to refresh it.`
                                     : src
-                                      ? `${srcLabel} figure — it outranks the derivation, which gives ${catCap.shares.toLocaleString('en-IN')}.`
-                                      : `Derived from %: ${catCap.shares.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')} shares.`
+                                      ? `${srcLabel} figure — it outranks the derivation, which gives ${derUpper.toLocaleString('en-IN')}.`
+                                      : `Derived from %: ${derUpper.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - derUpper).toLocaleString('en-IN')} shares.`
                                 ) : undefined}>
                                   {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
-                                  {upperDrift && catCap && <sup className="rc-drift-inline"> ±{Math.abs(upperOv - catCap.shares).toLocaleString('en-IN')}</sup>}
+                                  {upperDrift && derUpper != null && <sup className="rc-drift-inline"> ±{Math.abs(upperOv - derUpper).toLocaleString('en-IN')}</sup>}
                                 </span>
                                 {src && <div className={`rc-src rc-src-${src}`}>{srcLabel}</div>}
                                 <div className="rc-override">
@@ -1611,9 +1775,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                 </div>
                               </td>
                               <td className="rc-derived r">
-                                <span className="rc-val" title={lowerDrift && catFloor ? `Derived from %: ${catFloor.shares.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')} shares.` : undefined}>
+                                <span className="rc-val" title={lowerDrift && derLower != null ? `Derived from %: ${derLower.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - derLower).toLocaleString('en-IN')} shares.` : undefined}>
                                   {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
-                                  {lowerDrift && catFloor && <sup className="rc-drift-inline"> ±{Math.abs(lowerOv - catFloor.shares).toLocaleString('en-IN')}</sup>}
+                                  {lowerDrift && derLower != null && <sup className="rc-drift-inline"> ±{Math.abs(lowerOv - derLower).toLocaleString('en-IN')}</sup>}
                                 </span>
                                 <div className="rc-override">
                                   <input className="input mono" placeholder="override"

@@ -164,7 +164,13 @@ export function totalOfferedShares(ipo: IpoFull): number {
   const stated = Number(String((ipo as any).extra?.totalShares ?? '').replace(/[,\s]/g, ''));
   if (Number.isFinite(stated) && stated > 0) return stated;
   const priceMax = up(ipo);
-  return priceMax > 0 ? parseIssueValue(ipo.issueSize) / priceMax : 0;
+  /* ROUNDED. You cannot offer 0.1976 of a share, and the raw quotient was the
+     third of three disagreeing totals: the admin form now derives
+     round(₹ ÷ upper band) and persists it, while `computeIssue` floors its own
+     fallback to a lot. For a record the form has not touched this at least puts
+     the public page on the same whole number the form would have written —
+     ₹90.17 Cr ÷ ₹167 = 53,99,401, not 53,99,401.1976. */
+  return priceMax > 0 ? Math.round(parseIssueValue(ipo.issueSize) / priceMax) : 0;
 }
 
 export function reservation(ipo: IpoFull): ResRow[] {

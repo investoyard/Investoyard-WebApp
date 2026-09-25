@@ -54,7 +54,11 @@ export const OPERATIONAL_EXTRA = [
   'mechanism', 'regulationBasis',
   'retailDiscount', 'employeeDiscount', 'shareholderDiscount', 'finalIssuePrice',
   // offer structure — every derived figure comes off these
-  'issueSizeCr', 'totalShares', 'fresh', 'ofs', 'carveouts', 'shareResv', 'resvRemarks',
+  // `totalSharesSource` is load-bearing, not bookkeeping: the entry form's
+  // auto-fill reads it to decide whether a count is ours to refresh or the
+  // offer document's to leave alone. Drop it and every stated count in the
+  // catalogue gets overwritten by a derivation on the next save.
+  'issueSizeCr', 'totalShares', 'totalSharesSource', 'fresh', 'ofs', 'carveouts', 'shareResv', 'resvRemarks',
   // anchor PORTION (the roster is content; see below)
   'anchorPct', 'anchorMfPct', 'anchorShares', 'anchorPrice',
   'lockin1Pct', 'lockin1Days', 'lockin2Days',
