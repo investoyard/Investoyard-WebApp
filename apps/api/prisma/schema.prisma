@@ -167,11 +167,11 @@ model BidOperation {
   errorCode String?
   reason    String? // the exchange's rejection text — the report's Rejection column
   attempts  Int      @default(0)
-  postedAt  DateTime?
+  postedAt  DateTime? @db.Timestamptz(3)
   raw       Json?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([applicationId])
   @@index([ipoId, memberCredentialId])
@@ -229,8 +229,8 @@ model Tenant {
   /// tenant's scopes at request time (see the guard).
   partnerApiScopes String[] @default(["print-forms","ipos:read"])
 
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
 
   roles             Role[]
   memberships       Membership[]
@@ -259,10 +259,10 @@ model Banner {
   ctaLabel  String?
   active    Boolean   @default(true)
   sortOrder Int       @default(100)
-  startsAt  DateTime?
-  endsAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  startsAt  DateTime? @db.Timestamptz(3)
+  endsAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
 }
 
 /// One row per partner-API call, success OR failure — drives the API Call Report.
@@ -278,7 +278,7 @@ model PartnerApiCall {
   httpStatus Int
   error      String?
   durationMs Int?
-  at         DateTime @default(now())
+  at         DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([tenantId, at])
   @@index([at])
@@ -294,9 +294,9 @@ model PartnerApiKey {
   secretHash String // sha256(secret)
   label      String?
   active     Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
-  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  lastUsedAt DateTime? @db.Timestamptz(3)
 
   @@index([tenantId])
 }
@@ -313,8 +313,8 @@ model ProviderConfig {
   enabled   Boolean  @default(false)
   settings  Json     @default("{}") // non-secret config (providerName, senderId, templateId, …)
   secrets   Json     @default("{}") // field name → vault token
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@id([tenantId, provider])
   @@index([tenantId])
@@ -331,7 +331,7 @@ model RelationshipMaster {
   description   String?
   sortOrder     Int      @default(100)
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// News / blog posts — admin-written IPO coverage (the SEO engine). Body is
@@ -346,10 +346,10 @@ model Post {
   ipoSymbol   String? // optional link to an IPO's coverage
   tags        String[]  @default([])
   status      String    @default("draft") // draft | published
-  publishedAt DateTime?
+  publishedAt DateTime? @db.Timestamptz(3)
   author      String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
   @@index([status, publishedAt])
 }
@@ -374,7 +374,7 @@ model AnchorMaster {
   website         String?
   sortOrder       Int      @default(100)
   active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Broad sector — Finance, Pharma, IT, Bank. The operator's list, editable.
@@ -397,7 +397,7 @@ model SectorMaster {
   rank      Int      @default(100)
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Basic-Industry values (the exchanges' fine-grained classification beneath
@@ -415,7 +415,7 @@ model IndustryMaster {
   rank      Int      @default(100)
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Allowed UPI handles (the part after '@' in a UPI ID, e.g. "okaxis", "ybl").
@@ -425,7 +425,7 @@ model UpiHandleMaster {
   name      String   @unique
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 model IpoCategoryMaster {
@@ -439,8 +439,8 @@ model IpoCategoryMaster {
   /// several rows share the same rank.
   rank        Int               @default(100)
   active      Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
   issueTypes  IssueTypeMaster[]
 }
 
@@ -457,8 +457,8 @@ model IssueTypeMaster {
   /// operator picks the issue type; still overridable per issue.
   defaultRegulationBasis   String?
   active                   Boolean            @default(true)
-  createdAt                DateTime           @default(now())
-  updatedAt                DateTime           @updatedAt
+  createdAt                DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime           @updatedAt @db.Timestamptz(3)
 }
 
 model LeadManager {
@@ -491,8 +491,8 @@ model LeadManager {
   /// Free-text operator notes — never surfaced to the public site.
   notes         String?
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Registrar {
@@ -522,8 +522,8 @@ model Registrar {
   /// Free-text operator notes.
   notes         String?
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model MessageType {
@@ -534,8 +534,8 @@ model MessageType {
   description String?
   vars        String[] @default([]) // variable names the caller supplies ({{var}})
   system      Boolean  @default(false) // built-in — protected from delete / key change
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   @@unique([channel, key])
 }
@@ -552,8 +552,8 @@ model MessageTemplate {
   body          String? // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
   subject       String? // Email subject
   bodyHtml      String? // Email HTML body ({{var}} placeholders)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
   @@unique([tenantId, channel, key, locale])
   @@index([tenantId])
@@ -566,7 +566,7 @@ model FeatureDefinition {
   valueType    FeatureValueType
   defaultValue Json
   isPublic     Boolean          @default(false) // exposed to the client/branding API
-  createdAt    DateTime         @default(now())
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
   settings     TenantSetting[]
 }
 
@@ -581,8 +581,8 @@ model TenantSetting {
   feature    FeatureDefinition @relation(fields: [featureKey], references: [key])
   value      Json
   locked     Boolean           @default(false)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([tenantId, featureKey])
   @@index([tenantId])
@@ -596,7 +596,7 @@ model Role {
   permissions String[]
   scope       RoleScope    @default(own)
   isSystem    Boolean      @default(false)
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
   memberships Membership[]
 
   @@unique([tenantId, name])
@@ -612,7 +612,7 @@ model Membership {
   role      Role     @relation(fields: [roleId], references: [id])
   isPrimary Boolean  @default(true)
   status    String   @default("active")
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([userId, tenantId])
   @@index([tenantId])
@@ -629,8 +629,8 @@ model User {
   name             String?
   status           UserStatus @default(active)
   marketingConsent Boolean    @default(false)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
 
   profiles       InvestorProfile[]
   consents       Consent[]
@@ -653,7 +653,7 @@ model InvestorProfile {
   fullName     String
   panTokenRef  String // PII (vault, reversible — used at rail-call time)
   panHash      String // deterministic HMAC of the PAN — uniqueness + dup detection
-  dateOfBirth  DateTime?
+  dateOfBirth  DateTime? @db.Timestamptz(3)
   depository   Depository
   dpId         String
   clientId     String
@@ -671,8 +671,8 @@ model InvestorProfile {
   mobile       String? // applicant's own contact (falls back to the account mobile on ASBA print)
   active       Boolean    @default(true) // false = deactivated (has applications, so never hard-deleted)
   kycStatus    KycStatus  @default(unverified)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
 
   applications Application[]
 
@@ -689,8 +689,8 @@ model Consent {
   user          User          @relation(fields: [userId], references: [id])
   type          ConsentType
   noticeVersion String
-  grantedAt     DateTime      @default(now())
-  withdrawnAt   DateTime?
+  grantedAt     DateTime      @default(now()) @db.Timestamptz(3)
+  withdrawnAt   DateTime? @db.Timestamptz(3)
   channel       String?
   applications  Application[]
 
@@ -714,10 +714,10 @@ model Ipo {
   instrument           Instrument        @default(ipo)
   exchanges            String[]
   status               IpoStatus         @default(upcoming)
-  openDate             DateTime?
-  closeDate            DateTime?
-  allotmentDate        DateTime?
-  listingDate          DateTime?
+  openDate             DateTime? @db.Timestamptz(3)
+  closeDate            DateTime? @db.Timestamptz(3)
+  allotmentDate        DateTime? @db.Timestamptz(3)
+  listingDate          DateTime? @db.Timestamptz(3)
   listingGainPct       Decimal?
   priceBandMin         Decimal?
   priceBandMax         Decimal?
@@ -735,7 +735,7 @@ model Ipo {
   /// rows without the key, which silently hides the whole catalog.
   hidden               Boolean           @default(false)
   autoPollSubscription Boolean           @default(true) // admin per-IPO switch for the live NSE subscription poller
-  subscriptionAsOf     DateTime? // last time the poller refreshed this IPO's subscription
+  subscriptionAsOf     DateTime? @db.Timestamptz(3) // last time the poller refreshed this IPO's subscription
   extra                Json? // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
   categories           IpoCategory[]
   subscriptions        IpoSubscription[]
@@ -745,8 +745,8 @@ model Ipo {
   allotmentRecords     AllotmentRecord[]
   allotmentImports     AllotmentImport[]
   allotmentArchive     AllotmentArchive?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
 }
 
 model IpoCategory {
@@ -777,7 +777,7 @@ model IpoSubscription {
   bseShares              Decimal? // shares demanded from BSE demandschedule for this bucket
   nseBids                Int? // bid count from NSE catwise for this bucket
   bseBids                Int? // derived BSE bid count (nse-avg-ratio for hni/hni2/shareholder; residual of totalapplication for retail)
-  asOf                   DateTime @default(now())
+  asOf                   DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([ipoId, asOf])
 }
@@ -792,7 +792,7 @@ model IpoGmp {
   /// who entered it — GMP is unofficial, so every value stays traceable to a person
   submittedBy     String?
   submittedByName String?
-  asOf            DateTime @default(now())
+  asOf            DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([ipoId, asOf])
   @@index([submittedBy])
@@ -808,7 +808,7 @@ model GmpContributor {
   active    Boolean  @default(true)
   note      String?
   addedBy   String?
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 model IpoDocument {
@@ -880,7 +880,7 @@ model Application {
   allottedLots       Int? // lots actually allotted (0 = not allotted)
   allottedAmount     Decimal? // amount debited for the allotted shares
   refundAmount       Decimal? // blocked amount released back
-  allottedAt         DateTime?
+  allottedAt         DateTime? @db.Timestamptz(3)
   allotmentReason    String? // registrar's rejection reason (from the imported allotment file)
   /// The EXCHANGE's rejection reason for the bid itself. Deliberately separate
   /// from `allotmentReason`, which is the registrar's verdict on an accepted
@@ -891,7 +891,7 @@ model Application {
   /// UPI App for Acceptance"). We map UPI events onto `status` for our own
   /// logic, but that mapping loses the sentence the operator wants to read.
   upiStatusText      String?
-  upiStatusAt        DateTime?
+  upiStatusAt        DateTime? @db.Timestamptz(3)
   status             ApplicationStatus @default(draft)
   /// Immutable snapshot of the raw payload that produced this Application, for
   /// records-only channels (partner API). Populated at print time from the
@@ -901,8 +901,8 @@ model Application {
   /// legacy rows and non-partner flows leave it null.
   partnerPayload     Json?
   idempotencyKey     String            @unique
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
   events     ApplicationStatusEvent[]
   operations BidOperation[]
@@ -924,9 +924,9 @@ model Notification {
   body      String
   data      Json? // { applicationId, ipoSymbol, status, ... }
   channel   String    @default("push")
-  sentAt    DateTime?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  sentAt    DateTime? @db.Timestamptz(3)
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([userId, createdAt])
 }
@@ -943,7 +943,7 @@ model AuditLog {
   targetLabel String?
   tenantSlug  String?
   detail      Json?
-  at          DateTime @default(now())
+  at          DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([at])
 }
@@ -954,7 +954,7 @@ model ApplicationStatusEvent {
   application   Application       @relation(fields: [applicationId], references: [id])
   status        ApplicationStatus
   detail        Json?
-  at            DateTime          @default(now())
+  at            DateTime          @default(now()) @db.Timestamptz(3)
 
   @@index([applicationId])
 }
@@ -966,7 +966,7 @@ model WatchlistItem {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   ipoId     String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([userId, ipoId])
   @@index([tenantId])
@@ -1029,8 +1029,8 @@ model AllotmentImport {
   allotted   Int       @default(0) // rows with allotted shares > 0
   matched    Int       @default(0) // OUR applications auto-updated from this file
   error      String?
-  createdAt  DateTime  @default(now())
-  finishedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
 
   @@index([ipoId, createdAt])
 }
@@ -1044,7 +1044,7 @@ model AllotmentArchive {
   fileName  String // file under uploads/allotment-archive
   rows      Int
   fileSize  Int
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Partner self-onboarding. Submissions live HERE, not in Tenant: a half-real
@@ -1077,16 +1077,16 @@ model PartnerApplication {
   status     String    @default("submitted") // submitted | changes_requested | approved | rejected
   reviewNote String?
   reviewedBy String?
-  reviewedAt DateTime?
+  reviewedAt DateTime? @db.Timestamptz(3)
   tenantId   String? // set once approved
 
   /// single-use activation link emailed on approval (operator can copy it if SMTP is off)
   inviteToken   String?   @unique
-  inviteExpires DateTime?
-  activatedAt   DateTime?
+  inviteExpires DateTime? @db.Timestamptz(3)
+  activatedAt   DateTime? @db.Timestamptz(3)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([status, createdAt])
   @@index([mobile])
@@ -1119,7 +1119,7 @@ model MessageLog {
   /// operator "Send test" from Message Templates rather than a real event
   isTest            Boolean  @default(false)
   meta              Json?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([createdAt])
   @@index([channel, status, createdAt])
