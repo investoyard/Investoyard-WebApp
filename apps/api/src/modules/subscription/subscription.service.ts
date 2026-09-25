@@ -516,9 +516,25 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           }),
           this.prisma.$executeRaw`
             UPDATE "Ipo"
-               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour })}::jsonb,
-                   "subscriptionAsOf" = ${now}
+               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour })}::jsonb
              WHERE "id" = ${ipo.id}`,
+          /*
+           * `subscriptionAsOf` deliberately stays on the PRISMA path, in both
+           * this branch and the unchanged-numbers one below. The column is
+           * `timestamp without time zone`, and the two writers do not agree
+           * about it: Prisma stores IST wall-clock (14:08) while a raw
+           * parameter stores true UTC (08:37). Writing it here as well split
+           * the column between the two branches — measured on 2026-09-25,
+           * ACEVECTOR at 08:37:28 beside ORIENTCABL at 14:08:20, seconds apart
+           * in real time. Moving `extra` to raw SQL must not quietly change
+           * what a different column means, so only `extra` moved.
+           *
+           * The IST-in-a-naive-column convention is itself wrong — see the
+           * `subscriptionAsOf` note under Subscription poller — but that is a
+           * separate fix with its own blast radius, not a side effect of this
+           * one.
+           */
+          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now } }),
         ]);
         this.lastSnapshot.set(ipo.id, snap);
       } else {
