@@ -136,7 +136,13 @@ export interface ScenarioResult {
      *  anchor, no flooring and no residual. This is the figure that matches the
      *  brokers and our own Book Size, and the one to show a reader: VARMORA
      *  publishes 95,67,653 where the allocation basis gives 95,67,755, the whole
-     *  102-share gap being the residual QIB absorbed (operator, 2026-09-24). */
+     *  102-share gap being the residual QIB absorbed (operator, 2026-09-24).
+     *
+     *  The net offer it divides is the OFFERED one, which matters the moment a
+     *  carve-out exists: RUNWALENTR's 1,20,275 employee shares are not a
+     *  multiple of its 49 lot, so the allocation basis floors them to 1,20,246,
+     *  leaves 29 shares in the net offer and puts 14 of them in QIB —
+     *  32,55,753 against the exchange's 32,55,739 (operator, 2026-09-26). */
     netQibOffered: number;
     anchorMfShares: number; qibMfShares: number;
     /** what the book actually took, at the price it struck — reported, not derived */
@@ -229,9 +235,17 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
     totalOfferShares = floorToLot((inp.issueSizeCr * CR) / price, lot);
   }
   if (totalOfferShares <= 0) return null;
+  /* The offer total on the OFFERED basis: a stated count verbatim, otherwise
+     ₹ ÷ price ROUNDED rather than floored to a lot. Real offers are not
+     lot-aligned, and the published figures must not inherit an allocation
+     rounding. Falls back to the floored total when neither input exists. */
+  const totalOfferOffered = statedTotal > 0
+    ? statedTotal
+    : (inp.issueSizeCr ? Math.round((inp.issueSizeCr * CR) / price) : totalOfferShares);
 
   /* ── Step 2: carve-outs off the top ── */
-  let carveoutShares = 0;
+  let carveoutShares = 0;   // ALLOCATION basis — floored to a whole lot
+  let carveoutOffered = 0;  // OFFERED basis — the count the document states
   for (const c of inp.carveouts ?? []) {
     const v = num(c.value);
     if (v <= 0) continue;
@@ -242,12 +256,22 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
        ₹305 is 1,14,754 — 5,521 shares short, every one of which falls straight
        through to the net offer and inflates QIB. */
     const cPrice = price - num(inp.discounts?.[c.key]);
-    carveoutShares += c.basis === 'shares' ? floorToLot(v, lot)
-      : c.basis === 'pct_of_offer' ? floorToLot((totalOfferShares * v) / 100, lot)
-      : floorToLot((v * CR) / (cPrice > 0 ? cPrice : price), lot);
+    const at = cPrice > 0 ? cPrice : price;
+    const raw = c.basis === 'shares' ? v
+      : c.basis === 'pct_of_offer' ? (totalOfferShares * v) / 100
+      : (v * CR) / at;
+    carveoutShares += floorToLot(raw, lot);
+    carveoutOffered += Math.round(raw);
   }
   const netOfferShares = totalOfferShares - carveoutShares;
   if (netOfferShares <= 0) return null;
+  /* The same net offer on the OFFERED basis. A reservation is published as the
+     document states it — RUNWALENTR's 1,20,275 is not a multiple of its 49 lot
+     — so flooring it leaves 29 shares behind in the net offer, and half of
+     those land in QIB. That is the whole 14-share gap between our net QIB and
+     the exchange's (32,55,753 against 32,55,739). Used ONLY for the published
+     figures; every allocation number keeps the floored basis above. */
+  const netOfferOffered = Math.max(0, totalOfferOffered - carveoutOffered) || netOfferShares;
 
   /* ── Step 3: category split, residual absorbed ── */
   const keys = Object.keys(inp.reservation).filter((k) => num(inp.reservation[k]) > 0);
@@ -313,7 +337,7 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
     // no share of the residual. Kept beside the allocation figure rather than
     // replacing it: absorbing the residual is what makes Σ shares == net offer,
     // which B01/B04 exist to guarantee.
-    const netQibOffered = Math.round((netOfferShares * qib.pct) / 100) - anchorShares;
+    const netQibOffered = Math.round((netOfferOffered * qib.pct) / 100) - anchorShares;
     const anchorMfPct = inp.anchor?.mfPct != null ? num(inp.anchor.mfPct) : pack.anchorMfPct;
     anchor = {
       shares: anchorShares,

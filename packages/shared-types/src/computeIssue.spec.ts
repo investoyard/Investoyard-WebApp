@@ -155,6 +155,40 @@ describe('computeIssue — degrades instead of guessing', () => {
     const absurd = computeIssue({ ...base, discounts: { employee: 10_000 } }).primary!;
     expect(absurd.carveoutShares).toBe(plain.carveoutShares);
   });
+
+  /**
+   * RUNWALENTR, against the exchange's own published table. `netQibOffered` had
+   * no test at all, which is how it took two operator reports to get right:
+   * once for the absorbed residual (VARMORA, 2026-09-24) and once for a
+   * floored carve-out (here, 2026-09-26).
+   *
+   * 1,20,275 employee shares are not a multiple of the 49 lot. The ALLOCATION
+   * basis floors them to 1,20,246, which leaves 29 shares in the net offer and
+   * puts 14 of them into QIB — the published figure must not inherit that.
+   */
+  const RUNWAL: IssueInputs = {
+    board: 'mainboard', mechanism: 'book_built', regulationBasis: 'icdr_6_1',
+    lotSize: 49, priceFloor: 290, priceCap: 305,
+    totalShares: 1_63_98_962,
+    carveouts: [{ key: 'employee', basis: 'shares', value: 1_20_275 }],
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+    anchor: { shares: 48_83_605 },
+  };
+  it('publishes net QIB off the OFFERED net offer, not the floored one', () => {
+    const s = computeIssue(RUNWAL).scenarios.cap!;
+    expect(s.anchor!.netQibOffered).toBe(32_55_739);      // the exchange's figure
+    expect(s.anchor!.netQibShares).not.toBe(32_55_739);   // allocation differs, deliberately
+    // the allocation side still reconciles — that is what B01/B04 guarantee
+    expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+  });
+  it('keeps the two bases apart: the carve-out floors for allocation, not for publication', () => {
+    const s = computeIssue(RUNWAL).scenarios.cap!;
+    expect(s.carveoutShares).toBe(1_20_246);              // floored to the 49 lot
+    expect(s.netOfferShares).toBe(1_63_98_962 - 1_20_246);
+    // published QIB is 50% of 1,62,78,687 — the net offer with the carve-out
+    // taken as the document states it
+    expect(s.anchor!.netQibOffered + 48_83_605).toBe(81_39_344);
+  });
 });
 
 describe('computeIssue — legacy amount-only records', () => {
