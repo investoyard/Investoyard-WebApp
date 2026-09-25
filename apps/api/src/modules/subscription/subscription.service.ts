@@ -478,6 +478,32 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           { d: day, t, ...snapshot },
         ].slice(-72);
 
+        /*
+         * MERGE the two keys in the database; never write the whole column.
+         *
+         * `{ ...ex, subLog, subLogHour }` was a read-modify-write, and `ex` is
+         * read at the top of this method — TWO network round trips earlier, to
+         * NSE and to BSE. Anything written to `extra` inside that gap was
+         * silently reverted by the poller's stale copy, for every LIVE issue,
+         * once a minute (once every FIVE SECONDS after 15:30). Caught on
+         * 2026-09-25 when a provenance backfill reported 8 rows stamped across
+         * two IPOs and only ORIENTCABL's four survived; ACEVECTOR's were gone
+         * before the next read.
+         *
+         * The operator's saves went the same way — `ipo.service.update()` is
+         * also a read-modify-write of this column, so a Book Size corrected
+         * mid-issue could vanish with nothing to show it ever landed.
+         *
+         * `||` is a jsonb concat evaluated inside Postgres against the CURRENT
+         * row, so there is no window at all: the poller can no longer overwrite
+         * a key it did not write. This is `SERVER_OWNED_EXTRA` enforced from the
+         * other side — that list stops the form deleting these two keys, this
+         * stops the poller deleting everything else.
+         *
+         * `Ipo` carries no RLS policy (setup-rls.sql scopes User /
+         * InvestorProfile / Consent / Application / WatchlistItem /
+         * DeviceToken), so a raw statement here needs no tenant GUC.
+         */
         await this.prisma.$transaction([
           this.prisma.ipoSubscription.deleteMany({ where: { ipoId: ipo.id } }),
           this.prisma.ipoSubscription.createMany({
@@ -488,7 +514,11 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
               nseBids: s.nseBids, bseBids: s.bseBids,
             })),
           }),
-          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now, extra: { ...ex, subLog, subLogHour } } }),
+          this.prisma.$executeRaw`
+            UPDATE "Ipo"
+               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour })}::jsonb,
+                   "subscriptionAsOf" = ${now}
+             WHERE "id" = ${ipo.id}`,
         ]);
         this.lastSnapshot.set(ipo.id, snap);
       } else {
