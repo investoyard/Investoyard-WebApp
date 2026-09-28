@@ -253,8 +253,16 @@ function enrich(ipo: IpoDetail): IpoFull {
     const bookOf = (k: string): number => {
       const row = resv?.[k];
       if (!row) return 0;
-      const direct = Number(row.sharesLower) > 0 ? Number(row.sharesLower)
-        : Number(row.sharesUpper) > 0 ? Number(row.sharesUpper) : 0;
+      /* UPPER band first — the industry convention, and what `directOf()` and
+         `reservation()` both use. This preferred `sharesLower` until
+         2026-09-28, so the card's "Applications required for 1×" block and the
+         Live Subscription table printed TWO answers to the same question on
+         the SAME page: ORIENTCABL showed Retail 1,36,152 in the block and
+         1,29,144 in the table, 7,008 apart, with the 4.93× multiple computed
+         against the second. Found by grepping for the convention after fixing
+         `reservation()` — three readers honoured it, two did not. */
+      const direct = Number(row.sharesUpper) > 0 ? Number(row.sharesUpper)
+        : Number(row.sharesLower) > 0 ? Number(row.sharesLower) : 0;
       if (direct > 0) return direct;
       const p = pctOf(k);
       return p > 0 ? (totalShares * p) / 100 : 0;
