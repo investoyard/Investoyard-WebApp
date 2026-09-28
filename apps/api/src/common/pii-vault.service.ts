@@ -14,23 +14,65 @@ import { join } from 'path';
  *
  * ⚠️ BACK UP THE KEY FILE. If it is lost, data encrypted under it is unrecoverable.
  */
+/**
+ * Where the key lives by default — deliberately NOT relative to `process.cwd()`.
+ *
+ * Under iisnode the cwd is `apps/api/dist`, which is BUILD OUTPUT: `nest build`
+ * sets `deleteOutDir: true` and any `rm -rf dist` takes the key with it. That
+ * happened on 2026-09-28 and everything encrypted before it became permanently
+ * unreadable — 605 investor PAN/bank/UPI tokens and every provider secret. A
+ * master key must not live somewhere a build is entitled to delete.
+ */
+function defaultKeyFile(): string {
+  const base = process.platform === 'win32'
+    ? join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'Investoyard')
+    : '/var/lib/investoyard';
+  return join(base, 'pii-vault.key');
+}
+
 function loadVaultKeys(log: Logger): { primary: string; fallbacks: string[] } {
-  const file = process.env.PII_VAULT_KEY_FILE || join(process.cwd(), '.pii-vault.key');
+  const file = process.env.PII_VAULT_KEY_FILE || defaultKeyFile();
+  // The pre-2026-09-28 location. Still READ (so an untouched deployment keeps
+  // working and its key can be migrated) and still tried on DECRYPT.
+  const legacy = join(process.cwd(), '.pii-vault.key');
   const envKey = process.env.PII_VAULT_KEY;
+  const legacyKey = existsSync(legacy) ? readFileSync(legacy, 'utf8').trim() : undefined;
+
   let primary: string;
   if (existsSync(file)) {
     primary = readFileSync(file, 'utf8').trim();
+  } else if (legacyKey) {
+    primary = legacyKey;
+    log.warn(`PII vault key still at the legacy path ${legacy} — COPY IT to ${file}; the legacy path is inside build output and a rebuild deletes it.`);
   } else {
+    /*
+     * MINTING IS OPT-IN. Silently minting a replacement is what turned a
+     * deleted file into unrecoverable data: the app came up healthy, encrypted
+     * new values under a new key, and nothing anywhere said the old ones were
+     * now unreadable. A missing key is either a first install — where the
+     * operator can say so once — or an emergency, and an emergency should stop
+     * the process rather than quietly re-key the vault.
+     */
+    if (process.env.PII_VAULT_ALLOW_MINT !== 'true') {
+      throw new Error(
+        `PII vault key not found at ${file} (and no legacy key at ${legacy}). REFUSING TO START: `
+        + 'minting a new key would leave every existing encrypted value permanently unreadable. '
+        + 'Restore the key from backup, or set PII_VAULT_ALLOW_MINT=true if this really is a first install.',
+      );
+    }
     primary = randomBytes(48).toString('base64'); // strong, random
     try {
       writeFileSync(file, primary, { encoding: 'utf8', mode: 0o600 });
-      log.log(`PII vault key file created → ${file} (BACK IT UP; ACL it to the app-pool user)`);
+      log.warn(`PII vault key MINTED → ${file}. BACK IT UP NOW — anything encrypted under it is unrecoverable without this file.`);
     } catch (e: any) {
       log.warn(`could not write key file ${file} (${e.message}) — falling back to PII_VAULT_KEY env`);
       primary = envKey || 'dev-only-key';
     }
   }
-  const fallbacks = [envKey, 'dev-only-key'].filter((k): k is string => !!k && k !== primary);
+  // Prior keys are tried on DECRYPT only, so a migrated deployment keeps
+  // resolving anything written under the old one.
+  const fallbacks = [legacyKey, envKey, 'dev-only-key']
+    .filter((k): k is string => !!k && k !== primary);
   return { primary, fallbacks };
 }
 
