@@ -141,7 +141,7 @@ export interface ResRow { key: string; cat: string; pct: number; shares: number;
  *     present — otherwise it double-counts HNI demand (10% + 5% + 15% = 30%
  *     for the same slice).
  *   • For any row with a blank `pct` but a real `sharesLower`, derive the
- *     pct as `sharesLower ÷ totalShares × 100`. Skip if both are missing.
+ *     pct as `shares ÷ totalShares × 100` (upper band, see below). Skip if both are missing.
  *   • Label rows via `subCatLabel()` so the bar reads "HNI (10L+)" / "HNI
  *     (2-10L)" / "Retail" — matching the subscription page's vocabulary
  *     (was showing raw "HNI2" / uppercased "RETAIL").
@@ -189,12 +189,22 @@ export function reservation(ipo: IpoFull): ResRow[] {
       if (k === ('nii' as any) && hasHni && hasHni2) continue;
       const row = resv[k];
       if (!row || row.on === false) continue;
-      const shares = Number(row.sharesLower) > 0
-        ? Number(row.sharesLower)
-        : Number(row.sharesUpper) > 0 ? Number(row.sharesUpper) : 0;
+      /* UPPER band first — the same precedence `directOffered()` / `directOf()`
+         already use, and the industry convention: exchanges, Chittorgarh,
+         Bumtaria and IPOPremium all publish the offered count at the cap price.
+         This preferred `sharesLower` until 2026-09-28, so the detail page's
+         reservation legend ran 5–7% high on every record that stores both
+         bands — all 37 recent ones — and disagreed with the Live Subscription
+         panel on the SAME page, which has always read `sharesUpper`.
+         RUNWALENTR's legend said QIB 85.6 L beside a Book Size of 81.4 L gross.
+         It also fixes the derived `pct` below: dividing a FLOOR-band count by
+         a CAP-band total overstated the percentage by the width of the band. */
+      const shares = Number(row.sharesUpper) > 0
+        ? Number(row.sharesUpper)
+        : Number(row.sharesLower) > 0 ? Number(row.sharesLower) : 0;
       let pct = Number(row.pct);
       if (!Number.isFinite(pct) || pct <= 0) {
-        // pct blank — derive from sharesLower ÷ totalShares (2026-09-22 fix:
+        // pct blank — derive from the stored count ÷ totalShares, both at the UPPER band (2026-09-22 fix:
         // Employee had sharesLower=433437 but pct='' → an earlier engine
         // gave it a phantom 5%. Deriving from what's actually entered is
         // honest; skip if neither is present).
