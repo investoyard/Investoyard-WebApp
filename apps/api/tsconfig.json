@@ -14,5 +14,9 @@
     "baseUrl": "."
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  // Specs are excluded from the BUILD — ts-jest compiles them itself, and a
+  // dist that ships test files also ships their jest globals. Added with the
+  // anchor parser's first tests (2026-09-28); `tsc --noEmit` still typechecks
+  // them because jest.config.js points ts-jest at the same src tree.
+  "exclude": ["node_modules", "dist", "dist-check", "**/*.spec.ts"]
 }
