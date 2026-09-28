@@ -26,7 +26,7 @@ export function CompletenessCell({ ipo, editHref }: { ipo: any; editHref: string
         aria-label={`Detail completeness ${c.pct}%`}
       >
         {c.pct === 100 ? (
-          <span className="cc-done"><Icon name="check" size={12} /> Complete</span>
+          <span className="cc-done"><Icon name="check" size={11} /> Complete</span>
         ) : (
           <>
             <span className="cc-track"><span className="cc-fill" style={{ width: `${c.pct}%` }} /></span>

@@ -305,22 +305,39 @@ function derivedTotalSharesOf(f: FormState): number {
  * site publish. Same split as the reservation counts: offered rounds,
  * allocation floors.
  */
-function carveoutAt(f: FormState, price: number): { shares: number; rupees: number } {
+const CARVEOUT_KEYS = ['employee', 'shareholder', 'marketmaker'] as const;
+/** The carve-outs that also appear as a row in the reservation table. The
+ *  market maker has no row — it is an SME-only reservation and was never one
+ *  of the seven categories. */
+const CARVEOUT_ROWS: string[] = ['employee', 'shareholder'];
+
+/** The three carve-out fields, addressed by the key the engine uses. */
+function carveoutInput(f: FormState, key: string): { value: string; basis: string; discount: string } {
+  if (key === 'employee') return { value: f.cvEmployee, basis: f.cvEmployeeBasis, discount: f.employeeDiscount };
+  if (key === 'shareholder') return { value: f.cvShareholder, basis: f.cvShareholderBasis, discount: f.shareholderDiscount };
+  return { value: f.cvMarketMaker, basis: f.cvMarketMakerBasis, discount: '' };
+}
+
+/** ONE carve-out at a price. Per-key because the reservation table reports each
+ *  on its own row — summing them there would show the employee row the
+ *  shareholder reservation as well. */
+function carveoutOneAt(f: FormState, key: string, price: number): { shares: number; rupees: number } {
   if (!(price > 0)) return { shares: 0, rupees: 0 };
-  let shares = 0;
-  let rupees = 0;
-  const add = (value: string, basis: string, discount: string) => {
-    const v = fnum(value);
-    if (v <= 0) return;
-    const p = price - fnum(discount);
-    const at = p > 0 ? p : price;
-    if (basis === 'shares') { shares += Math.round(v); rupees += Math.round(v) * at; }
-    else { const r = v * 1e7; rupees += r; shares += Math.round(r / at); }
-  };
-  add(f.cvEmployee, f.cvEmployeeBasis, f.employeeDiscount);
-  add(f.cvShareholder, f.cvShareholderBasis, f.shareholderDiscount);
-  add(f.cvMarketMaker, f.cvMarketMakerBasis, '');
-  return { shares, rupees };
+  const { value, basis, discount } = carveoutInput(f, key);
+  const v = fnum(value);
+  if (v <= 0) return { shares: 0, rupees: 0 };
+  const p = price - fnum(discount);
+  const at = p > 0 ? p : price;
+  if (basis === 'shares') { const s = Math.round(v); return { shares: s, rupees: s * at }; }
+  const r = v * 1e7;
+  return { shares: Math.round(r / at), rupees: r };
+}
+
+function carveoutAt(f: FormState, price: number): { shares: number; rupees: number } {
+  return CARVEOUT_KEYS.reduce((a, k) => {
+    const c = carveoutOneAt(f, k, price);
+    return { shares: a.shares + c.shares, rupees: a.rupees + c.rupees };
+  }, { shares: 0, rupees: 0 });
 }
 
 /**
@@ -884,14 +901,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const derived = useMemo(() => {
     const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
     const reservation: Record<string, number> = {};
-    /* Employee is EXCLUDED: it is a carve-out taken off the top, so counting it
-       again among the percentages of the net offer would reserve those shares
-       twice. This is the AUGMONT fault — Σ = 100.691% because the 0.691%
-       employee quota was typed into the table, and the overshoot was absorbed
-       into QIB rather than reported. A legacy record carrying that pct now
-       raises E-EMP below instead of quietly deriving from it. */
+    /* Employee and Shareholder are EXCLUDED: both are carve-outs taken off the
+       top, so counting them again among the percentages of the net offer would
+       reserve those shares twice. This is the AUGMONT fault — Σ = 100.691%
+       because the 0.691% employee quota was typed into the table, and the
+       overshoot was absorbed into QIB rather than reported. A legacy record
+       carrying either pct now raises E-RESV below instead of quietly deriving
+       from it. */
     for (const r of RESV_ROWS) {
-      if (r.key === 'employee') continue;
+      if (CARVEOUT_ROWS.includes(r.key)) continue;
       const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v;
     }
     const inputs: IssueInputs = {
@@ -1132,19 +1150,24 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
       }
     }
-    /* A legacy record whose employee quota sits in the reservation table now
-       has it read nowhere: the row is derived and the pct is excluded from the
-       split. Say so loudly rather than letting the reservation evaporate —
-       AUGMONT (0.691%) and NSE (43,33,437 shares) are the two in the
-       catalogue, and both need the figure moved to the carve-out field. */
-    const empPct = fnum(form.shareResv.employee?.pct);
-    const empCount = Number(String(form.shareResv.employee?.sharesUpper ?? '').replace(/[^\d]/g, ''));
-    if ((empPct > 0 || empCount > 0) && !(fnum(form.cvEmployee) > 0)) {
-      out.push({
-        code: 'E-EMP',
-        msg: `This record holds an employee quota in the reservation table (${empPct > 0 ? `${empPct}%` : `${empCount.toLocaleString('en-IN')} shares`}), where nothing reads it. An employee reservation comes off the TOP — move it to the Employee carve-out above, in shares if the RHP states a count.`,
-        blocking: true,
-      });
+    /* A legacy record whose employee or shareholder quota sits in the
+       reservation table now has it read nowhere: the row is derived and the pct
+       is excluded from the split. Say so loudly rather than letting the
+       reservation evaporate — AUGMONT (employee 0.691%) and NSE (employee
+       43,33,437 shares) are the two in the catalogue, and both need the figure
+       moved to the carve-out field. */
+    for (const key of CARVEOUT_ROWS) {
+      const pct = fnum(form.shareResv[key]?.pct);
+      const count = Number(String(form.shareResv[key]?.sharesUpper ?? '').replace(/[^\d]/g, ''));
+      const cv = fnum(carveoutInput(form, key).value);
+      if ((pct > 0 || count > 0) && !(cv > 0)) {
+        const label = key === 'employee' ? 'Employee' : 'Shareholder';
+        out.push({
+          code: 'E-RESV',
+          msg: `This record holds a ${label.toLowerCase()} quota in the reservation table (${pct > 0 ? `${pct}%` : `${count.toLocaleString('en-IN')} shares`}), where nothing reads it. A ${label.toLowerCase()} reservation comes off the TOP — move it to the ${label} carve-out above, in shares if the RHP states a count.`,
+          blocking: true,
+        });
+      }
     }
     return out;
   }, [derived]);
@@ -1829,39 +1852,38 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <table className="table resv-table" style={{ width: '100%' }}>
                   <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count (Upper)</th><th className="r">Share Count (Lower)</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
                   <tbody>
-                    {RESV_ROWS.map((r) => (r.key === 'employee' ? (
-                      /* Employee is a PREFERENTIAL RESERVATION: ICDR takes it
-                         off the top and the percentages below apply to what is
-                         left. It therefore has exactly one home — the carve-out
-                         field — and this row only reports what that resolved to.
-                         Offering both was a trap: AUGMONT's table sums to
-                         100.691% because the 0.691% employee quota was typed
-                         here instead, and QIB silently absorbed the overshoot.
-                         Shown rather than removed so the table still reads as a
-                         complete picture of the offer. */
+                    {RESV_ROWS.map((r) => (CARVEOUT_ROWS.includes(r.key) ? (
+                      /* Employee and Shareholder are PREFERENTIAL RESERVATIONS:
+                         ICDR takes them off the top and every percentage below
+                         applies to what is left. Each therefore has exactly one
+                         home — its carve-out field — and this row only reports
+                         what that resolved to. Offering both was a trap:
+                         AUGMONT's table summed to 100.691% because the 0.691%
+                         employee quota was typed here instead, and QIB silently
+                         absorbed the overshoot. Shown rather than removed so the
+                         table still reads as a complete picture of the offer. */
                       <tr key={r.key} className="resv-derived-row">
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>
                           {r.label}
                           <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>from carve-out</div>
                         </td>
                         {(() => {
-                          const cvCap = carveoutAt(form, fnum(form.priceBandMax) || fnum(form.priceBandMin));
-                          const cvFloor = carveoutAt(form, fnum(form.priceBandMin) || fnum(form.priceBandMax));
-                          const emp = fnum(form.cvEmployee);
-                          const gross = offerTotals.cap + cvCap.shares;
+                          const pMax = fnum(form.priceBandMax) || fnum(form.priceBandMin);
+                          const pMin = fnum(form.priceBandMin) || pMax;
+                          const cvCap = carveoutOneAt(form, r.key, pMax);
+                          const cvFloor = carveoutOneAt(form, r.key, pMin);
+                          const gross = offerTotals.cap + carveoutAt(form, pMax).shares;
                           const dash = <span className="muted">—</span>;
-                          const pctOfTotal = emp > 0 && gross > 0
-                            ? ((form.cvEmployeeBasis === 'shares' ? emp : cvCap.shares) / gross) * 100 : 0;
-                          const at = (v: number) => (emp > 0 && v > 0 ? v.toLocaleString('en-IN') : dash);
-                          const shareAt = (cv: { shares: number }) => (form.cvEmployeeBasis === 'shares' ? Math.round(emp) : cv.shares);
+                          const pctOfTotal = cvCap.shares > 0 && gross > 0 ? (cvCap.shares / gross) * 100 : 0;
+                          const at = (v: number) => (v > 0 ? v.toLocaleString('en-IN') : dash);
                           return (
                             <>
                               <td className="r mono" title="% of the TOTAL issue — a carve-out is not part of the net offer the other rows divide">
                                 {pctOfTotal > 0 ? pctOfTotal.toFixed(3) : dash}
                               </td>
-                              <td className="rc-derived r">{at(shareAt(cvCap))}</td>
-                              <td className="rc-derived r">{at(shareAt(cvFloor))}</td>
-                              <td className="rc-derived r">{emp > 0 && cvCap.rupees > 0 ? `₹${(cvCap.rupees / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">{at(cvCap.shares)}</td>
+                              <td className="rc-derived r">{at(cvFloor.shares)}</td>
+                              <td className="rc-derived r">{cvCap.rupees > 0 ? `₹${(cvCap.rupees / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">{dash}</td>
                             </>
                           );

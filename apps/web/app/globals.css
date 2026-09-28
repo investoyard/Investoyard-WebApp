@@ -45,6 +45,11 @@
 
   /* financial semantics — ONLY for money/market values */
   --pos: #12925a;  --pos-soft: #e6f4ec;
+  /* `--pos` on `--pos-soft` is only 3.50:1 — it FAILS WCAG AA for text. Use
+     `--pos-ink` for any LABEL on the pastel fill: 5.80:1, and the same hex
+     `.banner.ok` already paired with it. `--pos` stays for bars, dots and
+     fills, where contrast is not being read as text. */
+  --pos-ink: #0c6b41;
   --neg: #d8412a;  --neg-soft: #fcebe8;
   --listed: #0e7c8a; --listed-soft: #e3f2f5; /* deep teal — the "on the board" accent, distinct from brand indigo */
   --warn: #b07d00; --warn-soft: #fbf3df;
@@ -851,7 +856,7 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .banner { display: flex; gap: 11px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r); font-size: 13.5px; line-height: 1.5; }
 .banner.info { background: var(--brand-50); color: var(--brand-700); }
 .banner.warn { background: var(--warn-soft); color: #7a5800; }
-.banner.ok { background: var(--pos-soft); color: #0c6b41; }
+.banner.ok { background: var(--pos-soft); color: var(--pos-ink); }
 .disclaimer { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.55; }
 
 /* ----------------------------------------------------------------- FOOTER (dark) */
@@ -2722,11 +2727,23 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .cc-pct-low  .cc-fill { background: var(--brand-300, #7565bd); }
 .cc-pct-mid  .cc-fill { background: var(--brand, #3c2e7e); }
 .cc-pct-high .cc-fill { background: var(--brand, #3c2e7e); }
+/* "Complete" — pastel green off the SHARED tokens, not a new pair of hex
+   values (globals.css has drifted across eight palettes before). It was gold
+   on a gold outline, which collided twice: gold is Allotment Out in the status
+   colour code, and the hard border made a 10px chip read as a button. A filled
+   pastel with no outline is the house style for a positive state — see
+   `.badge-ok`, which this is the compact form of. Completeness is a UI signal,
+   not a financial one, so the semantic-green rule does not apply.
+   The label is `--pos-ink`, NOT `--pos`: measured, `--pos` on `--pos-soft` is
+   3.50:1 and fails AA at 10.5px, where the gold it replaced was 5.75:1. A
+   prettier chip that is harder to read is not an improvement. */
 .cc-done {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: #7a5b00; background: #fff4d0; border: 1px solid #f0b429;
-  padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--pos-ink); background: var(--pos-soft);
+  padding: 2px 8px 2px 6px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 650; line-height: 1.35; white-space: nowrap;
 }
+.cc-done svg { opacity: .85; }
 
 /* Completeness modal — designed to fit ONE viewport without scrolling.
    Two-column grid of compact group cards; each card is a header row +
