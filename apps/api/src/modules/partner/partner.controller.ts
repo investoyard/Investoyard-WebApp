@@ -92,6 +92,30 @@ export class PartnerReportsAdminController {
     });
   }
 
+  @Get('calls-summary')
+  @RequirePermissions('partner-api.calls.view')
+  callsSummary(@Query() q: any) {
+    return this.partner.callsSummary({
+      tenantId: q.tenantId || undefined,
+      days: q.days ? Number(q.days) : undefined,
+      by: q.by || undefined,
+    });
+  }
+
+  @Get('calls-summary/export')
+  @RequirePermissions('partner-api.calls.view')
+  async callsSummaryCsv(@Query() q: any, @Res() res: any) {
+    const by = ['partner', 'day', 'month', 'ipo'].includes(q.by) ? q.by : 'day';
+    const csv = await this.partner.callsSummaryCsv({
+      tenantId: q.tenantId || undefined,
+      days: q.days ? Number(q.days) : undefined,
+      by,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="partner-calls-${by}-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  }
+
   @Get('prints')
   @RequirePermissions('partner-api.prints.view')
   prints(@Query() q: any) {

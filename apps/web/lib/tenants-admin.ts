@@ -201,6 +201,30 @@ export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: n
   URL.revokeObjectURL(url);
 }
 
+/** API-call summary, grouped. `label` is null on an IPO we do not carry. */
+export type CallsSummaryBy = 'partner' | 'day' | 'month' | 'ipo';
+export interface PartnerCallsSummaryRow {
+  key: string; label: string | null;
+  calls: number; failed: number; applicants: number; avgMs: number; lastAt: string | null;
+}
+export interface PartnerCallsSummary {
+  by: CallsSummaryBy; days: number; scoped: boolean; rows: PartnerCallsSummaryRow[];
+}
+export const fetchPartnerApiCallsSummary = (q: { tenantId?: string; days?: number; by: CallsSummaryBy }) =>
+  authed<PartnerCallsSummary>(`${API}/admin/partner-api/calls-summary?${qstr(q)}`, { method: 'GET' });
+
+export async function exportPartnerApiCallsSummaryCsv(q: { tenantId?: string; days?: number; by: CallsSummaryBy }) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/partner-api/calls-summary/export?${qstr(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `partner-calls-${q.by}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Dry-run of the Partner API print-forms endpoint — no key needed, no rows persisted. */
 export interface PartnerTestPrintResult {
   ipoSymbol: string;

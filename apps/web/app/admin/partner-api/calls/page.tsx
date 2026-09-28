@@ -10,14 +10,20 @@ import * as api from '@/lib/tenants-admin';
 
 const RANGE: [number, string][] = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']];
 
+/** The list, then the four groupings the operator asked for (2026-09-28). */
+type Tab = 'log' | api.CallsSummaryBy;
+const TABS: [Tab, string][] = [['log', 'Calls'], ['partner', 'By partner'], ['day', 'By day'], ['month', 'By month'], ['ipo', 'By IPO']];
+
 /** API Call Report — every partner-API call (success & failure). Partner logins see only their own. */
 export default function PartnerApiCallsPage() {
   const me = useOperator();
   const [data, setData] = useState<api.PartnerReport<api.PartnerApiCallRow> | null>(null);
+  const [sum, setSum] = useState<api.PartnerCallsSummary | null>(null);
   const [tenants, setTenants] = useState<api.PartnerRow[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [days, setDays] = useState(30);
   const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<Tab>('log');
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -27,6 +33,16 @@ export default function PartnerApiCallsPage() {
   }, [tenantId, days, page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.fetchTenants().then(setTenants).catch(() => {}); }, []);
+
+  /* The summary is only fetched for the tab being looked at — four groupings
+     of the same window, and nobody reads all four at once. */
+  useEffect(() => {
+    if (tab === 'log') return;
+    setSum(null);
+    api.fetchPartnerApiCallsSummary({ tenantId: tenantId || undefined, days, by: tab })
+      .then((d) => { setSum(d); setErr(null); })
+      .catch((e) => setErr(String(e?.message ?? e)));
+  }, [tab, tenantId, days]);
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'reports.view')) return <NoAccess />;
@@ -71,6 +87,21 @@ export default function PartnerApiCallsPage() {
         </div>
       </div>
 
+      {/* Tabs sit OUTSIDE the card, on the toolbar line, matching the range
+          control above — the card head then names whichever view is open.
+          The Partner tab is hidden for a partner login: `scoped` means every
+          row is theirs, so the grouping would be a single row restating the
+          total already in the head. */}
+      <div className="seg" role="tablist" aria-label="View" style={{ marginBottom: 14 }}>
+        {TABS.filter(([k]) => !(k === 'partner' && data?.scoped)).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k}
+            className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      {tab !== 'log' && <SummaryCard sum={sum} tenantId={tenantId} days={days} />}
+
+      {tab === 'log' && (
       <div className="card">
         <div className="card-head">
           <span className="t">
@@ -126,6 +157,99 @@ export default function PartnerApiCallsPage() {
           </div>
         )}
       </div>
+      )}
+    </div>
+  );
+}
+
+const HEAD: Record<api.CallsSummaryBy, string> = {
+  partner: 'Partner', day: 'Date', month: 'Month', ipo: 'IPO',
+};
+
+/** One grouping of the call log. Same shape whichever dimension is chosen. */
+function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | null; tenantId: string; days: number }) {
+  if (sum === null) return <div className="card"><Loader /></div>;
+  const totals = sum.rows.reduce((a, r) => ({
+    calls: a.calls + r.calls, failed: a.failed + r.failed, applicants: a.applicants + r.applicants,
+  }), { calls: 0, failed: 0, applicants: 0 });
+  const pctOf = (f: number, c: number) => (c > 0 ? (f / c) * 100 : 0);
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span className="t">
+          {HEAD[sum.by]} summary <span className="count-badge">{sum.rows.length.toLocaleString('en-IN')}</span>
+        </span>
+        {sum.rows.length > 0 && (
+          <button className="btn btn-secondary btn-sm"
+            onClick={() => api.exportPartnerApiCallsSummaryCsv({ tenantId: tenantId || undefined, days, by: sum.by })}>
+            <Icon name="download" size={14} /> CSV
+          </button>
+        )}
+      </div>
+      {sum.rows.length === 0 ? (
+        <div className="card-pad muted" style={{ textAlign: 'center', padding: '28px 0' }}>No API calls in this period.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ width: '100%' }}>
+            <thead><tr>
+              <th>{HEAD[sum.by]}</th>
+              {sum.by === 'ipo' && <th>Name</th>}
+              <th style={{ textAlign: 'right' }}>Calls</th>
+              <th style={{ textAlign: 'right' }}>Failed</th>
+              <th style={{ textAlign: 'right' }}>Failed %</th>
+              <th style={{ textAlign: 'right' }}>Applicants</th>
+              <th style={{ textAlign: 'right' }}>Avg latency</th>
+              <th>Last call</th>
+            </tr></thead>
+            <tbody>
+              {sum.rows.map((r) => {
+                const pct = pctOf(r.failed, r.calls);
+                return (
+                  <tr key={r.key}>
+                    <td className="mono" style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{r.key}</td>
+                    {sum.by === 'ipo' && (
+                      /* No name means the symbol is not in the catalogue —
+                         which IS the diagnosis for every failure on that row. */
+                      <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={r.label ?? 'This symbol is not in the catalogue'}>
+                        {r.label ?? <span className="st bad">not in catalogue</span>}
+                      </td>
+                    )}
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.calls.toLocaleString('en-IN')}</td>
+                    <td className="mono" style={{ textAlign: 'right', color: r.failed > 0 ? 'var(--neg)' : undefined }}>
+                      {r.failed.toLocaleString('en-IN')}
+                    </td>
+                    {/* Every call failing is a different problem from a few
+                        failing, and the rate is what separates them at a glance. */}
+                    <td style={{ textAlign: 'right' }}>
+                      {r.failed === 0
+                        ? <span className="muted mono">0%</span>
+                        : <span className={`st ${pct >= 100 ? 'bad' : 'warn'}`}>{pct.toFixed(pct >= 10 ? 0 : 1)}%</span>}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.applicants.toLocaleString('en-IN')}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.avgMs} ms</td>
+                    <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                      {r.lastAt ? new Date(r.lastAt).toLocaleString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot><tr className="resv-total">
+              <td style={{ fontWeight: 700 }}>Total</td>
+              {sum.by === 'ipo' && <td />}
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.calls.toLocaleString('en-IN')}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: totals.failed > 0 ? 'var(--neg)' : undefined }}>
+                {totals.failed.toLocaleString('en-IN')}
+              </td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{pctOf(totals.failed, totals.calls).toFixed(1)}%</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.applicants.toLocaleString('en-IN')}</td>
+              <td /><td />
+            </tr></tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

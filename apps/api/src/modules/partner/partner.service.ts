@@ -416,6 +416,90 @@ export class PartnerService {
     };
   }
 
+  /**
+   * API Call SUMMARY — the same window as `callsReport`, grouped four ways.
+   *
+   * A GROUP BY in the database rather than pulling rows and folding them in
+   * JS: the report is capped at 365 days and this table only grows, so the
+   * page must not have to hold every call to count them.
+   *
+   * DAY and MONTH are bucketed in **IST**, not UTC. A day boundary has to be
+   * the operator's day — grouping the raw timestamptz would file a 3 a.m. call
+   * under the previous date and make a month roll over five and a half hours
+   * early. The columns are `timestamptz` since 2026-09-28, so `AT TIME ZONE`
+   * gives the local wall-clock reading rather than re-interpreting a naive one.
+   *
+   * `failed` counts `status <> 'ok'`. Worth having beside the volume: on the
+   * first run, 215 of 1,486 calls had failed and they were concentrated — five
+   * symbols failing 100% of the time, 161 of them only because `startPrint`
+   * was off, which is a toggle the operator already has.
+   */
+  async callsSummary(q: { tenantId?: string; days?: number; by?: string }) {
+    const scope = await this.reportScope();
+    const tenantId = scope ?? (q.tenantId || undefined);
+    const days = Math.min(Math.max(q.days ?? 30, 1), 365);
+    const since = new Date(Date.now() - days * 86400000);
+    const by = ['partner', 'day', 'month', 'ipo'].includes(q.by ?? '') ? q.by! : 'day';
+    // Not interpolated from user input — `by` is whitelisted above.
+    const keyExpr = by === 'partner' ? '"tenantId"'
+      : by === 'ipo' ? 'coalesce("ipoSymbol", \'(none)\')'
+        : by === 'month' ? `to_char(("at" AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM')`
+          : `to_char(("at" AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD')`;
+
+    const rows = await tenantContext.runUnscoped(() => this.prisma.$queryRawUnsafe<any[]>(`
+      SELECT ${keyExpr} AS key,
+             count(*)::int AS calls,
+             count(*) FILTER (WHERE status <> 'ok')::int AS failed,
+             coalesce(sum(applicants), 0)::int AS applicants,
+             coalesce(round(avg("durationMs")), 0)::int AS "avgMs",
+             max("at") AS "lastAt"
+        FROM "PartnerApiCall"
+       WHERE "at" >= $1 ${tenantId ? 'AND "tenantId" = $2' : ''}
+       GROUP BY 1
+       ORDER BY ${by === 'day' || by === 'month' ? '1 DESC' : 'calls DESC'}`,
+    ...(tenantId ? [since, tenantId] : [since])));
+
+    // Labels come from the owning tables, never from the call row: a symbol is
+    // stored as the partner sent it, and a tenantId is a uuid.
+    let label = new Map<string, string>();
+    if (by === 'partner') {
+      const names = await this.tenantNames(rows.map((r) => r.key));
+      label = new Map(rows.map((r) => [r.key, names.get(r.key)?.name ?? r.key]));
+    } else if (by === 'ipo') {
+      const ipos = await tenantContext.runUnscoped(() => this.prisma.ipo.findMany({
+        where: { symbol: { in: rows.map((r) => r.key) } }, select: { symbol: true, name: true },
+      }));
+      label = new Map(ipos.map((i) => [i.symbol, i.name]));
+    }
+
+    return {
+      by, days, scoped: scope != null,
+      rows: rows.map((r) => ({
+        key: r.key,
+        // An IPO the partner asked for that we do not carry has no name to
+        // show — say so rather than echoing the symbol twice, because that is
+        // itself the diagnosis for every one of its failures.
+        label: by === 'ipo' ? (label.get(r.key) ?? null) : (label.get(r.key) ?? r.key),
+        calls: r.calls, failed: r.failed, applicants: r.applicants,
+        avgMs: r.avgMs, lastAt: r.lastAt,
+      })),
+    };
+  }
+
+  /** CSV of the same summary — one file per grouping. */
+  async callsSummaryCsv(q: { tenantId?: string; days?: number; by?: string }): Promise<string> {
+    const { by, rows } = await this.callsSummary(q);
+    const esc = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const first = by === 'partner' ? 'Partner' : by === 'ipo' ? 'IPO' : by === 'month' ? 'Month' : 'Date';
+    const head = [first, ...(by === 'ipo' ? ['Name'] : []), 'Calls', 'Failed', 'Failed %', 'Applicants', 'Avg ms', 'Last call'];
+    const lines = rows.map((r) => [
+      r.key, ...(by === 'ipo' ? [r.label ?? 'not in catalogue'] : []),
+      r.calls, r.failed, r.calls > 0 ? ((r.failed / r.calls) * 100).toFixed(1) : '0.0',
+      r.applicants, r.avgMs, r.lastAt ? new Date(r.lastAt).toISOString().replace('T', ' ').slice(0, 19) : '',
+    ].map(esc).join(','));
+    return [head.join(','), ...lines].join('\r\n');
+  }
+
   /** Print-PDF-by-API report — the applications created via the partner API. */
   async printsReport(q: { tenantId?: string; days?: number; page?: number; per?: number; all?: boolean }) {
     const scope = await this.reportScope();
