@@ -848,8 +848,13 @@ model Application {
   tenant             Tenant            @relation(fields: [tenantId], references: [id])
   userId             String
   user               User              @relation(fields: [userId], references: [id])
-  investorProfileId  String
-  profile            InvestorProfile   @relation(fields: [investorProfileId], references: [id])
+  /// OPTIONAL since 2026-09-28. A partner print carries its own immutable
+  /// `partnerPayload`, so the record does not need the client profile it was
+  /// created from — and those profiles are ordinary client data that can be cleared
+  /// out. While this was NOT NULL with ON DELETE RESTRICT, deleting a test
+  /// client was impossible without deleting the print history with it.
+  investorProfileId  String?
+  profile            InvestorProfile?  @relation(fields: [investorProfileId], references: [id])
   ipoId              String
   ipo                Ipo               @relation(fields: [ipoId], references: [id])
   memberCredentialId String?

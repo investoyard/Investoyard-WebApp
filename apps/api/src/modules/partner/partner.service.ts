@@ -256,12 +256,19 @@ export class PartnerService {
     const bankMask = (raw: string | null): string | null =>
       raw && raw.length >= 4 ? `•••• ${raw.slice(-4)}` : null;
 
-    const pan = snapshot
-      ? (panMask(p.pan) ?? this.vault.mask(await this.vault.resolve(app.profile.panTokenRef)))
-      : this.vault.mask(await this.vault.resolve(app.profile.panTokenRef));
+    /* The profile is OPTIONAL — a print carries its own snapshot, and the test
+       client records it was created from may be long gone. Resolve through it
+       only when there is one, and never let a missing or unreadable token turn
+       a readable record into a 500. */
+    const fromProfile = async (ref?: string | null): Promise<string | null> => {
+      if (!ref) return null;
+      try { return await this.vault.resolve(ref); } catch { return null; }
+    };
+    const panRaw = snapshot ? (p.pan ?? null) : null;
+    const pan = panMask(panRaw) ?? this.vault.mask((await fromProfile(app.profile?.panTokenRef)) ?? '') ?? null;
     const bankAccount = snapshot
       ? bankMask(p.bankAccount ?? null)
-      : bankMask(app.profile.bankTokenRef ? await this.vault.resolve(app.profile.bankTokenRef) : null);
+      : bankMask(await fromProfile(app.profile?.bankTokenRef));
 
     const pick = <T,>(payloadValue: T | undefined, profileValue: T | undefined | null): T | null =>
       snapshot ? ((payloadValue as any) ?? null) : ((profileValue as any) ?? null);
@@ -277,22 +284,22 @@ export class PartnerService {
       formNo: app.asbaFormNo,
       snapshot,
 
-      fullName: snapshot ? (p.fullName ?? '') : app.profile.fullName,
+      fullName: snapshot ? (p.fullName ?? '') : app.profile?.fullName,
       pan,
-      mobile: pick(p?.mobile, app.profile.mobile),
-      email: pick(p?.email, app.profile.email),
-      address: pick(p?.address, app.profile.address),
-      city: pick(p?.city, app.profile.city),
-      state: pick(p?.state, app.profile.state),
-      pincode: pick(p?.pincode, app.profile.pincode),
+      mobile: pick(p?.mobile, app.profile?.mobile),
+      email: pick(p?.email, app.profile?.email),
+      address: pick(p?.address, app.profile?.address),
+      city: pick(p?.city, app.profile?.city),
+      state: pick(p?.state, app.profile?.state),
+      pincode: pick(p?.pincode, app.profile?.pincode),
 
-      depository: pick(p?.depository, app.profile.depository),
-      dpId: pick(p?.dpId, app.profile.dpId),
-      clientId: pick(p?.clientId, app.profile.clientId),
+      depository: pick(p?.depository, app.profile?.depository),
+      dpId: pick(p?.dpId, app.profile?.dpId),
+      clientId: pick(p?.clientId, app.profile?.clientId),
 
       bankAccount,
-      bankName: pick(p?.bankName, app.profile.bankName),
-      branchName: pick(p?.branchName, app.profile.branchName),
+      bankName: pick(p?.bankName, app.profile?.bankName),
+      branchName: pick(p?.branchName, app.profile?.branchName),
 
       category: app.category,
       lots: app.lots,
@@ -515,6 +522,7 @@ export class PartnerService {
     const [rows, total] = await tenantContext.runUnscoped(() => Promise.all([
       this.prisma.application.findMany({
         where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * per, take: per,
+        // `profile` is OPTIONAL now — see the payload-first note below.
         include: { profile: true, ipo: { select: { symbol: true, name: true } } },
       }),
       this.prisma.application.count({ where }),
@@ -527,8 +535,23 @@ export class PartnerService {
         partner: names.get(r.tenantId)?.name ?? r.tenantId,
         partnerSlug: names.get(r.tenantId)?.slug ?? '',
         ipoSymbol: r.ipo.symbol,
-        applicant: r.profile.fullName,
-        pan: this.vault.mask(await this.vault.resolve(r.profile.panTokenRef)),
+        /*
+         * PAYLOAD FIRST, profile only as a fallback.
+         *
+         * This read `r.profile.fullName` and `r.profile.panTokenRef` directly,
+         * which quietly made every print row depend on a live InvestorProfile —
+         * so clearing out test clients would have blanked the whole report,
+         * including the 1,223 rows that carry their own snapshot. `printDetail`
+         * had always preferred the payload; the LIST had not. A record the
+         * partner sent should not need a profile to be readable.
+         */
+        applicant: (r.partnerPayload as any)?.fullName ?? r.profile?.fullName ?? '—',
+        pan: await (async () => {
+          const raw = (r.partnerPayload as any)?.pan;
+          if (raw) return this.vault.mask(String(raw));
+          if (!r.profile?.panTokenRef) return '—';
+          try { return this.vault.mask(await this.vault.resolve(r.profile.panTokenRef)); } catch { return '—'; }
+        })(),
         category: r.category,
         lots: r.lots,
         amount: Number(r.amount),
