@@ -490,13 +490,20 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
  *  the pastel indigo background. Sub-rows are NOT indented (operator ask). */
 const SHARE_ORDER: Record<string, number> = { qib: 0, nii: 1, hni: 2, hni2: 3, retail: 4, employee: 5, shareholder: 6 };
 export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total: SubRowT; price: number }) {
-  const cr = (shares: number) => (price > 0 ? (shares * price) / 1e7 : 0);
-  const cell = (shares: number) => (
-    <div className="subv2-2l">
-      <span className="big">{fmtIn(shares)}</span>
-      {price > 0 && <span className="small">{fmtCr(cr(shares))}</span>}
-    </div>
-  );
+  /* Value each row at ITS OWN price. A discounted quota valued at the band
+     price reads high — RUNWALENTR's employee book showed ₹3.67 Cr where those
+     shares cost ₹3.50 Cr at the discounted ₹291. `r.price` falls back to the
+     band price for every category that has no discount, which is all of them
+     except employee / shareholder / retail. */
+  const cell = (shares: number, rowPrice?: number) => {
+    const px = rowPrice && rowPrice > 0 ? rowPrice : price;
+    return (
+      <div className="subv2-2l">
+        <span className="big">{fmtIn(shares)}</span>
+        {px > 0 && <span className="small">{fmtCr((shares * px) / 1e7)}</span>}
+      </div>
+    );
+  };
   // Sort rows into canonical order; unknown categories fall to the end.
   const ordered = rows.slice().sort((a, b) => {
     const ai = SHARE_ORDER[a.key ?? ''] ?? 99;
@@ -524,8 +531,8 @@ export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total:
               return (
                 <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
                   <td><span className={`subv2-dot ${dotKey}`} /><b>{label}</b></td>
-                  <td>{cell(r.bookSize)}</td>
-                  <td>{cell(r.subscribed)}</td>
+                  <td>{cell(r.bookSize, r.price)}</td>
+                  <td>{cell(r.subscribed, r.price)}</td>
                   <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
                 </tr>
               );

@@ -241,6 +241,10 @@ export interface SubRowT {
   bookSize: number;
   subscribed: number;
   times: number;
+  /** ₹ per share for THIS category — band price less its own discount. Use it
+   *  rather than the issue's price when valuing a row, or a discounted quota
+   *  (employee / shareholder / retail) reads high. */
+  price?: number;
   /** Applications-wise times (bids ÷ max allottees) — drives the second
    * ipopremium-style breakup table under the shares grid. Overridden on the
    * front side using the correct per-bucket shares-per-app divisor so the
@@ -421,6 +425,22 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // 2026-09-23). The roster IS the anchor allocation, so summing it invents
   // nothing.
   const ex: any = (ipo as any).extra ?? {};
+  /* Per-category discounts, in ₹ off the band price. Only the three the RHP
+     ever states — QIB and HNI never bid at a discount. A category with none
+     falls back to the band price, which is why this is safe to apply to every
+     row rather than only the carve-outs. */
+  const discountOf = (cat: string): number => {
+    const raw = cat === 'employee' ? ex.employeeDiscount
+      : cat === 'shareholder' ? ex.shareholderDiscount
+        : cat === 'retail' ? ex.retailDiscount : 0;
+    const n = Number(String(raw ?? '').replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const bandPrice = up(ipo);
+  const categoryPrice = (cat: string): number => {
+    const net = bandPrice - discountOf(cat);
+    return net > 0 ? net : bandPrice;
+  };
   const anchorSharesInput = Number(ex.anchorShares) || anchorRosterShares(ipo);
   const anchorPctInput = Number(ex.anchorPct) || 0;
   let anchorDeducted = 0;
@@ -484,6 +504,13 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     return {
       key: r.category,
       cat: subCatLabel(r.category),
+      /* The price THIS category's applicants pay — the band price less its own
+         discount. Employees and shareholders bid at a discount, so valuing
+         their book at the band price overstates it: RUNWALENTR's 1,20,275
+         employee shares read ₹3.67 Cr at ₹305 where they cost ₹3.50 Cr at the
+         discounted ₹291 (operator, 2026-09-28). Carried on the row so every
+         display site values a category the same way. */
+      price: categoryPrice(r.category),
       bookSize: Math.round(book),
       subscribed: actualBidShares,
       times: displayTimes,
