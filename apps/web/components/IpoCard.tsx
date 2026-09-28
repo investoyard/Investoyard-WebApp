@@ -11,7 +11,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime } from '@investoyard/shared-types';
 
 export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -176,7 +176,11 @@ function SubTip({ ipo }: { ipo: IpoFull }) {
       ) : (
         <p className="tt-sub-none">Category split not published yet.</p>
       )}
-      {asOf && <div className="tt-sub-foot">As of {fmtDate(asOf.slice(0, 10))}</div>}
+      {/* The same string the subscription page's "Updated" stamp shows. This
+          used to slice the time off (`asOf.slice(0, 10)`), so a card read
+          "28 Sep 2026" beside a page reading "4:08 PM" for the same poll —
+          four milliseconds apart. One formatter, in shared-types. */}
+      {asOf && <div className="tt-sub-foot">As of {fmtDateTime(asOf)}</div>}
     </div>
   );
 }

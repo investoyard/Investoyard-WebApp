@@ -243,3 +243,31 @@ export function exchangeLabel(v: string): string {
 export function exchangeLabels(list?: readonly string[] | null, sep = ' · '): string {
   return (list ?? []).map(exchangeLabel).filter(Boolean).join(sep);
 }
+
+/**
+ * "28-Sep-2026 4:16 PM" — the exact datetime format the operator chose for the
+ * subscription "Updated" stamp.
+ *
+ * Shared because the IPO card's subscription tooltip needs the identical
+ * string: it used to print `As of ${fmtDate(asOf.slice(0, 10))}`, throwing the
+ * TIME away, so a card said "28 Sep 2026" beside a page saying "4:08 PM" for
+ * the same poll, four milliseconds apart. Two surfaces, one formatter.
+ *
+ * Renders in the VIEWER's zone (`getHours`), which is what an Indian reader
+ * wants for an IST market. The instant is only correct because the timestamp
+ * columns became `timestamptz` on 2026-09-28 — before that every stamp here
+ * read 5½ hours fast.
+ */
+const DT_MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+export function fmtDateTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const mo = DT_MONS[d.getMonth()];
+  let hr = d.getHours();
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  hr = hr % 12; if (hr === 0) hr = 12;
+  return `${day}-${mo}-${d.getFullYear()} ${hr}:${min} ${ampm}`;
+}

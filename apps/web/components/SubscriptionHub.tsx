@@ -8,7 +8,7 @@ import { statusChip } from '@/components/IpoCard';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
-import { titleCase, shortName } from '@investoyard/shared-types';
+import { titleCase, shortName, fmtDateTime } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -38,21 +38,10 @@ const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
 /** "₹1644 Cr" for large, "₹32.15 Cr" for small — matches the ipopremium sample. */
 const fmtCr = (n: number) => `₹${n >= 1000 ? Math.round(n).toLocaleString('en-IN') : n.toFixed(2)} Cr`;
 
-/** "18-Sep-2026 4:16 PM" — the exact datetime format sir chose. */
+/* `fmtDateTime` ("18-Sep-2026 4:16 PM", the format sir chose) moved to
+   shared-types on 2026-09-28 — the IPO card's subscription tooltip needs the
+   identical string and was printing a date-only version of the same instant. */
 const MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function fmtDateTime(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const day = String(d.getDate()).padStart(2, '0');
-  const mo = MONS[d.getMonth()];
-  const yr = d.getFullYear();
-  let hr = d.getHours();
-  const min = String(d.getMinutes()).padStart(2, '0');
-  const ampm = hr >= 12 ? 'PM' : 'AM';
-  hr = hr % 12; if (hr === 0) hr = 12;
-  return `${day}-${mo}-${yr} ${hr}:${min} ${ampm}`;
-}
 
 /** "16-18 Sep" for a single-month range, "30 Sep – 3 Oct" across months, "18 Sep" for one day. */
 function fmtDateRange(openIso?: string, closeIso?: string): string {

@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
+import { carveoutAt } from '@investoyard/shared-types';
 
 // ── tunables ─────────────────────────────────────────────────────────────────
 // Base loop cadence — how often tick() runs. NOT the per-IPO refresh; that
@@ -237,6 +238,26 @@ function offeredFromIpo(
     // Source 2: derived total × this bucket's pct.
     const pct = Number(row.pct);
     if (pct > 0 && derivedTotal > 0) out.set(b, (derivedTotal * pct) / 100);
+  }
+
+  /*
+   * Source 3: the CARVE-OUTS. Employee and shareholder reservations come off
+   * the top and live in `extra.carveouts`, never in `shareResv` — so this
+   * function produced no denominator for them and `computeSubs` therefore
+   * wrote no row AT ALL, even when the exchange was reporting their demand.
+   * RUNWALENTR reserved 1,20,275 employee shares and the entire category was
+   * missing from the subscription data (operator, 2026-09-28).
+   *
+   * Only fills a bucket `shareResv` did not already cover — a typed count
+   * still wins, as everywhere else.
+   */
+  const priceForCarveouts = Number(priceBandMax);
+  if (priceForCarveouts > 0) {
+    for (const key of ['employee', 'shareholder'] as const) {
+      if ((out.get(key) ?? 0) > 0) continue;
+      const shares = carveoutAt(key, extra ?? {}, priceForCarveouts).shares;
+      if (shares > 0) out.set(key, shares);
+    }
   }
   return out.size > 0 ? out : null;
 }

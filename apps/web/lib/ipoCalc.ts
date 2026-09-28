@@ -2,7 +2,7 @@
     Everything is computed from the IpoFull fields (band, lot, issue size,
     reservation %, subscription ×, dates) — matches the app mockups. */
 import type { IpoFull } from '@/lib/api';
-import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, type IssueInputs } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, carveoutAt, type IssueInputs } from '@investoyard/shared-types';
 
 /**
  * The ₹2 L / ₹10 L band thresholds used to be literals here AND in
@@ -325,6 +325,20 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
     if (direct > 0) { out[b] = direct; continue; }
     const pct = Number(row.pct);
     if (pct > 0 && derivedTotal > 0) out[b] = (derivedTotal * pct) / 100;
+  }
+  /* CARVE-OUTS. Employee and shareholder reservations come off the top and are
+     stored in `extra.carveouts`, never in `shareResv` — so a category with a
+     real reserved quota had no Book Size here and the Share-wise panel simply
+     omitted the row. RUNWALENTR reserves 1,20,275 employee shares and showed no
+     employee line at all (operator, 2026-09-28). A typed `shareResv` count
+     still wins; this only fills what that table does not cover. */
+  const priceMax = up(ipo);
+  if (priceMax > 0) {
+    for (const key of ['employee', 'shareholder'] as const) {
+      if ((out[key] ?? 0) > 0) continue;
+      const shares = carveoutAt(key, ((ipo as any).extra ?? {}), priceMax).shares;
+      if (shares > 0) out[key] = shares;
+    }
   }
   // Synthetic combined HNI (nii) row — used by ShareWisePanel when both
   // split rows are present.
