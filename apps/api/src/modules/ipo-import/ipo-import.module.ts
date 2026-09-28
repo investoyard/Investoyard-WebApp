@@ -162,8 +162,17 @@ export class IpoImportController {
     // ParsedAnchor shape returns, review modal is none the wiser. If the
     // 'ai' provider isn't configured we surface the friendly error rather
     // than silently leave the operator with an empty roster.
-    const noHeader = raw.totalShares == null && raw.allocationPrice == null;
-    if (noHeader && raw.investors.length === 0) {
+    /*
+     * Gate on the ROSTER, not the header. It used to require BOTH to be empty,
+     * and SHAHINVEST (2026-09-25) is exactly the case that slips through: the
+     * letter is born-digital and reads perfectly, but three parser patterns had
+     * drifted from it, so the price parsed (₹167) while every roster row failed.
+     * `noHeader` was therefore false, Vision never ran, and the operator got an
+     * empty roster with nothing to explain it. The roster is the point of the
+     * upload — if it is empty the text parser has not done its job, whatever
+     * else it managed to pick up.
+     */
+    if (raw.investors.length === 0) {
       raw = await this.anchorVision.parse(file.buffer);
     }
     const anchors = await this.svc['prisma'].anchorMaster.findMany({

@@ -80,7 +80,31 @@ const num = (s: string): number => Number(s.replace(/,/g, ''));
  * string (`$`) is what stops us from matching the paragraph "allocation of
  * 53,21,739 Equity Shares…" as a roster row.
  */
-const TAIL = /(\d[\d,]*)\s+(\d+(?:\.\d+)?)%\s+([\d,]+\.\d{1,2})\s+([\d,]+\.\d{1,2})\s*$/;
+/*
+ * The `%` and the decimal places are OPTIONAL, because issuers write the same
+ * table both ways. SHAHINVEST (2026-09-25) rows read
+ *   `1. 4,49,650 27.76 167 7,50,91,550`
+ * against the earlier letters' `… 53,21,739 12.50% 429.00 44,00,01,276.00`.
+ * Requiring a percent sign and two decimals rejected every row of that letter
+ * and the operator got an empty roster.
+ *
+ * Each group must START with a digit. `[\d,]+` alone would match a bare comma,
+ * which is not hypothetical: this letter's TOTAL row extracts as
+ * `TOTAL 16 , 19,760 100.00 27 , 04 , 99,920`, and a comma-only group would
+ * let the tail match it and fold the total into the roster.
+ */
+export const TAIL = /(\d[\d,]*)\s+(\d+(?:\.\d+)?)%?\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s*$/;
+
+/*
+ * The header sentence, with the filler issuers put between "allocation of" and
+ * the number. SHAHINVEST writes "allocation of an aggregate of 16,19,760
+ * Equity Shares"; the previous pattern demanded the number immediately after
+ * "allocation of" and read nothing. The fillers are ENUMERATED rather than a
+ * wildcard — `.{0,30}?` would happily span into a neighbouring sentence and
+ * pick up the wrong figure.
+ */
+export const HEADER_TOTAL =
+  /allocation of\s+(?:(?:an?|the|up\s+to|total|aggregate|of)\s+){0,4}([\d,]+)\s+Equity Shares/i;
 
 /**
  * Some rows carry ONLY the numeric tail — the row above (and possibly the
@@ -95,8 +119,32 @@ const TAIL = /(\d[\d,]*)\s+(\d+(?:\.\d+)?)%\s+([\d,]+\.\d{1,2})\s+([\d,]+\.\d{1,
  * a name that legitimately begins with a digit (e.g. "3M Corp") — the Sr No
  * sits in its own column, so there is always a column gap after it.
  */
-function stripSrNo(name: string): string {
-  return name.replace(/^\s*\d{1,3}(?:[.)])?\s{2,}/, '').trim();
+export function stripSrNo(name: string): string {
+  /*
+   * Two shapes, and the first is why SHAHINVEST's names came out as
+   * "3. COMPACT STRUCTURE FUND":
+   *   `1.` / `10)` — a punctuated Sr No needs no column gap after it, one
+   *                  space is enough, and the punctuation is what proves it
+   *                  is a Sr No rather than the start of a name.
+   *   `2   …`      — unpunctuated (some subset fonts drop the dot), so the
+   *                  2+ space column gap has to do the proving instead.
+   * Both leave "3M CORP LIMITED" alone: no punctuation and no gap after the 3.
+   */
+  // Internal runs of spaces are COLUMN PADDING from the extractor, not part of
+  // the name: "ANUBHUTI       VALUE       TRUST" is one fund.
+  return name.replace(/^\s*\d{1,3}(?:[.)]\s*|\s{2,})/, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Does this row look like a wrapped fund NAME rather than a table row?
+ *
+ * It may contain a digit — "ANUBHUTI VALUE FUND 2" is a real fund and the old
+ * rule (reject anything with a digit) threw away half of SHAHINVEST's first
+ * investor. What disqualifies a row is a digit that looks like a FIGURE:
+ * four or more digits/commas together, or a decimal.
+ */
+export function looksLikeName(s: string): boolean {
+  return !!s && !/[:=]/.test(s) && !/[\d,]{4,}|\d[\d,]*\.\d/.test(s);
 }
 
 /** A name matches another when they normalise to the same key. */
@@ -106,7 +154,18 @@ function normName(s: string): string {
 
 export async function parseAnchor(pdf: Uint8Array | Buffer): Promise<ParsedAnchor> {
   const doc = await extractPdfText(pdf);
-  const rows = doc.flat;
+  return parseAnchorRows(doc.flat);
+}
+
+/**
+ * The parser proper, over already-extracted rows.
+ *
+ * Split out from `parseAnchor` so it can be tested against the real text of a
+ * real letter instead of a PDF fixture — three of its patterns had drifted
+ * from the documents they parse and nothing caught it, because a parser that
+ * only accepts a PDF is a parser nobody writes a test for.
+ */
+export function parseAnchorRows(rows: { text: string }[]): ParsedAnchor {
   const warnings: string[] = [];
 
   const out: ParsedAnchor = { investors: [], _raw: { warnings } };
@@ -117,7 +176,7 @@ export async function parseAnchor(pdf: Uint8Array | Buffer): Promise<ParsedAncho
   // one string for the regex — the letters we have both have this well
   // inside that window.
   const header = rows.slice(0, 25).map((r) => r.text).join(' ');
-  const totalMatch = header.match(/allocation of\s+([\d,]+)\s+Equity Shares/i);
+  const totalMatch = header.match(HEADER_TOTAL);
   if (totalMatch) out.totalShares = num(totalMatch[1]);
   else warnings.push('Could not read the total allocated shares — check the header paragraph.');
 
@@ -172,8 +231,6 @@ export async function parseAnchor(pdf: Uint8Array | Buffer): Promise<ParsedAncho
     if (!name || name.length < 3) {
       const above = i > 0 ? stripSrNo(rows[i - 1].text) : '';
       const below = i < rows.length - 1 ? stripSrNo(rows[i + 1].text) : '';
-      // treat a row as name-continuation when it has no digits and no ':'
-      const looksLikeName = (s: string) => !!s && !/\d/.test(s) && !/[:=]/.test(s);
       if (looksLikeName(above) && looksLikeName(below)) name = `${above} ${below}`.replace(/\s+/g, ' ').trim();
       else if (looksLikeName(above)) name = above;
       else if (looksLikeName(below)) name = below;
