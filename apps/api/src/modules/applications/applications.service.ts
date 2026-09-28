@@ -493,7 +493,11 @@ export class ApplicationsService {
     };
 
     let results = apps.map((a) => ({
-      applicant: firstName(a.profile.fullName),
+      // The profile is optional since 2026-09-28 (a partner print outlives the
+      // client it was created from). Not worth pulling the whole payload JSON
+      // into a list query for a name — this view is the consumer's own
+      // applications, which always have a profile.
+      applicant: firstName(a.profile?.fullName ?? ''),
       category: a.category,
       applicantType: a.applicantType,
       lots: a.lots,
