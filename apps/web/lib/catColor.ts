@@ -14,14 +14,30 @@ export function catColor(cat: string): string {
   return 'var(--brand-400)';
 }
 
+/**
+ * A reservation percentage as the reader should see it — at most 2 dp, with no
+ * trailing zeros, so 50 stays "50" and 35.0053 reads "35.01".
+ *
+ * The stored percentage is not always a round number, and it cannot be. Where
+ * the RHP states COUNTS rather than percentages, the percentage has to be
+ * precise enough to reproduce them and to satisfy B01, which tolerates only
+ * 0.001 on the sum — SPECTRAA's four categories are 49.9473 / 10.0316 / 5.0158
+ * / 35.0053, and the published 2-dp figures add to 100.01 and would be
+ * REJECTED. So precision belongs in the data and rounding belongs here; the
+ * count beside it is the exact figure either way.
+ */
+export function pctStr(pct: number): string {
+  return String(Math.round(pct * 100) / 100);
+}
+
 /** Label shown inside a stacked allocation-bar segment. Shows "Cat 50%" when the
     segment is wide enough, just "50%" when medium, nothing when too narrow — so it
     never clips. `compact` = the narrow listing card; false = the wider detail page. */
 export function segLabel(cat: string, pct: number, compact: boolean): string {
   const nameThresh = compact ? 22 : 12;
   const pctThresh = compact ? 10 : 5;
-  if (pct >= nameThresh) return `${cat} ${pct}%`;
-  if (pct >= pctThresh) return `${pct}%`;
+  if (pct >= nameThresh) return `${cat} ${pctStr(pct)}%`;
+  if (pct >= pctThresh) return `${pctStr(pct)}%`;
   return '';
 }
 /** Readable text colour on a segment — dark on the light gold band, white elsewhere. */

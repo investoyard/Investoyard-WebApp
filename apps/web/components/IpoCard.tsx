@@ -9,7 +9,7 @@ import { CountdownDial } from '@/components/CountdownDial';
 import { useTenant } from '@/components/TenantProvider';
 import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
-import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
+import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
 import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime } from '@investoyard/shared-types';
 
@@ -422,7 +422,7 @@ export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull;
           <>
             <div className="alloc">
               {rows.map((r) => (
-                <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
+                <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${pctStr(r.pct)}%`}>
                   {segLabel(r.cat, r.pct, true)}
                 </span>
               ))}
@@ -432,7 +432,7 @@ export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull;
                 <div className="al" key={r.cat}>
                   <span className="swatch" style={{ background: catColor(r.cat) }} />
                   <div className="al-txt"><div className="who">{r.cat}</div><div className="num">{shC(r.shares)} sh · {calc.crOrInr(r.amount)}</div></div>
-                  <span className="pct">{r.pct}%</span>
+                  <span className="pct">{pctStr(r.pct)}%</span>
                 </div>
               ))}
             </div>

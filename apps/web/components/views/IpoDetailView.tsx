@@ -10,7 +10,7 @@ import { GmpTrend } from '@/components/GmpTrend';
 import { Icon } from '@/components/Icon';
 import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
-import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
+import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
 import { LABEL, titleCase, exchangeLabels, toneOf } from '@investoyard/shared-types';
 
@@ -151,7 +151,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 <div className="between"><h3>Issue reservation</h3>{ipo.issueSize && <span className="muted mono" style={{ fontSize: 13 }}>{ipo.issueSize}</span>}</div>
                 <div className="alloc" style={{ marginTop: 14 }}>
                   {resRows.map((r) => (
-                    <span key={r.key} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
+                    <span key={r.key} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${pctStr(r.pct)}%`}>
                       {segLabel(r.cat, r.pct, false)}
                     </span>
                   ))}
@@ -161,7 +161,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                     <div className="al" key={r.key}>
                       <span className="swatch" style={{ background: catColor(r.cat) }} />
                       <div className="al-txt"><div className="who">{r.cat}</div><div className="num">{shC(r.shares)} sh · {calc.crOrInr(r.amount)}</div></div>
-                      <span className="pct">{r.pct}%</span>
+                      <span className="pct">{pctStr(r.pct)}%</span>
                     </div>
                   ))}
                 </div>
