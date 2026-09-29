@@ -2,7 +2,7 @@
     Everything is computed from the IpoFull fields (band, lot, issue size,
     reservation %, subscription ×, dates) — matches the app mockups. */
 import type { IpoFull } from '@/lib/api';
-import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, carveoutAt, type IssueInputs } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, carveoutAt, minApplicationShares, minApplicationLots, type IssueInputs } from '@investoyard/shared-types';
 
 /**
  * The ₹2 L / ₹10 L band thresholds used to be literals here AND in
@@ -104,9 +104,12 @@ export function lotLadder(ipo: IpoFull): LotRow[] {
     // land, whichever is higher). bHNI = first lot count where the bid
     // amount crosses ₹10 L. Single-row-per-category ladder (no min-max
     // range) because SME retail is effectively a fixed 2-lot bid.
-    const indMin = 2;
-    const sMin = Math.max(indMin + 1, Math.ceil((th.hni2?.above ?? 200_000) / perLot));
-    const bMin = Math.max(sMin + 1, Math.ceil((th.hni?.above ?? 1_000_000) / perLot));
+    // Same source as subscriptionTable's Req 1× and the card's formsFor1x —
+    // this function had the right answer and the other two did not.
+    const mlots = (cat: string) => minApplicationLots(cat, { lotSize: lot, priceCap: up(ipo), sme: true });
+    const indMin = mlots('retail');
+    const sMin = mlots('hni2');
+    const bMin = mlots('hni');
     return [
       mk('Individual', 'up to ₹2 L', indMin),
       mk('sHNI', '₹2 L to ₹10 L', sMin),
@@ -397,15 +400,14 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // 2026-09-21, matching what other IPO information sources show).
   const lot = ipo.lotSize ?? 0;
   const priceMax = up(ipo);
-  const shniMin = lot > 0 && priceMax > 0
-    ? Math.ceil(200_000 / (lot * priceMax)) * lot
-    : 0;
-  const sharesPerApp = (cat: string): number => {
-    if (cat === 'hni' || cat === 'hni2' || cat === 'nii') return shniMin;
-    if (cat === 'retail') return lot > 0 ? lot : 0;
-    // employee / shareholder / other → not derivable → 0
-    return 0;
-  };
+  /* One definition, shared with `lotLadder()` and the card's `formsFor1x`.
+     This used to hand the ₹2 L figure to BOTH HNI bands and a single lot to
+     retail, so bHNI "applications for 1×" ran ~4.8× high on every issue and
+     SME retail ran 2× high — `lotLadder` ten lines away had it right the whole
+     time and nothing compared them (2026-09-29). */
+  const minApp = (cat: string): number =>
+    minApplicationShares(cat, { lotSize: lot, priceCap: priceMax, sme: ipo.type === 'sme' });
+  const sharesPerApp = (cat: string): number => minApp(cat);
   // Anchor-share deduction — QIB rows are stored GROSS (matching how the
   // reservation table reads: "QIB (Anchor Included) 50% of the offer, N
   // Shares"). Exchange APIs report QIB `timesSubscribed` against NET QIB

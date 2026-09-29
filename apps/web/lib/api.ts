@@ -3,7 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { EXCHANGES, exchangeLabels } from '@investoyard/shared-types';
+import { EXCHANGES, exchangeLabels, minApplicationShares } from '@investoyard/shared-types';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -247,9 +247,11 @@ function enrich(ipo: IpoDetail): IpoFull {
      * `computeIssue.appsFor1x` which returned undefined for many records —
      * operator report 2026-09-22: the block was silently hidden on every IPO.
      */
-    const shniMin = lot > 0 && upper > 0
-      ? Math.ceil(200_000 / (lot * upper)) * lot
-      : 0;
+    /* Shared with `subscriptionTable()` and `lotLadder()`. This block used one
+       ₹2 L divisor for BOTH HNI bands and a single lot for retail, so bHNI ran
+       ~4.8× high on every issue and SME retail 2× high (2026-09-29). */
+    const minApp = (cat: string): number =>
+      minApplicationShares(cat, { lotSize: lot, priceCap: upper, sme: ipo.type === 'sme' });
     const bookOf = (k: string): number => {
       const row = resv?.[k];
       if (!row) return 0;
@@ -267,9 +269,14 @@ function enrich(ipo: IpoDetail): IpoFull {
       const p = pctOf(k);
       return p > 0 ? (totalShares * p) / 100 : 0;
     };
-    const retail = (() => { const b = bookOf('retail'); return b > 0 && lot > 0 ? Math.round(b / lot) : undefined; })();
-    const sHni = (() => { const b = bookOf('hni2'); return b > 0 && shniMin > 0 ? Math.round(b / shniMin) : undefined; })();
-    const bHni = (() => { const b = bookOf('hni'); return b > 0 && shniMin > 0 ? Math.round(b / shniMin) : undefined; })();
+    const formsForCat = (k: string) => {
+      const b = bookOf(k);
+      const m = minApp(k);
+      return b > 0 && m > 0 ? Math.round(b / m) : undefined;
+    };
+    const retail = formsForCat('retail');
+    const sHni = formsForCat('hni2');
+    const bHni = formsForCat('hni');
     if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
     // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
     if (ipo.subscription?.length) {
