@@ -92,3 +92,45 @@ describe('categories with no regulatory minimum', () => {
     expect(minApplicationShares('retail', {})).toBe(0);
   });
 });
+
+/**
+ * DOVE SOFT LIMITED — BSE SME, RHP dated 22 September 2026, Offer Structure on
+ * page 267. The price band and bid lot were still `[●]`, so the lot is the GCD
+ * of the four stated portions (1,200 — and it can be nothing else: 64,800 is
+ * not divisible by 1,600, the only larger candidate).
+ *
+ *   Offer                 66,00,000
+ *   Market maker           3,30,000   (5.00%)
+ *   Net Offer             62,70,000
+ *     QIB                    64,800   (  1.03% of net —  54 lots)
+ *     NII                 30,70,800   ( 48.98% of net — 2,559 lots)
+ *     Individual          31,34,400   ( 49.99% of net — 2,612 lots)
+ *
+ * This is here as a FIXTURE, not as a rounding rule. It shows the SME
+ * individual minimum holding at two lots on a second issuer, and it shows the
+ * published counts landing on whole lots. It does NOT show the counts being
+ * rounded to a minimum-application multiple — see the note in CLAUDE.md.
+ */
+describe('DOVE SOFT RHP — the SME individual minimum holds at two lots', () => {
+  // The band was undecided; the individual minimum is two lots at ANY price,
+  // which is the whole point of the SME branch, so the cap is immaterial here.
+  const DOVESOFT = { lotSize: 1200, priceCap: 118, sme: true };
+  const NET_OFFER = 62_70_000;
+  const INDIVIDUAL = 31_34_400;
+  const NII = 30_70_800;
+  const QIB = 64_800;
+
+  it('the stated portions add up to the net offer', () => {
+    expect(QIB + NII + INDIVIDUAL).toBe(NET_OFFER);
+  });
+
+  it('the individual portion is a whole number of minimum applications', () => {
+    expect(minApplicationShares('retail', DOVESOFT)).toBe(2_400);
+    expect(INDIVIDUAL % 2_400).toBe(0);
+    expect(INDIVIDUAL / 2_400).toBe(1_306);
+  });
+
+  it('every portion is a whole number of lots', () => {
+    for (const n of [QIB, NII, INDIVIDUAL, 3_30_000]) expect(n % 1200).toBe(0);
+  });
+});
