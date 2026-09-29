@@ -1178,6 +1178,23 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const offerTotals = offerTotalsOf(form);
 
   /**
+   * Is this offer sized in SHARES rather than rupees?
+   *
+   * It decides whether the reservation table needs two share-count columns or
+   * one. A share-sized offer reserves the SAME count whichever price the book
+   * strikes at, so an upper and a lower column would print the identical figure
+   * twice and imply a difference that does not exist. Only a rupee-sized offer
+   * buys more shares at the floor than at the cap.
+   *
+   * Read off the Fresh / OFS leg basis rather than a new "sized by" control —
+   * the operator already states it there, and a second switch for the same fact
+   * is a second thing that can disagree. EVERY priced leg must be share-based:
+   * a mixed offer still moves with price, so it keeps both columns.
+   */
+  const legBases = [form.freshBasis, form.ofsBasis].filter((b) => b && b !== 'none');
+  const sharesSized = legBases.length > 0 && legBases.every((b) => b === 'shares');
+
+  /**
    * The offer-size chain, closed: ₹ total → share count → the counts we derived.
    *
    * Step 1 keeps `totalShares` in step with the ₹ total and the band whenever
@@ -1720,7 +1737,32 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-            <Panel title="Share Reservation" desc="Enter each category's percentage of the NET offer. Everything to the right is derived — HNI (Big) takes the larger two-thirds of the NII quota.">
+            <Panel title="Share Reservation" desc="The RHP's share counts are the figures to enter. Percentages derive the counts when the RHP is not to hand — HNI (Big) takes the larger two-thirds of the NII quota.">
+              {/* An all-derived table is an ESTIMATE and must say so. A
+                  percentage split reproduces a real RHP only when the issuer
+                  used round numbers; the counts are rounded to whole
+                  applications and adjusted at the BRLM's discretion, so
+                  Sai Urja's RHP puts QIB at 9,79,200 where 50% of the net offer
+                  is 9,96,000. Nothing here is wrong — it just is not the
+                  document, and the badge is the difference. */}
+              {(() => {
+                const counted = RESV_ROWS.filter((r) => fnum(form.shareResv[r.key]?.sharesUpper) > 0);
+                if (counted.length === 0) return null;
+                const fromDoc = counted.filter((r) => {
+                  const s = form.shareResv[r.key]?.source;
+                  return s === 'exchange' || s === 'operator';
+                });
+                if (fromDoc.length === counted.length) return null;
+                return (
+                  <div className="banner info" style={{ fontSize: 12.5, marginBottom: 12 }}>
+                    <b>Estimated — verify with the RHP.</b>{' '}
+                    {fromDoc.length === 0
+                      ? 'Every count here is derived from the percentages above.'
+                      : `${counted.length - fromDoc.length} of ${counted.length} counts are derived from the percentages above.`}{' '}
+                    An RHP rounds each category to whole applications, so a percentage split rarely reproduces it exactly.
+                  </div>
+                );
+              })()}
               {/* SEBI splits the NII quota two-thirds to bids above ₹10 L (Big) and
                   one-third to ₹2–10 L (Small), so Big is ALWAYS the larger share.
                   Three live records had the two transposed, which fed wrong
@@ -1850,7 +1892,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   Forms for 1X) still derives off pct at the upper band. */}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table resv-table" style={{ width: '100%' }}>
-                  <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count (Upper)</th><th className="r">Share Count (Lower)</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
+                  <thead><tr>
+                    <th>Category</th>
+                    <th className="r">Share (%)</th>
+                    {/* One column when the offer is sized in shares — the count
+                        does not move with the price, so two would print the same
+                        figure twice. */}
+                    <th className="r">{sharesSized ? 'Share Count' : 'Share Count (Upper)'}</th>
+                    {!sharesSized && <th className="r">Share Count (Lower)</th>}
+                    <th className="r">Amount Reserved</th>
+                    <th className="r">Forms required for 1X</th>
+                  </tr></thead>
                   <tbody>
                     {RESV_ROWS.map((r) => (CARVEOUT_ROWS.includes(r.key) ? (
                       /* Employee and Shareholder are PREFERENTIAL RESERVATIONS:
@@ -1882,7 +1934,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                 {pctOfTotal > 0 ? pctOfTotal.toFixed(3) : dash}
                               </td>
                               <td className="rc-derived r">{at(cvCap.shares)}</td>
-                              <td className="rc-derived r">{at(cvFloor.shares)}</td>
+                              {!sharesSized && <td className="rc-derived r">{at(cvFloor.shares)}</td>}
                               <td className="rc-derived r">{cvCap.rupees > 0 ? `₹${(cvCap.rupees / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">{dash}</td>
                             </>
@@ -1894,13 +1946,38 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
                         {/* QIB carries the snap: typing 75 or 50 fills every
                             other row and the regulation basis (see onQibPctChange). */}
-                        <td>{r.key === 'qib'
-                          ? <input className="input mono" value={form.shareResv.qib.pct}
-                              placeholder="75 or 50" title="Type 75 for ICDR 6(2) or 50 for ICDR 6(1) to fill the standard split"
-                              onChange={(e) => onQibPctChange(e.target.value)} />
-                          : <input className="input mono" value={form.shareResv[r.key].pct}
-                              onChange={(e) => setResv(r.key, { pct: e.target.value })} />
-                        }</td>
+                        {(() => {
+                          /* When the stored count is AUTHORITATIVE — the
+                             exchange's figure or one typed off the RHP — the
+                             percentage is no longer an input. It is whatever
+                             that count works out to, and showing an editable
+                             round number beside it invites the operator to
+                             "correct" the percentage and silently disagree with
+                             the document. A `derived` count came FROM the
+                             percentage, so there the percentage stays the
+                             input. */
+                          const row = form.shareResv[r.key];
+                          const stored = fnum(row?.sharesUpper);
+                          const authoritative = stored > 0 && (row?.source === 'exchange' || row?.source === 'operator');
+                          if (authoritative && offerTotals.cap > 0) {
+                            const pct = (stored / offerTotals.cap) * 100;
+                            return (
+                              <td className="r mono" title={`Derived from the stored count: ${stored.toLocaleString('en-IN')} ÷ ${Math.round(offerTotals.cap).toLocaleString('en-IN')} net offer. The count is the ${row.source === 'exchange' ? "exchange's" : 'entered'} figure and outranks a typed percentage.`}>
+                                {pct.toFixed(2)}
+                                <div className={`rc-src rc-src-${row.source}`} style={{ marginTop: 2 }}>from count</div>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td>{r.key === 'qib'
+                              ? <input className="input mono" value={form.shareResv.qib.pct}
+                                  placeholder="75 or 50" title="Type 75 for ICDR 6(2) or 50 for ICDR 6(1) to fill the standard split"
+                                  onChange={(e) => onQibPctChange(e.target.value)} />
+                              : <input className="input mono" value={form.shareResv[r.key].pct}
+                                  onChange={(e) => setResv(r.key, { pct: e.target.value })} />
+                            }</td>
+                          );
+                        })()}
                         {(() => {
                           const catCap = derived.scenarios.cap?.categories.find((c: any) => c.key === r.key);
                           const catFloor = derived.scenarios.floor?.categories.find((c: any) => c.key === r.key);
@@ -1960,6 +2037,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                     title="Optional override — the exact upper-band share count when it differs from the derived value" />
                                 </div>
                               </td>
+                              {!sharesSized && (
                               <td className="rc-derived r">
                                 <span className="rc-val" title={lowerDrift && derLower != null ? `Derived from %: ${derLower.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - derLower).toLocaleString('en-IN')} shares.` : undefined}>
                                   {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
@@ -1972,6 +2050,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                     title="Optional override — NSE PREANCHOR prints figures at the lower band; paste from there when reconciling" />
                                 </div>
                               </td>
+                              )}
                               <td className="rc-derived r">{d ? `₹${(d.amount / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">
                                 {d?.appsFor1x != null
@@ -2011,7 +2090,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           return (
                             <>
                               <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.cap).toLocaleString('en-IN')}</td>
-                              <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.floor).toLocaleString('en-IN')}</td>
+                              {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.floor).toLocaleString('en-IN')}</td>}
                             </>
                           );
                         })()}
