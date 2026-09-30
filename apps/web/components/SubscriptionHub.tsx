@@ -488,7 +488,7 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
  *  is the synthetic `nii` row from the API — kept when both split rows are
  *  present (see subscriptionTable) and rendered with the `combo` class for
  *  the pastel indigo background. Sub-rows are NOT indented (operator ask). */
-const SHARE_ORDER: Record<string, number> = { qib: 0, nii: 1, hni: 2, hni2: 3, retail: 4, employee: 5, shareholder: 6 };
+const SHARE_ORDER: Record<string, number> = { qib: 0, nii: 1, hni: 2, hni2: 3, retail: 4, employee: 5, shareholder: 6, policyholder: 7 };
 export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total: SubRowT; price: number }) {
   /* Value each row at ITS OWN price. A discounted quota valued at the band
      price reads high — RUNWALENTR's employee book showed ₹3.67 Cr where those

@@ -185,7 +185,7 @@ export function reservation(ipo: IpoFull): ResRow[] {
   if (resv && typeof resv === 'object') {
     const hasHni = !!(resv.hni && (Number(resv.hni.sharesLower) > 0 || Number(resv.hni.sharesUpper) > 0 || Number(resv.hni.pct) > 0));
     const hasHni2 = !!(resv.hni2 && (Number(resv.hni2.sharesLower) > 0 || Number(resv.hni2.sharesUpper) > 0 || Number(resv.hni2.pct) > 0));
-    const buckets = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'other'];
+    const buckets = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'policyholder', 'other'];
     const rows: ResRow[] = [];
     for (const k of buckets) {
       // Dedupe synthetic 'nii' — but we don't iterate 'nii' anyway (not in
@@ -279,6 +279,7 @@ export function subCatLabel(key: string): string {
     case 'retail': return 'Retail';
     case 'employee': return 'Employee';
     case 'shareholder': return 'Shareholder';
+    case 'policyholder': return 'Policyholder';
     case 'total': return 'Total';
     default: return key.toUpperCase();
   }
@@ -311,7 +312,7 @@ function directOffered(row: any): number {
 export function offeredByBucket(ipo: IpoFull): Record<string, number> {
   const resv: any = (ipo as any).extra?.shareResv;
   if (!resv || typeof resv !== 'object') return {};
-  const BUCKETS = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
+  const BUCKETS = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'policyholder'];
   // Derive a self-consistent total from any bucket with both shares + pct.
   // Take the LARGEST implied total so a mis-entered small bucket doesn't
   // shrink the divisor for the others.
@@ -335,7 +336,8 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
     const pct = Number(row.pct);
     if (pct > 0 && derivedTotal > 0) out[b] = (derivedTotal * pct) / 100;
   }
-  /* CARVE-OUTS. Employee and shareholder reservations come off the top and are
+  /* CARVE-OUTS. Employee, shareholder and policyholder reservations come off
+     the top and are
      stored in `extra.carveouts`, never in `shareResv` — so a category with a
      real reserved quota had no Book Size here and the Share-wise panel simply
      omitted the row. RUNWALENTR reserves 1,20,275 employee shares and showed no
@@ -343,7 +345,7 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
      still wins; this only fills what that table does not cover. */
   const priceMax = up(ipo);
   if (priceMax > 0) {
-    for (const key of ['employee', 'shareholder'] as const) {
+    for (const key of ['employee', 'shareholder', 'policyholder'] as const) {
       if ((out[key] ?? 0) > 0) continue;
       const shares = carveoutAt(key, ((ipo as any).extra ?? {}), priceMax).shares;
       if (shares > 0) out[key] = shares;
@@ -439,7 +441,8 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const discountOf = (cat: string): number => {
     const raw = cat === 'employee' ? ex.employeeDiscount
       : cat === 'shareholder' ? ex.shareholderDiscount
-        : cat === 'retail' ? ex.retailDiscount : 0;
+        : cat === 'policyholder' ? ex.policyholderDiscount
+          : cat === 'retail' ? ex.retailDiscount : 0;
     const n = Number(String(raw ?? '').replace(/[^\d.]/g, ''));
     return Number.isFinite(n) && n > 0 ? n : 0;
   };

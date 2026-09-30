@@ -24,8 +24,21 @@
  * question and deliberately a different number.
  */
 
-export type CarveoutKey = 'employee' | 'shareholder' | 'marketmaker';
-export const CARVEOUT_KEYS: CarveoutKey[] = ['employee', 'shareholder', 'marketmaker'];
+/**
+ * POLICYHOLDER is a category of its own, and folding it into `shareholder` was
+ * not a cosmetic shortcut (added 2026-09-30). The two quotas answer to different
+ * people — a shareholder reservation is for holders of a LISTED PARENT, a
+ * policyholder reservation is for the insurer's own policyholders — and an
+ * issuer can offer both at once. The poller mapped the exchanges' `POL` and
+ * `POLRET` codes onto `shareholder`, so on such an issue two categories' demand
+ * summed into one row and was measured against a shareholder-only Book Size.
+ * **LICI is the proof that this is live and not hypothetical**: it has no listed
+ * parent and therefore no shareholder quota, yet it carries a stored
+ * `shareholder` row at 6.12× — LIC's POLICYHOLDER subscription, under the wrong
+ * name.
+ */
+export type CarveoutKey = 'employee' | 'shareholder' | 'policyholder' | 'marketmaker';
+export const CARVEOUT_KEYS: CarveoutKey[] = ['employee', 'shareholder', 'policyholder', 'marketmaker'];
 
 /** The `extra` fields this reads. Loose on purpose — callers hold different shapes. */
 export interface CarveoutSource {
@@ -34,6 +47,7 @@ export interface CarveoutSource {
   carveoutBasis?: Record<string, unknown> | null;
   employeeDiscount?: unknown;
   shareholderDiscount?: unknown;
+  policyholderDiscount?: unknown;
 }
 
 export interface CarveoutAmount {
@@ -52,6 +66,9 @@ const num = (v: unknown): number => {
 function discountFor(key: CarveoutKey, src: CarveoutSource): number {
   if (key === 'employee') return num(src.employeeDiscount);
   if (key === 'shareholder') return num(src.shareholderDiscount);
+  // LIC gave policyholders a ₹60 discount; it is its own field, not the
+  // shareholder one, because an issue can offer both quotas at once.
+  if (key === 'policyholder') return num(src.policyholderDiscount);
   return 0; // a market maker buys at the issue price
 }
 
@@ -75,6 +92,7 @@ export function carveoutsAt(src: CarveoutSource, price: number): Record<Carveout
   return {
     employee: carveoutAt('employee', src, price),
     shareholder: carveoutAt('shareholder', src, price),
+    policyholder: carveoutAt('policyholder', src, price),
     marketmaker: carveoutAt('marketmaker', src, price),
   };
 }

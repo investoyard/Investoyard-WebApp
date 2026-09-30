@@ -75,7 +75,8 @@ const SZ_ROWS: { key: string; label: string; extra?: boolean }[] = [
 // Share Reservation rows — HNI (Big) and HNI (Small) grouped together
 const RESV_ROWS: { key: string; label: string }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI (Big)' }, { key: 'hni2', label: 'HNI (Small)' },
-  { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' }, { key: 'other', label: 'Other' },
+  { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' },
+  { key: 'policyholder', label: 'Policyholder' }, { key: 'other', label: 'Other' },
 ];
 
 type Doc = {
@@ -140,11 +141,11 @@ interface FormState {
   exNse: boolean; exBse: boolean;
   /** total offer in ₹ Cr — Fresh/OFS below split it */
   issueSizeCr: string;
-  tickSize: string; employeeDiscount: string; shareholderDiscount: string; finalIssuePrice: string;
+  tickSize: string; employeeDiscount: string; shareholderDiscount: string; policyholderDiscount: string; finalIssuePrice: string;
   /** anchor as a % of the QIB quota — the input B09 checks against the rule pack */
   anchorPct: string;
   /** off-the-top reservations, taken before the category split */
-  cvEmployee: string; cvShareholder: string; cvMarketMaker: string;
+  cvEmployee: string; cvShareholder: string; cvPolicyholder: string; cvMarketMaker: string;
   /**
    * Each carve-out's unit: `amount` (₹ Cr) or `shares`. RHPs state an employee
    * reservation as a SHARE COUNT — RUNWALENTR reserves 1,20,275 — and that
@@ -153,7 +154,7 @@ interface FormState {
    * reservation could not be entered at all and its QIB book published 57,376
    * shares too large while the issue was live.
    */
-  cvEmployeeBasis: string; cvShareholderBasis: string; cvMarketMakerBasis: string;
+  cvEmployeeBasis: string; cvShareholderBasis: string; cvPolicyholderBasis: string; cvMarketMakerBasis: string;
   /** per-applicant employee caps, ₹ — the RHP states both */
   empMaxPerApplicant: string; empInitialPerApplicant: string;
   /** anchor detail beyond the % of QIB */
@@ -227,10 +228,10 @@ const blankForm = (): FormState => ({
   retailDiscount: '', applicationsReceived: '',
   mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
   exNse: true, exBse: true, issueSizeCr: '',
-  tickSize: '', employeeDiscount: '', shareholderDiscount: '', finalIssuePrice: '', anchorPct: '',
-  cvEmployee: '', cvShareholder: '', cvMarketMaker: '',
+  tickSize: '', employeeDiscount: '', shareholderDiscount: '', policyholderDiscount: '', finalIssuePrice: '', anchorPct: '',
+  cvEmployee: '', cvShareholder: '', cvPolicyholder: '', cvMarketMaker: '',
   // 'amount' is the back-compatible default — every legacy carve-out is ₹ Cr.
-  cvEmployeeBasis: 'amount', cvShareholderBasis: 'amount', cvMarketMakerBasis: 'amount',
+  cvEmployeeBasis: 'amount', cvShareholderBasis: 'amount', cvPolicyholderBasis: 'amount', cvMarketMakerBasis: 'amount',
   empMaxPerApplicant: '', empInitialPerApplicant: '',
   anchorMfPct: '', lockin1Pct: '', lockin1Days: '', lockin2Days: '',
   minSubscriptionPct: '', upiMandateCutoff: '',
@@ -279,10 +280,11 @@ function offerSourceOf(f: FormState): OfferSource {
     ofs: { basis: f.ofsBasis, value: f.ofsValue },
     issueSizeCr: f.issueSizeCr,
     totalShares: f.totalShares,
-    carveouts: { employee: f.cvEmployee, shareholder: f.cvShareholder, marketmaker: f.cvMarketMaker },
-    carveoutBasis: { employee: f.cvEmployeeBasis, shareholder: f.cvShareholderBasis, marketmaker: f.cvMarketMakerBasis },
+    carveouts: { employee: f.cvEmployee, shareholder: f.cvShareholder, policyholder: f.cvPolicyholder, marketmaker: f.cvMarketMaker },
+    carveoutBasis: { employee: f.cvEmployeeBasis, shareholder: f.cvShareholderBasis, policyholder: f.cvPolicyholderBasis, marketmaker: f.cvMarketMakerBasis },
     employeeDiscount: f.employeeDiscount,
     shareholderDiscount: f.shareholderDiscount,
+    policyholderDiscount: f.policyholderDiscount,
   };
 }
 
@@ -312,16 +314,17 @@ function derivedTotalSharesOf(f: FormState): number {
  * site publish. Same split as the reservation counts: offered rounds,
  * allocation floors.
  */
-const CARVEOUT_KEYS = ['employee', 'shareholder', 'marketmaker'] as const;
+const CARVEOUT_KEYS = ['employee', 'shareholder', 'policyholder', 'marketmaker'] as const;
 /** The carve-outs that also appear as a row in the reservation table. The
  *  market maker has no row — it is an SME-only reservation and was never one
  *  of the seven categories. */
-const CARVEOUT_ROWS: string[] = ['employee', 'shareholder'];
+const CARVEOUT_ROWS: string[] = ['employee', 'shareholder', 'policyholder'];
 
 /** The three carve-out fields, addressed by the key the engine uses. */
 function carveoutInput(f: FormState, key: string): { value: string; basis: string; discount: string } {
   if (key === 'employee') return { value: f.cvEmployee, basis: f.cvEmployeeBasis, discount: f.employeeDiscount };
   if (key === 'shareholder') return { value: f.cvShareholder, basis: f.cvShareholderBasis, discount: f.shareholderDiscount };
+  if (key === 'policyholder') return { value: f.cvPolicyholder, basis: f.cvPolicyholderBasis, discount: f.policyholderDiscount };
   return { value: f.cvMarketMaker, basis: f.cvMarketMakerBasis, discount: '' };
 }
 
@@ -446,12 +449,14 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           exBse: (d.exchanges ?? []).some((x: string) => /bse/i.test(x)) || !(d.exchanges ?? []).length,
           issueSizeCr: str(ex.issueSizeCr ?? d.issueSizeCr ?? ''),
           tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
-          shareholderDiscount: str(ex.shareholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
+          shareholderDiscount: str(ex.shareholderDiscount), policyholderDiscount: str(ex.policyholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
           anchorPct: str(ex.anchorPct),
           cvEmployeeBasis: str(ex.carveoutBasis?.employee) || 'amount',
           cvShareholderBasis: str(ex.carveoutBasis?.shareholder) || 'amount',
+          cvPolicyholderBasis: str(ex.carveoutBasis?.policyholder) || 'amount',
           cvMarketMakerBasis: str(ex.carveoutBasis?.marketmaker) || 'amount',
           cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
+          cvPolicyholder: str(ex.carveouts?.policyholder),
           cvMarketMaker: str(ex.carveouts?.marketmaker),
           empMaxPerApplicant: str(ex.empMaxPerApplicant), empInitialPerApplicant: str(ex.empInitialPerApplicant),
           anchorMfPct: str(ex.anchorMfPct), lockin1Pct: str(ex.lockin1Pct),
@@ -627,17 +632,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       mechanism: form.mechanism, regulationBasis: form.regulationBasis || undefined,
       issueSizeCr: legSumCr || form.issueSizeCr,
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
-      shareholderDiscount: form.shareholderDiscount, finalIssuePrice: form.finalIssuePrice,
+      shareholderDiscount: form.shareholderDiscount, policyholderDiscount: form.policyholderDiscount, finalIssuePrice: form.finalIssuePrice,
       anchorPct: form.anchorPct,
       anchorMfPct: form.anchorMfPct, lockin1Pct: form.lockin1Pct,
       lockin1Days: form.lockin1Days, lockin2Days: form.lockin2Days,
       empMaxPerApplicant: form.empMaxPerApplicant, empInitialPerApplicant: form.empInitialPerApplicant,
       minSubscriptionPct: form.minSubscriptionPct, upiMandateCutoff: form.upiMandateCutoff,
-      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, marketmaker: form.cvMarketMaker },
+      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, policyholder: form.cvPolicyholder, marketmaker: form.cvMarketMaker },
       // Kept in a SEPARATE key rather than reshaping `carveouts` to {basis,value}:
       // three live records already carry the flat shape and the Excel importer
       // writes it, so a reshape would need every reader migrated in one go.
-      carveoutBasis: { employee: form.cvEmployeeBasis, shareholder: form.cvShareholderBasis, marketmaker: form.cvMarketMakerBasis },
+      carveoutBasis: { employee: form.cvEmployeeBasis, shareholder: form.cvShareholderBasis, policyholder: form.cvPolicyholderBasis, marketmaker: form.cvMarketMakerBasis },
       fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
       ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
@@ -933,6 +938,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         retail: n(form.retailDiscount),
         employee: n(form.employeeDiscount),
         shareholder: n(form.shareholderDiscount),
+        policyholder: n(form.policyholderDiscount),
       },
       // The basis was hardcoded to 'amount' until 2026-09-25, so a reservation
       // the RHP states in SHARES had to be converted to ₹ by hand — and the
@@ -940,6 +946,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       carveouts: [
         { key: 'employee', basis: (form.cvEmployeeBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvEmployee) },
         { key: 'shareholder', basis: (form.cvShareholderBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvShareholder) },
+        { key: 'policyholder', basis: (form.cvPolicyholderBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvPolicyholder) },
         { key: 'marketmaker', basis: (form.cvMarketMakerBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvMarketMaker) },
       ].filter((c) => c.value > 0),
       // the datetime-local fields carry a time; the rules only want the day
@@ -965,7 +972,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
       form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
-      form.issueSizeCr, form.totalShares, form.cvEmployee, form.cvShareholder, form.cvMarketMaker,
+      form.issueSizeCr, form.totalShares, form.cvEmployee, form.cvShareholder, form.cvPolicyholder, form.cvMarketMaker,
       form.anchorPct, form.anchorMfPct, form.anchorShares, form.anchorPrice, form.finalIssuePrice,
       form.openDate, form.closeDate, form.allotmentDate, form.refundDate, form.dematDate, form.listingDate,
       JSON.stringify(form.shareResv)]);
@@ -1545,6 +1552,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field label="Retail (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
                 <Field label="Employee (₹)"><input className="input mono" value={form.employeeDiscount} onChange={(e) => set({ employeeDiscount: e.target.value })} /></Field>
                 <Field label="Shareholder (₹)"><input className="input mono" value={form.shareholderDiscount} onChange={(e) => set({ shareholderDiscount: e.target.value })} /></Field>
+                <Field label="Policyholder (₹)"><input className="input mono" value={form.policyholderDiscount} onChange={(e) => set({ policyholderDiscount: e.target.value })} /></Field>
                 <Field label="Retail cut-off (₹)" hint="derived: max band − retail discount">
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} />
                 </Field>
@@ -1717,6 +1725,23 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                       onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
                     <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvShareholderBasis}
                       onChange={(e) => set({ cvShareholderBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
+                </Field>
+                {/* A POLICYHOLDER quota is its own reservation, not the
+                    shareholder one: it answers to the insurer's policyholders
+                    where the shareholder quota answers to holders of a listed
+                    parent, and an issuer can offer both at once. LIC did. */}
+                <Field label="Policyholder" hint={form.cvPolicyholderBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.policyholderDiscount || 0)) || '—'} (band price less the policyholder discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvPolicyholder}
+                      onChange={(e) => set({ cvPolicyholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvPolicyholderBasis}
+                      onChange={(e) => set({ cvPolicyholderBasis: e.target.value })}>
                       <option value="amount">₹ Cr</option>
                       <option value="shares">shares</option>
                     </select>

@@ -30,12 +30,13 @@ const BIDDING_CLOSE_MIN = 17 * 60;
  * (>₹10 L, SEBI's larger 2/3 of NII); `hni2` is Small-HNI (<₹10 L) — same
  * naming shared-types uses in `CATEGORY_LABELS` and `computeIssue`.
  */
-type Bucket = 'qib' | 'hni' | 'hni2' | 'retail' | 'employee' | 'shareholder';
+type Bucket = 'qib' | 'hni' | 'hni2' | 'retail' | 'employee' | 'shareholder' | 'policyholder';
 
 /**
  * NSE category code → our bucket. Follows the operator's C# workflow:
  *   QIB → qib; NIBBT (Below-10L S-HNI) → hni2; NIBAT (Above-10L B-HNI) → hni;
- *   INDIV / RETAIL → retail; EMPRET → employee; SHARET / POLRET → shareholder.
+ *   INDIV / RETAIL → retail; EMPRET → employee; SHARET → shareholder;
+ *   POLRET → policyholder.
  * Aggregate legacy codes (NIB / NII / HNI) route to `hni` as a best-effort
  * fallback — we lose the Big/Small split when the exchange doesn't send it.
  */
@@ -47,7 +48,13 @@ function bucketNse(cat: string): Bucket | null {
   if (c === 'NIB' || c === 'NII' || c === 'HNI' || c === 'SNII' || c === 'BNII') return 'hni';
   if (c === 'INDIV' || c === 'RETAIL' || c === 'IND' || c === 'RII') return 'retail';
   if (c === 'EMPRET' || c === 'EMP' || c === 'EMPLOYEE' || c === 'EMPL') return 'employee';
-  if (c === 'SHARET' || c === 'POLRET' || c === 'SHA' || c === 'POL') return 'shareholder';
+  if (c === 'SHARET' || c === 'SHA') return 'shareholder';
+  /* POLICYHOLDER is NOT the shareholder quota, and folding the two together was
+     not cosmetic: on an issue offering both, two categories' demand summed into
+     one row and was measured against a shareholder-only Book Size. LICI carries
+     a stored `shareholder` row at 6.12x with no listed parent — that is LIC's
+     POLICYHOLDER subscription under the wrong name. */
+  if (c === 'POLRET' || c === 'POL') return 'policyholder';
   return null;
 }
 
@@ -56,7 +63,7 @@ function bucketNse(cat: string): Bucket | null {
  *   QIB / IC / FI / FII / OTH / MF → qib;
  *   (CO|NOH, BT) or (IND, OTHERBT) → hni2 (Below-10L);
  *   (CO|NOH, AT) or (IND, OTHERAT) → hni  (Above-10L);
- *   (IND, RII) → retail; EMP → employee; SHA / POL → shareholder.
+ *   (IND, RII) → retail; EMP → employee; SHA → shareholder; POL → policyholder.
  * The BT / AT split lives in the SUB-category — bucketing on category alone
  * would collapse Big-HNI and Small-HNI into one row (the mistake the old
  * 4-bucket NII map made).
@@ -72,7 +79,8 @@ function bucketBse(cat: string, subCat?: string): Bucket | null {
   if (c === 'IND' && (s === 'RII' || s === '')) return 'retail';
   if (c === 'RII') return 'retail';
   if (c === 'EMP' || c === 'EMPLOYEE') return 'employee';
-  if (c === 'SHA' || c === 'POL') return 'shareholder';
+  if (c === 'SHA') return 'shareholder';
+  if (c === 'POL') return 'policyholder';
   return null;
 }
 
@@ -95,7 +103,7 @@ function emptyAgg(): CatAgg { return { nseShares: 0, bseShares: 0, nseBids: 0, b
  *   bseBids[hni2]        = round( bseShares[hni2]        ÷ (nseShares[hni2]        ÷ nseBids[hni2]) )
  *   bseBids[shareholder] = round( bseShares[shareholder] ÷ (nseShares[shareholder] ÷ nseBids[shareholder]) )
  *   bseBids[employee]    = round( bseShares[employee]    ÷ (nseShares[employee]    ÷ nseBids[employee]) )
- *   bseBids[retail]      = totalapplication − (hni + hni2 + shareholder + employee)
+ *   bseBids[retail]      = totalapplication − (hni + hni2 + shareholder + policyholder + employee)
  *
  * QIB BSE bids stay 0 — institutional app counts are naturally tiny beside
  * retail, and folding them into the retail residual keeps the approximation
@@ -140,7 +148,7 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
   // Employee added 2026-09-21 (operator report: NSE had 12,057 BSE Employee
   // bids getting silently folded into Retail's residual).
   let nonRetailBseBids = 0;
-  for (const b of ['hni', 'hni2', 'shareholder', 'employee'] as Bucket[]) {
+  for (const b of ['hni', 'hni2', 'shareholder', 'policyholder', 'employee'] as Bucket[]) {
     const a = buckets.get(b);
     if (!a || a.bseShares <= 0 || a.nseShares <= 0 || a.nseBids <= 0) continue;
     const nseAvg = a.nseShares / a.nseBids;
@@ -253,7 +261,7 @@ function offeredFromIpo(
    */
   const priceForCarveouts = Number(priceBandMax);
   if (priceForCarveouts > 0) {
-    for (const key of ['employee', 'shareholder'] as const) {
+    for (const key of ['employee', 'shareholder', 'policyholder'] as const) {
       if ((out.get(key) ?? 0) > 0) continue;
       const shares = carveoutAt(key, extra ?? {}, priceForCarveouts).shares;
       if (shares > 0) out.set(key, shares);

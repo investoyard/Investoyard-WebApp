@@ -104,7 +104,7 @@ export function issueInputsFor(ipo: IpoFull): IssueInputs {
     // engine never saw, which hid a fresh-issue count on 596 records
     fresh: offerLegFrom(ex, 'fresh'),
     ofs: offerLegFrom(ex, 'ofs'),
-    reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), other: pct('other') },
+    reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), policyholder: pct('policyholder'), other: pct('other') },
     discounts: { retail: Number(ex.retailDiscount) || 0 },
     // pctOfQib drives the split; shares/price record what the book actually took
     anchor: Number(ex.anchorPct) || Number(ex.anchorShares)

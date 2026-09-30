@@ -194,7 +194,7 @@ export interface IssueDerived {
 
 export const CATEGORY_LABELS: Record<string, string> = {
   qib: 'QIB', hni: 'B-HNI', hni2: 'S-HNI', retail: 'Retail',
-  employee: 'Employee', shareholder: 'Shareholder', other: 'Other',
+  employee: 'Employee', shareholder: 'Shareholder', policyholder: 'Policyholder', other: 'Other',
 };
 
 const CR = 1e7;
