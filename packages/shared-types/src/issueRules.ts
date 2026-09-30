@@ -76,6 +76,16 @@ export interface RulePack {
   thresholds: Record<string, CategoryThreshold>;
   /** which price scenario the minimum application is quoted at */
   applicationThresholdBasis: 'cap' | 'floor' | 'final';
+  /**
+   * What ONE LOT must be worth at the primary price — SEBI's mainboard
+   * minimum-application band. Absent on SME, where the individual bid is two
+   * lots and no rupee band expresses it; W04 then stays silent rather than
+   * guessing, on the same principle as B11/B12 outside a known holiday year.
+   */
+  lotValueRange?: { min: number; max: number };
+  /** ICDR's ceiling on a shareholder reservation, as a % of the issue size.
+   *  Absent on SME, which does not offer one. */
+  shareholderMaxPctOfIssue?: number;
 }
 
 /*
@@ -148,6 +158,8 @@ export const RULE_PACKS: Record<string, RulePack> = {
     anchorMaxPctOfQib: 60,
     anchorMfPct: 33.33,
     marketMakerMinPct: 0,
+    lotValueRange: { min: 10_000, max: 15_000 },
+    shareholderMaxPctOfIssue: 10,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,
@@ -161,6 +173,8 @@ export const RULE_PACKS: Record<string, RulePack> = {
     anchorMaxPctOfQib: 60,
     anchorMfPct: 33.33,
     marketMakerMinPct: 0,
+    lotValueRange: { min: 10_000, max: 15_000 },
+    shareholderMaxPctOfIssue: 10,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,
@@ -174,6 +188,8 @@ export const RULE_PACKS: Record<string, RulePack> = {
     anchorMaxPctOfQib: 0,
     anchorMfPct: 0,
     marketMakerMinPct: 0,
+    lotValueRange: { min: 10_000, max: 15_000 },
+    shareholderMaxPctOfIssue: 10,
     biddingDays: { min: 3, max: 10 },
     listingWorkingDaysAfterClose: 3,
     thresholds: THRESHOLDS,

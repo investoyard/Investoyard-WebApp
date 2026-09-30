@@ -31,6 +31,8 @@ export function issueInputsFor(ipo: IpoFull): IssueInputs {
   const pct = (k: string) => { const r = sr[k]; const v = Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')); return r?.on && Number.isFinite(v) ? v : 0; };
   return {
     board: ipo.type === 'sme' ? 'sme' : 'mainboard',
+    // W04 exempts a follow-on from the IPO minimum-bid band — see IssueInputs.
+    instrument: (ipo as any).instrument || 'ipo',
     mechanism: ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
     regulationBasis: ex.regulationBasis || undefined,
     lotSize: ipo.lotSize,
@@ -372,7 +374,10 @@ export function anchorRosterShares(ipo: IpoFull): number {
   return named.reduce((a: number, r: any) => a + n(r.shares), 0);
 }
 
-export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT; anchorDeducted: number } | null {
+/** Where the anchor deduction came from — the letter, or our own arithmetic. */
+export type AnchorBasis = 'actual' | 'estimated' | null;
+
+export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT; anchorDeducted: number; anchorBasis: AnchorBasis } | null {
   const total = parseIssueValue(ipo.issueSize);
   // Drop `total` (rendered separately). Keep the synthetic `nii` roll-up ONLY
   // when BOTH split rows (`hni` and `hni2`) are present — Share-wise renders
@@ -446,6 +451,13 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const anchorSharesInput = Number(ex.anchorShares) || anchorRosterShares(ipo);
   const anchorPctInput = Number(ex.anchorPct) || 0;
   let anchorDeducted = 0;
+  /* ACTUAL vs ESTIMATED, and the two are worth telling apart on the page. A
+     share count comes off the anchor intimation letter — it is what was
+     allotted, and a reader can check it against the exchange. A percentage is
+     our own arithmetic against a ceiling the issue may not have used: the
+     anchor book can close under 60%, so an estimate is an upper bound, not a
+     figure. Both give a Net QIB; only one of them is a fact. */
+  let anchorBasis: AnchorBasis = null;
   const rows: SubRowT[] = subs.map((r) => {
     // grossBook is what the reservation table gave the bucket, exchange-side
     // (QIB includes anchor here — that matches how NSE/BSE report `times`
@@ -458,7 +470,11 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       const deduct = anchorSharesInput > 0
         ? anchorSharesInput
         : anchorPctInput > 0 ? Math.round((book * anchorPctInput) / 100) : 0;
-      if (deduct > 0 && deduct < book) { book = book - deduct; anchorDeducted = deduct; }
+      if (deduct > 0 && deduct < book) {
+        book = book - deduct;
+        anchorDeducted = deduct;
+        anchorBasis = anchorSharesInput > 0 ? 'actual' : 'estimated';
+      }
     }
     // Subscribed = ACTUAL bid shares from the exchange side.
     // Prefer the raw per-exchange totals the poller records (nse+bse); fall
@@ -568,6 +584,7 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     // 0 when the record carries no anchor figure at all — the caller must not
     // then tell the reader QIB Book Size is "Net (post anchor)".
     anchorDeducted,
+    anchorBasis,
   };
 }
 

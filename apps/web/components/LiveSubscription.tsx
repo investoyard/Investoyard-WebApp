@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ShareWisePanel, AppWisePanel } from '@/components/SubscriptionHub';
 import { Icon } from '@/components/Icon';
-import type { SubRowT } from '@/lib/ipoCalc';
+import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
 
 /**
  * Live Subscription — detail-page section.
@@ -28,13 +28,14 @@ import type { SubRowT } from '@/lib/ipoCalc';
  * Below the hero: Share-Wise + Application-Wise panels (unchanged).
  */
 export function LiveSubscription({
-  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0,
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0, anchorBasis = null,
 }: {
   rows: SubRowT[];
   total: SubRowT;
   /** Anchor shares actually taken off QIB — 0 when the record has no anchor
    *  figure, which changes what the footnote is allowed to claim. */
   anchorDeducted?: number;
+  anchorBasis?: AnchorBasis;
   status: string;
   asOf?: string;
   priceMin?: number;
@@ -137,11 +138,20 @@ export function LiveSubscription({
           FALSE on 5 of the 6 IPOs open on 2026-09-23, because only VARMORA had
           an anchor figure on its record. Stating which of the two a reader is
           looking at costs nothing and is the difference between a figure they
-          can check against the exchange and one they cannot. */}
+          can check against the exchange and one they cannot.
+
+          THREE states, not two (2026-09-30). A deduction taken from a stated
+          share count is the ALLOTMENT off the anchor intimation letter; one
+          taken from a percentage is our own arithmetic against a ceiling the
+          issue may not have used — the anchor book can close under 60%, so an
+          estimate is an upper bound. Both produce a Net QIB and only one is a
+          fact, so the reader is told which. */}
       <p className="lsx-note">
-        {anchorDeducted > 0
-          ? '*QIB Book Size is Net (post anchor).'
-          : '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'}
+        {anchorDeducted <= 0
+          ? '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'
+          : anchorBasis === 'estimated'
+            ? '*QIB Book Size is Net (post anchor) — the anchor is ESTIMATED from the reserved percentage, not the allotment.'
+            : '*QIB Book Size is Net (post anchor), from the actual anchor allotment.'}
         {hasBand && ` Amounts at the ${band} band (₹${price}).`}
         {' '}Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
       </p>

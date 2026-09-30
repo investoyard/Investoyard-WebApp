@@ -39,6 +39,13 @@ export interface Carveout {
 
 export interface IssueInputs {
   board: Board;
+  /**
+   * `ipo` unless stated. Only W04 reads it: a follow-on is priced against a
+   * listed market price, not under the IPO minimum-bid band, and Adani
+   * Enterprises' FPO (lot 4 × ₹1,638 = ₹6,552) is the catalogue's only record
+   * outside that band.
+   */
+  instrument?: 'ipo' | 'fpo' | string;
   mechanism?: Mechanism;
   regulationBasis?: RegulationBasis;
   lotSize?: number;
@@ -119,6 +126,11 @@ export interface ScenarioResult {
   totalOfferAmount: number;
   carveoutShares: number;
   netOfferShares: number;
+  /** The same two totals on the OFFERED basis — carve-out verbatim, total
+   *  rounded, nothing floored to a lot. A figure quoted as a percentage of
+   *  "the issue" is a percentage of THESE. */
+  totalOfferOffered: number;
+  netOfferOffered: number;
   categories: CategoryResult[];
   /**
    * Spec §5 Step 4 derives TWO mutual-fund figures and they are not the same:
@@ -365,6 +377,13 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
     totalOfferAmount: totalOfferShares * price,
     carveoutShares,
     netOfferShares,
+    /* The OFFERED basis, beside the allocation one — the same pairing
+       `netQibOffered` already carries. A cap expressed as a percentage of "the
+       issue" means the issue as OFFERED; measuring it against the floored
+       allocation total makes a reservation of exactly the cap read as 10.00001%
+       and fire. W05's own test caught that. */
+    totalOfferOffered,
+    netOfferOffered,
     categories,
     anchor,
     residualLots: lot > 0 ? residual / lot : 0,
@@ -672,6 +691,79 @@ export function computeIssue(inp: IssueInputs): IssueDerived {
       issues.push({
         code: 'B18', severity: 'blocking', field: 'carveouts.marketmaker',
         message: `Market maker is ${Math.round(pct * 100) / 100}% of the issue — an SME issue needs at least ${pack.marketMakerMinPct}%.`,
+      });
+    }
+  }
+
+  /*
+   * W04 — the minimum application VALUE. SEBI puts a mainboard bid lot between
+   * ₹10,000 and ₹15,000 at the cap price, which makes this the cheapest guard
+   * there is against a mis-keyed lot size: a lot entered an order of magnitude
+   * out is exactly the class of error that let SPECTRAA publish ₹1 Cr.
+   *
+   * Measured before it was written: **470 of the 471 mainboard records in the
+   * catalogue already sit inside the band.** The single exception is an FPO
+   * (Adani Enterprises, lot 4 × ₹1,638 = ₹6,552), and a follow-on is priced
+   * against a listed market price rather than under the IPO minimum-bid rule —
+   * so the check is scoped to `instrument: 'ipo'` and its only hit would
+   * otherwise have been a FALSE POSITIVE. A warning that cries wolf on its one
+   * firing is worse than no warning.
+   *
+   * A WARNING, never blocking: the band is the regulator's guidance to the
+   * issuer, the issuer sets the lot, and we are recording what they chose.
+   */
+  const lotBand = pack.lotValueRange;
+  const instrument = inp.instrument ?? 'ipo';
+  if (primary && lotBand && instrument === 'ipo') {
+    const lotValue = num(inp.lotSize) * primary.price;
+    if (lotValue > 0 && (lotValue < lotBand.min || lotValue > lotBand.max)) {
+      issues.push({
+        code: 'W04', severity: 'warning', field: 'lotSize',
+        message: `One lot is ${num(inp.lotSize).toLocaleString('en-IN')} × ₹${primary.price} = `
+          + `₹${Math.round(lotValue).toLocaleString('en-IN')}. A mainboard bid lot belongs between `
+          + `₹${lotBand.min.toLocaleString('en-IN')} and ₹${lotBand.max.toLocaleString('en-IN')} — check the lot size against the RHP.`,
+      });
+    }
+  }
+
+  /*
+   * W05 — the shareholder reservation is capped at a share of the issue.
+   *
+   * Stated honestly: **no record in the catalogue carries a shareholder
+   * carve-out today**, so this fires on nothing and is a guard for the
+   * historical import rather than a repair. It is a WARNING for the same
+   * reason — the cap is well attested but its BASIS (issue size vs post-issue
+   * capital) is worth the operator confirming against ICDR before anything
+   * blocks on it, and the message names the basis so that judgement can be
+   * made from the screen.
+   *
+   * The employee cap has no rule here on purpose: ICDR measures it against
+   * POST-ISSUE CAPITAL, which this engine is never given, and a check against
+   * the wrong denominator is worse than none.
+   */
+  const shCap = pack.shareholderMaxPctOfIssue;
+  if (primary && shCap && shCap > 0 && primary.totalOfferOffered > 0) {
+    const shShares = (inp.carveouts ?? [])
+      .filter((c) => /shareholder/i.test(c.key))
+      .reduce((a, c) => {
+        const v = num(c.value);
+        if (v <= 0) return a;
+        return a + (c.basis === 'shares' ? v
+          : c.basis === 'pct_of_offer' ? (primary.totalOfferOffered * v) / 100
+          : (v * CR) / primary.price);
+      }, 0);
+    const pct = (shShares / primary.totalOfferOffered) * 100;
+    /* Tolerance of ONE LOT, not a float epsilon. `totalOfferOffered` still
+       inherits a floor-to-lot when the offer is described by LEGS alone with no
+       stated count and no ₹ total, so a reservation of exactly the cap reads as
+       10.00001% and fired. Its own test caught that. A breach has to exceed the
+       cap by more than a lot to be a breach rather than a rounding artefact. */
+    const capShares = (shCap / 100) * primary.totalOfferOffered;
+    if (shShares > capShares + Math.max(1, num(inp.lotSize))) {
+      issues.push({
+        code: 'W05', severity: 'warning', field: 'carveouts.shareholder',
+        message: `The shareholder reservation is ${Math.round(pct * 100) / 100}% of the issue — `
+          + `ICDR caps it at ${shCap}% of the issue size.`,
       });
     }
   }

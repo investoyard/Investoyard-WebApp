@@ -656,3 +656,96 @@ describe('ESDS — stated share counts drive the split', () => {
     expect(ok.issues.filter((i) => i.code === 'W02')).toHaveLength(0);
   });
 });
+
+/**
+ * W04 — the minimum application VALUE. SEBI puts a mainboard bid lot between
+ * ₹10,000 and ₹15,000 at the primary price, which is the cheapest available
+ * guard against a mis-keyed lot size.
+ *
+ * Calibrated against the catalogue before it was written: **470 of the 471
+ * mainboard records already sit inside the band**, and the single exception is
+ * an FPO — so the rule is scoped to `instrument: 'ipo'` and its only firing
+ * would otherwise have been a false positive.
+ */
+describe('computeIssue — W04 minimum application value', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const,
+    ofs: { basis: 'shares' as const, value: 1_00_00_000 },
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  };
+  const w04 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'W04');
+
+  it('stays quiet inside the band', () => {
+    // ORIENTCABL — 55 × ₹272 = ₹14,960
+    expect(w04({ ...base, lotSize: 55, priceFloor: 250, priceCap: 272 })).toHaveLength(0);
+    // the worked example — 70 × ₹200 = ₹14,000
+    expect(w04({ ...base, lotSize: 70, priceFloor: 190, priceCap: 200 })).toHaveLength(0);
+  });
+
+  it('warns — never blocks — when a lot is worth too little or too much', () => {
+    const low = w04({ ...base, lotSize: 4, priceFloor: 1556, priceCap: 1638 });
+    expect(low).toHaveLength(1);
+    expect(low[0].severity).toBe('warning');
+    expect(low[0].message).toMatch(/₹6,552/);
+    expect(w04({ ...base, lotSize: 700, priceFloor: 190, priceCap: 200 })).toHaveLength(1);
+  });
+
+  it('exempts a follow-on, which is priced against a listed market price', () => {
+    // Adani Enterprises' FPO — the catalogue's ONLY record outside the band.
+    const adani = { ...base, lotSize: 4, priceFloor: 1556, priceCap: 1638 };
+    expect(w04({ ...adani, instrument: 'fpo' })).toHaveLength(0);
+    expect(w04({ ...adani, instrument: 'ipo' })).toHaveLength(1);
+    expect(w04(adani)).toHaveLength(1); // absent means 'ipo'
+  });
+
+  it('is silent on SME, where no rupee band expresses a two-lot minimum', () => {
+    // SAIURJA — 1,200 × ₹113 = ₹1,35,600, far outside the mainboard band and
+    // entirely correct. A rule that guessed here would flag every SME issue.
+    expect(w04({
+      ...base, board: 'sme', lotSize: 1200, priceFloor: 107, priceCap: 113,
+      carveouts: [{ key: 'marketmaker', basis: 'shares' as const, value: 2_16_000 }],
+    })).toHaveLength(0);
+  });
+});
+
+/**
+ * W05 — the shareholder reservation cap. No record in the catalogue carries a
+ * shareholder carve-out today, so this is a guard for the historical import.
+ * A WARNING because the cap is well attested but its basis (issue size vs
+ * post-issue capital) is the operator's to confirm; the message names it.
+ */
+describe('computeIssue — W05 shareholder reservation cap', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const,
+    lotSize: 70, priceFloor: 190, priceCap: 200,
+    ofs: { basis: 'shares' as const, value: 1_00_00_000 },
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  };
+  const w05 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'W05');
+
+  it('accepts a reservation at or under a tenth of the issue', () => {
+    expect(w05(base)).toHaveLength(0); // none entered at all
+    expect(w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'shares', value: 10_00_000 }] })).toHaveLength(0);
+  });
+
+  it('warns above it, and says what the figure works out to', () => {
+    const over = w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'shares', value: 15_00_000 }] });
+    expect(over).toHaveLength(1);
+    expect(over[0].severity).toBe('warning');
+    expect(over[0].message).toMatch(/15% of the issue/);
+    expect(over[0].message).toMatch(/caps it at 10%/);
+  });
+
+  it('reads a ₹ Cr carve-out at the primary price', () => {
+    // ₹40 Cr at ₹200 = 20,00,000 shares = 20% of a 1,00,00,000-share offer
+    expect(w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'amount', value: 40 }] })).toHaveLength(1);
+  });
+
+  it('says nothing about the EMPLOYEE quota, whose cap is a different denominator', () => {
+    // ICDR measures the employee cap against POST-ISSUE CAPITAL, which this
+    // engine is never given. A check against the wrong denominator is worse
+    // than none.
+    const r = computeIssue({ ...base, carveouts: [{ key: 'employee', basis: 'shares', value: 50_00_000 }] } as any);
+    expect(r.issues.filter((x) => x.code === 'W05')).toHaveLength(0);
+  });
+});
