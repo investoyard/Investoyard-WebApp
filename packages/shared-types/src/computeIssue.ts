@@ -494,7 +494,21 @@ function validateInputs(inp: IssueInputs, pack: RulePack, mechanism: Mechanism):
           });
         } else {
           const expectedBig = ((big + small) * rBig) / (rBig + rSmall);
-          if (Math.abs(big - expectedBig) > 0.001) {
+          /* Tolerance 0.005 pp, not 0.001 (2026-09-30). W01 exists to flag an
+             UNUSUAL split — the issuer's business, hence a warning — and at
+             0.001 it could not tell that apart from an operator writing two
+             decimals. A 2:1 quota only lands on 2 dp when the NII total divides
+             by 3, so SKYWAYS 10.03/5.01, VNL 19.33/9.67 and ANNU 26.67/13.33
+             each missed by **exactly 0.00333 pp**, the same figure every time,
+             and warned on correct data that could only be silenced by typing
+             10.0267.
+
+             0.005 is still three orders of magnitude tighter than anything
+             meaningful: a genuinely off-ratio 20/16 misses by 4 pp, and even a
+             0.01 pp slip misses by 0.0057 and still warns. The TRANSPOSITION
+             case is untouched — Big < Small is B02 above, a blocker, on its own
+             path, so widening this cannot weaken it. */
+          if (Math.abs(big - expectedBig) > 0.005) {
             out.push({
               code: 'W01', severity: 'warning', field: 'reservation.hni',
               message: `HNI splits ${big}% / ${small}%, not the customary ${rBig}:${rSmall} `

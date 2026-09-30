@@ -831,3 +831,46 @@ describe('computeIssue — B18 waits for a reservation table', () => {
     })).toHaveLength(0);
   });
 });
+
+/**
+ * W01 flags an UNUSUAL NII split, which is the issuer's business and so a
+ * warning. Its tolerance has to be loose enough to tell that apart from an
+ * operator writing two decimals: a 2:1 quota only lands on 2 dp when the NII
+ * total divides by 3, and the three catalogue records that tripped it each
+ * missed by exactly 0.00333 pp.
+ */
+describe('computeIssue — W01 tolerates 2-decimal entry, not a real off-ratio split', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const, lotSize: 70,
+    priceFloor: 190, priceCap: 200, issueSizeCr: 500,
+  };
+  const w01 = (hni: number, hni2: number, rest: Record<string, number> = {}) =>
+    computeIssue({ ...base, reservation: { qib: 50, retail: 35, hni, hni2, ...rest } })
+      .issues.filter((x) => x.code === 'W01');
+
+  it('stays quiet on the three real records that only rounded', () => {
+    expect(w01(10.03, 5.01)).toHaveLength(0);   // SKYWAYS
+    expect(w01(19.33, 9.67)).toHaveLength(0);   // VNL
+    expect(w01(26.67, 13.33)).toHaveLength(0);  // ANNU
+  });
+
+  it('stays quiet on a split that IS exactly 2:1, at any size', () => {
+    expect(w01(10, 5)).toHaveLength(0);
+    expect(w01(24, 12)).toHaveLength(0); // a legal 6(1) issuer offering more NII
+  });
+
+  it('still warns on a genuinely off-ratio split', () => {
+    expect(w01(20, 16)).toHaveLength(1);
+    expect(w01(20, 16)[0].severity).toBe('warning');
+    // and on a slip an order of magnitude smaller than that
+    expect(w01(10.13, 5.01)).toHaveLength(1);
+  });
+
+  it('leaves the TRANSPOSITION case to B02, which blocks', () => {
+    const r = computeIssue({ ...base, reservation: { qib: 50, retail: 35, hni: 5, hni2: 10 } });
+    expect(r.issues.filter((x) => x.code === 'W01')).toHaveLength(0);
+    const b02 = r.issues.filter((x) => x.code === 'B02' && /transposed/.test(x.message));
+    expect(b02).toHaveLength(1);
+    expect(b02[0].severity).toBe('blocking');
+  });
+});
