@@ -15,7 +15,7 @@ import { AnchorReviewModal } from '@/components/AnchorReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, type IssueInputs, type LegBasis, type CarveoutBasis } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, offerTotals, totalSharesAt, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -270,7 +270,25 @@ function legSumCrOf(f: FormState): string {
 }
 
 /**
- * The offer total in SHARES, from the ₹ total at the upper band.
+ * FormState in the shape `offerTotals()` reads. The engine's resolver is the
+ * authority; this screen only translates its own field names into it.
+ */
+function offerSourceOf(f: FormState): OfferSource {
+  return {
+    fresh: { basis: f.freshBasis, value: f.freshValue },
+    ofs: { basis: f.ofsBasis, value: f.ofsValue },
+    issueSizeCr: f.issueSizeCr,
+    totalShares: f.totalShares,
+    carveouts: { employee: f.cvEmployee, shareholder: f.cvShareholder, marketmaker: f.cvMarketMaker },
+    carveoutBasis: { employee: f.cvEmployeeBasis, shareholder: f.cvShareholderBasis, marketmaker: f.cvMarketMakerBasis },
+    employeeDiscount: f.employeeDiscount,
+    shareholderDiscount: f.shareholderDiscount,
+  };
+}
+
+/**
+ * The offer total in SHARES at the upper band — what the *Total issue size
+ * (shares)* field fills itself with.
  *
  * ROUNDED, never floored to a lot: this is the count the offer document PRINTS,
  * and real offers are routinely not lot-aligned (ESDS states 1,76,47,058
@@ -279,18 +297,7 @@ function legSumCrOf(f: FormState): string {
  * the OFFERED figure rounds, the ALLOCATION figure floors.
  */
 function derivedTotalSharesOf(f: FormState): number {
-  const price = fnum(f.priceBandMax) || fnum(f.priceBandMin);
-  const cr = fnum(legSumCrOf(f) || f.issueSizeCr);
-  if (!(price > 0) || !(cr > 0)) return 0;
-  /* A carve-out sold at a DISCOUNT buys more shares per rupee, so the offer's
-     total share count is NOT simply ₹ ÷ band price. RUNWALENTR: ₹500 Cr with
-     1,20,275 employee shares at ₹291 comes to 1,63,98,963 shares, not the
-     1,63,93,442 that ₹500 Cr ÷ ₹305 gives — and Chittorgarh publishes
-     1,63,98,962. Take the carve-out's rupees out first, divide the rest at the
-     band price, then add the carve-out's shares back. */
-  const cv = carveoutAt(f, price);
-  const publicShares = Math.round((cr * 1e7 - cv.rupees) / price);
-  return publicShares > 0 ? publicShares + cv.shares : 0;
+  return totalSharesAt(offerSourceOf(f), fnum(f.priceBandMax) || fnum(f.priceBandMin));
 }
 
 /**
@@ -348,20 +355,18 @@ function carveoutAt(f: FormState, price: number): { shares: number; rupees: numb
  * again. `totalShares` is now always populated, so all three divide one number.
  */
 function offerTotalsOf(f: FormState): { cap: number; floor: number } {
-  const pMax = fnum(f.priceBandMax) || fnum(f.priceBandMin);
-  const pMin = fnum(f.priceBandMin) || pMax;
-  const stated = fnum(f.totalShares) || derivedTotalSharesOf(f);
-  if (!(stated > 0) || !(pMax > 0)) return { cap: 0, floor: 0 };
-  /* NET of carve-outs. Every percentage in the reservation table is a
-     percentage of the NET offer — ICDR takes preferential reservations off the
-     top first — and Chittorgarh states it outright for RUNWALENTR: total
+  /* NET of carve-outs at EACH band. Every percentage in the reservation table
+     is a percentage of the NET offer — ICDR takes preferential reservations off
+     the top first — and Chittorgarh states it outright for RUNWALENTR: total
      1,63,98,962, employee 1,20,275, net 1,62,78,687, and QIB's 81,39,344 is
      50% of the NET (49.63% of the total). Deriving from the gross put 57,376
-     shares too many in QIB on a live issue. */
-  const net = stated - carveoutAt(f, pMax).shares;
-  if (!(net > 0)) return { cap: 0, floor: 0 };
-  // The floor-band count is the same MONEY buying cheaper shares.
-  return { cap: net, floor: pMin > 0 ? (net * pMax) / pMin : net };
+     shares too many in QIB on a live issue.
+
+     The floor band used to be `net × cap ÷ floor` — "the same MONEY buying
+     cheaper shares" — which is true only when every leg is priced in rupees.
+     See `offerTotals()` for what that cost. */
+  const t = offerTotals(offerSourceOf(f), fnum(f.priceBandMax) || fnum(f.priceBandMin), fnum(f.priceBandMin));
+  return { cap: t.cap, floor: t.floor };
 }
 
 /** What Autofill writes and what the drift check must compare against. */

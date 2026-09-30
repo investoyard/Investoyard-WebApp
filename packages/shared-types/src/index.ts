@@ -14,6 +14,7 @@ export * from './stage';
 export * from './holidays';
 export * from './carveouts';
 export * from './minApplication';
+export * from './offerTotals';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';

@@ -29,6 +29,10 @@
  *   node scripts/refill-derived-reservation.js --only ROBOKIDZ --apply
  */
 const { PrismaClient } = require('@prisma/client');
+// The ONE resolver, shared with the admin form. It lived in `IpoForm.tsx`, was
+// copied in here, and the copy is exactly how a wrong floor band survives in
+// two places — see `offerTotals.ts`.
+const { offerTotals } = require('../packages/shared-types/dist/index.js');
 
 const prisma = new PrismaClient();
 const args = process.argv.slice(2);
@@ -38,62 +42,20 @@ const ONLY = (() => { const i = args.indexOf('--only'); return i >= 0 ? args[i +
 /** Loose numeric read — the form's inputs strip punctuation, a paste does not. */
 const fnum = (v) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
 
-const CARVEOUT_KEYS = ['employee', 'shareholder', 'marketmaker'];
 /** The rows the carve-out OWNS — their count comes off the top, never from a pct. */
 const CARVEOUT_ROWS = ['employee', 'shareholder'];
 
-/** Fresh + OFS in ₹ Cr. A leg may be stated in shares, hence the price. */
-function legSumCr(extra, price) {
-  const leg = (l) => {
-    if (!l || l.basis === 'none') return 0;
-    if (l.basis === 'amount') return fnum(l.value);
-    return price ? (fnum(l.value) * price) / 1e7 : 0;
-  };
-  const sum = leg(extra.fresh) + leg(extra.ofs);
-  return sum > 0 ? sum : 0;
-}
-
-/** ONE carve-out at a price — shares AND rupees, which a discount makes disagree. */
-function carveoutOneAt(extra, key, price) {
-  if (!(price > 0)) return { shares: 0, rupees: 0 };
-  const v = fnum((extra.carveouts || {})[key]);
-  if (v <= 0) return { shares: 0, rupees: 0 };
-  const basis = ((extra.carveoutBasis || {})[key]) ?? 'amount'; // legacy default
-  const discount = key === 'employee' ? extra.employeeDiscount
-    : key === 'shareholder' ? extra.shareholderDiscount : '';
-  const p = price - fnum(discount);
-  const at = p > 0 ? p : price;
-  if (basis === 'shares') { const s = Math.round(v); return { shares: s, rupees: s * at }; }
-  const r = v * 1e7;
-  return { shares: Math.round(r / at), rupees: r };
-}
-
-const carveoutAt = (extra, price) => CARVEOUT_KEYS.reduce((a, k) => {
-  const c = carveoutOneAt(extra, k, price);
-  return { shares: a.shares + c.shares, rupees: a.rupees + c.rupees };
-}, { shares: 0, rupees: 0 });
-
-/**
- * The offer total in SHARES. ROUNDED, never floored to a lot — this is the
- * count the offer document prints. A carve-out sold at a discount buys more
- * shares per rupee, so it cannot simply be ₹ ÷ band price.
- */
-function derivedTotalShares(extra, price) {
-  const cr = legSumCr(extra, price) || fnum(extra.issueSizeCr);
-  if (!(price > 0) || !(cr > 0)) return 0;
-  const cv = carveoutAt(extra, price);
-  const pub = Math.round((cr * 1e7 - cv.rupees) / price);
-  return pub > 0 ? pub + cv.shares : 0;
-}
-
-/** The two totals every percentage divides out of — NET of carve-outs. */
-function offerTotals(extra, pMax, pMin) {
-  const stated = fnum(extra.totalShares) || derivedTotalShares(extra, pMax);
-  if (!(stated > 0) || !(pMax > 0)) return { cap: 0, floor: 0, stated: 0 };
-  const net = stated - carveoutAt(extra, pMax).shares;
-  if (!(net > 0)) return { cap: 0, floor: 0, stated };
-  return { cap: net, floor: pMin > 0 ? (net * pMax) / pMin : net, stated };
-}
+/** A stored record in the shape `offerTotals()` reads. */
+const offerSourceOf = (extra) => ({
+  fresh: extra.fresh,
+  ofs: extra.ofs,
+  issueSizeCr: extra.issueSizeCr,
+  totalShares: extra.totalShares,
+  carveouts: extra.carveouts,
+  carveoutBasis: extra.carveoutBasis,
+  employeeDiscount: extra.employeeDiscount,
+  shareholderDiscount: extra.shareholderDiscount,
+});
 
 const derivedCountAt = (total, pct) => Math.round((total * pct) / 100);
 
@@ -116,7 +78,7 @@ const fmt = (n) => Number(n).toLocaleString('en-IN');
     if (!resv || typeof resv !== 'object') continue;
     const pMax = Number(ipo.priceBandMax) || Number(ipo.priceBandMin) || 0;
     const pMin = Number(ipo.priceBandMin) || pMax;
-    const totals = offerTotals(extra, pMax, pMin);
+    const totals = offerTotals(offerSourceOf(extra), pMax, pMin);
     if (!(totals.cap > 0)) { if (ONLY) console.log(`${ipo.symbol}: no usable offer total — skipped.`); continue; }
 
     const patch = {};
@@ -140,16 +102,16 @@ const fmt = (n) => Number(n).toLocaleString('en-IN');
     // The form persists the derived total so the public page, computeIssue and
     // Autofill all divide ONE number. A typed count is never touched.
     const statedTyped = fnum(extra.totalShares) > 0;
-    if (!statedTyped && totals.stated > 0) {
-      patch.totalShares = String(totals.stated);
+    if (!statedTyped && totals.totalCap > 0) {
+      patch.totalShares = String(totals.totalCap);
       patch.totalSharesSource = 'derived';
-      lines.push(`    totalShares (blank) -> ${fmt(totals.stated)}  [derived]`);
+      lines.push(`    totalShares (blank) -> ${fmt(totals.totalCap)}  [derived]`);
     }
     if (!Object.keys(next).length && !Object.keys(patch).length) continue;
     if (Object.keys(next).length) patch.shareResv = { ...resv, ...next };
 
     changed++;
-    console.log(`${ipo.symbol}  band ₹${pMin}–₹${pMax}  net offer ${fmt(totals.cap)} of ${fmt(totals.stated)} (carve-out ${fmt(carveoutAt(extra, pMax).shares)})`);
+    console.log(`${ipo.symbol}  band ₹${pMin}–₹${pMax}  net offer ${fmt(totals.cap)} of ${fmt(totals.totalCap)} (carve-out ${fmt(totals.totalCap - totals.cap)})`);
     lines.forEach((l) => console.log(l));
 
     if (APPLY) {
