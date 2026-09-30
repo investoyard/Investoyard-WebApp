@@ -686,19 +686,46 @@ export function computeIssue(inp: IssueInputs): IssueDerived {
    * B18 — SME must reserve a market-maker portion. Checked HERE rather than in
    * validateInputs because a carve-out entered in ₹ Cr only becomes a
    * percentage once the offer has resolved at a price.
+   *
+   * IT ONLY FIRES ONCE A RESERVATION TABLE EXISTS, for the same reason B01
+   * counts `pcts.length` before complaining about the split: a record nobody
+   * has entered an offer structure into is not a record with a market-maker
+   * problem. Without this guard it fired **506 times, and 505 of those were on
+   * bare imported rows with NO reservation table at all** — records carrying a
+   * symbol, a band, a lot and an issue size and nothing else. Measured
+   * 2026-09-30: of the 752 SME records with no market maker, **zero** have a
+   * reservation table, **zero** have a stated share count, and **zero** can
+   * back-solve one, so the figure is not recoverable from anything we hold —
+   * only the RHP has it.
+   *
+   * The signal was worth rescuing rather than deleting. B18 was the ONLY code
+   * firing anywhere in the SME set, so the one record where the market maker is
+   * genuinely wrong — KHERIAAUTO, ₹2 Cr against a ₹44 Cr issue, **4.55%** and
+   * under the floor — sat invisible among 505 records where it is the least of
+   * what is missing. Guarded, B18 fires once, and that once is real.
+   *
+   * "No reservation table at all" is the completeness score's job, not a
+   * validation rule's; a blocker that shouts about the smallest gap while
+   * staying silent on the largest is worse than no blocker.
    */
-  if (primary && pack.marketMakerMinPct > 0) {
+  const hasReservation = Object.keys(inp.reservation ?? {}).some((k) => num(inp.reservation[k]) > 0);
+  if (primary && pack.marketMakerMinPct > 0 && hasReservation) {
+    /* The OFFERED basis, not the floored allocation one. "At least 5% of the
+       issue" is a question about what the issue RESERVES, and flooring the
+       market maker to a lot before measuring it biased the test downward: a
+       reservation of exactly 5% lands just under after the floor and B18 fired
+       on a correct record. Its own test caught that. Same split as everywhere
+       else — the offered figure rounds, the allocation figure floors. */
     const mmShares = (inp.carveouts ?? [])
       .filter((c) => /market/i.test(c.key))
       .reduce((a, c) => {
         const v = num(c.value);
         if (v <= 0) return a;
-        const lot = num(inp.lotSize);
-        return a + (c.basis === 'shares' ? floorToLot(v, lot)
-          : c.basis === 'pct_of_offer' ? floorToLot((primary.totalOfferShares * v) / 100, lot)
-          : floorToLot((v * CR) / primary.price, lot));
+        return a + Math.round(c.basis === 'shares' ? v
+          : c.basis === 'pct_of_offer' ? (primary.totalOfferOffered * v) / 100
+          : (v * CR) / primary.price);
       }, 0);
-    const pct = primary.totalOfferShares > 0 ? (mmShares / primary.totalOfferShares) * 100 : 0;
+    const pct = primary.totalOfferOffered > 0 ? (mmShares / primary.totalOfferOffered) * 100 : 0;
     if (mmShares <= 0) {
       issues.push({
         code: 'B18', severity: 'blocking', field: 'carveouts.marketmaker',

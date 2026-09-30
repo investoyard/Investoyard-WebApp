@@ -783,3 +783,51 @@ describe('computeIssue — the anchor insurer / pension slice', () => {
     expect(fixed.primary?.anchor?.anchorInsPensionShares ?? 0).toBe(0);
   });
 });
+
+/**
+ * B18 only speaks once there is an offer structure to attach a market maker to.
+ *
+ * Without that guard it fired 506 times across the SME catalogue and 505 of
+ * those were bare imported rows with no reservation table at all — so the one
+ * record where the market maker is genuinely wrong was invisible.
+ */
+describe('computeIssue — B18 waits for a reservation table', () => {
+  const bare = {
+    board: 'sme' as const, mechanism: 'book_built' as const, lotSize: 1200,
+    priceFloor: 96, priceCap: 101, issueSizeCr: 44,
+    reservation: {}, // nothing entered yet — the imported-row shape
+  };
+  const b18 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'B18');
+
+  it('stays silent on a record with no reservation table', () => {
+    expect(b18(bare)).toHaveLength(0);
+    // ...and on one where every percentage is present but zero.
+    expect(b18({ ...bare, reservation: { qib: 0, hni: 0, hni2: 0, retail: 0 } })).toHaveLength(0);
+  });
+
+  it('still blocks once a split exists and no market maker does', () => {
+    const withSplit = { ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 } };
+    expect(b18(withSplit)).toHaveLength(1);
+    expect(b18(withSplit)[0].severity).toBe('blocking');
+    expect(b18(withSplit)[0].message).toMatch(/None is entered/);
+  });
+
+  it('catches a market maker UNDER the floor — the case that was buried', () => {
+    // KHERIAAUTO: ₹2 Cr against a ₹44 Cr issue is 4.55%, short of 5%.
+    const kheria = {
+      ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+      carveouts: [{ key: 'marketmaker', basis: 'amount' as const, value: 2 }],
+    };
+    const hit = b18(kheria);
+    expect(hit).toHaveLength(1);
+    expect(hit[0].message).toMatch(/4\.55% of the issue/);
+    expect(hit[0].message).toMatch(/at least 5%/);
+  });
+
+  it('accepts one that meets the floor', () => {
+    expect(b18({
+      ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+      carveouts: [{ key: 'marketmaker', basis: 'amount', value: 2.2 }],
+    })).toHaveLength(0);
+  });
+});
