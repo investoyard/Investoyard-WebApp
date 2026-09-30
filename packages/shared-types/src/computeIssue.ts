@@ -157,6 +157,17 @@ export interface ScenarioResult {
      *  32,55,753 against the exchange's 32,55,739 (operator, 2026-09-26). */
     netQibOffered: number;
     anchorMfShares: number; qibMfShares: number;
+    /**
+     * The SECOND reserved slice of the anchor book, for domestic life
+     * insurers and pension funds. With the mutual-fund third it accounts for
+     * 40% of the anchor portion.
+     *
+     * Derived from `RulePack.anchorInsPensionPct`, which carries the same
+     * `-- VERIFY` caveat as `anchorMfPct` beside it: both are regulatory
+     * percentages living in source rather than in the versioned seed config
+     * the brief asks for, so a SEBI amendment is still a deploy.
+     */
+    anchorInsPensionShares: number;
     /** what the book actually took, at the price it struck — reported, not derived */
     allocatedShares?: number; allocationPrice?: number; allocatedAmount?: number;
   };
@@ -359,6 +370,12 @@ function computeScenario(inp: IssueInputs, pack: RulePack, price: number): Scena
       anchorMfShares: floorToLot((anchorShares * anchorMfPct) / 100, lot),
       // … and 5% of what is left of QIB after the anchor is taken out
       qibMfShares: floorToLot((netQibShares * pack.mfPctOfNetQib) / 100, lot),
+      /* … and a second reserved slice of the anchor book for domestic life
+         insurers and pension funds. With the mutual-fund third this accounts
+         for 40% of the anchor portion. Both dividends of the ANCHOR book use
+         the allocation basis, as `anchorMfShares` does — a reserved slice is
+         an allocation question, not a published one (operator ruling). */
+      anchorInsPensionShares: floorToLot((anchorShares * pack.anchorInsPensionPct) / 100, lot),
       allocatedShares: num(inp.anchor?.shares) || undefined,
       allocationPrice: num(inp.anchor?.price) || undefined,
       allocatedAmount: num(inp.anchor?.shares) && num(inp.anchor?.price)

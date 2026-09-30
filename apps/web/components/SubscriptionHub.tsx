@@ -52,7 +52,10 @@ const fmtCr = (n: number) => `₹${n >= 1000 ? Math.round(n).toLocaleString('en-
  * Defined once because the hub card and the detail panel each had their own
  * copy of this literal, so dropping a category meant remembering to do it twice.
  */
-const APP_WISE_ORDER: Record<string, number> = { hni: 0, hni2: 1, retail: 2 };
+/* Employee, shareholder and policyholder are back (2026-09-30). They left on
+   2026-09-28 because Req 1x could only print 0 without a minimum bid; the
+   demand shows they bid in whole lots, so the figure is real. */
+const APP_WISE_ORDER: Record<string, number> = { hni: 0, hni2: 1, retail: 2, employee: 3, shareholder: 4, policyholder: 5 };
 
 /* `fmtDateTime` ("18-Sep-2026 4:16 PM", the format sir chose) moved to
    shared-types on 2026-09-28 — the IPO card's subscription tooltip needs the

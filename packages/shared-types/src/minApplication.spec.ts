@@ -75,14 +75,39 @@ describe('mainboard — retail is a range, and bHNI is the ₹10 L band', () => 
   });
 });
 
-describe('categories with no regulatory minimum', () => {
-  it('returns 0 rather than guessing', () => {
-    // Employee / shareholder bidding patterns vary too widely to derive an
-    // "applications for 1x" — 0 means not derivable, and callers must not
-    // divide by it.
-    for (const cat of ['employee', 'shareholder', 'other', 'total']) {
+describe('the reserved quotas bid in ONE lot', () => {
+  /**
+   * Settled with data, not argument (2026-09-30). These returned 0 — "no
+   * standard min-bid rule" — which made `Req 1x` print 0 and was the whole
+   * reason employee and shareholder left the Application-wise table on
+   * 2026-09-28. The demand says otherwise: every employee row carrying real
+   * share figures is an exact multiple of the lot (4 of 4, retail 20 of 20 as
+   * the control). And the minimum is ONE lot, not two — three of those four
+   * are not multiples of two lots, which a two-lot minimum could not produce.
+   */
+  const MAINBOARD = { lotSize: 55, priceCap: 272 };
+
+  it('is one lot for employee, shareholder and policyholder', () => {
+    for (const cat of ['employee', 'shareholder', 'policyholder']) {
+      expect(minApplicationLots(cat, MAINBOARD)).toBe(1);
+      expect(minApplicationShares(cat, MAINBOARD)).toBe(55);
+      // SME is UNEVIDENCED — no SME issue carries a reserved quota — so one lot
+      // is the conservative floor there too, since no bid can be smaller.
+      expect(minApplicationShares(cat, SAI_URJA)).toBe(1200);
+    }
+  });
+
+  it('reproduces the real employee demand as whole lots', () => {
+    // RUNWALENTR: 1,12,259 employee shares against a lot of 49.
+    expect(1_12_259 % minApplicationShares('employee', { lotSize: 49, priceCap: 305 })).toBe(0);
+    // ...and NOT a multiple of two lots, which is what rules out a 2-lot minimum.
+    expect(1_12_259 % 98).not.toBe(0);
+  });
+
+  it('still returns 0 where there is genuinely no category', () => {
+    for (const cat of ['other', 'total']) {
       expect(minApplicationShares(cat, SAI_URJA)).toBe(0);
-      expect(minApplicationShares(cat, { lotSize: 55, priceCap: 272 })).toBe(0);
+      expect(minApplicationShares(cat, MAINBOARD)).toBe(0);
     }
   });
 

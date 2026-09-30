@@ -749,3 +749,37 @@ describe('computeIssue — W05 shareholder reservation cap', () => {
     expect(r.issues.filter((x) => x.code === 'W05')).toHaveLength(0);
   });
 });
+
+/**
+ * The anchor book carries TWO reserved slices, not one: a third for domestic
+ * mutual funds and a further 6.67% for domestic life insurers and pension
+ * funds — 40% of the anchor portion between them. Both are ALLOCATION figures
+ * (floored to a lot), because a reserved slice is an allocation question and
+ * not a published one, which is the same ruling `anchorMfShares` follows.
+ */
+describe('computeIssue — the anchor insurer / pension slice', () => {
+  const r = () => computeIssue(MVELECTRO).primary!.anchor!;
+
+  it('is 6.67% of the anchor book, floored to a lot', () => {
+    const a = r();
+    expect(a.anchorInsPensionShares).toBe(floorToLot(a.shares * 0.0667, MVELECTRO.lotSize!));
+  });
+
+  it('is a DIFFERENT figure from either mutual-fund one', () => {
+    const a = r();
+    expect(a.anchorInsPensionShares).not.toBe(a.anchorMfShares);
+    expect(a.anchorInsPensionShares).not.toBe(a.qibMfShares);
+    // the MF third is roughly five times the insurer slice (33.33 vs 6.67)
+    expect(a.anchorMfShares).toBeGreaterThan(a.anchorInsPensionShares * 4);
+  });
+
+  it('and the two anchor slices together stay inside 40% of the book', () => {
+    const a = r();
+    expect(a.anchorMfShares + a.anchorInsPensionShares).toBeLessThanOrEqual(a.shares * 0.4);
+  });
+
+  it('is zero on a pack with no anchor round', () => {
+    const fixed = computeIssue({ ...MVELECTRO, mechanism: 'fixed_price' });
+    expect(fixed.primary?.anchor?.anchorInsPensionShares ?? 0).toBe(0);
+  });
+});

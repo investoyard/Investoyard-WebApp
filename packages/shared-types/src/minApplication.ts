@@ -41,6 +41,26 @@ export function minApplicationLots(category: string, inp: MinApplicationInputs):
   const perLot = lot * cap;
   if (perLot <= 0) return 0;
 
+  /*
+   * The RESERVED quotas bid in ONE LOT, and this was settled with data rather
+   * than argument (2026-09-30). These used to return 0 — "no standard min-bid
+   * rule" — which made `Req 1x` print 0 and was the whole reason employee and
+   * shareholder were dropped from the Application-wise table on 2026-09-28.
+   *
+   * The demand says otherwise. Every employee row carrying real share data is
+   * an EXACT multiple of the lot (4 of 4, with retail 20 of 20 as the control),
+   * so employees bid in whole lots and the minimum is at least one. And it is
+   * exactly one, not two: three of those four are NOT multiples of two lots
+   * (NSE, NITYAS, RUNWALENTR), which a two-lot minimum could not produce.
+   * Average bid runs 1.47 to 7.80 lots.
+   *
+   * ONLY MAINBOARD IS EVIDENCED — all four rows are mainboard, and no SME issue
+   * in the catalogue carries an employee quota. One lot is the conservative
+   * floor on either board, since no bid can be smaller; revisit if an SME issue
+   * with a reserved quota ever appears.
+   */
+  if (category === 'employee' || category === 'shareholder' || category === 'policyholder') return 1;
+
   if (inp.sme) {
     // Post-2024 SEBI SME framework: the individual bid is two lots.
     const ind = 2;

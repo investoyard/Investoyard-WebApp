@@ -2201,6 +2201,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
                     value={derived.primary?.anchor ? derived.primary.anchor.qibMfShares.toLocaleString('en-IN') : ''} />
                 </Field>
+                {/* The anchor book's SECOND reserved slice. With the mutual-fund
+                    third it accounts for 40% of the anchor portion. */}
+                <Field label="Anchor insurer / pension shares" hint={`derived — ${derived.rulePack.anchorInsPensionPct}% of the anchor book`}>
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.anchorInsPensionShares.toLocaleString('en-IN') : ''} />
+                </Field>
                 <Field label="Lock-in tranche 1 (%)" hint="usually 50%"><input className="input mono" value={form.lockin1Pct} placeholder="50" onChange={(e) => set({ lockin1Pct: e.target.value.replace(/[^\d.]/g, '') })} /></Field>
                 <Field label="Tranche 1 lock-in (days)" hint="usually 30"><input className="input mono" value={form.lockin1Days} placeholder="30" onChange={(e) => set({ lockin1Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
                 <Field label="Tranche 2 lock-in (days)" hint="usually 90"><input className="input mono" value={form.lockin2Days} placeholder="90" onChange={(e) => set({ lockin2Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
