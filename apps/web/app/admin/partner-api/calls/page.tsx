@@ -207,7 +207,18 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                 const pct = pctOf(r.failed, r.calls);
                 return (
                   <tr key={r.key}>
-                    <td className="mono" style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{r.key}</td>
+                    {/* By day, month and IPO the key IS the label — a date or a
+                        symbol. By PARTNER it is a tenant uuid, which is not a
+                        thing anyone can read: the report showed
+                        `4fa93bed-54d3-…` where the partner's name belonged. The
+                        API has always resolved the name (see `tenantNames`); it
+                        was only ever rendered for the IPO grouping, where it
+                        gets a column of its own. */}
+                    <td className={sum.by === 'partner' ? '' : 'mono'}
+                      style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                      title={sum.by === 'partner' ? r.key : undefined}>
+                      {sum.by === 'partner' ? (r.label ?? r.key) : r.key}
+                    </td>
                     {sum.by === 'ipo' && (
                       /* No name means the symbol is not in the catalogue —
                          which IS the diagnosis for every failure on that row. */

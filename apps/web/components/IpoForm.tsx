@@ -1104,6 +1104,28 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   /** derived row for a reservation key, or undefined when it cannot be computed */
   const derivedRow = (key: string) => shown?.categories.find((c: any) => c.key === key);
 
+  /**
+   * What the Share Count column ACTUALLY SHOWS for one split row: the stored
+   * count when there is one, the percentage derivation otherwise.
+   *
+   * The Total must sum THESE. It used to re-derive every row from its
+   * percentage, so editing a COUNT left the cell showing the new figure while
+   * the Total went on adding the old derived one — the operator's report, and
+   * the same fault the 2026-09-25 note was written about in a different guise.
+   * Editing a PERCENTAGE always worked, which is why it looked intermittent.
+   *
+   * `field` picks the band: `sharesUpper` against the cap total, `sharesLower`
+   * against the floor total.
+   */
+  const shownCount = (key: string, field: 'sharesUpper' | 'sharesLower', total: number): number => {
+    const row = form.shareResv[key];
+    if (!row) return 0;
+    const stored = Number(String(row[field] ?? '').replace(/[^\d]/g, ''));
+    if (Number.isFinite(stored) && stored > 0) return stored;
+    const pct = fnum(row.pct);
+    return pct > 0 && total > 0 ? derivedCountAt(total, pct) : 0;
+  };
+
   /** The reservation table's Total row — percentages, shares and rupees. */
   const resvTotals = (() => {
     const cats = shown?.categories ?? [];
@@ -2098,7 +2120,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     {shown && (
                       <tr className="resv-total">
                         {/* 6 columns: Category · % · Upper · Lower · Amount · Forms */}
-                        <td style={{ fontWeight: 700 }}>Total</td>
+                        <td style={{ fontWeight: 700 }} title="Sums the split rows only. A preferential reservation comes off the top BEFORE the split, so the carve-out rows above are shown for information and excluded here.">Total <span className="muted" style={{ fontWeight: 400 }}>(net offer)</span></td>
                         <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.pct}</td>
                         {/* Sum the column ACTUALLY SHOWN, not `computeIssue`'s
                             scenarios. The engine holds a stated share count
@@ -2113,14 +2135,22 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                             that does not equal its own column is a bug whatever
                             the right model is. */}
                         {(() => {
-                          const sum = (total: number) => RESV_ROWS.reduce((s, r) => {
-                            const pct = fnum(form.shareResv[r.key]?.pct);
-                            return pct > 0 && total > 0 ? s + derivedCountAt(total, pct) : s;
-                          }, 0);
+                          /* Sums the SPLIT rows only, so it equals the NET
+                             offer — the same thing the percentages above add to
+                             100% of (operator's call, 2026-09-30). The carve-out
+                             rows are shown in this table but excluded here on
+                             purpose: ICDR takes a preferential reservation off
+                             the top BEFORE the split, so adding them would give
+                             a figure the percentages cannot reconcile to. The
+                             row says "net offer" rather than "Total" so that
+                             exclusion reads as deliberate, not as an omission. */
+                          const sum = (field: 'sharesUpper' | 'sharesLower', total: number) =>
+                            RESV_ROWS.reduce((s, r) => (CARVEOUT_ROWS.includes(r.key)
+                              ? s : s + shownCount(r.key, field, total)), 0);
                           return (
                             <>
-                              <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.cap).toLocaleString('en-IN')}</td>
-                              {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{sum(offerTotals.floor).toLocaleString('en-IN')}</td>}
+                              <td className="r mono" style={{ fontWeight: 700 }}>{sum('sharesUpper', offerTotals.cap).toLocaleString('en-IN')}</td>
+                              {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{sum('sharesLower', offerTotals.floor).toLocaleString('en-IN')}</td>}
                             </>
                           );
                         })()}
