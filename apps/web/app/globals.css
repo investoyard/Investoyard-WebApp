@@ -936,6 +936,12 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .dws-day { font-weight: 700; }
 .dws-day::after { content: " · "; font-weight: 400; color: var(--text-faint); }
 .dws-date { color: var(--text-muted); }
+/* Applications RECEIVED, sitting behind the multiple in the same cell. Muted
+   and a size down so the × stays the figure the eye lands on — the count is
+   context for it, not a second headline. Same `dws-` prefix as its siblings;
+   `globals.css` is one sheet and an unprefixed name here would be the fifth
+   collision this file has caused. */
+.dws-apps { color: var(--text-muted); font-size: 11.5px; font-weight: 400; }
 .fin-tab tbody tr:hover { background: var(--surface-2); }
 .fin-tab td.up { color: var(--pos); font-weight: 600; }
 

@@ -483,10 +483,45 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         const istNow = this.istParts();
         const day = istNow.ymd;
         const pick = (c: string): number | null => { const s = subs.find((x) => x.category === c); return s ? Number(s.timesSubscribed) : null; };
+        /*
+         * APPLICATION-WISE history (operator ask, 2026-09-30). Until now these
+         * logs carried `timesSubscribed` and nothing else, so the day-wise and
+         * hourly tables could only ever show demand by SHARES — the figures
+         * were already on `SubRow`, they just never reached the log.
+         *
+         * ONE NESTED KEY, not eight more flat ones. `apps` is invisible to every
+         * existing reader, keeps the by-shares shape byte-identical, and is
+         * OMITTED ENTIRELY when no category has bid data — which is most of the
+         * catalogue (23 IPOs of the 318 with subscription rows carry a bid
+         * count), so the common case costs nothing.
+         *
+         * `n` is applications RECEIVED, `x` the by-applications multiple. Both,
+         * because they answer different questions and the live Application-wise
+         * panel already shows the pair.
+         *
+         * HISTORY STARTS HERE and cannot be backfilled: every day and hour
+         * already logged has no application figure and never will, and an issue
+         * that has already closed will never gain one.
+         */
+        const appsOf = (c: string): { n: number | null; x: number | null } | null => {
+          const s = subs.find((x) => x.category === c);
+          if (!s || (s.bidCount == null && s.applicationsSubscribed == null)) return null;
+          return {
+            n: s.bidCount ?? null,
+            x: s.applicationsSubscribed != null ? Number(s.applicationsSubscribed) : null,
+          };
+        };
+        const apps = ['total', 'qib', 'nii', 'retail', 'hni', 'hni2', 'employee', 'shareholder']
+          .reduce<Record<string, { n: number | null; x: number | null }>>((a, c) => {
+            const v = appsOf(c);
+            if (v) a[c] = v;
+            return a;
+          }, {});
         const snapshot = {
           total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail'),
           hni: pick('hni'), hni2: pick('hni2'),
           employee: pick('employee'), shareholder: pick('shareholder'),
+          ...(Object.keys(apps).length ? { apps } : {}),
         };
         const subLog = [
           ...(Array.isArray(ex.subLog) ? ex.subLog : []).filter((e: any) => e?.d !== day),

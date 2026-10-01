@@ -304,6 +304,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
             subLog={subLogOf(dayWise)}
             subLogHour={Array.isArray((dayWise as any).extra?.subLogHour) ? (dayWise as any).extra.subLogHour : []}
             closeDate={dayWise.closeDate}
+            sme={dayWise.type === 'sme'}
             bare
           />
           <p style={{ margin: '12px 0 0' }}>

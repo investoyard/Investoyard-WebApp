@@ -22,12 +22,20 @@ import { useState } from 'react';
  * and "Day 3 (Last) · 24 Sept" on the close date (operator ask, 2026-09-23).
  */
 
+/** Applications for one category at one point in time: `n` received, `x` the
+ *  by-applications multiple. Absent entirely on a record the exchange sent no
+ *  bid counts for, and on every entry logged before 2026-09-30. */
+interface AppCell { n?: number | null; x?: number | null }
+
 interface DayEntry {
   d?: string; qib?: number | null; nii?: number | null; retail?: number | null;
   hni?: number | null; hni2?: number | null; employee?: number | null;
   shareholder?: number | null; total?: number | null;
+  apps?: Record<string, AppCell> | null;
 }
 interface HourEntry extends DayEntry { t?: string }
+
+type View = 'shares' | 'apps';
 
 const fmtDay = (d?: string) =>
   d && /^\d{4}-\d{2}-\d{2}$/.test(d)
@@ -36,8 +44,26 @@ const fmtDay = (d?: string) =>
 
 const tx = (v?: number | null) => (v != null ? `${v}×` : '—');
 
+/**
+ * One cell in the APPLICATIONS view — the multiple over the count received.
+ * Both, because they answer different questions: the multiple says how
+ * oversubscribed by applications, the count says how many people actually
+ * applied, and the live Application-wise panel already shows the pair.
+ */
+function AppCellView({ c }: { c?: AppCell | null }) {
+  if (!c || (c.x == null && c.n == null)) return <>—</>;
+  return (
+    <>
+      {c.x != null ? `${c.x}×` : '—'}
+      {c.n != null && (
+        <span className="dws-apps"> {c.n.toLocaleString('en-IN')}</span>
+      )}
+    </>
+  );
+}
+
 export function DayWiseSubscription({
-  subLog, subLogHour, closeDate, bare,
+  subLog, subLogHour, closeDate, bare, sme,
 }: {
   subLog: DayEntry[];
   subLogHour: HourEntry[];
@@ -46,8 +72,23 @@ export function DayWiseSubscription({
   /** Drop the `.panel` shell and the heading — for the /subscription modal,
    *  whose own title bar already says whose day-wise this is and how to use it. */
   bare?: boolean;
+  /** SME reads its application count off the Lot Ladder's Reserved column, so
+   *  `AppWisePanel` is hidden there (operator, 2026-09-22) and this toggle
+   *  follows it — one vocabulary, not two. */
+  sme?: boolean;
 }) {
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [view, setView] = useState<View>('shares');
+  /* The toggle appears only when there is something behind it. Application
+     figures reach the log from 2026-09-30 and CANNOT be backfilled, so every
+     day logged before then — and every issue that closed before then — has
+     none, and offering an empty view would be worse than not offering it. */
+  const hasApps = !sme && [...subLog, ...subLogHour].some(
+    (e) => e?.apps && Object.values(e.apps).some((c) => c && (c.x != null || c.n != null)),
+  );
+  const shown: View = hasApps ? view : 'shares';
+  const cell = (e: DayEntry, key: string, sharesVal?: number | null) =>
+    (shown === 'apps' ? <AppCellView c={e.apps?.[key]} /> : <>{tx(sharesVal)}</>);
   // Day numbers come from the row's POSITION in the ascending log, not from a
   // date subtraction: a window that straddles a weekend (Fri close → Tue) would
   // number its three bidding days 1, 4, 5. The poller writes one entry per open
@@ -69,6 +110,19 @@ export function DayWiseSubscription({
     <div className={bare ? undefined : 'panel'} style={bare ? undefined : { marginTop: 14 }}>
       {!bare && (
         <div className="between"><h3>Day-wise subscription</h3><span className="muted" style={{ fontSize: 12 }}>Click a day to see hourly snapshots</span></div>
+      )}
+      {/* A TOGGLE rather than more columns: the table already carries six with
+          bHNI/sHNI nested under NII, and the same component renders inside the
+          /subscription modal, where eleven would not fit. Share-wise and
+          Application-wise are two readings of one thing — the live panels above
+          present them the same way. */}
+      {hasApps && (
+        <div className="seg" style={{ marginTop: bare ? 0 : 10 }} role="group" aria-label="Day-wise measure">
+          <button type="button" className={shown === 'shares' ? 'on' : ''}
+            aria-pressed={shown === 'shares'} onClick={() => setView('shares')}>Share-wise</button>
+          <button type="button" className={shown === 'apps' ? 'on' : ''}
+            aria-pressed={shown === 'apps'} onClick={() => setView('apps')}>Application-wise</button>
+        </div>
       )}
       <div className="fin-scroll" style={{ marginTop: bare ? 0 : 10 }}>
         <table className="fin-tab day-wise-sub">
@@ -112,21 +166,21 @@ export function DayWiseSubscription({
                       </b>
                       <span className="dws-date">{fmtDay(e.d)}</span>
                     </td>
-                    <td className="mono">{tx(e.qib)}</td>
-                    <td className="mono">{tx(e.hni ?? e.nii)}</td>
-                    <td className="mono">{tx(e.hni2)}</td>
-                    <td className="mono">{tx(e.retail)}</td>
-                    <td className="mono" style={{ fontWeight: 700 }}>{tx(e.total)}</td>
+                    <td className="mono">{cell(e, 'qib', e.qib)}</td>
+                    <td className="mono">{cell(e, 'hni', e.hni ?? e.nii)}</td>
+                    <td className="mono">{cell(e, 'hni2', e.hni2)}</td>
+                    <td className="mono">{cell(e, 'retail', e.retail)}</td>
+                    <td className="mono" style={{ fontWeight: 700 }}>{cell(e, 'total', e.total)}</td>
                   </tr>
                   {isOpen && hourly.map((h) => (
                     <tr key={`${h.d}-${h.t}`} style={{ background: 'var(--bg-subtle)', fontSize: 12 }}>
                       <td></td>
                       <td style={{ color: 'var(--muted)', paddingLeft: 20 }}>{h.t ?? '—'}</td>
-                      <td className="mono">{tx(h.qib)}</td>
-                      <td className="mono">{tx(h.hni ?? h.nii)}</td>
-                      <td className="mono">{tx(h.hni2)}</td>
-                      <td className="mono">{tx(h.retail)}</td>
-                      <td className="mono">{tx(h.total)}</td>
+                      <td className="mono">{cell(h, 'qib', h.qib)}</td>
+                      <td className="mono">{cell(h, 'hni', h.hni ?? h.nii)}</td>
+                      <td className="mono">{cell(h, 'hni2', h.hni2)}</td>
+                      <td className="mono">{cell(h, 'retail', h.retail)}</td>
+                      <td className="mono">{cell(h, 'total', h.total)}</td>
                     </tr>
                   ))}
                 </>
