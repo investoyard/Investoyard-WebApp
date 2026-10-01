@@ -169,10 +169,16 @@ const HEAD: Record<api.CallsSummaryBy, string> = {
 /** One grouping of the call log. Same shape whichever dimension is chosen. */
 function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | null; tenantId: string; days: number }) {
   if (sum === null) return <div className="card"><Loader /></div>;
+  /* Latency is a WEIGHTED mean, not a mean of means: a partner with 4 calls and
+     one with 1,800 cannot carry equal weight in a single figure, and averaging
+     the column would let the quiet row distort it. `lastAt` is the max. */
   const totals = sum.rows.reduce((a, r) => ({
     calls: a.calls + r.calls, failed: a.failed + r.failed, applicants: a.applicants + r.applicants,
-  }), { calls: 0, failed: 0, applicants: 0 });
+    msWeighted: a.msWeighted + (r.avgMs ?? 0) * r.calls,
+    lastAt: !a.lastAt || (r.lastAt && r.lastAt > a.lastAt) ? (r.lastAt ?? a.lastAt) : a.lastAt,
+  }), { calls: 0, failed: 0, applicants: 0, msWeighted: 0, lastAt: '' as string });
   const pctOf = (f: number, c: number) => (c > 0 ? (f / c) * 100 : 0);
+  const avgMs = totals.calls > 0 ? Math.round(totals.msWeighted / totals.calls) : 0;
 
   return (
     <div className="card">
@@ -247,7 +253,14 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                 );
               })}
             </tbody>
-            <tfoot><tr className="resv-total">
+            {/* `tbl-total`, not `resv-total`: that class is scoped to
+                `.resv-table tr.resv-total` and this table is `.table`, so the
+                rule never matched and the row rendered with NO top border and NO
+                background — bold text sitting flush against the last data row.
+                `.table` had no `tfoot` styling at all. A class that looks right
+                in the markup and matches nothing is the quietest kind of CSS
+                bug: the build cannot see it and neither can a diff. */}
+            <tfoot><tr className="tbl-total">
               <td style={{ fontWeight: 700 }}>Total</td>
               {sum.by === 'ipo' && <td />}
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.calls.toLocaleString('en-IN')}</td>
@@ -256,7 +269,14 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
               </td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{pctOf(totals.failed, totals.calls).toFixed(1)}%</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.applicants.toLocaleString('en-IN')}</td>
-              <td /><td />
+              {/* Both of these were BLANK, which is half of why the row did not
+                  read as a total. Latency is weighted by call count; the last
+                  call is the latest across every row. */}
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}
+                title="Weighted by call count, so a quiet partner cannot distort it">{avgMs} ms</td>
+              <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap', fontWeight: 700 }}>
+                {totals.lastAt ? new Date(totals.lastAt).toLocaleString('en-IN') : '—'}
+              </td>
             </tr></tfoot>
           </table>
         </div>

@@ -3722,6 +3722,14 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 
 /* the reservation table's Total row — the check an operator actually runs */
 .resv-table tr.resv-total td { border-top: 2px solid var(--border-2); background: var(--bg-2); }
+/* The same treatment for a `.table` footer total — Partner API → Calls had
+   `resv-total` on its row, which only matches inside `.resv-table`, so it
+   rendered with no border and no background at all. Deliberately a CLASS rather
+   than a bare `.table tfoot td` rule: `globals.css` is one sheet and a blanket
+   footer rule would reach every table that ever grows a `tfoot`, which is the
+   trap that has already cost this file four collisions. Styled identically to
+   `resv-total` so the two total rows read the same across the admin. */
+.table tr.tbl-total td { border-top: 2px solid var(--border-2); background: var(--bg-2); }
 
 /* "View more" — reveals the next page of cards in place.
    Prefixed-ish and checked against globals before adding: `.more-row` and
