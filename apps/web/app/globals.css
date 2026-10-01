@@ -3729,7 +3729,17 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    footer rule would reach every table that ever grows a `tfoot`, which is the
    trap that has already cost this file four collisions. Styled identically to
    `resv-total` so the two total rows read the same across the admin. */
-.table tr.tbl-total td { border-top: 2px solid var(--border-2); background: var(--bg-2); }
+/* PADDING IS PART OF THIS RULE, and leaving it out is what made the first
+   attempt look broken: `.table tbody td` sets `padding: 11px 18px`, scoped to
+   TBODY, so a `tfoot` cell inherits none. The row then rendered with its label
+   hard against the left edge, its right-aligned figures pushed past the body's
+   columns, and the last two cells touching — "102 ms1/10/2026, 11:15:57 am".
+   The same trap as the class that matched nothing: a rule scoped to one section
+   of the table silently skips the others. Mirror `tbody td` exactly. */
+.table tr.tbl-total td {
+  padding: 11px 18px; vertical-align: middle; color: var(--text);
+  border-top: 2px solid var(--border-2); background: var(--bg-2);
+}
 
 /* "View more" — reveals the next page of cards in place.
    Prefixed-ish and checked against globals before adding: `.more-row` and

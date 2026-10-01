@@ -188,6 +188,15 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
     lastAt: !a.lastAt || (r.lastAt && r.lastAt > a.lastAt) ? (r.lastAt ?? a.lastAt) : a.lastAt,
   }), { calls: 0, failed: 0, applicants: 0, msWeighted: 0, lastAt: '' as string });
   const pctOf = (f: number, c: number) => (c > 0 ? (f / c) * 100 : 0);
+  /* ONE renderer for the failure rate. The Total row used to call toFixed(1)
+     directly while the body rounded whole numbers above 10%, so the same
+     228/1,842 printed as "12%" on the row and "12.4%" on the total and looked
+     like two different figures. */
+  const FailPct = ({ failed, calls }: { failed: number; calls: number }) => {
+    if (failed === 0) return <span className="muted mono">0%</span>;
+    const v = pctOf(failed, calls);
+    return <span className={`st ${v >= 100 ? "bad" : "warn"}`}>{v.toFixed(v >= 10 ? 0 : 1)}%</span>;
+  };
   const avgMs = totals.calls > 0 ? Math.round(totals.msWeighted / totals.calls) : 0;
 
   return (
@@ -230,7 +239,6 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
             </tr></thead>
             <tbody>
               {sum.rows.map((r) => {
-                const pct = pctOf(r.failed, r.calls);
                 return (
                   <tr key={r.key}>
                     {/* By day, month and IPO the key IS the label — a date or a
@@ -260,9 +268,7 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                     {/* Every call failing is a different problem from a few
                         failing, and the rate is what separates them at a glance. */}
                     <td style={{ textAlign: 'right' }}>
-                      {r.failed === 0
-                        ? <span className="muted mono">0%</span>
-                        : <span className={`st ${pct >= 100 ? 'bad' : 'warn'}`}>{pct.toFixed(pct >= 10 ? 0 : 1)}%</span>}
+                      <FailPct failed={r.failed} calls={r.calls} />
                     </td>
                     <td className="mono" style={{ textAlign: 'right' }}>{r.applicants.toLocaleString('en-IN')}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{r.avgMs} ms</td>
@@ -287,7 +293,7 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: totals.failed > 0 ? 'var(--neg)' : undefined }}>
                 {totals.failed.toLocaleString('en-IN')}
               </td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{pctOf(totals.failed, totals.calls).toFixed(1)}%</td>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}><FailPct failed={totals.failed} calls={totals.calls} /></td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.applicants.toLocaleString('en-IN')}</td>
               {/* Both of these were BLANK, which is half of why the row did not
                   read as a total. Latency is weighted by call count; the last
