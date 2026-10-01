@@ -1215,6 +1215,61 @@ export const parseAnchor = async (file: File): Promise<ParsedAnchor> => {
 };
 
 /**
+ * An IPO SUMMARY CARD image. Mirrors `ParsedCard` in the API — kept in sync by
+ * hand, like the other parser types, because both ends are strictly typed.
+ *
+ * `crossCheck` is deliberately NOT part of the writable fields: the cards'
+ * "Application Reserved" row carries the ~4.8× bHNI error this codebase fixed
+ * on 2026-09-29, and `req1x` is not a storable field anyway. The modal shows it
+ * beside our own derivation so the operator can see the disagreement.
+ */
+export interface ParsedCard {
+  name?: string | null;
+  issueSizeCr?: number | null;
+  fresh?: { basis: 'amount' | 'shares'; value: number } | null;
+  ofs?: { basis: 'amount' | 'shares'; value: number } | null;
+  priceBandMin?: number | null;
+  priceBandMax?: number | null;
+  faceValue?: number | null;
+  lotSize?: number | null;
+  employeeDiscount?: number | null;
+  retailDiscount?: number | null;
+  shareholderDiscount?: number | null;
+  reservation?: Record<string, number> | null;
+  shares?: Record<string, number> | null;
+  carveout?: { key: string; shares: number | null; amountCr: number | null } | null;
+  anchorDate?: string | null;
+  openDate?: string | null;
+  closeDate?: string | null;
+  allotmentDate?: string | null;
+  refundDate?: string | null;
+  dematDate?: string | null;
+  listingDate?: string | null;
+  leadManagers: string[];
+  registrar?: string | null;
+  exchanges: string[];
+  crossCheck: { minBid: Record<string, number> | null; applications: Record<string, number> | null };
+  warnings: string[];
+}
+
+export const parseCard = async (file: File): Promise<ParsedCard> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/card`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return JSON.parse(body) as ParsedCard;
+};
+
+/**
  * Merchant banker's IPO Note (Axis format). See the parser for scope; this
  * type mirrors ParsedIpoNote in the API — kept in sync by hand because both
  * ends are strictly typed. Fields deliberately omitted (name/symbol/price

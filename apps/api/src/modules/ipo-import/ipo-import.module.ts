@@ -16,6 +16,7 @@ import { parsePreanchor } from './nse-parsers/preanchor';
 import { parseAnchor } from './nse-parsers/anchor';
 import { parseIpoNote } from './nse-parsers/ipo-note';
 import { IpoNoteRewriteService } from './ipo-note-rewrite.service';
+import { CardVisionService, isCardMime } from './card-vision.service';
 import { AnchorVisionService } from './anchor-vision.service';
 import { resolveMaster } from '@investoyard/shared-types';
 
@@ -54,6 +55,7 @@ export class IpoImportController {
     private readonly upd: CatalogUpdateService,
     private readonly rewrite: IpoNoteRewriteService,
     private readonly anchorVision: AnchorVisionService,
+    private readonly cardVision: CardVisionService,
   ) {}
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
@@ -187,6 +189,35 @@ export class IpoImportController {
     };
   }
 
+/** POST — multipart 'file'. Reads an IPO SUMMARY CARD image (the one-page
+   *  cards circulated before an issue opens) and returns Add-IPO form fields.
+   *
+   *  IMAGE ONLY, which is the difference from the anchor route: a JPEG has no
+   *  text layer, so there is no cheap parser to try first — Vision is the only
+   *  route rather than a fallback. The mime is whitelisted because it is handed
+   *  straight to the Messages API as the image block's `media_type`.
+   *
+   *  The response keeps `crossCheck` SEPARATE from the writable fields. The
+   *  cards' own "Application Reserved" row reproduces the ~4.8x bHNI error this
+   *  codebase fixed on 2026-09-29, so it is shown beside our own derivation and
+   *  never applied — see `CardVisionService`.
+   */
+  @Post('parse/card')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async parseCard(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    const mime = String(file.mimetype || '').toLowerCase();
+    // `isCardMime` is the SDK's own union, so this guard and the media_type it
+    // is handed to cannot drift — a plain string here failed to compile.
+    if (!isCardMime(mime)) {
+      throw new BadRequestException(
+        `An IPO card must be an image (JPEG, PNG or WebP). Received ${mime || 'an unknown type'}.`,
+      );
+    }
+    return this.cardVision.parse(file.buffer, mime);
+  }
+
   /** POST — multipart 'file'. Parses the merchant banker's IPO Note (Axis
    *  format across all four samples we hold). Fills what PREANCHOR cannot:
    *  exact allotment/refund/demat/listing dates from the Indicative
@@ -252,6 +283,6 @@ export class IpoImportController {
 @Module({
   imports: [JwtModule.register({})],
   controllers: [IpoImportController],
-  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, AnchorVisionService, PrismaService, JwtAuthGuard, PermissionsGuard],
+  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, AnchorVisionService, CardVisionService, PrismaService, JwtAuthGuard, PermissionsGuard],
 })
 export class IpoImportModule {}

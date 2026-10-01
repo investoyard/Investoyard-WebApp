@@ -12,6 +12,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PreanchorReviewModal } from '@/components/PreanchorReviewModal';
 import { IpoNoteReviewModal } from '@/components/IpoNoteReviewModal';
 import { AnchorReviewModal } from '@/components/AnchorReviewModal';
+import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
@@ -388,6 +389,8 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<api.ParsedPreanchor | null>(null);
   // Anchor intimation — a separate button, its own modal (roster shape)
+  const [parsingCard, setParsingCard] = useState(false);
+  const [parsedCard, setParsedCard] = useState<api.ParsedCard | null>(null);
   const [parsingAnchor, setParsingAnchor] = useState(false);
   const [parsedAnchor, setParsedAnchor] = useState<api.ParsedAnchor | null>(null);
   // IPO Note — arrives after PREANCHOR; fills exact dates and financials
@@ -800,6 +803,56 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     try { setParsedNote(await api.parseIpoNote(file)); }
     catch (e: any) { setErr(`Could not read the IPO Note: ${String(e?.message ?? e)}`); }
     finally { setParsingNote(false); }
+  };
+
+  /**
+   * IPO summary card (an IMAGE, so Vision is the only route — there is no text
+   * layer to try first, unlike every other import on this screen).
+   */
+  const onParseCard = async (file: File) => {
+    setParsingCard(true); setErr(null); setSavedMsg(null);
+    try { setParsedCard(await api.parseCard(file)); }
+    catch (e: any) { setErr(`Could not read the IPO card: ${String(e?.message ?? e)}`); }
+    finally { setParsingCard(false); }
+  };
+
+  /**
+   * Apply the ticked rows onto form state.
+   *
+   * The modal hands back a flat patch keyed by FORM field names, with two
+   * shapes it cannot express directly: a reservation percentage lives inside
+   * `form.shareResv[k].pct`, and a carve-out pairs a value with a basis. Both
+   * are unpacked here so the modal stays a presentation component and this file
+   * keeps sole ownership of the form's shape.
+   */
+  const onApplyCard = (patch: Record<string, unknown>) => {
+    setForm((f) => {
+      const next: any = { ...f };
+      const resv = { ...f.shareResv };
+      for (const [k, v] of Object.entries(patch)) {
+        const pct = k.match(/^pct_(\w+)$/);
+        if (pct) { resv[pct[1]] = { ...resv[pct[1]], pct: String(v) }; continue; }
+        const cv = k.match(/^cv_(employee|shareholder|policyholder)(_basis)?$/);
+        if (cv) {
+          const field = cv[1] === 'employee' ? 'cvEmployee' : cv[1] === 'shareholder' ? 'cvShareholder' : 'cvPolicyholder';
+          next[cv[2] ? `${field}Basis` : field] = String(v);
+          continue;
+        }
+        if (k === 'exchanges' && Array.isArray(v)) {
+          /* The form holds two booleans, not a list. A card naming only one
+             exchange must not silently clear the other, so each is OR-ed. */
+          const list = v.map((x) => String(x).toLowerCase()).join(" ");
+          if (/nse/.test(list)) next.exNse = true;
+          if (/bse/.test(list)) next.exBse = true;
+          continue;
+        }
+        next[k] = v;
+      }
+      next.shareResv = resv;
+      return next;
+    });
+    setParsedCard(null);
+    setSavedMsg('Card applied to the form — nothing is saved until you press Save.');
   };
 
   /** Same shape as PREANCHOR upload — different endpoint, different modal. */
@@ -1370,6 +1423,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               {parsing ? 'Reading…' : 'Fill from PREANCHOR'}
               <input type="file" accept="application/pdf,.pdf" hidden disabled={parsing}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParsePreanchor(f); e.currentTarget.value = ''; }} />
+            </label>
+            {/* An IMAGE, not a PDF — the one-page summary cards circulated
+                before an issue opens. Accept only what the Messages API takes
+                as an image block; a PDF dropped here would be rejected by the
+                endpoint, so the picker does not offer one. */}
+            <label className={`btn btn-secondary${parsingCard ? ' disabled' : ''}`} title="Upload an IPO summary card image (JPEG or PNG). Reads the offer, band, lot, percentages, reservation and timeline — you confirm each field before it is applied.">
+              <Icon name="upload" size={15} />
+              {parsingCard ? 'Reading…' : 'Fill from IPO card'}
+              <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden disabled={parsingCard}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseCard(f); e.currentTarget.value = ''; }} />
             </label>
             <label className={`btn btn-secondary${parsingAnchor ? ' disabled' : ''}`} title="Upload the Anchor Investor Intimation Letter (usually arrives the evening before opening)">
               <Icon name="upload" size={15} />
@@ -2704,6 +2767,29 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           }}
           onClose={() => setParsed(null)}
           onApply={onApplyPreanchor}
+        />
+      )}
+      {parsedCard && (
+        <CardReviewModal
+          parsed={parsedCard}
+          current={{
+            name: form.name,
+            priceBandMin: form.priceBandMin, priceBandMax: form.priceBandMax,
+            faceValue: form.faceValue, lotSize: form.lotSize, issueSizeCr: form.issueSizeCr,
+            freshValue: form.freshValue, ofsValue: form.ofsValue,
+            employeeDiscount: form.employeeDiscount, retailDiscount: form.retailDiscount,
+            shareholderDiscount: form.shareholderDiscount,
+            pct_qib: form.shareResv.qib?.pct, pct_hni: form.shareResv.hni?.pct,
+            pct_hni2: form.shareResv.hni2?.pct, pct_retail: form.shareResv.retail?.pct,
+            cv_employee: form.cvEmployee, cv_shareholder: form.cvShareholder,
+            cv_policyholder: form.cvPolicyholder,
+            anchorDate: form.anchorDate, openDate: form.openDate, closeDate: form.closeDate,
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
+            registrar: form.registrar, leads: form.leads, exchanges: [form.exNse && "NSE", form.exBse && "BSE"].filter(Boolean).join(", "),
+          }}
+          onClose={() => setParsedCard(null)}
+          onApply={onApplyCard}
         />
       )}
       {parsedAnchor && (

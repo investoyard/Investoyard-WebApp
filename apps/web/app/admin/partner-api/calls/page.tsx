@@ -166,6 +166,16 @@ const HEAD: Record<api.CallsSummaryBy, string> = {
   partner: 'Partner', day: 'Date', month: 'Month', ipo: 'IPO',
 };
 
+/** What one row of each grouping IS, for the line beside the badge. Pluralised
+ *  because "across 1 partners" is the kind of small wrongness that makes a
+ *  report look unmaintained. */
+const GROUP_NOUN: Record<api.CallsSummaryBy, (n: number) => string> = {
+  partner: (n) => (n === 1 ? 'partner' : 'partners'),
+  day: (n) => (n === 1 ? 'day' : 'days'),
+  month: (n) => (n === 1 ? 'month' : 'months'),
+  ipo: (n) => (n === 1 ? 'IPO' : 'IPOs'),
+};
+
 /** One grouping of the call log. Same shape whichever dimension is chosen. */
 function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | null; tenantId: string; days: number }) {
   if (sum === null) return <div className="card"><Loader /></div>;
@@ -184,7 +194,17 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
     <div className="card">
       <div className="card-head">
         <span className="t">
-          {HEAD[sum.by]} summary <span className="count-badge">{sum.rows.length.toLocaleString('en-IN')}</span>
+          {/* The badge counts CALLS, like the one on the Calls log beside it and
+              like the Total row below — it used to count GROUPS, so switching to
+              By partner put a badge reading "1" above a total of 1,842 and the
+              two looked like they disagreed. Two badges in identical style on one
+              page must count the same thing. The group count is still worth
+              showing, so it sits beside it in words, where it cannot be mistaken
+              for the volume. */}
+          {HEAD[sum.by]} summary <span className="count-badge">{totals.calls.toLocaleString('en-IN')}</span>
+          <span className="muted" style={{ fontWeight: 400, fontSize: 12.5, marginLeft: 8 }}>
+            across {sum.rows.length.toLocaleString('en-IN')} {GROUP_NOUN[sum.by](sum.rows.length)}
+          </span>
         </span>
         {sum.rows.length > 0 && (
           <button className="btn btn-secondary btn-sm"
