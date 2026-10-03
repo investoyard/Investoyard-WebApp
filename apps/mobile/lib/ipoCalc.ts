@@ -7,7 +7,8 @@
  * local.
  */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, type IssueInputs } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis,
+  issueInputsFrom, parseIssueSizeRupees, type IssueInputs, type IssueInputSource } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -85,48 +86,22 @@ function packFor(ipo: IpoFull) {
   );
 }
 
-/** Mirrors issueInputsFor() in apps/web/lib/ipoCalc.ts. */
+/**
+ * NOT a copy any more — delegates to `issueInputsFrom()` in shared-types
+ * (2026-10-03). The comment here used to read *"Mirrors issueInputsFor() in
+ * apps/web/lib/ipoCalc.ts"*, and it did not: this copy sent `policyholder` and
+ * no `instrument`, web sent `instrument` and no `policyholder`, and neither
+ * sent `carveouts` — so `reservation()` below, which IS customer-facing, split
+ * the GROSS offer on the 26 records that carry a reserved quota.
+ */
 export function issueInputsFor(ipo: IpoFull): IssueInputs {
-  const ex: any = (ipo as any).extra ?? {};
-  const sr: any = ex.shareResv ?? {};
-  const pct = (k: string) => { const r = sr[k]; const v = Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')); return r?.on && Number.isFinite(v) ? v : 0; };
-  return {
-    board: ipo.type === 'sme' ? 'sme' : 'mainboard',
-    mechanism: ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
-    regulationBasis: ex.regulationBasis || undefined,
-    lotSize: ipo.lotSize,
-    priceFloor: ipo.priceBandMin,
-    priceCap: ipo.priceBandMax ?? ipo.priceBandMin,
-    issueSizeCr: parseIssueValue(ipo.issueSize) / 1e7 || undefined,
-    // the stated count outranks the ₹ total — see IssueInputs.totalShares
-    totalShares: Number(ex.totalShares) || undefined,
-    // read through offerLegFrom — the importer stores these as flat keys the
-    // engine never saw, which hid a fresh-issue count on 596 records
-    fresh: offerLegFrom(ex, 'fresh'),
-    ofs: offerLegFrom(ex, 'ofs'),
-    reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), policyholder: pct('policyholder'), other: pct('other') },
-    discounts: { retail: Number(ex.retailDiscount) || 0 },
-    // pctOfQib drives the split; shares/price record what the book actually took
-    anchor: Number(ex.anchorPct) || Number(ex.anchorShares)
-      ? {
-          pctOfQib: Number(ex.anchorPct) || undefined,
-          mfPct: Number(ex.anchorMfPct) || undefined,
-          shares: Number(ex.anchorShares) || undefined,
-          price: Number(ex.anchorPrice) || undefined,
-        }
-      : undefined,
-  };
+  return issueInputsFrom(ipo as IssueInputSource);
 }
 
 export const derive = (ipo: IpoFull) => computeIssue(issueInputsFor(ipo));
 
-export function parseIssueValue(s?: string): number {
-  if (!s) return 0;
-  const m = s.replace(/,/g, '').match(/([\d.]+)\s*Cr/i);
-  if (m) return parseFloat(m[1]) * 1e7;
-  const n = s.replace(/[^\d.]/g, '');
-  return n ? parseFloat(n) : 0;
-}
+/** One parser, shared with web and with the mapper above. */
+export const parseIssueValue = (s?: string): number => parseIssueSizeRupees(s);
 export function crOrInr(n: number): string {
   if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
   return '₹' + Math.round(n).toLocaleString('en-IN');

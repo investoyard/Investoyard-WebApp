@@ -2,7 +2,8 @@
     Everything is computed from the IpoFull fields (band, lot, issue size,
     reservation %, subscription ×, dates) — matches the app mockups. */
 import type { IpoFull } from '@/lib/api';
-import { computeIssue, rulePackFor, inferRegulationBasis, offerLegFrom, carveoutAt, minApplicationShares, minApplicationLots, type IssueInputs } from '@investoyard/shared-types';
+import { computeIssue, rulePackFor, inferRegulationBasis, carveoutAt, minApplicationShares, minApplicationLots,
+  issueInputsFrom, parseIssueSizeRupees, type IssueInputs, type IssueInputSource } from '@investoyard/shared-types';
 
 /**
  * The ₹2 L / ₹10 L band thresholds used to be literals here AND in
@@ -21,54 +22,26 @@ function packFor(ipo: IpoFull) {
 }
 
 /**
- * Map an IPO onto the engine's inputs. ONE mapper for the whole web app —
- * lib/api.ts calls this too, so the public figures and the admin/card panels
- * can no longer be derived from differently-shaped inputs.
+ * Map an IPO onto the engine's inputs.
+ *
+ * NOW A ONE-LINE DELEGATION to `issueInputsFrom()` in shared-types (2026-10-03).
+ * It used to be spelled out here, and spelled out AGAIN in
+ * `apps/mobile/lib/ipoCalc.ts` under a comment claiming the two mirrored each
+ * other. They did not: this copy passed `instrument` and not `policyholder`,
+ * mobile passed `policyholder` and not `instrument`, and NEITHER passed
+ * `carveouts` — so everything built on `derive()` split the GROSS offer. The
+ * shared version has 19 tests built from the RUNWALENTR and SAIURJA records;
+ * read the note at the top of that file before changing any of this.
  */
 export function issueInputsFor(ipo: IpoFull): IssueInputs {
-  const ex: any = (ipo as any).extra ?? {};
-  const sr: any = ex.shareResv ?? {};
-  const pct = (k: string) => { const r = sr[k]; const v = Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')); return r?.on && Number.isFinite(v) ? v : 0; };
-  return {
-    board: ipo.type === 'sme' ? 'sme' : 'mainboard',
-    // W04 exempts a follow-on from the IPO minimum-bid band — see IssueInputs.
-    instrument: (ipo as any).instrument || 'ipo',
-    mechanism: ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
-    regulationBasis: ex.regulationBasis || undefined,
-    lotSize: ipo.lotSize,
-    priceFloor: ipo.priceBandMin,
-    priceCap: ipo.priceBandMax ?? ipo.priceBandMin,
-    issueSizeCr: parseIssueValue(ipo.issueSize) / 1e7 || undefined,
-    // the stated count outranks the ₹ total — see IssueInputs.totalShares
-    totalShares: Number(ex.totalShares) || undefined,
-    // read through offerLegFrom — the importer stores these as flat keys the
-    // engine never saw, which hid a fresh-issue count on 596 records
-    fresh: offerLegFrom(ex, 'fresh'),
-    ofs: offerLegFrom(ex, 'ofs'),
-    reservation: { qib: pct('qib'), hni: pct('hni'), hni2: pct('hni2'), retail: pct('retail'), employee: pct('employee'), shareholder: pct('shareholder'), other: pct('other') },
-    discounts: { retail: Number(ex.retailDiscount) || 0 },
-    // pctOfQib drives the split; shares/price record what the book actually took
-    anchor: Number(ex.anchorPct) || Number(ex.anchorShares)
-      ? {
-          pctOfQib: Number(ex.anchorPct) || undefined,
-          mfPct: Number(ex.anchorMfPct) || undefined,
-          shares: Number(ex.anchorShares) || undefined,
-          price: Number(ex.anchorPrice) || undefined,
-        }
-      : undefined,
-  };
+  return issueInputsFrom(ipo as IssueInputSource);
 }
 
 /** The single derivation for this IPO. */
 export const derive = (ipo: IpoFull) => computeIssue(issueInputsFor(ipo));
 
-export function parseIssueValue(s?: string): number {
-  if (!s) return 0;
-  const m = s.replace(/,/g, '').match(/([\d.]+)\s*Cr/i);
-  if (m) return parseFloat(m[1]) * 1e7;
-  const n = s.replace(/[^\d.]/g, '');
-  return n ? parseFloat(n) : 0;
-}
+/** One parser, shared with mobile and with the mapper above. */
+export const parseIssueValue = (s?: string): number => parseIssueSizeRupees(s);
 export function crOrInr(n: number): string {
   if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
   return '₹' + Math.round(n).toLocaleString('en-IN');

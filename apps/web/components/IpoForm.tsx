@@ -975,6 +975,19 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       if (CARVEOUT_ROWS.includes(r.key)) continue;
       const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v;
     }
+    /*
+     * THE THIRD MAPPER, and deliberately still its own. The two READ-ONLY
+     * surfaces now share `issueInputsFrom()` in shared-types (2026-10-03); this
+     * one cannot, because it maps LIVE FORM STATE — strings mid-edit, a basis
+     * the operator is still choosing — rather than a stored record, and it is
+     * the only caller that passes `dates` (564 of 1,267 stored records would
+     * raise a date issue, so the read-only surfaces leave them out).
+     *
+     * It is also the mapper that was RIGHT all along: it excluded the carve-out
+     * rows above and passed `carveouts` below, which is exactly what the other
+     * two were missing. Keep it in step with the shared one by hand, and when
+     * you add a field here ask whether that file needs it too.
+     */
     const inputs: IssueInputs = {
       board: form.type === 'sme' ? 'sme' : 'mainboard',
       mechanism: form.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
