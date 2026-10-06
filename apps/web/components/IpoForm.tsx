@@ -1269,8 +1269,51 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         });
       }
     }
+    /*
+     * W-SUB — NO RESERVATION SPLIT ON AN ISSUE THAT HAS NOT CLOSED YET
+     * (operator ask, 2026-10-06, after ten SME issues closed with no
+     * subscription data at all).
+     *
+     * This is the most expensive omission on the screen and the only one whose
+     * cost is IRREVERSIBLE. `computeSubs` in the poller returns `[]` the moment
+     * it has no denominator — `if (!offeredByBucket || offeredByBucket.size === 0
+     * …) return []` — and `offeredFromIpo()` can only build that map from
+     * `extra.shareResv`. So on a record with no percentages the exchange's
+     * demand is fetched and THROWN AWAY on every tick, once a minute and every
+     * five seconds after 15:30, and nothing is stored. A bidding day that
+     * passes without a reservation table cannot be recovered afterwards: the
+     * usual rescue, `nseShares ÷ timesSubscribed`, needs a row that was
+     * written, and none was.
+     *
+     * DSL · EIMS · EVENTIONS · OMARA · SHREETNB · SJP · SOLLFEGE closed on
+     * 5 Oct and ACMERAIL · PARASYNTEX · TNA on 6 Oct, all ten with zero rows.
+     *
+     * A WARNING, not a blocker, on purpose: an issue is often entered before
+     * its RHP is out, and the percentages genuinely are not known yet. Blocking
+     * the save would just mean the record is not entered at all.
+     *
+     * It needs a CLOSE DATE to fire, which keeps it quiet on a half-typed new
+     * record and on the ~1,200 closed historical rows where the data is already
+     * gone and the warning would be nothing but noise.
+     */
+    const splitPcts = RESV_ROWS
+      .filter((r) => !CARVEOUT_ROWS.includes(r.key))
+      .reduce((a, r) => a + (fnum(form.shareResv[r.key]?.pct) > 0 ? 1 : 0), 0);
+    const closeYmd = (form.closeDate || '').slice(0, 10);
+    const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (splitPcts === 0 && closeYmd && closeYmd >= todayYmd) {
+      const opens = (form.openDate || '').slice(0, 10);
+      const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';
+      out.push({
+        code: 'W-SUB',
+        msg: `No reservation split entered, and this issue ${when} (closes ${closeYmd}). `
+          + 'Until the QIB / HNI / Retail percentages are filled in, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
+          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Percentages alone are enough; share counts are not required.',
+        blocking: false,
+      });
+    }
     return out;
-  }, [derived]);
+  }, [derived, form.shareResv, form.closeDate, form.openDate]);
 
   /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
   const legSumCr = legSumCrOf(form);

@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
-import { carveoutAt } from '@investoyard/shared-types';
+import { offeredFromIpo, type Bucket } from './offered';
 
 // ── tunables ─────────────────────────────────────────────────────────────────
 // Base loop cadence — how often tick() runs. NOT the per-IPO refresh; that
@@ -30,7 +30,6 @@ const BIDDING_CLOSE_MIN = 17 * 60;
  * (>₹10 L, SEBI's larger 2/3 of NII); `hni2` is Small-HNI (<₹10 L) — same
  * naming shared-types uses in `CATEGORY_LABELS` and `computeIssue`.
  */
-type Bucket = 'qib' | 'hni' | 'hni2' | 'retail' | 'employee' | 'shareholder' | 'policyholder';
 
 /**
  * NSE category code → our bucket. Follows the operator's C# workflow:
@@ -164,111 +163,6 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
   return { buckets, bseTotalApps };
 }
 
-/**
- * Per-bucket offered shares from OUR IPO metadata (the reservation table the
- * operator enters). Per bucket, three possible sources — prefer the direct
- * ones over the compound-derived one:
- *
- *   1. `shareResv[bucket].sharesLower` (or `sharesUpper` — same field, two
- *      naming conventions) — the operator's per-bucket offered share count.
- *      ONE field, ONE failure point.
- *   2. `derivedTotal × pct ÷ 100` where `derivedTotal` is inferred from ANY
- *      bucket that has BOTH a share count AND a pct (e.g. qib.sharesUpper=
- *      6.32 Cr at pct=50% implies total=12.64 Cr shares; that same total
- *      is then used to compute hni/hni2 offered when THEIR own share counts
- *      are missing or zero). Self-consistent — takes the largest implied
- *      total across all buckets so an under-populated bucket doesn't shrink
- *      the divisor.
- *   3. `issueSize (₹) ÷ priceBandMax (₹/share) × pct ÷ 100` — the raw
- *      compound derivation. Only used when NO bucket carries a share count.
- *      Compound of three inputs; a single stale/missing one silently multiplies
- *      the divisor by orders of magnitude (see NSE IPO 2026-09: issueSize
- *      shipped with 4 extra zeros → times ≈ 0 for every category).
- *
- * The two naming conventions (`sharesLower` / `sharesUpper`) exist because
- * older data-entry entered lower-price-band offered qty and newer data-entry
- * enters upper-price-band. Both are legitimate — for a "how oversubscribed?"
- * ratio either bound is close enough (the price hasn't been fixed yet).
- *
- * Returns null when NO bucket produced a usable offered — the caller then
- * skips the times-subscribed math for this cycle rather than fabricating one.
- */
-function offeredFromIpo(
-  issueSize: number | null | undefined,
-  priceBandMax: number | null | undefined,
-  extra: any,
-): Map<Bucket, number> | null {
-  const resv = extra?.shareResv;
-  if (!resv || typeof resv !== 'object') return null;
-  const BUCKETS: Bucket[] = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
-  // Prefer sharesUpper (industry convention on Bumtaria / Chittorgarh /
-  // IPOPremium and the offered-shares figure exchanges' subscription APIs
-  // report — shares at the upper band). Falls back to sharesLower (NSE
-  // PREANCHOR prints at the lower band). Flipped 2026-09-22 when the
-  // reservation normalisation script rewrote both bands from percentages.
-  const directOf = (row: any): number => {
-    const upper = Number(row?.sharesUpper);
-    if (upper > 0) return upper;
-    const lower = Number(row?.sharesLower);
-    if (lower > 0) return lower;
-    return 0;
-  };
-
-  // Derive a self-consistent totalOffered by picking the largest implied
-  // total from any bucket with both a share count and a pct. Larger wins
-  // so a mis-entered small bucket doesn't shrink the divisor for others.
-  let derivedTotal = 0;
-  for (const b of BUCKETS) {
-    const row = resv[b];
-    if (!row) continue;
-    const shares = directOf(row);
-    const pct = Number(row.pct);
-    if (shares > 0 && pct > 0) {
-      const implied = shares / (pct / 100);
-      if (implied > derivedTotal) derivedTotal = implied;
-    }
-  }
-  // Last-resort fallback — raw issueSize × pct. Only kicks in when no bucket
-  // has a share count entered at all (rare, legacy imports).
-  if (derivedTotal <= 0) {
-    const size = Number(issueSize);
-    const price = Number(priceBandMax);
-    if (size > 0 && price > 0) derivedTotal = size / price;
-  }
-
-  const out = new Map<Bucket, number>();
-  for (const b of BUCKETS) {
-    const row = resv[b];
-    if (!row || row.on === false) continue;
-    // Source 1: direct sharesLower/Upper — wins whenever present.
-    const direct = directOf(row);
-    if (direct > 0) { out.set(b, direct); continue; }
-    // Source 2: derived total × this bucket's pct.
-    const pct = Number(row.pct);
-    if (pct > 0 && derivedTotal > 0) out.set(b, (derivedTotal * pct) / 100);
-  }
-
-  /*
-   * Source 3: the CARVE-OUTS. Employee and shareholder reservations come off
-   * the top and live in `extra.carveouts`, never in `shareResv` — so this
-   * function produced no denominator for them and `computeSubs` therefore
-   * wrote no row AT ALL, even when the exchange was reporting their demand.
-   * RUNWALENTR reserved 1,20,275 employee shares and the entire category was
-   * missing from the subscription data (operator, 2026-09-28).
-   *
-   * Only fills a bucket `shareResv` did not already cover — a typed count
-   * still wins, as everywhere else.
-   */
-  const priceForCarveouts = Number(priceBandMax);
-  if (priceForCarveouts > 0) {
-    for (const key of ['employee', 'shareholder', 'policyholder'] as const) {
-      if ((out.get(key) ?? 0) > 0) continue;
-      const shares = carveoutAt(key, extra ?? {}, priceForCarveouts).shares;
-      if (shares > 0) out.set(key, shares);
-    }
-  }
-  return out.size > 0 ? out : null;
-}
 
 interface SubRow {
   category: string;                 // qib | nii | retail | employee | shareholder | total
@@ -447,10 +341,17 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       // times-subscribed — the NSE ipomaster endpoint doesn't carry it.
       const row = await this.prisma.ipo.findUnique({
         where: { id: ipo.id },
-        select: { extra: true, issueSize: true, priceBandMax: true },
+        // priceBandMin is selected for the FIXED-PRICE case, where the one
+        // price sits there and priceBandMax is null.
+        select: { extra: true, issueSize: true, priceBandMax: true, priceBandMin: true },
       });
       const ex: any = (row?.extra as any) ?? {};
-      const offeredByBucket = offeredFromIpo(row?.issueSize as any, row?.priceBandMax as any, ex);
+      const offeredByBucket = offeredFromIpo({
+        issueSize: row?.issueSize as any,
+        priceBandMax: row?.priceBandMax as any,
+        priceBandMin: row?.priceBandMin as any,
+        extra: ex,
+      });
 
       const nseRows: CatwiseRow[] = [];
       const bseRows: BseDemandRow[] = [];
@@ -464,7 +365,11 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       }
 
       const { buckets } = bucketize(nseRows, bseRows);
-      const fresh = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, Number(row?.priceBandMax ?? 0) || undefined);
+      /* Same cap-then-floor price resolution as `offeredFromIpo`: this one
+         feeds `shniMinShares`, so on a fixed-price issue reading only the cap
+         left it 0 and no HNI row got an `applicationsSubscribed` figure. */
+      const priceForSubs = Number(row?.priceBandMax ?? 0) || Number(row?.priceBandMin ?? 0) || undefined;
+      const fresh = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, priceForSubs);
       const subs = await this.keepKnownFigures(ipo, fresh);
       this.lastFetchAt.set(ipo.id, Date.now());
       if (subs.length === 0) {
