@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
@@ -15,10 +15,33 @@ import { ipoPhase, priceBand, type IpoPhase } from '@/lib/format';
 import { CompletenessCell } from '@/components/CompletenessCell';
 import * as api from '@/lib/tenants-admin';
 
+/**
+ * The phase filter is a DROPDOWN, not the segmented control it used to be
+ * (operator, 2026-10-06). Six buttons took the whole toolbar, and Year and Type
+ * had to go somewhere — the counts that made the segments useful now ride in the
+ * option labels, so nothing is lost.
+ */
 const FILTERS: { key: IpoPhase | 'all'; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'live', label: 'Live' }, { key: 'upcoming', label: 'Upcoming' },
+  { key: 'all', label: 'All statuses' }, { key: 'live', label: 'Live' }, { key: 'upcoming', label: 'Upcoming' },
   { key: 'allotment', label: 'Allotment' }, { key: 'listed', label: 'Listed' }, { key: 'closed', label: 'Closed' },
 ];
+
+type BoardFilter = 'all' | 'mainboard' | 'sme';
+const BOARDS: { key: BoardFilter; label: string }[] = [
+  { key: 'all', label: 'All types' }, { key: 'mainboard', label: 'Mainboard' }, { key: 'sme', label: 'SME' },
+];
+
+/**
+ * An issue's YEAR is its OPEN date's. Every one of the 1,268 visible records
+ * carries one, and it is what "the 2026 IPOs" means to anyone reading this
+ * screen — a listing date would file a 30 Dec issue under the following year.
+ *
+ * A record with NO open date is shown in EVERY year, deliberately: that is a
+ * freshly-added issue whose dates have not been filled in yet, which is exactly
+ * the record needing attention, and hiding it the moment it is saved would read
+ * as a failed save.
+ */
+const yearOf = (i: api.AdminIpo): string | null => (i.openDate ? String(i.openDate).slice(0, 4) : null);
 
 export default function AdminCatalog() {
   const me = useOperator();
@@ -28,6 +51,9 @@ export default function AdminCatalog() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<IpoPhase | 'all'>('all');
+  const [board, setBoard] = useState<BoardFilter>('all');
+  /** `''` until the data arrives and the default year is picked; `'all'` = every year. */
+  const [year, setYear] = useState<string>('');
 
   // admin sees EVERYTHING, including bulk-imported rows the public site hides
   const load = useCallback(async () => {
@@ -146,24 +172,75 @@ export default function AdminCatalog() {
     }
   };
 
-  const rows = useMemo(() => {
+  /** Decorated once — `ipoPhase` and the year are read by the rows AND by all
+   *  three facet counts, so deriving them per-filter would run nine times. */
+  const all = useMemo(
+    () => ipos.map((i) => ({ i, ph: ipoPhase(i), yr: yearOf(i) })),
+    [ipos],
+  );
+
+  const years = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of all) if (r.yr) s.add(r.yr);
+    return [...s].sort().reverse();
+  }, [all]);
+
+  /* Default to the CURRENT year — but only once, and only if it has records.
+     Re-running this on every `load()` would throw away the operator's own
+     choice after each badge toggle or GMP save; and in early January, before
+     the first issue of the year is entered, pinning to a year with nothing in
+     it would open the screen empty, so it falls back to the newest year held. */
+  const defaulted = useRef(false);
+  useEffect(() => {
+    if (defaulted.current || years.length === 0) return;
+    defaulted.current = true;
+    const now = String(new Date().getFullYear());
+    setYear(years.includes(now) ? now : years[0]);
+  }, [years]);
+
+  /* A SEARCH IGNORES THE YEAR (operator's call, 2026-10-06). With the year
+     pinned to the current one, searching a 2019 symbol would return nothing and
+     read as missing data rather than as a filter — the same reasoning that keeps
+     the front site's search reaching the whole catalogue. The note under the bar
+     says so, so an unexpectedly wide result set is never a surprise. */
+  const searching = q.trim().length > 0;
+
+  const keep = useMemo(() => {
     const ql = q.trim().toLowerCase();
-    let out = ipos
-      .map((i) => ({ i, ph: ipoPhase(i) }))
-      .filter(({ i, ph }) =>
-        (filter === 'all' || ph.phase === filter) &&
-        (!ql || i.symbol.toLowerCase().includes(ql) || i.name.toLowerCase().includes(ql)));
+    return (r: typeof all[number], skip?: 'year' | 'board' | 'phase') =>
+      (skip === 'year' || searching || year === '' || year === 'all' || r.yr === null || r.yr === year)
+      && (skip === 'board' || board === 'all' || (board === 'sme' ? r.i.type === 'sme' : r.i.type !== 'sme'))
+      && (skip === 'phase' || filter === 'all' || r.ph.phase === filter)
+      && (!ql || r.i.symbol.toLowerCase().includes(ql) || r.i.name.toLowerCase().includes(ql));
+  }, [q, searching, year, board, filter]);
+
+  const rows = useMemo(() => {
+    let out = all.filter((r) => keep(r));
     if (sort) {
       out = [...out].sort((a, b) => { const va = sortVal(a, sort.k), vb = sortVal(b, sort.k); return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir; });
     }
     return out;
-  }, [ipos, q, filter, sort]);
+  }, [all, keep, sort]);
 
+  /* FACET counts — each dimension counts what the OTHER filters leave, which is
+     how a filter bar is expected to behave: the Status options show how many
+     live issues there are *in the year and board you are looking at*. Counting
+     the whole catalogue instead is the fault that once put "SME 42" over a page
+     showing eleven. */
   const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const i of ipos) { const p = ipoPhase(i).phase; c[p] = (c[p] ?? 0) + 1; }
-    return c;
-  }, [ipos]);
+    const phase: Record<string, number> = {};
+    const byBoard: Record<string, number> = { all: 0, mainboard: 0, sme: 0 };
+    const byYear: Record<string, number> = {};
+    for (const r of all) {
+      if (keep(r, 'phase')) phase[r.ph.phase] = (phase[r.ph.phase] ?? 0) + 1;
+      if (keep(r, 'board')) {
+        byBoard.all += 1;
+        byBoard[r.i.type === 'sme' ? 'sme' : 'mainboard'] += 1;
+      }
+      if (keep(r, 'year') && r.yr) byYear[r.yr] = (byYear[r.yr] ?? 0) + 1;
+    }
+    return { phase, board: byBoard, year: byYear };
+  }, [all, keep]);
 
   const { slice, node: pager } = usePagination(rows, 10);
 
@@ -185,22 +262,66 @@ export default function AdminCatalog() {
       />
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
 
-      <div className="tbl-toolbar">
-        <div className="seg">
-          {FILTERS.map((f) => (
-            <button key={f.key} className={filter === f.key ? 'on' : ''} onClick={() => setFilter(f.key)}>
-              {f.label}{f.key !== 'all' && counts[f.key] ? <span style={{ opacity: .6, marginLeft: 5 }}>{counts[f.key]}</span> : ''}
-            </button>
-          ))}
-        </div>
-        <span className="spacer" style={{ flex: 1 }} />
-        <SearchBox value={q} onChange={setQ} placeholder="Search symbol or name…" />
+      <div className="filter-bar">
+        <label className="filter">
+          <span className="fl">Year</span>
+          <select className="input" style={{ minWidth: 128 }} value={year}
+            onChange={(e) => setYear(e.target.value)} disabled={years.length === 0}>
+            <option value="all">All years</option>
+            {years.map((y) => (
+              <option key={y} value={y}>{y}{counts.year[y] ? ` (${counts.year[y]})` : ''}</option>
+            ))}
+          </select>
+        </label>
+        <label className="filter">
+          <span className="fl">Type</span>
+          <select className="input" style={{ minWidth: 150 }} value={board}
+            onChange={(e) => setBoard(e.target.value as BoardFilter)}>
+            {BOARDS.map((b) => (
+              <option key={b.key} value={b.key}>{b.label} ({counts.board[b.key] ?? 0})</option>
+            ))}
+          </select>
+        </label>
+        <label className="filter">
+          <span className="fl">Status</span>
+          <select className="input" style={{ minWidth: 150 }} value={filter}
+            onChange={(e) => setFilter(e.target.value as IpoPhase | 'all')}>
+            {FILTERS.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}{f.key === 'all' ? '' : ` (${counts.phase[f.key] ?? 0})`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter">
+          <span className="fl">Search</span>
+          <SearchBox value={q} onChange={setQ} placeholder="Search symbol or name…" />
+        </label>
+        <span className="fb-end">
+          <span className="fb-count">
+            {rows.length.toLocaleString('en-IN')} of {ipos.length.toLocaleString('en-IN')}
+          </span>
+        </span>
       </div>
+      {searching && (
+        <div className="muted" style={{ fontSize: 12.5, margin: '-6px 0 14px' }}>
+          Searching the whole catalogue — the Year filter is ignored while there’s a search term.
+        </div>
+      )}
 
       <div className="card">
-        <div className="card-head"><span className="t">IPO catalog <span className="count-badge">{ipos.length}</span></span></div>
+        {/* The badge counts the rows IN THIS TABLE, not the catalogue. It read
+            `ipos.length` before the filters existed, which with Year defaulting
+            to the current one would have printed 1,268 above 163 visible rows —
+            the same fault as the home page's "SME 42" over eleven cards. The
+            catalogue total is still on screen, in the `fb-count` above. */}
+        <div className="card-head"><span className="t">IPO catalog <span className="count-badge">{rows.length.toLocaleString('en-IN')}</span></span></div>
         {loading ? <Loader /> : rows.length === 0 ? (
-          <div className="card-pad muted">{ipos.length === 0 ? <>No IPOs yet. {canManage && <a className="linklike" href="/admin/catalog/new">Add the first one →</a>}</> : 'No issues match.'}</div>
+          <div className="card-pad muted">
+            {ipos.length === 0
+              ? <>No IPOs yet. {canManage && <a className="linklike" href="/admin/catalog/new">Add the first one →</a>}</>
+              : <>No issues match these filters.{year !== 'all' && !searching && <> Try <button type="button" className="linklike" onClick={() => setYear('all')}>all years</button>.</>}</>}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>

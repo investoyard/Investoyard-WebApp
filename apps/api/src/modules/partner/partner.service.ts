@@ -469,19 +469,26 @@ export class PartnerService {
     // Labels come from the owning tables, never from the call row: a symbol is
     // stored as the partner sent it, and a tenantId is a uuid.
     let label = new Map<string, string>();
+    /** By IPO only: the board and the open date, both off `Ipo`. */
+    let meta = new Map<string, { board: 'mainboard' | 'sme'; openDate: Date | null }>();
     if (by === 'partner') {
       const names = await this.tenantNames(rows.map((r) => r.key));
       label = new Map(rows.map((r) => [r.key, names.get(r.key)?.name ?? r.key]));
     } else if (by === 'ipo') {
       const ipos = await tenantContext.runUnscoped(() => this.prisma.ipo.findMany({
-        where: { symbol: { in: rows.map((r) => r.key) } }, select: { symbol: true, name: true },
+        where: { symbol: { in: rows.map((r) => r.key) } },
+        select: { symbol: true, name: true, type: true, openDate: true },
       }));
       label = new Map(ipos.map((i) => [i.symbol, i.name]));
+      meta = new Map(ipos.map((i) => [i.symbol, {
+        board: (i.type === 'sme' ? 'sme' : 'mainboard') as 'mainboard' | 'sme',
+        openDate: i.openDate ?? null,
+      }]));
     }
 
-    return {
-      by, days, scoped: scope != null,
-      rows: rows.map((r) => ({
+    let out = rows.map((r) => {
+      const m = meta.get(r.key);
+      return {
         key: r.key,
         // An IPO the partner asked for that we do not carry has no name to
         // show — say so rather than echoing the symbol twice, because that is
@@ -489,8 +496,40 @@ export class PartnerService {
         label: by === 'ipo' ? (label.get(r.key) ?? null) : (label.get(r.key) ?? r.key),
         calls: r.calls, failed: r.failed, applicants: r.applicants,
         avgMs: r.avgMs, lastAt: r.lastAt,
-      })),
-    };
+        ...(by === 'ipo' ? { board: m?.board ?? null, openDate: m?.openDate ?? null } : {}),
+      };
+    });
+
+    /*
+     * BY IPO IS ORDERED BY THE ISSUE'S OPEN DATE, NEWEST FIRST (operator ask,
+     * 2026-10-06) — call volume told you which partner is busiest, not which
+     * issues are current, and the report is read while an issue is in play.
+     *
+     * Sorted HERE and not in the SQL because the key is `ipoSymbol` on
+     * `PartnerApiCall` while `openDate` lives on `Ipo`, which is the join the
+     * label lookup above already does. It is a sort over one row per distinct
+     * symbol — 38 across a full 365-day window — so nothing is saved by pushing
+     * it into the database.
+     *
+     * A symbol we do not carry has NO open date and sorts LAST, never first: an
+     * empty value would invert the order and float exactly the rows that are a
+     * diagnosis rather than an issue. Ties fall back to call volume, which is
+     * what the order used to be, so same-day issues read sensibly.
+     */
+    if (by === 'ipo') {
+      out = [...out].sort((a, b) => {
+        const ta = (a as any).openDate ? new Date((a as any).openDate).getTime() : null;
+        const tb = (b as any).openDate ? new Date((b as any).openDate).getTime() : null;
+        if (ta !== tb) {
+          if (ta === null) return 1;
+          if (tb === null) return -1;
+          return tb - ta;
+        }
+        return b.calls - a.calls;
+      });
+    }
+
+    return { by, days, scoped: scope != null, rows: out };
   }
 
   /** CSV of the same summary — one file per grouping. */
@@ -498,9 +537,17 @@ export class PartnerService {
     const { by, rows } = await this.callsSummary(q);
     const esc = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const first = by === 'partner' ? 'Partner' : by === 'ipo' ? 'IPO' : by === 'month' ? 'Month' : 'Date';
-    const head = [first, ...(by === 'ipo' ? ['Name'] : []), 'Calls', 'Failed', 'Failed %', 'Applicants', 'Avg ms', 'Last call'];
+    /* The CSV carries Board and Open for the IPO grouping and inherits the
+       open-date order from `callsSummary` — a spreadsheet sorted by a column it
+       does not contain is impossible to re-sort or to trust. */
+    const head = [first, ...(by === 'ipo' ? ['Name', 'Board', 'Open'] : []), 'Calls', 'Failed', 'Failed %', 'Applicants', 'Avg ms', 'Last call'];
     const lines = rows.map((r) => [
-      r.key, ...(by === 'ipo' ? [r.label ?? 'not in catalogue'] : []),
+      r.key,
+      ...(by === 'ipo' ? [
+        r.label ?? 'not in catalogue',
+        (r as any).board === 'sme' ? 'SME' : (r as any).board === 'mainboard' ? 'Mainboard' : '',
+        (r as any).openDate ? new Date((r as any).openDate).toISOString().slice(0, 10) : '',
+      ] : []),
       r.calls, r.failed, r.calls > 0 ? ((r.failed / r.calls) * 100).toFixed(1) : '0.0',
       r.applicants, r.avgMs, r.lastAt ? new Date(r.lastAt).toISOString().replace('T', ' ').slice(0, 19) : '',
     ].map(esc).join(','));

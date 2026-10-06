@@ -206,6 +206,9 @@ export type CallsSummaryBy = 'partner' | 'day' | 'month' | 'ipo';
 export interface PartnerCallsSummaryRow {
   key: string; label: string | null;
   calls: number; failed: number; applicants: number; avgMs: number; lastAt: string | null;
+  /** `by: 'ipo'` only — both null for a symbol we do not carry. */
+  board?: 'mainboard' | 'sme' | null;
+  openDate?: string | null;
 }
 export interface PartnerCallsSummary {
   by: CallsSummaryBy; days: number; scoped: boolean; rows: PartnerCallsSummaryRow[];

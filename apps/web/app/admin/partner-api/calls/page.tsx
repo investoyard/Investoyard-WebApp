@@ -230,6 +230,11 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
             <thead><tr>
               <th>{HEAD[sum.by]}</th>
               {sum.by === 'ipo' && <th>Name</th>}
+              {/* The Open column exists because the rows are SORTED by it. A
+                  table ordered by a column it does not show reads as arbitrary,
+                  and the first question would be why the busiest partner is no
+                  longer at the top. */}
+              {sum.by === 'ipo' && <th>Open</th>}
               <th style={{ textAlign: 'right' }}>Calls</th>
               <th style={{ textAlign: 'right' }}>Failed</th>
               <th style={{ textAlign: 'right' }}>Failed %</th>
@@ -259,6 +264,21 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                       <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                         title={r.label ?? 'This symbol is not in the catalogue'}>
                         {r.label ?? <span className="st bad">not in catalogue</span>}
+                        {/* Mainboard and SME behave differently enough — lot
+                            minimums, QIB ceiling, market maker — that knowing
+                            which one a row is saves opening the IPO. Same chip
+                            as the IPO catalog, so the two surfaces agree. */}
+                        {r.board && (
+                          <span className={`chip ${r.board}`}
+                            style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 999, marginLeft: 8 }}>
+                            {r.board === 'sme' ? 'SME' : 'Mainboard'}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {sum.by === 'ipo' && (
+                      <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {r.openDate ? String(r.openDate).slice(0, 10) : <span className="muted">—</span>}
                       </td>
                     )}
                     <td className="mono" style={{ textAlign: 'right' }}>{r.calls.toLocaleString('en-IN')}</td>
@@ -288,7 +308,10 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                 bug: the build cannot see it and neither can a diff. */}
             <tfoot><tr className="tbl-total">
               <td style={{ fontWeight: 700 }}>Total</td>
-              {sum.by === 'ipo' && <td />}
+              {/* TWO spacers for the IPO grouping — Name and Open. One short and
+                  every figure in the total row shifts a column left, which is
+                  exactly the misalignment this row was fixed for on 1 Oct. */}
+              {sum.by === 'ipo' && <><td /><td /></>}
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.calls.toLocaleString('en-IN')}</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: totals.failed > 0 ? 'var(--neg)' : undefined }}>
                 {totals.failed.toLocaleString('en-IN')}
