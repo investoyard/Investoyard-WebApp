@@ -469,6 +469,21 @@ export class AdminController {
     return this.subscription.pollIpo(ipoId);
   }
 
+  /**
+   * The daily check: not-yet-closed issues whose subscription the poller cannot
+   * compute, so their bidding days are being discarded right now.
+   *
+   * `ipos.view`, NOT `rails.manage`, and the difference matters — the people who
+   * fix this are the ones who enter IPO data (Staff carries the IPO permissions,
+   * not the rail ones), and an alert only the superadmin can see is an alert
+   * nobody acts on.
+   */
+  @Get('subscription/readiness')
+  @RequirePermissions('ipos.view')
+  subscriptionReadiness() {
+    return this.subscription.subscriptionReadiness();
+  }
+
   @Post('roles')
   @RequirePermissions('roles.manage')
   createRole(@Req() req: any, @Body() dto: CreateRoleDto) {

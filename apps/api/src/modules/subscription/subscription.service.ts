@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
+import { tradingDaysBetween } from '@investoyard/shared-types';
 import { offeredFromIpo, type Bucket } from './offered';
 
 // ── tunables ─────────────────────────────────────────────────────────────────
@@ -301,6 +302,100 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       if (due.length === 0) return;
 
       for (const ipo of due) await this.refreshIpo(ipo, sweep);
+    });
+  }
+
+  /**
+   * WHICH NOT-YET-CLOSED ISSUES THE POLLER CANNOT COMPUTE — the daily check
+   * (operator ask, 2026-10-06, after ten SME issues closed with nothing).
+   *
+   * W-SUB on the IPO form only helps someone who opens that form. These ten were
+   * lost silently over nine days because nobody did, so the gap needs a surface
+   * that comes to the operator instead: this feeds a card on the admin
+   * dashboard, which is the one screen they see every day.
+   *
+   * IT CALLS `offeredFromIpo()` — the poller's own resolver, not a reimplemented
+   * version of its conditions. That is the whole design: an alert that decides
+   * for itself what "cannot be computed" means is an alert that drifts from the
+   * thing it is warning about, and this codebase has paid for that four times
+   * (three mappers into `computeIssue`, four readers of `sharesUpper`). If the
+   * poller would write nothing, this lists it; if the poller would work, it does
+   * not appear. The two cannot disagree.
+   *
+   * `lostDays` / `daysLeft` count TRADING days off the real NSE calendar, so a
+   * weekend or a Gandhi Jayanti is not reported as a lost day — and they are
+   * what makes a row actionable: one bidding day left is an emergency, four
+   * still to come is a note.
+   */
+  async subscriptionReadiness(): Promise<{
+    checkedAt: string;
+    atRisk: {
+      id: string; symbol: string; name: string; board: 'mainboard' | 'sme';
+      openDate: string | null; closeDate: string | null;
+      state: 'open' | 'upcoming';
+      lostDays: number; daysLeft: number;
+      reason: string;
+    }[];
+  }> {
+    return tenantContext.runUnscoped(async () => {
+      const today = this.istParts().ymd;
+      const ipos = await this.prisma.ipo.findMany({
+        where: { hidden: false, closeDate: { gte: new Date(`${today}T00:00:00.000Z`) } },
+        select: {
+          id: true, symbol: true, name: true, type: true,
+          issueSize: true, priceBandMax: true, priceBandMin: true,
+          openDate: true, closeDate: true, extra: true,
+        },
+        orderBy: { closeDate: 'asc' },
+      });
+
+      const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
+      const atRisk = [];
+      for (const i of ipos) {
+        const extra: any = i.extra ?? {};
+        const offered = offeredFromIpo({
+          issueSize: i.issueSize as any,
+          priceBandMax: i.priceBandMax as any,
+          priceBandMin: i.priceBandMin as any,
+          extra,
+        });
+        if (offered !== null) continue;   // the poller can compute it — nothing to say
+
+        /* Name the actual blocker rather than "incomplete". The reservation table
+           is the usual one, but a record can also be missing the price or the
+           size the fallback divides, and those need a different field filling. */
+        const resv = extra.shareResv;
+        const hasRows = resv && typeof resv === 'object'
+          && Object.values(resv).some((r: any) =>
+            Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')) > 0
+            || Number(String(r?.sharesUpper ?? '').replace(/[^\d]/g, '')) > 0
+            || Number(String(r?.sharesLower ?? '').replace(/[^\d]/g, '')) > 0);
+        const price = Number(i.priceBandMax) || Number(i.priceBandMin);
+        const reason = !hasRows
+          ? 'No reservation split — no percentage or share count on any category row.'
+          : !price
+            ? 'No price band, so a percentage-only table has nothing to divide.'
+            : !Number(i.issueSize)
+              ? 'No issue size, so a percentage-only table has nothing to divide.'
+              : 'The reservation table has rows but none resolve to a share count.';
+
+        const o = day(i.openDate), c = day(i.closeDate);
+        atRisk.push({
+          id: i.id,
+          symbol: i.symbol,
+          name: i.name,
+          board: (i.type === 'sme' ? 'sme' : 'mainboard') as 'mainboard' | 'sme',
+          openDate: o,
+          closeDate: c,
+          state: (o && o <= today ? 'open' : 'upcoming') as 'open' | 'upcoming',
+          // days already gone are only "lost" once bidding has actually started
+          lostDays: o && o <= today ? tradingDaysBetween(o, today) : 0,
+          daysLeft: c ? tradingDaysBetween(today > (o ?? today) ? today : (o ?? today), c) : 0,
+          reason,
+        });
+      }
+      return { checkedAt: new Date().toISOString(), atRisk };
     });
   }
 

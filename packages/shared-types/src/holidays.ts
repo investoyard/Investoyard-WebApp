@@ -50,3 +50,26 @@ export const isTradingHoliday = (iso: string): boolean => {
   const wd = new Date(`${iso}T00:00:00Z`).getUTCDay();
   return wd === 0 || wd === 6 || NSE_TRADING_HOLIDAYS.has(iso);
 };
+
+/**
+ * Trading days in `[from, to]`, BOTH ENDS INCLUSIVE — weekends and listed
+ * holidays excluded.
+ *
+ * Inclusive because the question it answers is "how many bidding days has this
+ * issue had?", and an issue that opens and closes on the same day has had one.
+ * Added 2026-10-06 for the subscription readiness check, where this figure is
+ * what tells the operator whether a row is an emergency or a note: PARASYNTEX
+ * ran 30 Sep → 6 Oct and that is FOUR bidding days (30 Sep, 1, 5, 6 Oct — 2 Oct
+ * was Gandhi Jayanti and the 3rd and 4th a weekend), not seven calendar days and
+ * not five weekdays.
+ *
+ * Returns 0 when the range is inverted rather than counting backwards.
+ */
+export const tradingDaysBetween = (from: string, to: string): number => {
+  if (!from || !to || from > to) return 0;
+  let n = 0;
+  for (const d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+    if (!isTradingHoliday(d.toISOString().slice(0, 10))) n += 1;
+  }
+  return n;
+};

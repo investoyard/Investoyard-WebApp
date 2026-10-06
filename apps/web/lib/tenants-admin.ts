@@ -500,6 +500,29 @@ export interface AdminDashboard {
 }
 export const fetchDashboard = (slug: string) => authed<AdminDashboard>(`${API}/admin/dashboard/${slug}`, { method: 'GET' });
 
+/**
+ * Not-yet-closed issues whose subscription the poller CANNOT compute — so their
+ * bidding days are being discarded right now, permanently.
+ *
+ * The API decides membership by calling the poller's own `offeredFromIpo()`, so
+ * this list and the poller's behaviour cannot disagree. Never re-derive the
+ * condition on this side.
+ */
+export interface SubscriptionReadiness {
+  checkedAt: string;
+  atRisk: {
+    id: string; symbol: string; name: string;
+    board: 'mainboard' | 'sme';
+    openDate: string | null; closeDate: string | null;
+    state: 'open' | 'upcoming';
+    /** TRADING days, off the real NSE calendar — a weekend is not a lost day. */
+    lostDays: number; daysLeft: number;
+    reason: string;
+  }[];
+}
+export const fetchSubscriptionReadiness = () =>
+  authed<SubscriptionReadiness>(`${API}/admin/subscription/readiness`, { method: 'GET' });
+
 /** Fetch the report CSV (authenticated) and trigger a browser download. */
 export async function downloadReportCsv(slug: string): Promise<void> {
   const res = await fetch(`${API}/admin/reports/${slug}/export`, { headers: { Authorization: `Bearer ${await adminToken()}` } });

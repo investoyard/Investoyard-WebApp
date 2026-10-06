@@ -39,6 +39,8 @@ export default function AdminOverview() {
   const [activity, setActivity] = useState<api.AuditEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** The daily subscription check — see `SubscriptionWatch` at the foot of this file. */
+  const [readiness, setReadiness] = useState<api.SubscriptionReadiness | null>(null);
 
   const loadDash = useCallback(async (slug: string) => {
     try { setD(await api.fetchDashboard(slug)); setErr(null); }
@@ -47,8 +49,16 @@ export default function AdminOverview() {
   useEffect(() => {
     (async () => {
       try {
-        const [, t, a] = await Promise.all([loadDash(home), api.fetchTree().then(setTree).catch(() => {}), operatorCan(me, 'audit.view') ? api.fetchAudit().then(setActivity).catch(() => {}) : Promise.resolve()]);
-        void t; void a;
+        const [, t, a, r] = await Promise.all([
+          loadDash(home),
+          api.fetchTree().then(setTree).catch(() => {}),
+          operatorCan(me, 'audit.view') ? api.fetchAudit().then(setActivity).catch(() => {}) : Promise.resolve(),
+          /* Caught, never surfaced as a page error: a failure here must not put a
+             red banner over a dashboard that is otherwise fine. The card simply
+             does not render. */
+          operatorCan(me, 'ipos.view') ? api.fetchSubscriptionReadiness().then(setReadiness).catch(() => {}) : Promise.resolve(),
+        ]);
+        void t; void a; void r;
       } finally { setLoading(false); }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,6 +88,10 @@ export default function AdminOverview() {
         }
       />
       {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err} — is the API running?</div>}
+      {/* ABOVE the stat grid and OUTSIDE the loading gate: this is the one thing on
+          the dashboard that is losing data while it is not looked at, and it must
+          not wait on the counts to render. */}
+      <SubscriptionWatch data={readiness} />
       {loading || !c || !d ? <Loader /> : (
         <>
           {/* ---- headline counts ---- */}
@@ -190,5 +204,91 @@ export default function AdminOverview() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * THE DAILY SUBSCRIPTION CHECK (operator ask, 2026-10-06).
+ *
+ * Ten SME issues closed between 5 and 6 October with no subscription data at
+ * all, lost silently over nine days. The poller returns nothing the moment it
+ * has no Book Size to divide, so the exchange's demand is fetched and discarded
+ * on every tick — and a bidding day that passes cannot be recovered, because the
+ * usual rescue (`nseShares ÷ timesSubscribed`) needs a row that was written.
+ *
+ * W-SUB on the IPO form covers the operator who opens that form. This covers the
+ * one who does not: the dashboard is the screen they see every day, so the
+ * warning comes to them instead of waiting to be found.
+ *
+ * IT RENDERS NOTHING WHEN THERE IS NOTHING TO SAY. A card that is permanently
+ * present and permanently empty is a card people stop reading, which is exactly
+ * how the thing it is warning about happened.
+ */
+function SubscriptionWatch({ data }: { data: api.SubscriptionReadiness | null }) {
+  if (!data || data.atRisk.length === 0) return null;
+  const open = data.atRisk.filter((r) => r.state === 'open');
+  return (
+    <div className="card" style={{ marginBottom: 18, borderColor: 'var(--neg)' }}>
+      <div className="card-head">
+        <span className="t">
+          <Icon name="trending" size={15} /> Subscription data not being recorded{' '}
+          <span className="count-badge">{data.atRisk.length}</span>
+        </span>
+        <a className="linklike" href="/admin/catalog" style={{ fontSize: 13 }}>IPO catalog →</a>
+      </div>
+      <div className="card-pad" style={{ paddingBottom: 0 }}>
+        <div className="banner warn" style={{ margin: 0, fontSize: 13.5 }}>
+          {open.length > 0 ? (
+            <><b>{open.length} issue{open.length === 1 ? ' is' : 's are'} open right now with no usable reservation table.</b>{' '}
+              Every poll discards the exchange's figures, and those bidding days cannot be recovered afterwards.</>
+          ) : (
+            <><b>These issues open soon and have no usable reservation table yet.</b>{' '}
+              Fill it in before the first bidding day or that day's figures are lost.</>
+          )}{' '}
+          Either percentages or share counts will do — you do not need both.
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="table" style={{ width: '100%' }}>
+          <thead><tr>
+            <th>IPO</th><th>Window</th>
+            {/* The two figures that say how urgent each row is. One bidding day
+                left is an emergency; four still to come is a note. */}
+            <th style={{ textAlign: 'right' }}>Days lost</th>
+            <th style={{ textAlign: 'right' }}>Days left</th>
+            <th>What’s missing</th><th style={{ textAlign: 'right' }}>Action</th>
+          </tr></thead>
+          <tbody>
+            {data.atRisk.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  <b className="mono">{r.symbol}</b>
+                  <span className={`chip ${r.board}`} style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 999, marginLeft: 8 }}>
+                    {r.board === 'sme' ? 'SME' : 'Mainboard'}
+                  </span>
+                  <div className="sub">{r.name}</div>
+                </td>
+                <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                  {r.openDate ?? '—'} → {r.closeDate ?? '—'}
+                  <div className="sub">{r.state === 'open' ? 'open now' : 'upcoming'}</div>
+                </td>
+                <td className="mono" style={{ textAlign: 'right', color: r.lostDays > 0 ? 'var(--neg)' : undefined, fontWeight: r.lostDays > 0 ? 700 : 400 }}>
+                  {r.lostDays || '—'}
+                </td>
+                <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{r.daysLeft || '—'}</td>
+                <td style={{ fontSize: 12.5 }}>{r.reason}</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <a className="btn btn-secondary btn-sm" href={`/admin/catalog/edit?id=${r.id}`}>Enter it</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card-pad muted" style={{ fontSize: 12, paddingTop: 10 }}>
+        Days are TRADING days from the real NSE calendar — a weekend or a market holiday is not a lost day.
+        Checked {new Date(data.checkedAt).toLocaleString('en-IN')}.
+      </div>
+    </div>
   );
 }
