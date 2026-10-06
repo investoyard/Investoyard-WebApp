@@ -1296,19 +1296,35 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
      * record and on the ~1,200 closed historical rows where the data is already
      * gone and the warning would be nothing but noise.
      */
-    const splitPcts = RESV_ROWS
+    /*
+     * A STORED SHARE COUNT COUNTS TOO, and testing only `pct` was a false
+     * positive caught before this shipped. `offeredFromIpo` resolves each
+     * bucket from its count FIRST (`directOf(row)`) and only derives from the
+     * percentage when there is none — so a table filled in with counts off the
+     * RHP and no percentages at all works perfectly, and warning about it would
+     * be telling the operator to fix something that is not broken.
+     *
+     * RKFAL is the live case: no percentages, counts on all four rows
+     * (QIB 43,200 · bHNI 10,70,400 · sHNI 5,36,000 · Retail 24,03,200), six
+     * subscription rows written. The warning must stay silent on it.
+     */
+    const splitFilled = RESV_ROWS
       .filter((r) => !CARVEOUT_ROWS.includes(r.key))
-      .reduce((a, r) => a + (fnum(form.shareResv[r.key]?.pct) > 0 ? 1 : 0), 0);
+      .reduce((a, r) => {
+        const row = form.shareResv[r.key];
+        const cnt = (f: 'sharesUpper' | 'sharesLower') => Number(String(row?.[f] ?? '').replace(/[^\d]/g, ''));
+        return a + (fnum(row?.pct) > 0 || cnt('sharesUpper') > 0 || cnt('sharesLower') > 0 ? 1 : 0);
+      }, 0);
     const closeYmd = (form.closeDate || '').slice(0, 10);
     const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    if (splitPcts === 0 && closeYmd && closeYmd >= todayYmd) {
+    if (splitFilled === 0 && closeYmd && closeYmd >= todayYmd) {
       const opens = (form.openDate || '').slice(0, 10);
       const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';
       out.push({
         code: 'W-SUB',
         msg: `No reservation split entered, and this issue ${when} (closes ${closeYmd}). `
-          + 'Until the QIB / HNI / Retail percentages are filled in, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
-          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Percentages alone are enough; share counts are not required.',
+          + 'Until the QIB / HNI / Retail rows carry a percentage or a share count, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
+          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Either percentages or counts will do; you do not need both.',
         blocking: false,
       });
     }
