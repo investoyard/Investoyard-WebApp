@@ -1,14 +1,31 @@
 /**
- * Per-metric detail shown when an IPO card tile is expanded.
+ * The mobile IPO view model.
  *
- * The arithmetic is NO LONGER a copy of the web file — both now call
- * computeIssue() from @investoyard/shared-types, so a category share count
- * cannot differ between the two surfaces. Only the presentation types are
- * local.
+ * THERE IS NO ARITHMETIC IN THIS FILE and there must never be again. Every
+ * derived figure comes from `packages/shared-types/src/ipoDerive.ts`, which web
+ * re-exports too, so the two surfaces cannot show different numbers for the
+ * same issue.
+ *
+ * Until 2026-10-07 this file carried its OWN `subscriptionTable`, `lotLadder`
+ * and `reservation`, and none of them had received the September rebuild. They
+ * were not slightly behind — they were putting wrong figures in front of
+ * investors:
+ *
+ *   • `subscriptionTable` ignored the record's reservation table and divided a
+ *     hardcoded { qib: 50, nii: 15, retail: 35 }. That map has no key for hni,
+ *     hni2, shareholder or policyholder, so all four showed a Book Size of
+ *     ZERO — 59 rows across the catalogue — and SME showed a zero QIB because
+ *     the SME map says qib: 0.
+ *   • No anchor was deducted, so QIB was always gross.
+ *   • No carve-out was counted, so a reserved quota had no Book Size.
+ *   • `lotLadder` always returned the five-row MAINBOARD shape, so an SME issue
+ *     showed Retail at ONE lot when the minimum is two.
+ *
+ * What stays here is what is genuinely mobile's: the `IpoFull` shape this app
+ * passes around, and the three view helpers below.
  */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { computeIssue, rulePackFor, inferRegulationBasis,
-  issueInputsFrom, parseIssueSizeRupees, type IssueInputs, type IssueInputSource } from '@investoyard/shared-types';
+import { reservedPctFor } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -21,7 +38,9 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   extra?: Record<string, any>;
 }
 
-/* Standard reservation splits (mirrors apps/web/lib/api.ts enrich()). */
+/* The generic split, used ONLY where the record names no percentage of its own
+   — most of the catalogue, and the honest fallback for a legacy imported row.
+   Mobile used to use it unconditionally; see `reservedPctFor`. */
 const RESERVED: Record<string, number> = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
 const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
 
@@ -63,141 +82,44 @@ export function listingInfo(ipo: IpoFull): { price?: number; gainPct?: number } 
   return { price: price || undefined, gainPct };
 }
 
-/** Attach reservedPct to subscription rows so reservation()/subscriptionTable() work. */
+/**
+ * Attach reservedPct to subscription rows.
+ *
+ * THE RECORD'S OWN RESERVATION TABLE FIRST — `reservedPctFor` is the shared
+ * resolver web's `enrich()` uses, and the reason it is shared is that mobile's
+ * version read ONLY the generic map. Every issue whose split is not exactly
+ * 50/15/35 was therefore stamped with percentages belonging to no actual IPO.
+ */
 export function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
+  const extra = (ipo as any).extra ?? undefined;
   return {
     ...ipo,
     status: effectiveStatus(ipo),
     logoUrl: (ipo as any).logoUrl ?? undefined,
-    extra: (ipo as any).extra ?? undefined,
-    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
+    extra,
+    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: reservedPctFor(extra, s.category, res) })),
   };
 }
 
-/** Band thresholds come from the rule pack — never a literal here. */
-function packFor(ipo: IpoFull) {
-  const ex: any = (ipo as any).extra ?? {};
-  const qib = Number(String(ex.shareResv?.qib?.pct ?? '').replace(/[^\d.]/g, '')) || 0;
-  return rulePackFor(
-    ipo.type === 'sme' ? 'sme' : 'mainboard',
-    ex.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
-    ex.regulationBasis || inferRegulationBasis(qib),
-  );
-}
-
-/**
- * NOT a copy any more — delegates to `issueInputsFrom()` in shared-types
- * (2026-10-03). The comment here used to read *"Mirrors issueInputsFor() in
- * apps/web/lib/ipoCalc.ts"*, and it did not: this copy sent `policyholder` and
- * no `instrument`, web sent `instrument` and no `policyholder`, and neither
- * sent `carveouts` — so `reservation()` below, which IS customer-facing, split
- * the GROSS offer on the 26 records that carry a reserved quota.
- */
-export function issueInputsFor(ipo: IpoFull): IssueInputs {
-  return issueInputsFrom(ipo as IssueInputSource);
-}
-
-export const derive = (ipo: IpoFull) => computeIssue(issueInputsFor(ipo));
-
-/** One parser, shared with web and with the mapper above. */
-export const parseIssueValue = (s?: string): number => parseIssueSizeRupees(s);
-export function crOrInr(n: number): string {
-  if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
-  return '₹' + Math.round(n).toLocaleString('en-IN');
-}
-const up = (ipo: IpoFull) => ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
-
-export interface AppBand { cat: string; sub: string; lots: number; amount: number; }
-export function applicationBands(ipo: IpoFull): AppBand[] {
-  const perLot = (ipo.lotSize ?? 0) * up(ipo);
-  if (!perLot) return [];
-  const th = packFor(ipo).thresholds;
-  // one more lot than fits under the threshold — the bands are STRICT
-  const lotsAbove = (amt?: number) => (amt ? Math.floor(amt / perLot) + 1 : 1);
-  const hni1 = lotsAbove(th.hni2?.above);
-  const hni2 = lotsAbove(th.hni?.above);
-  return [
-    { cat: 'Retail', sub: 'upto ₹2 L', lots: 1, amount: perLot },
-    { cat: 'HNI 1', sub: '₹2 L – ₹10 L', lots: hni1, amount: hni1 * perLot },
-    { cat: 'HNI 2', sub: 'above ₹10 L', lots: hni2, amount: hni2 * perLot },
-  ];
-}
-
-export interface LotRow { cat: string; sub: string; lots: number; shares: number; amount: number; }
-export function lotLadder(ipo: IpoFull): LotRow[] {
-  const lot = ipo.lotSize ?? 0;
-  const perLot = lot * up(ipo);
-  if (!perLot) return [];
-  const th = packFor(ipo).thresholds;
-  const rMax = Math.max(1, Math.floor((th.hni2?.above ?? 0) / perLot));
-  const sMin = rMax + 1;
-  const sMax = Math.max(sMin, Math.floor((th.hni?.above ?? 0) / perLot));
-  const bMin = sMax + 1;
-  const mk = (cat: string, sub: string, lots: number): LotRow => ({ cat, sub, lots, shares: lots * lot, amount: lots * perLot });
-  return [
-    mk('Retail', 'Up to ₹2 L', 1),
-    mk('Retail', 'Up to ₹2 L', rMax),
-    mk('S-HNI', '₹2 L to ₹10 L', sMin),
-    mk('S-HNI', '₹2 L to ₹10 L', sMax),
-    mk('B-HNI', 'Above ₹10 L', bMin),
-  ];
-}
-
-export interface ResRow { cat: string; pct: number; shares: number; amount: number; }
-export function reservation(ipo: IpoFull): ResRow[] {
-  const total = parseIssueValue(ipo.issueSize);
-  if (!total) return [];
-  /**
-   * Shares come from the ENGINE, which floors each category to a whole number
-   * of lots and gives the residual to one named category. This was
-   * Math.round(amount / price) — a count that was not a whole lot and could
-   * disagree with the same figure on web.
-   */
-  const d = derive(ipo);
-  if (d.primary?.categories.length) {
-    return d.primary.categories.map((c) => ({ cat: c.label, pct: c.pct, shares: c.shares, amount: c.amount }));
-  }
-  const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
-  if (!rows.length) return [];
-  return rows
-    .map((r) => {
-      const pct = r.reservedPct ?? 0;
-      const amount = (total * pct) / 100;
-      return { cat: r.category.toUpperCase(), pct, shares: Math.round(amount / (up(ipo) || 1)), amount };
-    })
-    .filter((r) => r.pct > 0); // an all-zero table would render an empty bar — hide instead
-}
-
-export interface SubRowT { cat: string; bookSize: number; subscribed: number; times: number; }
-export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRowT } | null {
-  const total = parseIssueValue(ipo.issueSize);
-  const subs = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
-  if (!subs.length || !total) return null;
-  const totalShares = total / (up(ipo) || 1);
-  const rows: SubRowT[] = subs.map((r) => {
-    const book = (totalShares * (r.reservedPct ?? 0)) / 100;
-    return { cat: r.category.toUpperCase(), bookSize: Math.round(book), subscribed: Math.round(book * r.timesSubscribed), times: r.timesSubscribed };
-  });
-  const bookSum = rows.reduce((a, b) => a + b.bookSize, 0);
-  const subSum = rows.reduce((a, b) => a + b.subscribed, 0);
-  return { rows, total: { cat: 'Total', bookSize: bookSum, subscribed: subSum, times: bookSum ? +(subSum / bookSum).toFixed(2) : 0 } };
-}
-
-export interface TlItem { label: string; date?: string; }
-function addDays(d?: string, n = 1): string | undefined {
-  if (!d) return undefined;
-  const dt = new Date(d + 'T00:00:00');
-  dt.setDate(dt.getDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-export function timeline(ipo: IpoFull): TlItem[] {
-  return [
-    { label: 'Open date', date: ipo.openDate },
-    { label: 'Close date', date: ipo.closeDate },
-    { label: 'Basis of allotment', date: ipo.allotmentDate },
-    { label: 'Initiation of refunds', date: addDays(ipo.allotmentDate, 1) },
-    { label: 'Credit to demat', date: addDays(ipo.allotmentDate, 1) },
-    { label: 'Listing date', date: ipo.listingDate },
-  ];
-}
+/* ───────────────────────────────────────────────────────────────────────────
+ * Everything below is a RE-EXPORT. Nothing here computes anything, and nothing
+ * here should start to: a figure both surfaces show belongs in one helper,
+ * which is the lesson this codebase has now paid for five times over.
+ * ─────────────────────────────────────────────────────────────────────────── */
+export {
+  issueInputsFor,
+  derive,
+  parseIssueValue,
+  crOrInr,
+  applicationBands,
+  lotLadder,
+  totalOfferedShares,
+  reservation,
+  subCatLabel,
+  offeredByBucket,
+  anchorRosterShares,
+  subscriptionTable,
+  timeline,
+} from '@investoyard/shared-types';
+export type { AppBand, LotRow, ResRow, SubRowT, AnchorBasis, TlItem } from '@investoyard/shared-types';
