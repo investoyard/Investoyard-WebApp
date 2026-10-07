@@ -32,6 +32,8 @@ type Row = {
   same: boolean;
   /** An explanation shown under the row, where a bare diff would mislead. */
   note?: string;
+  /** Defaults to true. False for a row that is correct but would change nothing of value. */
+  preTick?: boolean;
   /** apply writes these onto form state */
   apply: Record<string, unknown>;
 };
@@ -156,12 +158,30 @@ export function CardReviewModal({
         const a = asRupees(leg.basis, leg.value), b = asRupees(curBasis, cur);
         equiv = a > 0 && b > 0 && Math.abs(a - b) / Math.max(a, b) < 0.01;
       }
+      /*
+       * AN EQUIVALENT LEG IS NOT A CHANGE WORTH PROPOSING (operator, 2026-10-07:
+       * "there is no field like 2,62,84,500 shares — we have one Offer for sale
+       * dropdown and it already contains the amount, so why ask").
+       *
+       * They are right. The Add-IPO screen holds ONE value with a Cr/Shares
+       * dropdown, and when the form already says ₹712.13 Cr and the card says
+       * 2,62,84,500 shares, those are the same offer — re-stating it in the
+       * other unit gains nothing and silently rewrites a representation the
+       * operator chose. So an equivalent leg reads as MATCHING and arrives
+       * UNTICKED: visible, explained, and not applied unless they ask for it.
+       *
+       * A leg that is NOT equivalent is still a real overwrite and still
+       * pre-ticked — that is the card telling us something new.
+       */
       out.push({
         key, label,
         parsed: unit(leg.basis, leg.value),
         current: curVal == null || curVal === '' ? '—' : unit(curBasis, curVal),
-        same: leg.basis === curBasis && sameValue(leg.value, curVal),
-        note: equiv ? 'same offer, stated in a different unit' : undefined,
+        same: leg.basis === curBasis ? sameValue(leg.value, curVal) : equiv,
+        note: equiv
+          ? `the form already holds this offer as ${unit(curBasis, curVal)} — ticking this only restates it in ${leg.basis === 'shares' ? 'shares' : '₹ Cr'}`
+          : undefined,
+        preTick: !equiv,
         apply: { [`${key}Basis`]: leg.basis, [`${key}Value`]: String(leg.value) },
       });
     };
@@ -231,11 +251,13 @@ export function CardReviewModal({
     return out;
   }, [parsed, current]);
 
-  // Everything starts ticked — the operator is confirming a read, not building
-  // a selection from scratch. Rows that would CHANGE an existing value are the
-  // ones worth their attention, so those are called out rather than pre-cleared.
+  // Rows start ticked — the operator is confirming a read, not building a
+  // selection from scratch — EXCEPT one that would change nothing of value, like
+  // a leg the form already holds in the other unit. Those are shown, explained
+  // and left unticked: proposing a rewrite of a correct field is how an operator
+  // learns to stop reading the ticks.
   const [picked, setPicked] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(rows.map((r) => [r.key, true])),
+    () => Object.fromEntries(rows.map((r) => [r.key, r.preTick !== false])),
   );
   /* An OVERWRITE is a row where the form already holds a value and the card
      DISAGREES with it. A row that merely renders differently is not one — see
