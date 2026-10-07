@@ -113,8 +113,35 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     // Structure (3). Fresh / OFS are saved as `{ basis, value }` under
     // `extra.fresh` / `extra.ofs` — `basis` says whether `value` is in
     // ₹ Cr, %, or shares. Any non-'none' basis + positive value counts.
-    { key: 'freshCr',    label: 'Fresh issue (₹ Cr)',        group: 'Structure', filled: legFilled(extra?.fresh) || has(extra?.freshIssueCr) },
-    { key: 'ofsCr',      label: 'OFS (₹ Cr)',                group: 'Structure', filled: legFilled(extra?.ofs) || has(extra?.ofsCr) },
+    /*
+     * THE TWO LEGS ARE ONE QUESTION, and an issue is allowed to have only one
+     * of them (operator, 2026-10-07: "no fresh issue in this IPO, I set it to
+     * zero, why is it still pending").
+     *
+     * `legFilled` needs a POSITIVE value, so a leg the operator has correctly
+     * declared absent — basis `none`, or an explicit 0 — could never be
+     * satisfied: the score sat below 100% forever with nothing to do about it.
+     * HD Fire Protect is pure OFS and says so on its own card
+     * ("-----No Fresh Issue-----"); a fresh-only issue, which is the commoner
+     * shape by far, had exactly the same problem on the OFS row.
+     *
+     * A leg is NOT APPLICABLE when the OTHER leg is filled — that is what makes
+     * this a single-leg issue rather than an unfinished one. With NEITHER
+     * filled both stay pending, because a record that declares no legs at all
+     * genuinely has not had its structure entered.
+     *
+     * `excluded`, not `skipped`: the row stays visible and reads as not
+     * counted, so "this issue has no fresh leg" is something the operator can
+     * SEE. Hiding it would leave them wondering where the field went.
+     */
+    ...(() => {
+      const fresh = legFilled(extra?.fresh) || has(extra?.freshIssueCr);
+      const ofs = legFilled(extra?.ofs) || has(extra?.ofsCr);
+      return [
+        { key: 'freshCr', label: 'Fresh issue (₹ Cr)', group: 'Structure' as const, filled: fresh, excluded: !fresh && ofs },
+        { key: 'ofsCr', label: 'OFS (₹ Cr)', group: 'Structure' as const, filled: ofs, excluded: !ofs && fresh },
+      ];
+    })(),
     { key: 'shareResv',  label: 'Reservation table',        group: 'Structure', filled: reservationFilled(extra) },
 
     // Dates (5)
