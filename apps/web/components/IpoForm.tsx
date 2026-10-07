@@ -838,6 +838,28 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           next[cv[2] ? `${field}Basis` : field] = String(v);
           continue;
         }
+        /*
+         * A CARD STATES A DAY; THREE OF THESE FIELDS STORE A `datetime-local`.
+         *
+         * `anchorDate` / `openDate` / `closeDate` hold `2026-10-13T10:00`, and
+         * writing a bare `2026-10-13` into a datetime-local input makes it
+         * INVALID — the control renders empty. That is why the operator reported
+         * the anchor, open and close dates as "not being fetched" on the first
+         * real card (2026-10-07): they parsed correctly, applied, and then
+         * vanished from the screen.
+         *
+         * The existing time is kept when there is one, because it is the
+         * operator's — bidding opens and closes at hours the card never states.
+         * With nothing to keep, fall back to the SEBI bidding window: 10:00 for
+         * the anchor book and the open, 17:00 for the close.
+         */
+        if ((k === 'anchorDate' || k === 'openDate' || k === 'closeDate') && typeof v === 'string') {
+          const ymd = v.slice(0, 10);
+          const existing = String((f as any)[k] ?? '');
+          const time = existing.includes('T') ? existing.slice(11, 16) : (k === 'closeDate' ? '17:00' : '10:00');
+          next[k] = `${ymd}T${time}`;
+          continue;
+        }
         if (k === 'exchanges' && Array.isArray(v)) {
           /* The form holds two booleans, not a list. A card naming only one
              exchange must not silently clear the other, so each is OR-ed. */

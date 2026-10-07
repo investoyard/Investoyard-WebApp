@@ -145,11 +145,26 @@ const USER_PROMPT = [
   'RULES',
   '- hni means BIG HNI (10 Lakh+). hni2 means SMALL HNI (2-10 Lakh). The category table',
   '  prints them as Retail, Small HNI, Big HNI in that order. Do NOT swap hni and hni2.',
-  '- "Issue Detail" usually gives BOTH a share count and a rupee value per leg. Prefer',
-  '  basis "shares" when a share count is printed, otherwise "amount" in crore.',
+  '- A card usually prints a COMBINED HNI line AND two sub-lines under it, like:',
+  '      HNI 15% of the offer',
+  '        HNI Small (2-10 Lakh) 5%',
+  '        HNI Large (10 Lakh+) 10%',
+  '  Use the SUB-LINES: hni2 = 5, hni = 10. The combined 15 is their total and belongs',
+  '  in NEITHER field. Putting it in hni is the single most damaging mistake you can',
+  '  make on this card, so check it twice.',
+  '- qib + hni + hni2 + retail should come to about 100. If your four numbers do not,',
+  '  you have almost certainly taken the combined HNI line instead of Big HNI. Re-read',
+  '  the sub-lines, and if the total still does not reconcile say so in warnings.',
+  '- "Issue Detail" has ONE LINE PER LEG and each line names its own leg. Attach a',
+  '  figure ONLY to the leg named on the line it appears on. A line reading',
+  '  "26,284,500 OFS Shares worth Rs 712.13 Cr." is the OFS leg and nothing else —',
+  '  it must never be reported as fresh. A card may legitimately have only one leg.',
+  '- Each leg line usually gives BOTH a share count and a rupee value. Prefer basis',
+  '  "shares" when a share count is printed, otherwise "amount" in crore.',
   '- "Min Bid Lot Shares" and "Application Reserved" belong in crossCheck, never in shares.',
-  '- "No Anchor Quota", "No Offer For Sale", "No Reservation" mean the field is ABSENT:',
-  '  omit it and add a warning naming what the card said.',
+  '- "No Fresh Issue", "No Anchor Quota", "No Offer For Sale", "No Reservation" mean that',
+  '  field is ABSENT: OMIT it entirely and add a warning naming what the card said. Do',
+  '  not move the other leg\'s figures into the omitted one to fill the gap.',
   '- A discount row may be filled on a card that also says there is no reservation. Report',
   '  both as printed and add a warning; do not reconcile them yourself.',
   '- If a value is unreadable or ambiguous, omit it and add a warning naming which.',
@@ -185,6 +200,44 @@ function mapNums(o: any, keys: string[]): Record<string, number> | null {
  * value before anything is applied, but a field that arrives as the wrong type
  * should not reach that screen at all.
  */
+/**
+ * THE COMBINED-HNI MISREAD, caught arithmetically rather than hoped away.
+ *
+ * Every card prints a combined `HNI 15%` line above its two sub-lines, and on
+ * the first real card (HD Fire Protect, 2026-10-07) the model reported that 15
+ * as Big HNI against a true 10. The prompt now warns about it twice, but a
+ * prompt is a request and this is a check.
+ *
+ * The signal is unambiguous when it fires: the four categories come to about
+ * 105 instead of 100, AND dropping `hni2` brings them to exactly 100 — which is
+ * what you get when `hni` already contains `hni2`.
+ *
+ * It DROPS the suspect figure rather than correcting it to `hni - hni2`. This
+ * parser's whole contract is that it never computes a value the card does not
+ * print, and a dropped field leaves the form's existing value alone; a
+ * corrected one would arrive pre-ticked and be believed. The warning names the
+ * arithmetic so the operator can settle it from the card in seconds.
+ */
+function flagCombinedHni(reservation: Record<string, number> | null, warnings: string[]): Record<string, number> | null {
+  if (!reservation) return reservation;
+  const { qib = 0, hni = 0, hni2 = 0, retail = 0 } = reservation;
+  if (!(qib > 0 && hni > 0 && hni2 > 0 && retail > 0)) return reservation;
+  const all = qib + hni + hni2 + retail;
+  const withoutSmall = qib + hni + retail;
+  const near = (a: number, b: number) => Math.abs(a - b) <= 0.5;
+  if (!near(all, 100) && near(withoutSmall, 100)) {
+    warnings.push(
+      `Big HNI was read as ${hni}%, but the four categories then total ${all.toFixed(2)}% `
+      + `instead of 100%. Dropping Small HNI brings them to ${withoutSmall.toFixed(2)}%, which means `
+      + `${hni}% is the COMBINED HNI line and Big HNI is probably ${(hni - hni2).toFixed(2)}%. `
+      + 'Big HNI has been left out rather than filled in wrongly — enter it from the card.',
+    );
+    const { hni: _drop, ...rest } = reservation;
+    return rest;
+  }
+  return reservation;
+}
+
 function parseModelJson(raw: string): ParsedCard {
   const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   let obj: any;
@@ -199,6 +252,12 @@ function parseModelJson(raw: string): ParsedCard {
   const cv = obj?.carveout;
   const carveKey = ['employee', 'shareholder', 'policyholder'].includes(cv?.key) ? String(cv.key) : null;
 
+  /* Built BEFORE the return so the guard below can append to it. */
+  const warnings: string[] = Array.isArray(obj?.warnings)
+    ? obj.warnings.filter((w: any) => typeof w === 'string')
+    : [];
+  const reservation = flagCombinedHni(mapNums(obj?.reservation, ['qib', 'hni', 'hni2', 'retail']), warnings);
+
   return {
     name: strOr(obj?.name),
     issueSizeCr: numOr(obj?.issueSizeCr),
@@ -211,7 +270,7 @@ function parseModelJson(raw: string): ParsedCard {
     employeeDiscount: numOr(obj?.employeeDiscount),
     retailDiscount: numOr(obj?.retailDiscount),
     shareholderDiscount: numOr(obj?.shareholderDiscount),
-    reservation: mapNums(obj?.reservation, ['qib', 'hni', 'hni2', 'retail']),
+    reservation,
     shares: mapNums(obj?.shares, ['qib', 'hni', 'hni2', 'retail']),
     carveout: carveKey ? { key: carveKey, shares: numOr(cv?.shares), amountCr: numOr(cv?.amountCr) } : null,
     anchorDate: isoOr(obj?.anchorDate),
@@ -228,6 +287,17 @@ function parseModelJson(raw: string): ParsedCard {
       minBid: mapNums(obj?.crossCheck?.minBid, ['retail', 'hni2', 'hni']),
       applications: mapNums(obj?.crossCheck?.applications, ['retail', 'hni2', 'hni']),
     },
-    warnings: Array.isArray(obj?.warnings) ? obj.warnings.filter((w: any) => typeof w === 'string') : [],
+    warnings,
   };
 }
+
+/**
+ * The JSON defence, reachable from a spec.
+ *
+ * `parseModelJson` is the half of this service that does not need an API key or
+ * a network call, and it is where the shape is defended and the combined-HNI
+ * misread is caught. Exported under its own name so `card-vision.spec.ts` can
+ * drive it with the exact payloads the model has actually returned — the same
+ * reason `parseAnchorRows` was split out of `parseAnchor`.
+ */
+export const parseCardJsonForTest = (raw: string): ParsedCard => parseModelJson(raw);
