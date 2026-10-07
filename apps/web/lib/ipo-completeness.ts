@@ -44,6 +44,24 @@ export interface CompletenessCheck {
   excluded?: boolean;
   /** Neither shown nor counted — the check doesn't apply to this issue. */
   skipped?: boolean;
+  /**
+   * NOT APPLICABLE to this issue — shown, but there is NOTHING TO DO and it
+   * counts nowhere: not in the score, not in its group's n/m.
+   *
+   * The third state, added 2026-10-07, and the distinction from `excluded` is
+   * the whole point. An excluded check is REAL WORK that simply does not belong
+   * in a page-completeness score — an ASBA template can be uploaded, so a ✗
+   * against it is honest. An `na` check can never be satisfied by anyone: an
+   * OFS-only issue has no fresh leg, and a ✗ there says "missing" about
+   * something that does not exist.
+   *
+   * The operator caught this the day after the single-leg rule shipped: the
+   * headline read complete while the breakdown read `Structure 2/3` with a ✗
+   * beside Fresh issue. The score was right and the badge was wrong — the row
+   * had been marked `excluded`, whose RENDERING was built for the Application
+   * rail, where every check in the group carries the flag.
+   */
+  na?: boolean;
 }
 
 export interface Completeness {
@@ -72,6 +90,36 @@ function legFilled(leg: any): boolean {
   if (!leg || leg.basis === 'none' || leg.basis == null) return false;
   const v = Number(leg.value ?? leg.amountCr ?? 0);
   return Number.isFinite(v) && v > 0;
+}
+
+/**
+ * THE OPERATOR HAS DECLARED THIS LEG DOES NOT EXIST: a real unit chosen on the
+ * dropdown (₹ Cr or Shares) with a value of exactly 0.
+ *
+ * This is a POSITIVE ACT and that is the whole reason it can be trusted. The
+ * field defaults to *Not set* with an empty value, so nobody picks a unit and
+ * types 0 by accident — whereas "Not set" itself cannot carry the meaning,
+ * because it is also the state of every record nobody has opened. (That was my
+ * first proposal and it was wrong: persisting `basis: 'none'` would have
+ * stamped the default onto untouched records and recreated the very ambiguity
+ * it was meant to remove. The operator's suggestion is the better design and
+ * needs less code — 2026-10-07.)
+ *
+ * It is deliberately NOT inferred from the other leg being filled. "OFS entered
+ * and Fresh not" is the same stored state as "OFS entered, Fresh not reached
+ * yet", and guessing would hide a real gap behind a "nothing to do" — which is
+ * worse than a wrong ✗, because a wrong ✗ is noise while a wrong n/a is an item
+ * the operator is never prompted about again.
+ *
+ * Only the OBJECT shape counts. The importer's flat `freshIssueCr` / `ofsCr`
+ * keys carry no basis, so a 0 there is indistinguishable from an empty cell.
+ */
+function legDeclaredAbsent(leg: any): boolean {
+  if (!leg || typeof leg !== 'object') return false;
+  if (leg.basis !== 'amount' && leg.basis !== 'shares') return false;
+  const raw = leg.value ?? leg.amountCr;
+  if (raw == null || raw === '') return false;
+  return Number(raw) === 0;
 }
 
 /** Reservation table filled = the map exists AND its `pct` values sum near 100. */
@@ -114,32 +162,32 @@ export function computeIpoCompleteness(ipo: any): Completeness {
     // `extra.fresh` / `extra.ofs` — `basis` says whether `value` is in
     // ₹ Cr, %, or shares. Any non-'none' basis + positive value counts.
     /*
-     * THE TWO LEGS ARE ONE QUESTION, and an issue is allowed to have only one
-     * of them (operator, 2026-10-07: "no fresh issue in this IPO, I set it to
-     * zero, why is it still pending").
+     * AN ISSUE MAY HAVE ONLY ONE LEG, AND THAT IS COMPLETE — but ONLY when the
+     * operator has SAID SO (operator, 2026-10-07: "no fresh issue in this IPO,
+     * I set it to zero, why is it still pending").
      *
-     * `legFilled` needs a POSITIVE value, so a leg the operator has correctly
-     * declared absent — basis `none`, or an explicit 0 — could never be
-     * satisfied: the score sat below 100% forever with nothing to do about it.
-     * HD Fire Protect is pure OFS and says so on its own card
-     * ("-----No Fresh Issue-----"); a fresh-only issue, which is the commoner
-     * shape by far, had exactly the same problem on the OFS row.
+     * `legFilled` needs a POSITIVE value, so a leg correctly declared absent
+     * could never be satisfied and the score sat under 100% with nothing anyone
+     * could do about it. HD Fire Protect is pure OFS and says so on its own
+     * card ("-----No Fresh Issue-----"); a fresh-only issue, the commoner shape
+     * by far, had the identical fault on the OFS row.
      *
-     * A leg is NOT APPLICABLE when the OTHER leg is filled — that is what makes
-     * this a single-leg issue rather than an unfinished one. With NEITHER
-     * filled both stay pending, because a record that declares no legs at all
-     * genuinely has not had its structure entered.
+     * THE DECLARATION IS A UNIT PLUS A ZERO — see `legDeclaredAbsent`. It is
+     * emphatically NOT inferred from the other leg being filled: that would
+     * read "OFS entered, Fresh not reached yet" as "this issue has no fresh
+     * leg" and hide a real gap behind a "nothing to do".
      *
-     * `excluded`, not `skipped`: the row stays visible and reads as not
-     * counted, so "this issue has no fresh leg" is something the operator can
-     * SEE. Hiding it would leave them wondering where the field went.
+     * `na`, not `excluded` and not `skipped`: the row stays VISIBLE — so "this
+     * issue has no fresh leg" is something the operator can see rather than a
+     * field that vanished — but it carries no ✗ and counts in no total, because
+     * there is nothing anyone could ever do about it.
      */
     ...(() => {
       const fresh = legFilled(extra?.fresh) || has(extra?.freshIssueCr);
       const ofs = legFilled(extra?.ofs) || has(extra?.ofsCr);
       return [
-        { key: 'freshCr', label: 'Fresh issue (₹ Cr)', group: 'Structure' as const, filled: fresh, excluded: !fresh && ofs },
-        { key: 'ofsCr', label: 'OFS (₹ Cr)', group: 'Structure' as const, filled: ofs, excluded: !ofs && fresh },
+        { key: 'freshCr', label: 'Fresh issue (₹ Cr)', group: 'Structure' as const, filled: fresh, na: legDeclaredAbsent(extra?.fresh) },
+        { key: 'ofsCr', label: 'OFS (₹ Cr)', group: 'Structure' as const, filled: ofs, na: legDeclaredAbsent(extra?.ofs) },
       ];
     })(),
     { key: 'shareResv',  label: 'Reservation table',        group: 'Structure', filled: reservationFilled(extra) },
@@ -191,7 +239,7 @@ export function computeIpoCompleteness(ipo: any): Completeness {
 
   // `excluded` leaves the score but stays in `checks` so the breakdown can
   // still render it; `skipped` leaves both.
-  const active = raw.filter((c) => !c.skipped && !c.excluded);
+  const active = raw.filter((c) => !c.skipped && !c.excluded && !c.na);
   const filled = active.filter((c) => c.filled).length;
   const total = active.length;
   const pct = total ? Math.round((filled / total) * 100) : 0;

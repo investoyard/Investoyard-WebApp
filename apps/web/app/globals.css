@@ -2781,6 +2781,15 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .cc-checklist li.ok   .cc-mark { background: rgba(18, 146, 90, 0.15); color: #12925a; }
 .cc-checklist li.miss .cc-mark { background: var(--bg-2); color: var(--text-faint); }
 .cc-checklist li.miss .cc-name { color: var(--text-muted); }
+/* NOT APPLICABLE — a third state beside ok and miss. A cross says MISSING, and
+   that is false about a leg the issue does not have, so this row carries a dash
+   and names itself rather than making a demand nobody can satisfy. Dimmer than
+   .miss, because .miss is still work and this is not. */
+.cc-checklist li.na .cc-mark { background: transparent; color: var(--text-faint); font-weight: 700; }
+.cc-checklist li.na .cc-name { color: var(--text-faint); }
+.cc-na { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-faint); background: var(--bg-2); border-radius: 999px; padding: 1px 6px; margin-left: auto; }
+
 .cc-note { font-size: 11.5px; padding: 6px 10px; background: var(--bg-2); border-radius: 6px; color: var(--text-muted); }
 @media (max-width: 720px) { .cc-grid { grid-template-columns: 1fr; } }
 

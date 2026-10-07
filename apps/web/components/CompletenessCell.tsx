@@ -64,24 +64,36 @@ function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
             if (!rows.length) return null;
             const visible = rows.filter((r) => !r.skipped);
             if (!visible.length) return null;
-            const done = visible.filter((r) => r.filled).length;
+            /* An `na` row is SHOWN but counts nowhere — it is not work anyone
+               can do, so it must not sit in the denominator. Without this,
+               Structure read "2/3" with a ✗ beside a fresh leg the operator had
+               declared non-existent, while the headline said complete. */
+            const counted = visible.filter((r) => !r.na);
+            const done = counted.filter((r) => r.filled).length;
             // A group every one of whose checks is `excluded` still shows its
             // own done/total — the operator wants the rail state at a glance —
             // but it contributes nothing to the percentage, so say so rather
             // than let the count read as part of the score.
-            const notCounted = visible.every((r) => r.excluded);
+            const notCounted = counted.length > 0 && counted.every((r) => r.excluded);
             return (
               <div className={`cc-group${notCounted ? ' cc-group-off' : ''}`} key={g}>
                 <div className="cc-group-head">
                   <span className="cc-group-name">{g}</span>
                   {notCounted && <span className="cc-group-note">not counted</span>}
-                  <span className={`cc-group-count${!notCounted && done === visible.length ? ' ok' : ''}`}>{done}/{visible.length}</span>
+                  <span className={`cc-group-count${!notCounted && counted.length > 0 && done === counted.length ? ' ok' : ''}`}>{done}/{counted.length}</span>
                 </div>
                 <ul className="cc-checklist">
                   {visible.map((r) => (
-                    <li key={r.key} className={r.filled ? 'ok' : 'miss'}>
-                      <span className="cc-mark">{r.filled ? <Icon name="check" size={10} /> : <Icon name="x" size={10} />}</span>
+                    /* THREE states, not two. A ✗ means MISSING, and saying that
+                       about a leg the issue does not have is simply false — so
+                       an `na` row gets a dash and says why, instead of a cross
+                       and a silent demand. */
+                    <li key={r.key} className={r.na ? 'na' : r.filled ? 'ok' : 'miss'}>
+                      <span className="cc-mark">
+                        {r.na ? '–' : r.filled ? <Icon name="check" size={10} /> : <Icon name="x" size={10} />}
+                      </span>
                       <span className="cc-name">{r.label}</span>
+                      {r.na && <span className="cc-na">not applicable</span>}
                     </li>
                   ))}
                 </ul>
