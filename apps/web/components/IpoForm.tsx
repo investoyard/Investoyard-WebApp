@@ -2870,7 +2870,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             name: form.name,
             priceBandMin: form.priceBandMin, priceBandMax: form.priceBandMax,
             faceValue: form.faceValue, lotSize: form.lotSize, issueSizeCr: form.issueSizeCr,
-            freshValue: form.freshValue, ofsValue: form.ofsValue,
+            /* The BASIS travels with each leg: without it the modal prints a
+               rupee figure under a "shares" heading, which is how ₹712.13 Cr
+               came to look like 712.13 shares (HD Fire Protect, 2026-10-07). */
+            freshValue: form.freshValue, freshBasis: form.freshBasis,
+            ofsValue: form.ofsValue, ofsBasis: form.ofsBasis,
             employeeDiscount: form.employeeDiscount, retailDiscount: form.retailDiscount,
             shareholderDiscount: form.shareholderDiscount,
             pct_qib: form.shareResv.qib?.pct, pct_hni: form.shareResv.hni?.pct,

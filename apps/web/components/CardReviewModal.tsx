@@ -30,6 +30,8 @@ type Row = {
   current: string;
   /** The form already holds this exact value — compared on VALUES, not on how they render. */
   same: boolean;
+  /** An explanation shown under the row, where a bare diff would mislead. */
+  note?: string;
   /** apply writes these onto form state */
   apply: Record<string, unknown>;
 };
@@ -114,22 +116,58 @@ export function CardReviewModal({
     add('lot', 'Lot size', parsed.lotSize, 'lotSize');
     add('size', 'Issue size (₹ Cr)', parsed.issueSizeCr, 'issueSizeCr');
 
-    if (parsed.fresh) {
+    /*
+     * A LEG CARRIES ITS UNIT ON BOTH SIDES, because the two sides can be in
+     * DIFFERENT units and the figures are then not comparable at all.
+     *
+     * HD Fire Protect, 2026-10-07: the form held OFS as ₹712.13 Cr (amount
+     * basis) and the card states 2,62,84,500 shares. The row was labelled
+     * "Offer for sale (shares)" — the CARD's basis — and printed a bare
+     * `712.13` beside it, which reads as the form holding 712.13 SHARES. The
+     * label now stays neutral and each value states its own unit.
+     *
+     * The overwrite badge is correct here: applying really does change both the
+     * basis and the number. What it was missing is that this is usually the
+     * SAME OFFER re-expressed, so `equiv` works that out at the band price and
+     * says so — the difference between "the card disagrees with you" and "the
+     * card states this in shares rather than rupees".
+     */
+    const legRow = (
+      key: 'fresh' | 'ofs',
+      label: string,
+      leg: { basis: 'amount' | 'shares'; value: number },
+      curVal: unknown,
+      curBasis: unknown,
+    ) => {
+      /* Both sides go through the same formatter, so a share count typed into
+         the form lines up digit-for-digit with the card's. */
+      const unit = (b: unknown, v: unknown) => {
+        const num = Number(String(v ?? '').replace(/[^\d.]/g, ''));
+        const shown = Number.isFinite(num) && String(v ?? '').trim() !== '' ? fmt(num) : fmt(v);
+        return b === 'shares' ? `${shown} shares` : `₹${shown} Cr`;
+      };
+      const cap = Number(String(current.priceBandMax ?? '').replace(/[^\d.]/g, ''));
+      const cur = Number(String(curVal ?? '').replace(/[^\d.]/g, ''));
+      /* Same offer, different unit: shares × cap price ≈ ₹ Cr × 1e7. The band is
+         a range and a card rounds its own crore figure, so 1% is the tolerance. */
+      let equiv = false;
+      if (cap > 0 && cur > 0 && leg.basis !== curBasis) {
+        const asRupees = (b: unknown, v: number) => (b === 'shares' ? v * cap : v * 1e7);
+        const a = asRupees(leg.basis, leg.value), b = asRupees(curBasis, cur);
+        equiv = a > 0 && b > 0 && Math.abs(a - b) / Math.max(a, b) < 0.01;
+      }
       out.push({
-        key: 'fresh', label: `Fresh issue (${parsed.fresh.basis === 'shares' ? 'shares' : '₹ Cr'})`,
-        parsed: fmt(parsed.fresh.value), current: fmt(current.freshValue),
-        same: sameValue(parsed.fresh.value, current.freshValue),
-        apply: { freshBasis: parsed.fresh.basis, freshValue: String(parsed.fresh.value) },
+        key, label,
+        parsed: unit(leg.basis, leg.value),
+        current: curVal == null || curVal === '' ? '—' : unit(curBasis, curVal),
+        same: leg.basis === curBasis && sameValue(leg.value, curVal),
+        note: equiv ? 'same offer, stated in a different unit' : undefined,
+        apply: { [`${key}Basis`]: leg.basis, [`${key}Value`]: String(leg.value) },
       });
-    }
-    if (parsed.ofs) {
-      out.push({
-        key: 'ofs', label: `Offer for sale (${parsed.ofs.basis === 'shares' ? 'shares' : '₹ Cr'})`,
-        parsed: fmt(parsed.ofs.value), current: fmt(current.ofsValue),
-        same: sameValue(parsed.ofs.value, current.ofsValue),
-        apply: { ofsBasis: parsed.ofs.basis, ofsValue: String(parsed.ofs.value) },
-      });
-    }
+    };
+
+    if (parsed.fresh) legRow('fresh', 'Fresh issue', parsed.fresh, current.freshValue, current.freshBasis);
+    if (parsed.ofs) legRow('ofs', 'Offer for sale', parsed.ofs, current.ofsValue, current.ofsBasis);
 
     add('d-emp', 'Employee discount (₹)', parsed.employeeDiscount, 'employeeDiscount');
     add('d-ret', 'Retail discount (₹)', parsed.retailDiscount, 'retailDiscount');
@@ -249,7 +287,12 @@ export function CardReviewModal({
                         aria-label={`Apply ${r.label}`}
                         onChange={(e) => setPicked((p) => ({ ...p, [r.key]: e.target.checked }))} />
                     </td>
-                    <td>{r.label}</td>
+                    <td>
+                      {r.label}
+                      {/* Why the two sides differ, where the bare figures would
+                          read as a contradiction rather than a re-statement. */}
+                      {r.note && <div className="sub" style={{ fontSize: 11.5 }}>{r.note}</div>}
+                    </td>
                     <td className="mono"><b>{r.parsed}</b></td>
                     <td className="mono" style={{ color: overwrites ? 'var(--neg)' : 'var(--text-muted)' }}>
                       {r.current}
