@@ -1,4 +1,4 @@
-import { mapDpStatus, mapUpiStatus, UpiPaymentStatus } from './rail-callback.dto';
+import { mapDpStatus, mapUpiStatus, UPI_STATUS_LABEL, upiStatusLabel, UpiPaymentStatus } from './rail-callback.dto';
 
 describe('mapDpStatus', () => {
   it('maps DP flags', () => {
@@ -31,5 +31,38 @@ describe('mapUpiStatus', () => {
 
   it('defaults unknown codes to pending (non-terminal)', () => {
     expect(mapUpiStatus(999)).toEqual({ status: 'mandate_pending', failed: false });
+  });
+});
+
+describe('upiStatusLabel', () => {
+  it('has the exchange wording for every code in the enum', () => {
+    const codes = Object.values(UpiPaymentStatus).filter((v) => typeof v === 'number') as number[];
+    expect(codes.length).toBe(11);
+    for (const c of codes) expect(upiStatusLabel(c)).toBeTruthy();
+    expect(Object.keys(UPI_STATUS_LABEL)).toHaveLength(codes.length);
+  });
+
+  it('is verbatim from NSE WEB API v1.20.5, including its capitalisation', () => {
+    expect(upiStatusLabel(0)).toBe('Request Sent');
+    expect(upiStatusLabel(10)).toBe('Request Accepted By Sponsor Bank');
+    expect(upiStatusLabel(11)).toBe('Rejected due to invalid UPI');
+    expect(upiStatusLabel(100)).toBe('Accepted by Investor');
+    expect(upiStatusLabel(110)).toBe('Block Released (Due to cancellation of order)');
+  });
+
+  it('separates the three rejections our own status cannot tell apart', () => {
+    // All three map to `rejected`, and the investor's next step differs in each:
+    // re-apply, fix the UPI ID, or take it up with the bank.
+    for (const c of [31, 11, 12]) expect(mapUpiStatus(c).status).toBe('rejected');
+    expect(upiStatusLabel(31)).toBe('Rejected by Investor');
+    expect(upiStatusLabel(11)).toBe('Rejected due to invalid UPI');
+    expect(upiStatusLabel(12)).toBe('Rejected by Sponsor Bank');
+  });
+
+  it('returns null for an unknown code rather than inventing wording', () => {
+    // `mapUpiStatus` keeps an unknown code non-terminal, so the bid is fine and
+    // the UI falls back to our own status line.
+    expect(upiStatusLabel(47)).toBeNull();
+    expect(mapUpiStatus(47).status).toBe('mandate_pending');
   });
 });

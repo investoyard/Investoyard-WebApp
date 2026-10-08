@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ApplicationRepo, ApplicationStatus, Notifier } from '@investoyard/rail-adapters';
+import { ApplicationRepo, ApplicationStatus, Notifier, StatusPatch } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { tenantContext } from '../../common/tenant-context';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -28,10 +28,7 @@ export class PrismaApplicationRepo implements ApplicationRepo {
     });
   }
 
-  async updateStatus(
-    id: string,
-    patch: { status: ApplicationStatus; amountBlocked?: number; reason?: string; rawEvent: unknown },
-  ) {
+  async updateStatus(id: string, patch: StatusPatch) {
     await tenantContext.runUnscoped(async () => {
       await this.prisma.$transaction([
         this.prisma.application.update({
@@ -39,6 +36,20 @@ export class PrismaApplicationRepo implements ApplicationRepo {
           data: {
             status: patch.status as any,
             amountBlocked: patch.amountBlocked ?? undefined,
+            // The exchange's UPI sentence + when it was observed. Both are
+            // written only when the caller supplies them, so a DP callback
+            // cannot blank or re-date a payment sentence.
+            upiStatusText: patch.upiStatusText ?? undefined,
+            upiStatusAt: patch.upiStatusAt ?? undefined,
+            /* The exchange's reason for THIS bid. Until now the callback passed
+               it and nothing stored it, so a rejection arrived with its cause
+               readable only inside the raw event JSON. Only set on a failure:
+               on a success there is nothing to explain, and leaving a stale
+               reason beside a confirmed bid reads as a problem. */
+            rejectionReason:
+              patch.status === 'rejected' || patch.status === 'dp_failed'
+                ? (patch.reason?.trim() || undefined)
+                : undefined,
           },
         }),
         this.prisma.applicationStatusEvent.create({

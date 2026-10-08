@@ -8,7 +8,7 @@ import { Pager } from '@/components/ui/Pagination';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { useToast, Toasts } from '@/components/ui/Toast';
-import { mayCancel, mayReviseTo } from '@investoyard/shared-types';
+import { mayCancel, mayReviseTo, fmtDateTime } from '@investoyard/shared-types';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import * as api from '@/lib/tenants-admin';
@@ -352,7 +352,21 @@ export default function BiddingReportPage() {
                       <td>{r.rejection
                         ? <span className="bid-reject" title={r.rejection}>{r.rejection}</span>
                         : <span className="muted">—</span>}</td>
-                      <td>{r.upiStatus ?? <span className="muted">—</span>}</td>
+                      {/* The sentence plus WHEN it was observed. `upiStatusAt` has
+                          always been in this row's payload and was never rendered —
+                          harmless while nothing wrote it, misleading now that both
+                          the callback and Refresh do: reconciling against the
+                          exchange's own screen needs the age of the reading. */}
+                      <td>{r.upiStatus
+                        ? <>
+                            {r.upiStatus}
+                            {r.upiStatusAt && (
+                              <span className="muted" style={{ display: 'block', fontSize: 11.5, marginTop: 2 }}>
+                                As of {fmtDateTime(r.upiStatusAt)}
+                              </span>
+                            )}
+                          </>
+                        : <span className="muted">—</span>}</td>
                       <td className="mono">{r.bidNumber ?? <span className="muted">—</span>}</td>
                       <td>
                         {(() => {

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import type { ApplicationView } from '@investoyard/shared-types';
+import { fmtDateTime, type ApplicationView } from '@investoyard/shared-types';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
@@ -61,6 +61,14 @@ function resultLine(a: ApplicationView): string {
     case 'failed': return 'Submission failed — no amount was blocked.';
     default: return '';
   }
+}
+
+/** Tone for the exchange's UPI line — read off OUR status, never off the sentence. */
+function upiDotColor(status: string): string {
+  if (status === 'rejected' || status === 'dp_failed' || status === 'failed') return ui.red;
+  if (status === 'upi_blocked' || status === 'confirmed' || status === 'allotted') return ui.green;
+  if (status === 'released' || status === 'not_allotted') return ui.slate;
+  return ui.amber; // mandate_pending / submitted — the investor still has something to do
 }
 
 // SEBI: a bid may be withdrawn while the issue is still open and isn't decided yet.
@@ -183,6 +191,23 @@ export default function ApplicationsScreen() {
 
                 {line ? <Text style={styles.result}>{line}</Text> : null}
 
+                {/* The exchange's own UPI sentence, BESIDE our line and never
+                    instead of it: our status collapses eleven exchange codes
+                    onto five, and the three rejections an investor can act on
+                    differently all land on `rejected`. Tone comes from the
+                    STATUS, not from reading the sentence. */}
+                {a.upiStatusText ? (
+                  <View style={styles.upiRow}>
+                    <View style={[styles.upiDot, { backgroundColor: upiDotColor(a.status) }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.upiTxt}>{a.upiStatusText}</Text>
+                      {a.upiStatusAt ? (
+                        <Text style={styles.upiAsOf}>As of {fmtDateTime(a.upiStatusAt)} · from the exchange</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+
                 {missing.length > 0 ? (
                   <View style={styles.missingBanner}>
                     {missing.map((m) => (
@@ -283,6 +308,13 @@ const styles = StyleSheet.create({
   amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, flex: 1 },
   amountV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   result: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
+  upiRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 9,
+    backgroundColor: ui.canvas, borderRadius: 12, paddingVertical: 9, paddingHorizontal: 11,
+  },
+  upiDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
+  upiTxt: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.title, lineHeight: 17 },
+  upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.muted, marginTop: 2 },
   missingBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 10, gap: 4 },
   missingTxt: { fontSize: 12.5, color: ui.red, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },

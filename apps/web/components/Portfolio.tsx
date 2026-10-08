@@ -8,7 +8,7 @@ import { Icon } from '@/components/Icon';
 import { useStore, store, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
 import { getConsumerToken, listApplications, type ApiApplication } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
-import { titleCase } from '@investoyard/shared-types';
+import { titleCase, fmtDateTime } from '@investoyard/shared-types';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
 
@@ -37,7 +37,44 @@ function mapApiApp(v: ApiApplication): Application {
     categorySubscribedTimes: v.categorySubscribedTimes,
     allotmentOddsPct: v.allotmentOddsPct,
     missingDetails: v.missingDetails,
+    upiStatusText: v.upiStatusText,
+    upiStatusAt: v.upiStatusAt,
   };
+}
+
+/**
+ * The exchange's own sentence about the UPI mandate.
+ *
+ * Rendered BESIDE `resultText`, never instead of it: our status collapses
+ * eleven exchange codes onto five, and the three rejections an investor can act
+ * on differently — they declined it, the UPI ID was invalid, the sponsor bank
+ * refused — all land on `rejected`.
+ *
+ * KEEP IN STEP WITH the UPI row in `apps/mobile/app/(tabs)/applications.tsx`:
+ * same sentence, same "As of … · from the exchange" wording, same tone rules.
+ * One component here because the portfolio renders applications in two places.
+ */
+function UpiStatusLine({ a }: { a: Application }) {
+  if (!a.upiStatusText) return null;
+  // Tone off the STATUS, never off reading the sentence.
+  const tone =
+    a.status === 'rejected' || a.status === 'dp_failed' || a.status === 'failed' ? 'bad'
+    : a.status === 'upi_blocked' || a.status === 'confirmed' || a.status === 'allotted' ? 'good'
+    : a.status === 'released' || a.status === 'not_allotted' ? 'neutral'
+    : 'wait';
+  return (
+    <div className={`upi-line ${tone}`}>
+      <span className="upi-dot" />
+      <span>
+        {a.upiStatusText}
+        {a.upiStatusAt && (
+          <span className="faint" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+            As of {fmtDateTime(a.upiStatusAt)} · from the exchange
+          </span>
+        )}
+      </span>
+    </div>
+  );
 }
 
 const STATUS_CLASS: Record<AppStatus, string> = {
@@ -361,6 +398,7 @@ function AppCard({ a, ipo, detail, q, tr }: { a: Application; ipo?: IpoDetail; d
         </div>
         {detail && <div className="faint mono" style={{ fontSize: 12, marginTop: 5 }}>{detail}</div>}
         <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
+        <UpiStatusLine a={a} />
         {(a.missingDetails ?? []).map((m) => (
           <div key={m} style={{ marginTop: 6, fontSize: 13, color: 'var(--warn, #b45309)' }}>
             ⚠ {m} — <a href="/account" style={{ color: 'inherit', textDecoration: 'underline' }}>fix on the account page</a>
@@ -441,6 +479,7 @@ function Checker({ applications, profiles, q, tr }: {
                     </div>
                     <div className="faint mono" style={{ fontSize: 12, marginTop: 8 }}>{applicantLine(a, profiles)}</div>
                     <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
+                    <UpiStatusLine a={a} />
                     {(a.missingDetails ?? []).map((m) => (
                       <div key={m} style={{ marginTop: 6, fontSize: 13, color: 'var(--warn, #b45309)' }}>
                         ⚠ {m} — <a href="/account" style={{ color: 'inherit', textDecoration: 'underline' }}>fix on the account page</a>

@@ -4477,3 +4477,28 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    above. The old .nsev2-hero / .nsev2-kpi-strip CSS is dead code but kept
    in the file until a follow-up sweep — its selectors don't fire because
    NseIpoLanding doesn't render those elements. */
+
+/* ── Live UPI status on a portfolio application ──────────────────────────────
+   The exchange's own sentence beside our status line. `.upi-line` / `.upi-dot`
+   are new names — the existing `.upi-*` family (`.upi-split`, `.upi-at`,
+   `.upi-handle`) is the profile form's split input and does not reach here.
+
+   The COLOUR is carried by the dot, not by the text on a tint: `--pos` on
+   `--pos-soft` measures 3.50:1 and fails AA for text (see the token note at
+   the top of this file), and a sentence this long should not be asking the
+   reader to parse coloured text anyway. Body ink on a neutral surface, one
+   7px dot for the state.
+   KEEP IN STEP WITH the `upiRow` style in apps/mobile/app/(tabs)/applications.tsx. */
+.upi-line {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 9px; padding: 9px 11px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  font-size: 13px; line-height: 1.35;
+}
+.upi-line .upi-dot {
+  flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; margin-top: 6px;
+  background: var(--warn);
+}
+.upi-line.good .upi-dot { background: var(--pos); }
+.upi-line.bad .upi-dot { background: var(--neg); }
+.upi-line.neutral .upi-dot { background: var(--text-muted); }

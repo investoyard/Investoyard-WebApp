@@ -73,6 +73,9 @@ export interface Application {
   allotmentOddsPct?: number;
   /** While 'submitted': applicant details still blocking the exchange bid (from the API). */
   missingDetails?: string[];
+  /** The exchange's own UPI sentence + when it was observed (from the API). */
+  upiStatusText?: string;
+  upiStatusAt?: string;
 }
 
 interface State {

@@ -849,7 +849,11 @@ function toView(a: any) {
   // query included the profile's demat/UPI fields.
   const missingDetails: string[] = [];
   if (a.status === 'submitted' && a.profile && 'upiTokenRef' in a.profile) {
-    if (a.applyMethod === 'upi' && !a.profile.upiTokenRef) missingDetails.push('UPI ID missing — add it on the account page to receive the mandate');
+    // `ApplyMethod` is `native | pdf` — this read `'upi'`, a value the enum has
+    // never held, so the one piece of advice an investor can act on could never
+    // appear. `native` IS the UPI-ASBA path; `pdf` is the print flow, which
+    // needs no UPI ID at all.
+    if (a.applyMethod === 'native' && !a.profile.upiTokenRef) missingDetails.push('UPI ID missing — add it on the account page to receive the mandate');
     const dematOk = a.profile.depository === 'CDSL' ? !!a.profile.clientId : !!(a.profile.dpId && a.profile.clientId);
     if (!dematOk) missingDetails.push('Demat details incomplete');
   }
@@ -871,6 +875,10 @@ function toView(a: any) {
     amount: Number(a.amount),
     applicationNumber: a.applicationNumber ?? undefined,
     amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : undefined,
+    // The exchange's own UPI sentence. `list()` uses `include`, so both columns
+    // ride along already — a `select` here would have to name them.
+    upiStatusText: a.upiStatusText ?? undefined,
+    upiStatusAt: a.upiStatusAt ? a.upiStatusAt.toISOString() : undefined,
     allottedLots: a.allottedLots ?? undefined,
     allottedShares: a.allottedLots != null ? a.allottedLots * lotSize : undefined,
     allottedAmount,

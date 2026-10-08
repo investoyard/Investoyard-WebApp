@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { mapUpiStatus, mapDpStatus, type TransactionRecord } from '@investoyard/rail-adapters';
+import { mapUpiStatus, mapDpStatus, upiStatusLabel, type TransactionRecord } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { tenantContext } from '../../common/tenant-context';
 import { RailService } from '../rail/rail.service';
@@ -105,18 +105,22 @@ export class BiddingRefreshService {
     // Fold the transaction record through the callback code path so the
     // push and pull writes produce identical rows.
     if (record.upiPaymentStatus != null) {
-      const { status } = mapUpiStatus(Number(record.upiPaymentStatus));
+      const code = Number(record.upiPaymentStatus);
+      const { status } = mapUpiStatus(code);
+      /* ONE write, through the same repo the callback uses — which is what this
+         service's docblock has always claimed. It used to follow up with a
+         second `application.update` of its own, and that update stored
+         `String(record.upiPaymentStatus)` — the CODE, so `upiStatusText` held
+         "100" rather than the sentence the column is defined to hold, and
+         `upiStatusAt` was never written at all by either path. */
       await this.apps.updateStatus(app.id, {
         status,
         amountBlocked: record.amountBlocked ?? undefined,
         reason: record.status ?? undefined,
+        upiStatusText: upiStatusLabel(code),
+        upiStatusAt: new Date(),
         rawEvent: { source: 'refresh', record },
       });
-      // upiStatusText is the exchange's own wording — preserve it verbatim
-      await tenantContext.runUnscoped(() => this.prisma.application.update({
-        where: { id: app.id },
-        data: { upiStatusText: String(record.upiPaymentStatus) },
-      }));
     } else if (record.dpVerificationStatus === 'P' || record.dpVerificationStatus === 'S' || record.dpVerificationStatus === 'F') {
       // DpVerStatusFlag is 'P' | 'S' | 'F' (pending / success / failure) —
       // anything else the exchange sends we don't know how to interpret and

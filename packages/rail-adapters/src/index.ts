@@ -15,7 +15,7 @@ export type { BseDemandRow } from './bse-query.adapter';
 export * from './callbacks/rail-callback.dto';
 export * from './callbacks/rail-callback.auth';
 export { RailCallbackService } from './callbacks/rail-callback.service';
-export type { ApplicationRepo, Notifier } from './callbacks/rail-callback.service';
+export type { ApplicationRepo, Notifier, StatusPatch } from './callbacks/rail-callback.service';
 export * from './submission/submission-worker';
 
 import { NseEipoAdapter } from './nse-eipo.adapter';

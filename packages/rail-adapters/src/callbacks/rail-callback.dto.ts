@@ -87,6 +87,55 @@ export function mapUpiStatus(code: number): { status: ApplicationStatus; failed:
   }
 }
 
+/**
+ * The exchange's OWN wording per UPI payment code — verbatim from NSE WEB API
+ * v1.20.5, the `upiPaymentStatusFlag` table on `/v1/apppaystatus`.
+ *
+ * This exists because `mapUpiStatus` is deliberately lossy: eleven codes
+ * collapse onto five of our statuses, and the three that matter most to an
+ * investor all land on `rejected`. "Rejected by Investor" (they declined the
+ * mandate themselves), "Rejected due to invalid UPI" (a fixable typo) and
+ * "Rejected by Sponsor Bank" are three different things to do next, and our
+ * status cannot tell them apart. So the sentence is stored alongside the status
+ * rather than derived from it.
+ *
+ * VERBATIM, not paraphrased — including the spec's own capitalisation. This is
+ * what `Application.upiStatusText` is defined to hold, and the operator reads
+ * it on the Bidding Report to reconcile against the exchange's own screen.
+ *
+ * NSE's vocabulary. BSE's per-bid pull (`ipoupistatus`) is not implemented; when
+ * it is, confirm its codes against this table instead of assuming they match —
+ * only the NSE adapter populates `upiPaymentStatus` today.
+ */
+export const UPI_STATUS_LABEL: Record<number, string> = {
+  [UpiPaymentStatus.REQUEST_SENT]: 'Request Sent',
+  [UpiPaymentStatus.REQUEST_FAILED]: 'Request Failed',
+  [UpiPaymentStatus.ACCEPTED_BY_SPONSOR_BANK]: 'Request Accepted By Sponsor Bank',
+  [UpiPaymentStatus.REJECTED_INVALID_UPI]: 'Rejected due to invalid UPI',
+  [UpiPaymentStatus.REJECTED_BY_SPONSOR_BANK]: 'Rejected by Sponsor Bank',
+  [UpiPaymentStatus.REJECTED_UPI2_NOT_SUPPORTED]:
+    'Block/Release Request Rejected Due To UPI 2.0 Not Being Supported By Investor Bank',
+  [UpiPaymentStatus.REJECTED_BY_INVESTOR_BANK]: 'Rejected by Investor Bank',
+  [UpiPaymentStatus.REJECTED_TECHNICAL]:
+    'Block/Release Request Rejected By Client Bank Due To Technical Reason',
+  [UpiPaymentStatus.REJECTED_BY_INVESTOR]: 'Rejected by Investor',
+  [UpiPaymentStatus.ACCEPTED_BY_INVESTOR]: 'Accepted by Investor',
+  [UpiPaymentStatus.BLOCK_RELEASED]: 'Block Released (Due to cancellation of order)',
+};
+
+/**
+ * The exchange's sentence for a code, or NULL for one we do not know.
+ *
+ * Null rather than a stringified code or an invented phrase: an unknown code is
+ * a gap in this table, and showing an investor `"47"` reads as a fault in the
+ * app while a guessed sentence could be wrong about their money. `mapUpiStatus`
+ * already keeps an unknown code non-terminal, so the bid is unaffected — the UI
+ * simply falls back to our own status line.
+ */
+export function upiStatusLabel(code: number): string | null {
+  return UPI_STATUS_LABEL[code] ?? null;
+}
+
 /** Map a DP verification flag → our application status. */
 export function mapDpStatus(flag: DpVerStatusFlag): ApplicationStatus {
   switch (flag) {

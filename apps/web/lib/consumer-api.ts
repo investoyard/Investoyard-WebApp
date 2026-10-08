@@ -210,6 +210,9 @@ export interface ApiApplication {
   allotmentOddsPct?: number;
   /** While 'submitted': applicant details still blocking the exchange bid. */
   missingDetails?: string[];
+  /** The exchange's own sentence about the UPI mandate, and when it was observed. */
+  upiStatusText?: string;
+  upiStatusAt?: string;
 }
 export const listApplications = () => authedConsumer<ApiApplication[]>('/applications', { method: 'GET' });
 

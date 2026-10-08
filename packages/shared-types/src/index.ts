@@ -209,6 +209,17 @@ export interface ApplicationView {
   allotmentOddsPct?: number;
   /** While 'submitted': applicant details still blocking the exchange bid (UPI / demat). */
   missingDetails?: string[];
+  /**
+   * The exchange's own sentence about the UPI mandate, and when it was observed.
+   *
+   * Shown BESIDE our status line, never instead of it: `status` collapses eleven
+   * exchange codes onto five of ours, and the three rejections an investor can
+   * act on differently — they declined it themselves, the UPI ID was invalid,
+   * the sponsor bank refused — all land on `rejected`. Absent until the rail
+   * reports on the bid, which is every application today.
+   */
+  upiStatusText?: string;
+  upiStatusAt?: string;
 }
 
 export type ApplicantCategory = 'individual' | 'shareholder' | 'employee';
