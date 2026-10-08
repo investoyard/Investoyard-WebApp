@@ -48,6 +48,32 @@ describe('the list puts the profile’s own demat first', () => {
     expect(dematAccountsFor({ depository: 'NSDL', dpId: '', clientId: '' }, [])).toEqual([]);
   });
 
+  /**
+   * CDSL HAS NO DP ID. `profiles.service` stores `dpId: ''` for every CDSL
+   * account deliberately — the 16-digit client id is the whole identifier — so
+   * a presence test demanding both fields drops every CDSL demat there is.
+   * It did, for an hour, and a CDSL profile then resolved to NO account at all.
+   */
+  it('keeps a CDSL DEFAULT, whose dpId is correctly blank', () => {
+    const cdsl = { depository: 'CDSL' as const, dpId: '', clientId: '1208870011223344' };
+    const list = dematAccountsFor(cdsl, []);
+    expect(list).toHaveLength(1);
+    expect(list[0].isDefault).toBe(true);
+    expect(list[0].clientId).toBe('1208870011223344');
+  });
+
+  it('keeps a CDSL EXTRA alongside an NSDL default', () => {
+    const extra: ExtraDemat = { id: 'z1', depository: 'CDSL', dpId: '', clientId: '1208870011223344', label: 'Zerodha' };
+    expect(dematAccountsFor(DEFAULT, [extra]).map((d) => d.id)).toEqual([null, 'z1']);
+  });
+
+  it('a CDSL-only applicant can still place a bid', () => {
+    const cdsl = { depository: 'CDSL' as const, dpId: '', clientId: '1208870011223344' };
+    const d = dematForApplication(cdsl, [], null)!;
+    expect(d).not.toBeNull();
+    expect(d.clientId).toBe('1208870011223344');
+  });
+
   it('still lists the extras when the profile’s own demat is blank', () => {
     /* The schema makes a profile's demat mandatory, so this is a legacy or
        half-written record. Its extras are real accounts and hiding them would
@@ -104,5 +130,10 @@ describe('dematLabel', () => {
 
   it('falls back to the identifiers alone', () => {
     expect(dematLabel(dematAccountsFor(DEFAULT, [])[0])).toBe('NSDL 12345678 / 87654321');
+  });
+
+  it('omits the separator for CDSL, which has no DP ID', () => {
+    const cdsl = { depository: 'CDSL' as const, dpId: '', clientId: '1208870011223344' };
+    expect(dematLabel(dematAccountsFor(cdsl, [])[0])).toBe('CDSL 1208870011223344');
   });
 });

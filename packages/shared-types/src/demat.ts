@@ -64,7 +64,18 @@ export function dematAccountsFor(
 ): DematAccountView[] {
   const out: DematAccountView[] = [];
   const seen = new Set<string>();
-  if (profile?.dpId && profile?.clientId) {
+  /*
+   * PRESENCE IS `clientId` ALONE — a CDSL account has NO DP ID.
+   *
+   * `profiles.service` stores `dpId: depository === 'NSDL' ? dpId : ''`, so a
+   * blank DP ID is the normal, correct shape for every CDSL demat in the
+   * database. Requiring both (which this did for its first hour, 2026-10-08)
+   * dropped every CDSL account: a CDSL profile resolved to NO demat at all, and
+   * `dematForApplication` then returned null, which the rail builder turns into
+   * a thrown bid. All 230 profiles happened to be NSDL when it was caught, so
+   * nothing was live — the first CDSL applicant would have been unable to apply.
+   */
+  if (profile?.clientId) {
     out.push({
       id: null,
       depository: profile.depository,
@@ -77,7 +88,7 @@ export function dematAccountsFor(
   }
   for (const e of extras ?? []) {
     if (e.active === false) continue;
-    if (!e.dpId || !e.clientId) continue;
+    if (!e.clientId) continue;   // CDSL has no DP ID — see the note above
     const k = key(e);
     if (seen.has(k)) continue;
     seen.add(k);
@@ -116,8 +127,12 @@ export function dematForApplication(
   return list.find((d) => d.id === dematAccountId) ?? null;
 }
 
-/** `NSDL 12345678 / 87654321`, with the investor's label when they gave one. */
+/**
+ * `NSDL IN301234 / 87654321`, or `CDSL 1208870011223344` — a CDSL account has
+ * no DP ID, so printing the separator anyway leaves a gap where a missing
+ * identifier appears to be.
+ */
 export function dematLabel(d: DematAccountView): string {
-  const core = `${d.depository} ${d.dpId} / ${d.clientId}`;
+  const core = d.dpId ? `${d.depository} ${d.dpId} / ${d.clientId}` : `${d.depository} ${d.clientId}`;
   return d.label ? `${d.label} — ${core}` : core;
 }
