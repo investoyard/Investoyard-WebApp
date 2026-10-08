@@ -2,17 +2,45 @@
 
 End-to-end: Postgres → API (NestJS) → web + mobile on real data.
 
+> **THIS IS THE DEVELOPER SETUP DOC, NOT THE PRODUCTION ONE.** Investoyard is
+> **live** on the operator's Windows server (web `newipo.finwave.co`, API
+> `newipoapi.finwave.co`) served by IIS, with a catalogue of **1,269 IPOs** and
+> real investor data. Nothing below describes that box: the deploy handshake,
+> the IIS app-pool rules and every production trap live in **`CLAUDE.md`**, which
+> is the authority for anything touching prod. Read it before running a command
+> against the live stack — in particular, **never `rm -rf apps/api/dist`** (it
+> holds the operator's uploads) and **never `npm run seed`** against prod (it is
+> clean-slate; use `npm run ensure-roles` for additive role changes).
+
 ## 1. Database
+**No Docker.** Postgres is a portable install on **:5433**, registered as the
+Windows service `investoyard-postgres` (LocalSystem, auto-start). Redis is
+portable too, on :6379.
 ```
-docker compose up -d            # Postgres on :5432 (see docker-compose.yml)
+pwsh scripts/db.ps1 start       # service-aware: drives the service, falls back to pg_ctl
+pwsh scripts/redis.ps1 start
+scripts/start-services.bat      # or both at once
 ```
+Check it by **CONNECTING, never by probing the port** — an orphaned backend keeps
+:5433 listening, so an open port is exactly what a crashed server looks like:
+```
+pg_isready -h 127.0.0.1 -p 5433      # expect "accepting connections"
+redis-cli -p 6379 ping               # expect PONG
+```
+`pg_ctl status` **lies** under the service (the postmaster runs as LocalSystem and
+a standard user cannot open a handle to it) — it will report *"no server running"*
+for a database answering every query. Use `pg_isready`.
+
+`docker-compose.yml` is still in the repo but **nothing references it any more** and it
+points at :5432, not :5433. Treat it as legacy until someone needs a container setup on
+a different machine, and do not assume it matches the live configuration.
 
 ## 2. API
 ```
 cd apps/api
-cp .env.example .env            # DATABASE_URL already points at the compose DB
-npm run prisma:migrate          # create schema
-npm run seed                    # seed IPOs (ACME/BETA/ZETA) + a launch-rail member credential
+cp .env.example .env            # DATABASE_URL points at :5433
+npx prisma db push              # or npm run prisma:migrate
+npm run seed                    # DEV ONLY — clean-slate seed; never against prod
 npm run start:dev               # API on :3000  → http://localhost:3000/api/ipos
 ```
 
@@ -259,7 +287,14 @@ battery — health, tenancy cascade + lock, RBAC (200/403/401), Redis OTP store 
 PII envelope tokens, self-PAN/consent/one-app guards, lean queue payloads (no PII in Redis),
 allotment RBAC + refund math + notifications, reports + CSV, audit, rail-handshake classification,
 dashboard. It creates its own test data and cleans up after itself (expects the dev seed).
-CI (`.github/workflows/ci.yml`) runs build + unit tests on every push once the repo is on GitHub.
+CI (`.github/workflows/ci.yml`) runs build + unit tests on every push.
+
+**Unit tests** — `npm run test` from the root (turbo, 7 tasks). As of 2026-10-08:
+**rail-adapters 74** · **shared-types 281** · **api 59**. The shared-types suite is
+where the domain rules live and is the one to read first: the issue engine,
+`minApplicationShares`, the stage/demand ladders, `mayChangeUpi`,
+`mayRequestUnblock` and `matchSponsorBanks` are all pinned there, most of them
+built from a real RHP or a real stored record rather than invented inputs.
 
 ## Try the flow
 - Browse IPOs (seeded), open one → subscription bars + GMP + (SME norms).
@@ -275,9 +310,22 @@ CI (`.github/workflows/ci.yml`) runs build + unit tests on every push once the r
 - Apply → pick applicant → lots → UPI/PDF → places an application (visible under **My applications**).
 - Toggle the language (हिन्दी) — UI switches; web uses `?lang=hi`.
 
-## Notes / stubs to replace for production
-- OTP delivery (real SMS), PII vault (KMS, not the AES dev stub), FCM notifications,
-  BullMQ for submission, callback auth guard, the real NSE member credentials + UAT,
-  and the FINWAVE prefilled-ASBA PDF engine. All marked `TODO(prod)` in code.
-- Web i18n currently uses `?lang=` (SSR, crawlable). For per-locale static routes/SEO,
-  migrate to `/[lang]/...` later.
+## What is actually stubbed, as of 2026-10-08
+This list was written pre-launch and most of it has shipped. Corrected, because
+calling a working path a stub is as misleading as the reverse:
+
+| was listed as a stub | now |
+|---|---|
+| OTP delivery (real SMS) | **live** — real 6-digit OTP via `SmsService`; dev still accepts `123456` |
+| BullMQ submission queue | **live** whenever `REDIS_URL` is set, which it is; inline is the fallback |
+| Callback auth guard | **BUILT AND WIRED** (`RailCallbackGuard`), but **OFF** unless `RAIL_CALLBACK_AUTH=enabled` — and it is commented out in prod's `.env`, so the guard is in pass-through there. **Enable before UAT.** |
+| Prefilled-ASBA PDF engine | **live** — AcroForm filling by field name with a coordinate-overlay fallback, flattened for WhatsApp |
+| In-memory auth / profiles / applications | **live API** throughout |
+| BSE iBBS doc gap | **doc arrived** 2026-09-02; the adapter matches it field for field. What it lacks is a **UAT run**, plus `ipoupistatus` / `ipoappenquiry` / the Bid Upload API, which are not implemented |
+
+**Still genuinely stubbed or unproven:**
+- **FCM / APNs push** — persistence and device fan-out are real; the provider handshake logs instead of sending (`TODO(prod)` in `notifications.service.ts`).
+- **PII vault is a local key file, not KMS.** The KMS provider exists and activates on `KMS_KEY_ID`. In prod the master key is `C:\ProgramData\Investoyard\pii-vault.key` — **the single point of total data loss**; a missing key now makes the app **refuse to start** unless `PII_VAULT_ALLOW_MINT=true`, because silent minting once re-keyed the whole vault under everyone.
+- **NSE member credentials + UAT** — the one thing blocking the entire bidding surface. No bid has ever reached an exchange: all 1,651 applications are print-path with zero exchange application numbers.
+- **SMTP has never been verified end to end.** The `email` provider is configured and no send has been confirmed — which leaves the sponsor-bank unblock request and the partner-activation email both unproven.
+- Web i18n still uses `?lang=` (SSR, crawlable) for app-like pages; the public content pages already have per-locale `/hi/` static routes.
