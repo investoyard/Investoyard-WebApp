@@ -21,7 +21,7 @@ function resolveApiBase(): string {
   return 'http://localhost:3000/api';
 }
 
-const API_BASE = resolveApiBase();
+export const API_BASE = resolveApiBase();
 
 const MOCK: IpoDetail[] = [
   {

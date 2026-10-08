@@ -27,7 +27,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
 import { SuccessMoment } from '../../components/ui/Celebration';
 import { ApplyBidPicker, applyCategory, applyTabLabel, type ApplyChoice } from '../../components/BidControls';
-import { UPI_MANDATE_MAX } from '@investoyard/shared-types';
+import { UPI_MANDATE_MAX, dematLabel } from '@investoyard/shared-types';
 
 /** Eligible for the UPI flow: own UPI on file and not a minor. */
 const upiReady = (p: ProfileRecord) => !!p.upiId && p.relationship !== 'child';
@@ -44,6 +44,10 @@ export default function ApplyScreen() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [master, setMaster] = useState<ApplyChoice | null>(null);
   const [overrides, setOverrides] = useState<Record<string, ApplyChoice>>({});
+  /** Which demat each applicant's allotment credits to. Absent = their default,
+   *  which is what the server resolves when `dematAccountId` is null — so this
+   *  stays empty for everyone who holds only one account. */
+  const [dematBy, setDematBy] = useState<Record<string, string | null>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [noticeVersion, setNoticeVersion] = useState<string | undefined>(undefined);
@@ -119,6 +123,7 @@ export default function ApplyScreen() {
         const c = choiceFor(p)!;
         await createApplication(token!, {
           investorProfileId: p.id,
+          dematAccountId: dematBy[p.id] ?? null,                         // null = the profile default
           ipoId: ipo.id,
           category: applyCategory(c),
           applicantType: c.tab === 'sha' ? 'shareholder' : 'individual',
@@ -261,6 +266,29 @@ export default function ApplyScreen() {
                           {editing === p.id ? <XIcon size={14} color={ui.indigo} strokeWidth={2.2} /> : <PencilIcon size={14} color={ui.indigo} strokeWidth={2} />}
                         </Pressable>
                       </View>
+                      {/* Credit destination — only for an applicant who holds more than
+                          one demat. One account is not a choice, so asking would be noise. */}
+                      {(p.demats?.length ?? 0) > 1 ? (
+                        <View style={styles.dematPick}>
+                          <Text style={styles.dematK}>CREDIT SHARES TO</Text>
+                          <View style={styles.dematChips}>
+                            {p.demats!.map((d) => {
+                              const on = (dematBy[p.id] ?? null) === (d.id ?? null);
+                              return (
+                                <Pressable
+                                  key={d.id ?? 'default'}
+                                  onPress={() => setDematBy((m) => ({ ...m, [p.id]: d.id ?? null }))}
+                                  style={[styles.dematChip, on && styles.dematChipOn]}
+                                >
+                                  <Text style={[styles.dematChipTxt, on && styles.dematChipTxtOn]} numberOfLines={1}>
+                                    {dematLabel(d)}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ) : null}
                       {editing === p.id ? (
                         <View style={styles.editBox}>
                           <ApplyBidPicker
@@ -348,6 +376,19 @@ const styles = StyleSheet.create({
   own: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   memberSub: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
   editBtn: { width: 30, height: 30, borderRadius: 9, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
+  dematPick: { marginBottom: 10 },
+  dematK: { fontSize: 10, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.5, color: ui.muted },
+  dematChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  dematChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9,
+    borderWidth: 1, borderColor: ui.divider, backgroundColor: ui.card, maxWidth: '100%',
+  },
+  dematChipOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
+  dematChipTxt: {
+    fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600',
+    color: ui.body, fontVariant: ['tabular-nums'],
+  },
+  dematChipTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   editBox: { backgroundColor: ui.canvas, borderRadius: 14, padding: 12, marginBottom: 10 },
   resetBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
