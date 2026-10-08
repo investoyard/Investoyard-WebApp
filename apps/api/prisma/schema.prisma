@@ -676,9 +676,52 @@ model InvestorProfile {
 
   applications Application[]
 
+  /// ADDITIONAL demat accounts beyond the one on this profile — see DematAccount.
+  dematAccounts DematAccount[]
+
   @@unique([tenantId, panHash]) // a PAN is registered once per tenant (self-PAN rule)
   @@index([userId])
   @@index([tenantId])
+}
+
+/// An ADDITIONAL demat account on a profile, so the investor can choose where an
+/// allotment lands (operator ask, 2026-10-07).
+///
+/// THE PROFILE'S OWN `depository` / `dpId` / `clientId` ARE THE DEFAULT DEMAT AND
+/// ARE NEVER COPIED IN HERE. That asymmetry is deliberate and is the whole design:
+/// 37 files across the API, both apps and the rail adapters read those columns,
+/// so moving every demat into this table would have been a very wide change to the
+/// print engine, the partner API, allotment matching and the bid builder at once.
+/// Mirroring the default into a row instead would have created two places holding
+/// one fact, which is the drift this codebase has paid for five times. So each
+/// demat lives in exactly ONE place, and `dematAccountsFor(profile)` is the single
+/// resolver that returns the whole list with the default first.
+///
+/// This does NOT let anyone apply twice. The self-PAN rule is enforced on
+/// `profile.panHash` per IPO per bucket and never looks at the demat, so choosing a
+/// different account changes only where the shares are credited.
+model DematAccount {
+  id         String     @id @default(uuid())
+  profileId  String
+  profile    InvestorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  depository Depository
+  dpId       String
+  clientId   String
+  /// the investor's own name for it — "Zerodha", "HDFC Sec". Optional.
+  label      String?
+  /// false = retired. Never hard-deleted once an application points at it, the
+  /// same reason InvestorProfile.active exists.
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  applications Application[]
+
+  /// One profile cannot hold the same demat twice. It can still duplicate the
+  /// profile's OWN default, which no cross-table constraint can express — the
+  /// service refuses that case.
+  @@unique([profileId, depository, dpId, clientId])
+  @@index([profileId])
 }
 
 model Consent {
@@ -855,6 +898,13 @@ model Application {
   /// client was impossible without deleting the print history with it.
   investorProfileId  String?
   profile            InvestorProfile?  @relation(fields: [investorProfileId], references: [id])
+  /// Which demat this application credits to. NULL means the profile's OWN
+  /// columns — its default — which is what every application created before
+  /// 2026-10-08 means, so no backfill is needed and none should be done.
+  /// RESTRICT, not SET NULL: a submitted bid names a demat to the exchange and
+  /// losing which one it was would rewrite history. Retire with `active: false`.
+  dematAccountId     String?
+  dematAccount       DematAccount?     @relation(fields: [dematAccountId], references: [id], onDelete: Restrict)
   ipoId              String
   ipo                Ipo               @relation(fields: [ipoId], references: [id])
   memberCredentialId String?

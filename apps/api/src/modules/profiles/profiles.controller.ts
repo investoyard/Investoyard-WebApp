@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { ProfilesService } from './profiles.service';
-import { CreateProfileDto, UpdateProfileDto } from './profiles.dto';
+import { AddDematDto, CreateProfileDto, UpdateProfileDto } from './profiles.dto';
 
 /** Public (no auth): just the relationship option names + allow-multiple flags. */
 @Controller('profiles')
@@ -43,5 +43,29 @@ export class ProfilesController {
   @Delete(':id')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.profiles.remove(req.user.sub, id);
+  }
+
+  /*
+   * ADDITIONAL demat accounts (2026-10-08). Both return the whole refreshed
+   * profile, so the caller never has to merge a partial response into its own
+   * copy and then wonder which is current.
+   *
+   * There is deliberately NO edit route. A submitted bid names its demat to the
+   * exchange, so changing the identifiers under it would rewrite what a real
+   * application did; a typo is fixed by retiring the row and adding the right
+   * one, which leaves the history honest.
+   *
+   * Literal path segment, not a bare id under the profile — the UUID-in-path
+   * shape got intercepted upstream once before (see the Partner API print-detail
+   * note in CLAUDE.md).
+   */
+  @Post(':id/demat')
+  addDemat(@Req() req: any, @Param('id') id: string, @Body() dto: AddDematDto) {
+    return this.profiles.addDemat(req.user.sub, id, dto);
+  }
+
+  @Delete(':id/demat/:dematId')
+  retireDemat(@Req() req: any, @Param('id') id: string, @Param('dematId') dematId: string) {
+    return this.profiles.retireDemat(req.user.sub, id, dematId);
   }
 }

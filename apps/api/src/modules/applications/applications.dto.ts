@@ -6,6 +6,9 @@ export enum ApplicantCategory { individual = 'individual', shareholder = 'shareh
 
 export class CreateApplicationDto {
   @IsString() investorProfileId!: string;
+  /** Which demat the allotment credits to. Omit = the profile default. Checked
+   *  against the applicant own accounts in the service, never trusted. */
+  @IsOptional() @IsString() dematAccountId?: string;
   @IsString() ipoId!: string;
   @IsString() category!: string;
   @IsOptional() @IsEnum(ApplicantCategory) applicantType?: ApplicantCategory;
@@ -35,6 +38,9 @@ export class FormsPdfDto {
 
 export class BulkApplicantDto {
   @IsString() investorProfileId!: string;
+  /** Which demat the allotment credits to. Omit = the profile default. Checked
+   *  against the applicant own accounts in the service, never trusted. */
+  @IsOptional() @IsString() dematAccountId?: string;
   @IsInt() @Min(1) lots!: number;
   @IsOptional() @IsBoolean() atCutoff?: boolean;
   @IsOptional() bidPrice?: number;

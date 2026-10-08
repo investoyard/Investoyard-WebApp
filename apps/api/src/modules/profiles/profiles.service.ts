@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { CreateProfileDto, UpdateProfileDto } from './profiles.dto';
+import { dematAccountsFor } from '@investoyard/shared-types';
 
 /** Seeded on first use; the admin manages the list afterwards (Masters → UPI Handles). */
 const DEFAULT_UPI_HANDLES = [
@@ -71,7 +72,7 @@ export class ProfilesService {
     // Deactivated profiles are hidden everywhere; their applications keep history.
     const rows = await this.prisma.investorProfile.findMany({
       where: { userId, active: true },
-      include: { _count: { select: { applications: true } } },
+      include: { _count: { select: { applications: true } }, dematAccounts: { where: { active: true }, orderBy: { createdAt: 'asc' } } },
     });
     return Promise.all(rows.map((p) => this.toView(p)));
   }
@@ -91,14 +92,7 @@ export class ProfilesService {
     }
     // Depository-specific demat rules: NSDL DP ID = IN + 6 digits with an 8-digit
     // client id; CDSL has NO separate DP ID — one 16-digit demat number.
-    const dpId = String(dto.dpId ?? '').trim().toUpperCase();
-    const clientId = String(dto.clientId ?? '').trim();
-    if (dto.depository === 'NSDL') {
-      if (!/^IN\d{6}$/.test(dpId)) throw new BadRequestException('NSDL DP ID must be IN followed by 6 digits (e.g. IN301234).');
-      if (!/^\d{8}$/.test(clientId)) throw new BadRequestException('NSDL Client ID must be exactly 8 digits.');
-    } else {
-      if (!/^\d{16}$/.test(clientId)) throw new BadRequestException('CDSL demat number must be exactly 16 digits.');
-    }
+    const { dpId, clientId } = this.normaliseDemat(dto.depository, dto.dpId, dto.clientId);
     if (dto.upiId) await this.assertUpiAllowed(dto.upiId);
     try {
       // Envelope-encrypt PII up front (vault ops are async — KMS in prod).
@@ -149,7 +143,7 @@ export class ProfilesService {
   async update(userId: string, id: string, dto: UpdateProfileDto) {
     const existing = await this.prisma.investorProfile.findFirst({
       where: { id, userId, active: true },
-      include: { _count: { select: { applications: true } } },
+      include: { _count: { select: { applications: true } }, dematAccounts: { where: { active: true }, orderBy: { createdAt: 'asc' } } },
     });
     if (!existing) throw new NotFoundException();
     const data: Record<string, any> = {};
@@ -169,18 +163,14 @@ export class ProfilesService {
     }
 
     // Demat — validate the RESULTING combination (provided values over current).
-    const depository = dto.depository ?? (existing.depository as any);
-    const dpId = String(dto.dpId ?? existing.dpId ?? '').trim().toUpperCase();
-    const clientId = String(dto.clientId ?? existing.clientId ?? '').trim();
-    if (depository === 'NSDL') {
-      if (!/^IN\d{6}$/.test(dpId)) throw new BadRequestException('NSDL DP ID must be IN followed by 6 digits (e.g. IN301234).');
-      if (!/^\d{8}$/.test(clientId)) throw new BadRequestException('NSDL Client ID must be exactly 8 digits.');
-    } else if (!/^\d{16}$/.test(clientId)) {
-      throw new BadRequestException('CDSL demat number must be exactly 16 digits.');
-    }
-    data.depository = depository;
-    data.dpId = depository === 'NSDL' ? dpId : '';
-    data.clientId = clientId;
+    const resolved = this.normaliseDemat(
+      dto.depository ?? (existing.depository as any),
+      dto.dpId ?? existing.dpId ?? '',
+      dto.clientId ?? existing.clientId ?? '',
+    );
+    data.depository = resolved.depository;
+    data.dpId = resolved.dpId;
+    data.clientId = resolved.clientId;
 
     // PAN — replace only when typed; locked once applications exist.
     if (dto.pan) {
@@ -222,7 +212,7 @@ export class ProfilesService {
   async remove(userId: string, id: string) {
     const found = await this.prisma.investorProfile.findFirst({
       where: { id, userId },
-      include: { _count: { select: { applications: true } } },
+      include: { _count: { select: { applications: true } }, dematAccounts: { where: { active: true }, orderBy: { createdAt: 'asc' } } },
     });
     if (!found) throw new NotFoundException();
     if (found._count.applications > 0) {
@@ -231,6 +221,90 @@ export class ProfilesService {
     }
     await this.prisma.investorProfile.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /**
+   * NSDL / CDSL identifier rules — ONE copy.
+   *
+   * These were written out at `create` and again at `update`; the demat
+   * endpoints below would have been a third, and three copies of a validation
+   * rule is how an NSDL DP ID comes to be accepted in one place and rejected in
+   * another. CDSL's `dpId` is deliberately blank — the 16-digit demat number is
+   * the whole identifier.
+   */
+  private normaliseDemat(depository: string, dpIdIn?: string, clientIdIn?: string) {
+    const dpId = String(dpIdIn ?? '').trim().toUpperCase();
+    const clientId = String(clientIdIn ?? '').trim();
+    if (depository === 'NSDL') {
+      if (!/^IN\d{6}$/.test(dpId)) throw new BadRequestException('NSDL DP ID must be IN followed by 6 digits (e.g. IN301234).');
+      if (!/^\d{8}$/.test(clientId)) throw new BadRequestException('NSDL Client ID must be exactly 8 digits.');
+    } else {
+      if (!/^\d{16}$/.test(clientId)) throw new BadRequestException('CDSL demat number must be exactly 16 digits.');
+    }
+    return { depository: depository as any, dpId: depository === 'NSDL' ? dpId : '', clientId };
+  }
+
+  /**
+   * Add an ADDITIONAL demat to a profile (2026-10-08).
+   *
+   * The profile's own columns stay its default and are never written here — see
+   * the DematAccount note in schema.prisma. This only adds somewhere else the
+   * allotment can land; it cannot let anyone apply twice, because the self-PAN
+   * rule keys on `panHash` per IPO per bucket and never looks at the demat.
+   */
+  async addDemat(userId: string, profileId: string, dto: { depository: string; dpId?: string; clientId: string; label?: string }) {
+    const profile = await this.prisma.investorProfile.findFirst({
+      where: { id: profileId, userId, active: true },
+      select: { id: true, depository: true, dpId: true, clientId: true },
+    });
+    if (!profile) throw new NotFoundException();
+    const d = this.normaliseDemat(dto.depository, dto.dpId, dto.clientId);
+
+    /* Refused here because no constraint can express it: the unique index covers
+       the extras among themselves, not the profile's own columns. Without this
+       the picker would offer the same account twice, one of them labelled
+       "default" — and `dematAccountsFor` would silently drop the duplicate,
+       leaving the operator wondering where their new row went. */
+    const sameAsDefault = profile.depository === d.depository
+      && String(profile.dpId ?? '').toUpperCase() === d.dpId
+      && String(profile.clientId ?? '') === d.clientId;
+    if (sameAsDefault) throw new ConflictException('That is already this applicant’s default demat account.');
+
+    try {
+      await this.prisma.dematAccount.create({
+        data: { profileId, depository: d.depository, dpId: d.dpId, clientId: d.clientId, label: dto.label?.trim() || null },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') throw new ConflictException('That demat account is already on this applicant.');
+      throw e;
+    }
+    return this.one(userId, profileId);
+  }
+
+  /**
+   * Retire an additional demat. NEVER a hard delete: a submitted bid names its
+   * demat to the exchange, and `Application.dematAccountId` is RESTRICT, so
+   * removing the row would either fail or erase which account a real bid used.
+   * Retired accounts drop out of every picker and keep their history.
+   */
+  async retireDemat(userId: string, profileId: string, dematId: string) {
+    const found = await this.prisma.dematAccount.findFirst({
+      where: { id: dematId, profileId, profile: { userId } },
+      select: { id: true },
+    });
+    if (!found) throw new NotFoundException();
+    await this.prisma.dematAccount.update({ where: { id: dematId }, data: { active: false } });
+    return this.one(userId, profileId);
+  }
+
+  /** One profile, in the same masked shape as the list. */
+  async one(userId: string, id: string) {
+    const p = await this.prisma.investorProfile.findFirst({
+      where: { id, userId },
+      include: { _count: { select: { applications: true } }, dematAccounts: { where: { active: true }, orderBy: { createdAt: 'asc' } } },
+    });
+    if (!p) throw new NotFoundException();
+    return this.toView(p);
   }
 
   /** masked view — never returns raw PII (PAN masked; bank/UPI as set-flags only) */
@@ -243,6 +317,10 @@ export class ProfilesService {
       depository: p.depository,
       dpId: p.dpId,
       clientId: p.clientId,
+      /* EVERY demat, default first. Built here rather than on each client so
+         the join between the profile's own columns and its extra rows happens
+         once — see dematAccountsFor(). */
+      demats: dematAccountsFor(p, p.dematAccounts ?? []),
       ifsc: p.ifsc,
       hasUpi: !!p.upiTokenRef,
       hasBank: !!p.bankTokenRef,

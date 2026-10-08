@@ -17,6 +17,8 @@ export * from './minApplication';
 export * from './offerTotals';
 export * from './issueInputs';
 export * from './ipoDerive';
+export * from './demat';
+import type { DematAccountView } from './demat';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';
@@ -87,6 +89,8 @@ export interface ConsentNotice {
 /** One family member's bid inside a bulk apply. */
 export interface BulkApplicant {
   investorProfileId: string;
+  /** Which demat this applicant credits to. Omit or null = the profile default. */
+  dematAccountId?: string | null;
   lots: number;
   atCutoff?: boolean;
   bidPrice?: number;
@@ -162,9 +166,18 @@ export interface ProfileView {
   relationship: 'self' | 'spouse' | 'child' | 'mother' | 'father' | 'parent' | 'sibling' | 'other';
   fullName: string;
   pan: string;            // masked
+  /** The profile's OWN demat — its default. Unchanged, and still what every
+   *  existing reader uses; `demats[0]` is the same account. */
   depository: Depository;
   dpId: string;
   clientId: string;
+  /**
+   * EVERY demat on this profile, default first, built server-side by
+   * `dematAccountsFor()` so no client re-derives the join (2026-10-08).
+   * Always at least one. Optional on the type only so an older client that has
+   * not been rebuilt still compiles.
+   */
+  demats?: DematAccountView[];
   hasUpi: boolean;
   hasBank: boolean;
   kycStatus: 'unverified' | 'verified' | 'failed';
@@ -202,6 +215,8 @@ export type ApplicantCategory = 'individual' | 'shareholder' | 'employee';
 
 export interface CreateApplicationInput {
   investorProfileId: string;
+  /** Which demat the allotment credits to. Omit or null = the profile default. */
+  dematAccountId?: string | null;
   ipoId: string;
   category: string;
   applicantType?: ApplicantCategory;

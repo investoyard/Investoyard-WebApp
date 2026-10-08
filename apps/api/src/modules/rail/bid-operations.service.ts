@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { mayCancel, mayReviseTo } from '@investoyard/shared-types';
+import { mayCancel, mayReviseTo, dematForApplication } from '@investoyard/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from './rail.service';
 
@@ -216,7 +216,10 @@ export class BidOperationsService {
       where: { state: 'pending', memberCredentialId: { not: null } },
       orderBy: { createdAt: 'asc' },
       take: limit,
-      include: { application: { include: { ipo: true, profile: true } } },
+      // dematAccounts rides along: toSubmission() resolves WHICH demat this
+      // application named, and reading the profile's own columns would send the
+      // default every time.
+      include: { application: { include: { ipo: true, profile: { include: { dematAccounts: true } } } } },
     });
 
     let posted = 0, failed = 0;
@@ -284,8 +287,30 @@ export class BidOperationsService {
     return ok;
   }
 
-  /** Map our row onto the adapters' BidSubmission shape. */
+  /**
+   * Map our row onto the adapters' BidSubmission shape.
+   *
+   * THE DEMAT COMES FROM `dematForApplication`, NOT from `app.profile` directly
+   * (2026-10-08). An investor can hold several and chooses per application which
+   * one the allotment credits to; reading the profile's columns here would send
+   * the exchange the default every time and credit the wrong account — silently,
+   * because nothing downstream compares the two.
+   *
+   * It THROWS when the choice cannot be resolved — a retired or deleted account.
+   * The alternative is falling back to the default, which is exactly the wrong
+   * answer: the investor picked a specific account and a bid that quietly names
+   * a different one is worse than a bid that does not go. Same reasoning as the
+   * rail builder already refusing a print payload with no PAN or DP ID.
+   */
   private toSubmission(op: any, app: any): any {
+    const demat = dematForApplication(app.profile, app.profile?.dematAccounts ?? [], app.dematAccountId);
+    if (!demat) {
+      throw new Error(
+        `Application ${app.id}: the chosen demat account could not be resolved`
+        + `${app.dematAccountId ? ` (${app.dematAccountId} — retired or removed)` : ' (the applicant has none)'}. `
+        + 'Refusing to bid rather than credit a different account.',
+      );
+    }
     return {
       activity: op.action,
       clientRef: app.remark ?? app.id,
@@ -296,9 +321,9 @@ export class BidOperationsService {
       atCutoff: op.atCutoff,
       price: op.price != null ? Number(op.price) : undefined,
       pan: app.profile?.pan,
-      dpId: app.profile?.dpId,
-      clientId: app.profile?.clientId,
-      depository: app.profile?.depository,
+      dpId: demat.dpId,
+      clientId: demat.clientId,
+      depository: demat.depository,
       applicantName: app.profile?.fullName,
     };
   }

@@ -105,11 +105,31 @@ export class ApplicationsService {
     });
   }
 
+  /**
+   * The chosen demat must belong to THIS profile and still be active.
+   *
+   * It is checked rather than trusted because `dematAccountId` arrives from the
+   * client: without this, a crafted request could name another applicant's demat
+   * and the exchange would be told to credit someone else's account. Ownership
+   * questions are never answered by the caller.
+   *
+   * Returns the id to store — `null` for the default, which is what every
+   * application written before 2026-10-08 holds and what the resolver reads.
+   */
+  private assertDematOwned(profile: any, dematAccountId?: string | null): string | null {
+    if (!dematAccountId) return null;
+    const ok = (profile.dematAccounts ?? []).some((d: any) => d.id === dematAccountId && d.active !== false);
+    if (!ok) throw new BadRequestException('That demat account is not on this applicant, or has been retired.');
+    return dematAccountId;
+  }
+
   async create(userId: string, dto: CreateApplicationDto) {
     const profile = await this.prisma.investorProfile.findFirst({
       where: { id: dto.investorProfileId, userId },
+      include: { dematAccounts: { where: { active: true } } },
     });
     if (!profile) throw new ForbiddenException('Profile not owned by user');
+    const dematAccountId = this.assertDematOwned(profile, dto.dematAccountId);
 
     const ipo = await this.prisma.ipo.findUnique({ where: { id: dto.ipoId } });
     if (!ipo || !ipo.lotSize) throw new NotFoundException('IPO not found');
@@ -174,6 +194,8 @@ export class ApplicationsService {
         tenantId: tenantContext.requireTenantId(),
         userId,
         investorProfileId: profile.id,
+        // null = the profile default; see dematForApplication()
+        dematAccountId,
         ipoId: ipo.id,
         category: dto.category,
         applicantType,
@@ -691,8 +713,15 @@ export class ApplicationsService {
       const who = `applicant ${i + 1}`;
       const atCutoff = a.atCutoff ?? true;
 
-      const profile = await this.prisma.investorProfile.findFirst({ where: { id: a.investorProfileId, userId } });
+      const profile = await this.prisma.investorProfile.findFirst({
+        where: { id: a.investorProfileId, userId },
+        include: { dematAccounts: { where: { active: true } } },
+      });
       if (!profile) throw new ForbiddenException(`${who}: profile not owned by user`);
+      /* Per applicant, not per batch — a family can credit each member's shares
+         to a different demat, and each choice is checked against that member's
+         own accounts. */
+      const dematAccountId = this.assertDematOwned(profile, a.dematAccountId);
       if (!atCutoff && !a.bidPrice) throw new BadRequestException(`${who}: bidPrice required when not at cut-off`);
 
       const applicantType = a.applicantType ?? ApplicantCategory.individual;
@@ -733,6 +762,7 @@ export class ApplicationsService {
         tenantId: tenantContext.requireTenantId(),
         userId,
         investorProfileId: profile.id,
+        dematAccountId,
         ipoId: ipo.id,
         category: dto.category,
         applicantType,
