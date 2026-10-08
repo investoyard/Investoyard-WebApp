@@ -13,6 +13,17 @@ export const MESSAGE_KEYS: MessageKeySpec[] = [
   { channel: 'sms', key: 'otp', label: 'Login OTP', vars: ['otp'] },
   { channel: 'sms', key: 'whatsapp_verify', label: 'WhatsApp verification code', vars: ['otp'] },
   { channel: 'email', key: 'empanelment', label: 'Empanelment form email', vars: ['name', 'code'] },
+  /**
+   * Investor → sponsor bank, when blocked funds were not released after
+   * allotment (sir's requirement 1). Every var the bank needs to find the
+   * mandate on their own side: the UPI ID and the application number are what
+   * they search by, and `stuckAmount` is the ask. `investorEmail` is in the
+   * list because the bank must be able to reply to the INVESTOR, not to us.
+   */
+  { channel: 'email', key: 'unblock_request', label: 'Unblock request to sponsor bank',
+    vars: ['bankName', 'investorName', 'investorEmail', 'investorMobile', 'pan', 'upiId',
+           'ipoName', 'ipoSymbol', 'applicationNumber', 'blockedAmount', 'allottedAmount',
+           'stuckAmount', 'allotmentDate', 'bidDate'] },
 ];
 
 export interface ResolvedTemplate {
@@ -32,6 +43,39 @@ const DEFAULTS: Array<{ channel: string; key: string; locale: string; body?: str
   { channel: 'sms', key: 'otp', locale: 'en', body: 'Your Investoyard OTP is {{otp}}. Valid for 5 minutes.' },
   { channel: 'sms', key: 'whatsapp_verify', locale: 'en', body: 'Your Investoyard verification code is {{otp}}' },
   { channel: 'email', key: 'empanelment', locale: 'en', subject: 'Investoyard — Business Associate Empanelment Form', bodyHtml: '<p>Dear {{name}},</p><p>Please find your Business Associate empanelment form attached.</p>' },
+  /*
+   * Written as a REQUEST FROM THE INVESTOR that we are carrying, not as a
+   * complaint from us: the mandate is between them and the bank, and the bank
+   * acts on an instruction about its own customer. It leads with the three
+   * fields the bank searches by (application number, UPI ID, PAN) because a
+   * request that cannot be located is a request that gets closed.
+   *
+   * No recommendation, no deadline of our own invention, no accusation — the
+   * SEBI timeline is stated as the timeline, and the figures speak.
+   */
+  { channel: 'email', key: 'unblock_request', locale: 'en',
+    subject: 'Unblock request — {{ipoSymbol}} — application {{applicationNumber}} — {{investorName}}',
+    bodyHtml:
+      '<p>Dear {{bankName}},</p>'
+      + '<p>Our customer <b>{{investorName}}</b> has asked us to raise the following with you. '
+      + 'Funds blocked for an IPO application remain blocked after allotment.</p>'
+      + '<table cellpadding="6" style="border-collapse:collapse;font-size:14px">'
+      + '<tr><td><b>Application no.</b></td><td>{{applicationNumber}}</td></tr>'
+      + '<tr><td><b>UPI ID</b></td><td>{{upiId}}</td></tr>'
+      + '<tr><td><b>PAN</b></td><td>{{pan}}</td></tr>'
+      + '<tr><td><b>Issue</b></td><td>{{ipoName}} ({{ipoSymbol}})</td></tr>'
+      + '<tr><td><b>Bid date</b></td><td>{{bidDate}}</td></tr>'
+      + '<tr><td><b>Allotment date</b></td><td>{{allotmentDate}}</td></tr>'
+      + '<tr><td><b>Amount blocked</b></td><td>{{blockedAmount}}</td></tr>'
+      + '<tr><td><b>Amount utilised for allotment</b></td><td>{{allottedAmount}}</td></tr>'
+      + '<tr><td><b>Amount pending release</b></td><td><b>{{stuckAmount}}</b></td></tr>'
+      + '</table>'
+      + '<p>Under the SEBI timeline the unutilised portion of a UPI mandate is to be released by '
+      + 'the day after allotment. Please release the pending amount, or tell us what is holding it.</p>'
+      + '<p>Please reply to the investor directly at <b>{{investorEmail}}</b>'
+      + '{{investorMobile}} — they are the mandate holder.</p>'
+      + '<p>Regards,<br/>Investoyard, for {{investorName}}<br/>'
+      + '<span style="color:#666">Safal Capital Services Private Limited</span></p>' },
 ];
 
 /**

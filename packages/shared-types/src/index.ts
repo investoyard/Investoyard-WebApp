@@ -220,6 +220,18 @@ export interface ApplicationView {
    */
   upiStatusText?: string;
   upiStatusAt?: string;
+  /**
+   * The sponsor-bank unblock request (requirement 1), decided SERVER-SIDE by
+   * `mayRequestUnblock` — the UI must not re-derive "is the bank late yet".
+   * `unblockAvailable` is set only when the request would succeed;
+   * `unblockReason` explains a no that is worth explaining (money outstanding
+   * but inside the grace period or the cooldown), and is absent when there is
+   * nothing stuck at all.
+   */
+  unblockAvailable?: boolean;
+  unblockReason?: string;
+  unblockStuckAmount?: number;
+  unblockRequestedAt?: string;
 }
 
 export type ApplicantCategory = 'individual' | 'shareholder' | 'employee';
@@ -243,3 +255,5 @@ export interface CreateApplicationInput {
 export * from './masterMatch';
 export * from './operationalContract';
 export * from './bidRules';
+export * from './unblockRules';
+export * from './sponsorBank';

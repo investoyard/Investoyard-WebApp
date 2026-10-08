@@ -76,6 +76,11 @@ export interface Application {
   /** The exchange's own UPI sentence + when it was observed (from the API). */
   upiStatusText?: string;
   upiStatusAt?: string;
+  /** Sponsor-bank unblock request state (from the API; see mayRequestUnblock). */
+  unblockAvailable?: boolean;
+  unblockReason?: string;
+  unblockStuckAmount?: number;
+  unblockRequestedAt?: string;
 }
 
 interface State {

@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, offerTotals, totalSharesAt, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, offerTotals, totalSharesAt, sponsorBankNames, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -935,11 +935,13 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // the Registrar dropdown. HOOKS MUST STAY ABOVE THE EARLY RETURNS below (React #310).
   const [leadMasters, setLeadMasters] = useState<api.MasterRow[]>([]);
   const [registrarMasters, setRegistrarMasters] = useState<api.MasterRow[]>([]);
+  const [sponsorBankMasters, setSponsorBankMasters] = useState<api.MasterRow[]>([]);
   const [issueTypeMasters, setIssueTypeMasters] = useState<api.MasterRow[]>([]);
   const [categoryMasters, setCategoryMasters] = useState<api.MasterRow[]>([]);
   useEffect(() => {
     api.fetchMaster('lead-managers').then((r) => setLeadMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('registrars').then((r) => setRegistrarMasters(r.filter((x) => x.active))).catch(() => {});
+    api.fetchMaster('sponsor-banks').then((r) => setSponsorBankMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('issue-types').then((r) => setIssueTypeMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('ipo-categories').then((r) => setCategoryMasters(r.filter((x) => x.active))).catch(() => {});
   }, []);
@@ -2526,9 +2528,61 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 </Field>
                 {/* Named on the offer document beside the cut-off, and the two
                     belong together: this is the bank the mandate is raised on. */}
-                <Field label="Sponsor bank(s)" hint="warehouses the UPI mandates for this issue — comma-separated">
-                  <input className="input" value={form.sponsorBank} placeholder="Axis Bank, ICICI Bank"
-                    onChange={(e) => set({ sponsorBank: e.target.value })} />
+                {/*
+                  * Still ONE comma-separated string in `extra.sponsorBank` — 60
+                  * records already hold one and an issue really can have three —
+                  * but the names now come from Masters → Sponsor Banks, because
+                  * an investor's unblock request is routed by matching them.
+                  * Free text stays reachable: a bank absent from the master, or
+                  * a legacy value like " KOTAK BANK", must remain editable.
+                  */}
+                <Field label="Sponsor bank(s)" hint="warehouses the UPI mandates for this issue — tick each one; unblock requests are emailed to these banks">
+                  {sponsorBankMasters.length ? (
+                    <div className="sb-pick">
+                      {sponsorBankMasters.map((b) => {
+                        const on = sponsorBankNames(form.sponsorBank).some((n) => n.toLowerCase() === b.name.toLowerCase());
+                        return (
+                          <label key={b.id} className={`sb-chip${on ? ' on' : ''}`} title={b.email || 'No email on file — cannot receive unblock requests'}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => {
+                                const cur = sponsorBankNames(form.sponsorBank);
+                                const next = on
+                                  ? cur.filter((n) => n.toLowerCase() !== b.name.toLowerCase())
+                                  : [...cur, b.name];
+                                set({ sponsorBank: next.join(', ') });
+                              }}
+                            />
+                            {b.name}
+                            {!b.email && <span className="sb-noemail" title="No email on file">⚠</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="banner info" style={{ fontSize: 13 }}>Add banks in <b>Masters → Sponsor Banks</b> to pick them here.</div>
+                  )}
+                  <input
+                    className="input mono" style={{ marginTop: 8 }} value={form.sponsorBank}
+                    placeholder="Axis Bank, ICICI Bank"
+                    onChange={(e) => set({ sponsorBank: e.target.value })}
+                  />
+                  {(() => {
+                    /* Say out loud whether unblock requests can be routed. A
+                       name that matches no master row, or a row with no email,
+                       looks identical to a working one until an investor
+                       needs it — which is months later and far from here. */
+                    const names = sponsorBankNames(form.sponsorBank);
+                    if (!names.length) return <div className="faint" style={{ fontSize: 12.5, marginTop: 6 }}>Without this, investors cannot ask the bank to release funds left blocked after allotment.</div>;
+                    const bad = names.filter((n) => {
+                      const m = sponsorBankMasters.find((b) => b.name.toLowerCase() === n.toLowerCase());
+                      return !m || !m.email;
+                    });
+                    return bad.length
+                      ? <div className="banner warn" style={{ fontSize: 13, marginTop: 6 }}>No email on file for <b>{bad.join(', ')}</b> — unblock requests cannot reach {bad.length === 1 ? 'it' : 'them'}. Fix in <b>Masters → Sponsor Banks</b>.</div>
+                      : <div className="faint" style={{ fontSize: 12.5, marginTop: 6 }}>Unblock requests will reach all {names.length === 1 ? 'of it' : `${names.length} of them`}.</div>;
+                  })()}
                 </Field>
               </div>
             </Panel>

@@ -6,7 +6,7 @@ import { mockIpoBySymbol, type IpoDetail } from '@/lib/api';
 import { CompanyMark } from '@/components/CompanyMark';
 import { Icon } from '@/components/Icon';
 import { useStore, store, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
-import { changeApplicationUpi, getConsumerToken, listApplications, type ApiApplication } from '@/lib/consumer-api';
+import { changeApplicationUpi, getConsumerToken, listApplications, requestUnblock, type ApiApplication } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 import { titleCase, fmtDateTime } from '@investoyard/shared-types';
 
@@ -38,6 +38,10 @@ function mapApiApp(v: ApiApplication): Application {
     allotmentOddsPct: v.allotmentOddsPct,
     missingDetails: v.missingDetails,
     upiStatusText: v.upiStatusText,
+    unblockAvailable: v.unblockAvailable,
+    unblockReason: v.unblockReason,
+    unblockStuckAmount: v.unblockStuckAmount,
+    unblockRequestedAt: v.unblockRequestedAt,
     upiStatusAt: v.upiStatusAt,
   };
 }
@@ -147,6 +151,58 @@ function UpiChangeControl({ a, onSaved }: { a: Application; onSaved?: () => void
         <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(true); setErr(null); }}>
           Change UPI ID
         </button>
+      )}
+      {err && <div style={{ marginTop: 6, fontSize: 13, color: 'var(--neg)' }}>{err}</div>}
+      {note && <div style={{ marginTop: 6, fontSize: 13, color: 'var(--pos-ink)' }}>{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * "My money wasn't unblocked" → email the issue's sponsor bank(s).
+ *
+ * Shown only when the SERVER says the request would succeed (`unblockAvailable`
+ * from `mayRequestUnblock`), and the server's own reason is shown when there is
+ * money outstanding but it is too early or the cooldown is running. The UI does
+ * not re-derive "is the bank late yet" — a second opinion on a 24-hour grace
+ * period is how a button that can only fail appears.
+ *
+ * KEEP IN STEP WITH the unblock block in apps/mobile/app/(tabs)/applications.tsx.
+ */
+function UnblockControl({ a, onSaved }: { a: Application; onSaved?: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  if (!a.unblockAvailable && !a.unblockReason) return null;
+
+  const go = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await requestUnblock(a.id);
+      setNote(r.note);
+      onSaved?.();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally { setBusy(false); }
+  };
+
+  const amt = a.unblockStuckAmount != null ? inr(a.unblockStuckAmount) : null;
+  return (
+    <div style={{ marginTop: 9 }}>
+      {a.unblockAvailable ? (
+        <>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>
+            {amt ? <><b>{amt}</b> has not come back from the bank.</> : 'Blocked funds have not come back from the bank.'}
+          </div>
+          <button className="btn btn-sm" disabled={busy} onClick={go}>
+            {busy ? 'Sending…' : 'Ask the bank to release it'}
+          </button>
+        </>
+      ) : (
+        <div className="faint" style={{ fontSize: 13 }}>
+          {amt && <><b>{amt}</b> pending release. </>}{a.unblockReason}
+        </div>
       )}
       {err && <div style={{ marginTop: 6, fontSize: 13, color: 'var(--neg)' }}>{err}</div>}
       {note && <div style={{ marginTop: 6, fontSize: 13, color: 'var(--pos-ink)' }}>{note}</div>}
@@ -481,6 +537,7 @@ function AppCard({ a, ipo, detail, q, tr, onSaved }: { a: Application; ipo?: Ipo
         <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
         <UpiStatusLine a={a} />
         <UpiChangeControl a={a} onSaved={onSaved} />
+        <UnblockControl a={a} onSaved={onSaved} />
         {(a.missingDetails ?? []).map((m) => (
           <div key={m} style={{ marginTop: 6, fontSize: 13, color: 'var(--warn, #b45309)' }}>
             ⚠ {m} — <a href="/account" style={{ color: 'inherit', textDecoration: 'underline' }}>fix on the account page</a>

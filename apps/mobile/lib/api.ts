@@ -188,6 +188,33 @@ export async function changeApplicationUpi(
   return b?.upiChange ?? { restatedToExchange: 0, note: 'Saved.' };
 }
 
+/**
+ * Ask the issue's sponsor bank(s) to release funds left blocked after allotment.
+ *
+ * `dev: true` means SMTP is not configured: composed and recorded, NOT
+ * delivered. The caller shows the server's `note`, which says so — telling an
+ * investor it was sent would leave them waiting on a reply to a mail nobody got.
+ */
+export async function requestUnblock(
+  token: string,
+  id: string,
+): Promise<{ sent: boolean; dev: boolean; to: string; stuckAmount?: number; note: string }> {
+  const res = await fetch(`${API_BASE}/applications/${id}/unblock-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: '{}',
+  });
+  if (!res.ok) {
+    let msg = `Could not send (HTTP ${res.status})`;
+    try {
+      const b = await res.json();
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export async function listApplications(token: string): Promise<ApplicationView[]> {
   try {
     const res = await fetch(`${API_BASE}/applications`, { headers: { Authorization: `Bearer ${token}` } });

@@ -10,7 +10,7 @@ import { resolveMaster } from '@investoyard/shared-types';
 import { BULK_KINDS, columnsFor, keyOf, parseSheet, templateBuffer, uniqueFieldFor } from './masters-bulk';
 
 /**
- * Masters — Lead Managers (syndicate members) + Registrars.
+ * Masters — Lead Managers (syndicate members), Registrars + Sponsor Banks.
  * Feed the IPO form dropdowns (partners, lead managers, registrar info).
  * Rows are deactivated, never deleted (IPOs reference them by name snapshot).
  */
@@ -58,6 +58,7 @@ class MasterPatchDto extends MasterDto {
 const KINDS = {
   'lead-managers': 'leadManager',
   registrars: 'registrar',
+  'sponsor-banks': 'sponsorBank',
   'ipo-categories': 'ipoCategoryMaster',
   'issue-types': 'issueTypeMaster',
   relationships: 'relationshipMaster',
@@ -69,7 +70,7 @@ const KINDS = {
 type Kind = keyof typeof KINDS;
 
 /** Kinds that model an org (full contact/address fields + mandatory short code). */
-const ORG_KINDS = new Set(['lead-managers', 'registrars']);
+const ORG_KINDS = new Set(['lead-managers', 'registrars', 'sponsor-banks']);
 
 /** Kind → the granular perm that gates writes on it. Any master perm passes
  *  the route-level anyOf guard; the handler then enforces THIS one against
@@ -78,6 +79,7 @@ const ORG_KINDS = new Set(['lead-managers', 'registrars']);
 const KIND_PERM: Record<string, string> = {
   'lead-managers': 'masters.lead-managers.manage',
   registrars: 'masters.registrars.manage',
+  'sponsor-banks': 'masters.sponsor-banks.manage',
   'ipo-categories': 'masters.ipo-category.manage',
   'issue-types': 'masters.ipo-category.manage',
   relationships: 'masters.relationships.manage',

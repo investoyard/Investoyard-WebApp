@@ -25,6 +25,7 @@ const ADMIN_PERMS = [
   'allotment.view', 'allotment.manage',
   'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
   'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.relationships.manage',
+  'masters.sponsor-banks.manage',
   'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
   'masters.industries.manage', 'masters.exchanges.manage', 'masters.ipo-category.manage',
   // Admin gets roles.view (can see who has what) but NOT roles.manage —
@@ -50,6 +51,7 @@ const STAFF_PERMS = [
   'masters.lead-managers.manage',
   'masters.anchors.manage',
   'masters.registrars.manage',
+  'masters.sponsor-banks.manage',
   'masters.ipo-category.manage',
 ];
 

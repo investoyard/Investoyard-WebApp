@@ -62,6 +62,17 @@ export class ApplicationsController {
     return this.apps.changeUpi(req.user.sub, id, dto.upiId);
   }
 
+  /*
+   * Investor → sponsor bank, for funds not released after allotment (sir's
+   * requirement 1). NO BODY on purpose: every figure in that email comes from
+   * the application, the applicant and the IPO's sponsor-bank master, so
+   * nothing an investor types reaches a third party's inbox.
+   */
+  @Post(':id/unblock-request')
+  requestUnblock(@Req() req: any, @Param('id') id: string) {
+    return this.apps.requestUnblock(req.user.sub, id);
+  }
+
   /** Prefilled ASBA bank form (the `pdf` apply method's download). */
   @Get(':id/pdf')
   async pdf(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: any): Promise<StreamableFile> {

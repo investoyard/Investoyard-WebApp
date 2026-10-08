@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
@@ -8,6 +8,7 @@ import { SubmissionQueueService } from '../queue/submission-queue.service';
 import { BidOperationsService } from '../rail/bid-operations.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MessagingService } from '../../common/messaging.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
 import { buildAsbaPdf } from './asba-pdf';
 import { fillAsbaForm, mergePdfs, AsbaOverlayData } from './asba-overlay';
@@ -16,7 +17,7 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel, mayChangeUpi } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel, mayChangeUpi, mayRequestUnblock, matchSponsorBanks } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
 const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
@@ -41,6 +42,7 @@ export class ApplicationsService {
     private notifications: NotificationsService,
     private bidOps: BidOperationsService,
     private profiles: ProfilesService,
+    private messaging: MessagingService,
   ) {}
 
   async list(userId: string) {
@@ -50,7 +52,7 @@ export class ApplicationsService {
       include: {
         ipo: {
           select: {
-            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true,
+            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true, allotmentDate: true,
             subscriptions: { select: { category: true, timesSubscribed: true, applicationsSubscribed: true } },
           },
         },
@@ -63,7 +65,7 @@ export class ApplicationsService {
   async getOne(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({
       where: { id, userId },
-      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true } }, events: { orderBy: { at: 'asc' } } },
+      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true, allotmentDate: true } }, events: { orderBy: { at: 'asc' } } },
     });
     if (!app) throw new NotFoundException();
     return { ...toView(app), events: app.events };
@@ -730,6 +732,151 @@ export class ApplicationsService {
     };
   }
 
+  /**
+   * Investor → sponsor bank: "my funds were not unblocked" (requirement 1).
+   *
+   * Sent on the investor's instruction, to the bank that holds their mandate,
+   * about their own money. We are the carrier, not the complainant — the email
+   * says so and asks the bank to reply to the INVESTOR, because the mandate is
+   * between those two and a reply to us would just need forwarding.
+   *
+   * `mayRequestUnblock` decides, and the guard that matters most is the one an
+   * anxious investor will hit first: before allotment the block is correct, and
+   * mailing a bank about it teaches them to ignore us. There is a 24-hour
+   * cooldown for the same reason — this is outward-facing mail to a third
+   * party, and six copies of one request is six that get closed unread.
+   *
+   * PAN IS SENT MASKED. The bank can locate the mandate from the application
+   * number and the UPI ID, both of which go in full; a full PAN adds little and
+   * would then also sit in our own message log in clear. **Operator decision if
+   * a bank comes back saying they need it in full** — see `vault.mask`.
+   */
+  async requestUnblock(userId: string, id: string) {
+    const app = await this.prisma.application.findFirst({
+      where: { id, userId },
+      include: {
+        ipo: { select: { name: true, symbol: true, extra: true, allotmentDate: true } },
+        profile: { select: { fullName: true, email: true, mobile: true, panTokenRef: true, upiTokenRef: true } },
+      },
+    });
+    if (!app) throw new NotFoundException();
+    if (!app.profile) throw new BadRequestException('This application has no applicant profile.');
+
+    const verdict = mayRequestUnblock({
+      status: app.status,
+      amountBlocked: app.amountBlocked != null ? Number(app.amountBlocked) : 0,
+      refundAmount: app.refundAmount != null ? Number(app.refundAmount) : 0,
+      allottedAmount: app.allottedAmount != null ? Number(app.allottedAmount) : 0,
+      allotmentDate: app.ipo?.allotmentDate ?? null,
+      lastRequestedAt: app.unblockRequestedAt,
+    });
+    if (!verdict.ok) throw new BadRequestException(verdict.reason);
+
+    /*
+     * An issue can have SEVERAL sponsor banks, and plenty do — the names live
+     * in `extra.sponsorBank` as one comma/"and"-separated string, so
+     * `matchSponsorBanks` is what turns that into master rows with addresses.
+     *
+     * ALL of them are emailed, not one, and that is deliberate: a UPI mandate
+     * is raised on exactly one of an issue's sponsor banks and WE DO NOT
+     * RECORD WHICH. Guessing would send the request to a bank that never held
+     * the money. The application number identifies the mandate, so the bank
+     * that does hold it can act and the others can see in seconds that it is
+     * not theirs — which is what a human would do with the same information.
+     *
+     * The two failure modes are reported apart because they have different
+     * owners: nothing recorded on the issue is the operator's to fix, a master
+     * row with no email is the master's. Neither is the investor's, so neither
+     * pretends to be.
+     */
+    const raw = String((app.ipo as any)?.extra?.sponsorBank ?? '').trim();
+    const master = await this.prisma.sponsorBank.findMany({
+      where: { active: true },
+      select: { name: true, email: true, active: true },
+    });
+    const banks = matchSponsorBanks(raw, master);
+    if (!banks.matched.length) {
+      const why = !raw
+        ? 'No sponsor bank is recorded for this IPO yet'
+        : banks.noEmail.length
+          ? `We have no email address on file for ${banks.noEmail.join(', ')}`
+          : `${banks.unknown.join(', ')} ${banks.unknown.length === 1 ? 'is' : 'are'} not in our sponsor-bank records`;
+      this.log.warn(`unblock request blocked for ${app.id}: ${why} (ipo ${app.ipo?.symbol}, raw "${raw}")`);
+      throw new BadRequestException(`${why}, so we cannot route your request. Our team has been notified — please contact support.`);
+    }
+    /* A partial match still sends. The bank that holds the mandate may well be
+       among the ones we DID resolve, and withholding the request over a sibling
+       we cannot address would help nobody. The gap is logged for the operator. */
+    if (banks.unknown.length || banks.noEmail.length) {
+      this.log.warn(
+        `unblock request for ${app.id} (${app.ipo?.symbol}) could not reach: `
+        + [...banks.unknown, ...banks.noEmail].join(', '),
+      );
+    }
+    const bank = { name: banks.matched.map((b) => b.name).join(', '), email: banks.matched.map((b) => b.email).join(', ') };
+
+    const inr = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
+    const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : '—');
+    let pan = '';
+    try { pan = this.vault.mask(await this.vault.resolve(app.profile.panTokenRef)); } catch { pan = '—'; }
+    let upiId = '—';
+    try { if (app.profile.upiTokenRef) upiId = await this.vault.resolve(app.profile.upiTokenRef); } catch {}
+
+    const res = await this.messaging.sendEmail('unblock_request', bank.email, {
+      vars: {
+        bankName: bank.name,
+        investorName: app.profile.fullName,
+        investorEmail: app.profile.email ?? '—',
+        // Pre-composed phrase, not a bare number: the template appends it to the
+        // "reply to …" sentence and an unlabelled number would read as noise.
+        investorMobile: app.profile.mobile ? ` or on +91 ${app.profile.mobile}` : '',
+        pan,
+        upiId,
+        ipoName: app.ipo?.name ?? app.ipo?.symbol ?? '',
+        ipoSymbol: app.ipo?.symbol ?? '',
+        applicationNumber: app.applicationNumber ?? '—',
+        blockedAmount: inr(Number(app.amountBlocked ?? 0)),
+        allottedAmount: inr(Number(app.allottedAmount ?? 0)),
+        stuckAmount: inr(verdict.stuckAmount ?? 0),
+        allotmentDate: day(app.ipo?.allotmentDate),
+        bidDate: day(app.createdAt),
+      },
+    });
+
+    /* A failed send must NOT consume the cooldown — otherwise a misconfigured
+       SMTP locks the investor out for a day over something they did not do. */
+    if (!res.sent && !res.dev) {
+      throw new ServiceUnavailableException(
+        'We could not send the request just now. Please try again in a few minutes.',
+      );
+    }
+
+    await this.prisma.application.update({
+      where: { id: app.id },
+      data: { unblockRequestedAt: new Date(), unblockRequestCount: { increment: 1 } },
+    });
+    await this.prisma.applicationStatusEvent.create({
+      data: {
+        applicationId: app.id,
+        status: app.status,
+        detail: { unblockRequest: { to: bank.email, bank: bank.name, stuckAmount: verdict.stuckAmount, dev: !!res.dev } } as any,
+      },
+    });
+
+    return {
+      sent: !!res.sent,
+      /* `dev` is the honest answer when SMTP is not configured: the email was
+         composed and logged, not delivered. Saying "sent" would leave an
+         investor waiting on a reply to a mail nobody received. */
+      dev: !!res.dev,
+      to: bank.name,
+      stuckAmount: verdict.stuckAmount,
+      note: res.sent
+        ? `Sent to ${bank.name}. They have been asked to reply to you directly.`
+        : `Email is not configured on this server yet, so your request was recorded but not delivered. Please contact support.`,
+    };
+  }
+
   async withdraw(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({ where: { id, userId }, include: { ipo: true } });
     if (!app) throw new NotFoundException();
@@ -959,6 +1106,29 @@ function toView(a: any) {
     // ride along already — a `select` here would have to name them.
     upiStatusText: a.upiStatusText ?? undefined,
     upiStatusAt: a.upiStatusAt ? a.upiStatusAt.toISOString() : undefined,
+    /* Whether the unblock request is available, decided by the SAME rule the
+       endpoint enforces — the UI must not re-derive "is the bank late yet",
+       because a second opinion on a 24-hour grace period is how a button that
+       can only fail appears. The reason rides along so the card can explain a
+       no instead of just hiding. */
+    ...(() => {
+      const v = mayRequestUnblock({
+        status: a.status,
+        amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : 0,
+        refundAmount: a.refundAmount != null ? Number(a.refundAmount) : 0,
+        allottedAmount: a.allottedAmount != null ? Number(a.allottedAmount) : 0,
+        allotmentDate: a.ipo?.allotmentDate ?? null,
+        lastRequestedAt: a.unblockRequestedAt,
+      });
+      // Offered only when it would succeed; the figure shows either way so a
+      // cooled-down card can still say what is outstanding.
+      return {
+        unblockAvailable: v.ok || undefined,
+        unblockReason: !v.ok && (v.stuckAmount ?? 0) > 0 ? v.reason : undefined,
+        unblockStuckAmount: v.stuckAmount && v.stuckAmount > 0 ? v.stuckAmount : undefined,
+        unblockRequestedAt: a.unblockRequestedAt ? a.unblockRequestedAt.toISOString() : undefined,
+      };
+    })(),
     allottedLots: a.allottedLots ?? undefined,
     allottedShares: a.allottedLots != null ? a.allottedLots * lotSize : undefined,
     allottedAmount,

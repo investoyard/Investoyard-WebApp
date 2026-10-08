@@ -83,6 +83,7 @@ const NAV: NavNode[] = [
   // admins can edit them.
   { key: 'masters', label: 'Masters', icon: 'layers', children: [
     { href: '/admin/masters/registrars', label: 'Registrars', perm: 'masters.registrars.manage' },
+    { href: '/admin/masters/sponsor-banks', label: 'Sponsor Banks', perm: 'masters.sponsor-banks.manage' },
     { href: '/admin/masters/lead-managers', label: 'Lead Managers', perm: 'masters.lead-managers.manage' },
     { href: '/admin/masters/relationships', label: 'Relationships', perm: 'masters.relationships.manage' },
     { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.upi-handles.manage' },

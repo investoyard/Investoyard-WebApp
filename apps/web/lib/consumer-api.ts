@@ -213,6 +213,11 @@ export interface ApiApplication {
   /** The exchange's own sentence about the UPI mandate, and when it was observed. */
   upiStatusText?: string;
   upiStatusAt?: string;
+  /** Sponsor-bank unblock request — decided server-side by `mayRequestUnblock`. */
+  unblockAvailable?: boolean;
+  unblockReason?: string;
+  unblockStuckAmount?: number;
+  unblockRequestedAt?: string;
 }
 export const listApplications = () => authedConsumer<ApiApplication[]>('/applications', { method: 'GET' });
 
@@ -224,6 +229,19 @@ export const listApplications = () => authedConsumer<ApiApplication[]>('/applica
  * change can reach more bids than the one the investor was looking at. Show the
  * server's `note` rather than composing your own; it is the one that knows.
  */
+/**
+ * Ask the issue's sponsor bank(s) to release funds left blocked after allotment.
+ *
+ * `dev: true` means SMTP is not configured on the server: the request was
+ * composed and recorded but NOT delivered. Show that distinction — telling an
+ * investor it was sent would leave them waiting on a reply to a mail nobody
+ * received.
+ */
+export const requestUnblock = (id: string) =>
+  authedConsumer<{ sent: boolean; dev: boolean; to: string; stuckAmount?: number; note: string }>(
+    `/applications/${id}/unblock-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+  );
+
 export const changeApplicationUpi = (id: string, upiId: string) =>
   authedConsumer<ApiApplication & {
     upiChange: { saved: boolean; restatedToExchange: number; note: string };

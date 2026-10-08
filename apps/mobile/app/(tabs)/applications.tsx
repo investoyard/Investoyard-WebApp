@@ -5,7 +5,7 @@ import { fmtDateTime, type ApplicationView } from '@investoyard/shared-types';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
-import { changeApplicationUpi, listApplications, withdrawApplication } from '../../lib/api';
+import { changeApplicationUpi, listApplications, requestUnblock, withdrawApplication } from '../../lib/api';
 import { inr } from '../../lib/format';
 import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
@@ -98,6 +98,8 @@ export default function ApplicationsScreen() {
   const [upiVal, setUpiVal] = useState('');
   const [upiErr, setUpiErr] = useState<string | null>(null);
   const [upiNote, setUpiNote] = useState<Record<string, string>>({});
+  const [unblockNote, setUnblockNote] = useState<Record<string, string>>({});
+  const [unblockErr, setUnblockErr] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (token) setApps(await listApplications(token));
@@ -127,6 +129,19 @@ export default function ApplicationsScreen() {
       await load();
     } catch (e: any) {
       setUpiErr(String(e?.message ?? e));
+    } finally { setBusyId(null); }
+  };
+
+  const onUnblock = async (id: string) => {
+    if (!token) return;
+    setBusyId(`ub-${id}`);
+    setUnblockErr((e) => ({ ...e, [id]: '' }));
+    try {
+      const r = await requestUnblock(token, id);
+      setUnblockNote((n) => ({ ...n, [id]: r.note }));
+      await load();
+    } catch (e: any) {
+      setUnblockErr((x) => ({ ...x, [id]: String(e?.message ?? e) }));
     } finally { setBusyId(null); }
   };
 
@@ -295,6 +310,35 @@ export default function ApplicationsScreen() {
                   </View>
                 ) : null}
 
+                {/* "My money wasn't unblocked" → email the issue's sponsor
+                    bank(s) (requirement 1). The SERVER decides availability
+                    (`mayRequestUnblock`); this screen must not re-derive
+                    whether the bank is late, or it would offer a button that
+                    can only fail. KEEP IN STEP WITH `UnblockControl` in
+                    apps/web/components/Portfolio.tsx. */}
+                {a.unblockAvailable || a.unblockReason ? (
+                  <View style={styles.unblock}>
+                    {a.unblockStuckAmount != null ? (
+                      <Text style={styles.unblockAmt}>{inr(a.unblockStuckAmount)} has not come back from the bank.</Text>
+                    ) : null}
+                    {a.unblockAvailable ? (
+                      <>
+                        <Button
+                          small
+                          label="Ask the bank to release it"
+                          busy={busyId === `ub-${a.id}`}
+                          onPress={() => onUnblock(a.id)}
+                          style={{ alignSelf: 'flex-start', marginTop: 6 }}
+                        />
+                        {unblockErr[a.id] ? <Text style={styles.unblockErr}>{unblockErr[a.id]}</Text> : null}
+                        {unblockNote[a.id] ? <Text style={styles.unblockOk}>{unblockNote[a.id]}</Text> : null}
+                      </>
+                    ) : (
+                      <Text style={styles.unblockWhy}>{a.unblockReason}</Text>
+                    )}
+                  </View>
+                ) : null}
+
                 {(a.categorySubscribedTimes != null || a.allotmentOddsPct != null) ? (
                   <View style={styles.oddsRow}>
                     <Text style={styles.oddsK}>Category subscription (live)</Text>
@@ -395,6 +439,14 @@ const styles = StyleSheet.create({
   upiTxt: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.title, lineHeight: 17 },
   upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.muted, marginTop: 2 },
   upiChangeLink: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.indigo },
+  unblock: {
+    marginTop: 9, padding: 11, borderRadius: 12,
+    backgroundColor: ui.amberTint, borderWidth: 1, borderColor: ui.amberTint,
+  },
+  unblockAmt: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.amber, lineHeight: 18 },
+  unblockWhy: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.body, lineHeight: 17, marginTop: 4 },
+  unblockErr: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.red, lineHeight: 17, marginTop: 6 },
+  unblockOk: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.green, lineHeight: 17, marginTop: 6 },
   upiEdit: { gap: 8 },
   upiInput: {
     borderWidth: 1, borderColor: ui.divider, borderRadius: 10, backgroundColor: ui.card,

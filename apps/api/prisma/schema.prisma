@@ -769,6 +769,12 @@ model Ipo {
   issueSize            Decimal?
   isin                 String?
   registrar            String?
+  /// NO `sponsorBank` COLUMN, deliberately. An issue's sponsor banks have lived
+  /// in `extra.sponsorBank` since the field was added — free text, PLURAL and
+  /// comma-separated, because SEBI allows several per issue and real records
+  /// carry three. A column here would be a second home for data that already
+  /// has one, which is the `issueSize` / `extra.issueSizeCr` desync all over
+  /// again. The unblock request resolves those names against `SponsorBank`.
   objectsOfIssue       String?
   smeFlags             Json?
   reservations         String[]          @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
@@ -947,6 +953,14 @@ model Application {
   /// logic, but that mapping loses the sentence the operator wants to read.
   upiStatusText      String?
   upiStatusAt        DateTime? @db.Timestamptz(3)
+  /// When this investor last emailed the sponsor bank about funds that were not
+  /// unblocked, and how many times. The timestamp drives the cooldown
+  /// (`UNBLOCK_COOLDOWN_HOURS`): this is an outward-facing email to a third
+  /// party, and a bank that receives the same request six times stops reading
+  /// any of them. The count is kept so the operator can see a bank that is
+  /// repeatedly being chased.
+  unblockRequestedAt DateTime? @db.Timestamptz(3)
+  unblockRequestCount Int      @default(0)
   status             ApplicationStatus @default(draft)
   /// Immutable snapshot of the raw payload that produced this Application, for
   /// records-only channels (partner API). Populated at print time from the
@@ -1180,4 +1194,40 @@ model MessageLog {
   @@index([channel, status, createdAt])
   @@index([recipientLast4])
   @@index([tenantId, createdAt])
+}
+
+/// Sponsor banks — the bank that carries the UPI mandate for an issue.
+///
+/// Mirrors `Registrar` field-for-field on purpose: the masters controller
+/// treats both as ORG_KINDS, so this model needs no DTO changes and inherits
+/// the full contact/address set plus the bulk upload.
+///
+/// `email` is the load-bearing column — it is where an investor's unblock
+/// request is sent when the bank has not released their funds. Deactivated,
+/// never deleted, like every other master: IPOs reference it by NAME snapshot.
+model SponsorBank {
+  id            String   @id @default(uuid())
+  name          String
+  shortCode     String   @unique
+  contactPerson String?
+  mobile        String?
+  /// Where unblock requests go. Without it the request cannot be sent, and the
+  /// API says so rather than failing silently.
+  email         String?
+  phone         String?
+  gstin         String?
+  address1      String?
+  address2      String?
+  city          String?
+  state         String?
+  pincode       String?
+  /// SEBI / RBI registration, for regulator-facing exports.
+  sebiRegNo     String?
+  foundedYear   Int?
+  website       String?
+  linkedin      String?
+  notes         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }

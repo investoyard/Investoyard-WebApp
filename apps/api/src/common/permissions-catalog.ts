@@ -70,6 +70,7 @@ export const PERMISSION_CATALOG = [
 
   // Masters (one per child menu)
   { key: 'masters.registrars.manage',      label: 'Registrars',                                                                                   group: 'Masters' },
+  { key: 'masters.sponsor-banks.manage',   label: 'Sponsor Banks',                                                                                group: 'Masters' },
   { key: 'masters.lead-managers.manage',   label: 'Lead Managers',                                                                                group: 'Masters' },
   { key: 'masters.relationships.manage',   label: 'Relationships',                                                                                group: 'Masters' },
   { key: 'masters.upi-handles.manage',     label: 'UPI Handles',                                                                                  group: 'Masters' },
@@ -116,6 +117,7 @@ export const LEGACY_PERM_EXPANSIONS: Record<string, string[]> = {
   'masters.manage': [
     'masters.registrars.manage', 'masters.lead-managers.manage', 'masters.relationships.manage',
     'masters.upi-handles.manage', 'masters.anchors.manage', 'masters.sectors.manage',
+    'masters.sponsor-banks.manage',
     'masters.exchanges.manage', 'masters.ipo-category.manage',
   ],
   'partner-api.reports.view': [
