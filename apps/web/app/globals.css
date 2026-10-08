@@ -2893,6 +2893,22 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
   border: 1px solid var(--border); border-radius: var(--r-sm); padding: 7px 10px; margin: 0 0 10px; }
 .demat-note b { color: var(--text); }
 
+/* Demat accounts on an applicant card (2026-10-07). Prefixed .demat-* and
+   checked against globals.css first — only .demat-note existed. */
+.demat-panel { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.demat-panel-t { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+.demat-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.demat-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.demat-list li .mono { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demat-add { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+/* The apply flow per-applicant demat choice. Renders only when an applicant
+   holds more than one, so it must sit quietly under the bid row. */
+.pf-demat { display: flex; align-items: center; gap: 10px; padding: 8px 0 2px 0; }
+.pf-demat-l { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.pf-demat select.input { height: 34px; padding: 4px 10px; font-size: 12.5px; flex: 1 1 auto; min-width: 0; }
+
+
+
 /* password field with show/hide toggle */
 .pw-wrap { position: relative; display: flex; width: 100%; }
 .pw-wrap .input { padding-right: 42px; width: 100%; }

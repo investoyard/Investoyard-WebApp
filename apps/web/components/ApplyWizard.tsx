@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import type { IpoDetail } from '@/lib/api';
 import { getIpoDetail } from '@/lib/api';
 import { inr, priceBand } from '@/lib/format';
+import { dematLabel } from '@investoyard/shared-types';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
@@ -56,6 +57,10 @@ function mapApiProfile(p: ApiProfile): Profile {
     depository: p.depository as any,
     dpId: p.dpId,
     clientId: p.clientId,
+    /* Carried through so the picker reads the same list the profile screen
+       shows. Without this the type would compile and the picker would never
+       appear — a field on the type that nothing populates. */
+    demats: p.demats,
     upiId: p.hasUpi ? 'upi-verified' : undefined,
     bankAccount: p.hasBank ? 'set' : undefined,
     ifsc: p.ifsc,
@@ -118,6 +123,10 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [master, setMaster] = useState<Choice | null>(null);
   const [overrides, setOverrides] = useState<Record<string, Choice>>({});
+  /* Which demat each applicant credits to. Keyed by profile id; the value is a
+     DematAccount id, or null for that applicant default — which is exactly
+     what the API stores, so nothing is translated on the way out. */
+  const [dematBy, setDematBy] = useState<Record<string, string | null>>({});
   const [editing, setEditing] = useState<string | null>(null);
   // ONE checkbox covers all three consents (itemized in its label); OTP-verified on tick.
   const [consentAll, setConsentAll] = useState(false);
@@ -219,6 +228,9 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
           const c = choiceFor(p)!;
           const res = await createApplication({
             investorProfileId: p.id,
+            /* null = this applicant's default, which is what the API stores and
+               what every application placed before today already means. */
+            dematAccountId: dematBy[p.id] ?? null,
             ipoId: liveId,
             category: tabCat(c),
             lots: c.q.lots,
@@ -506,6 +518,30 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                           <Icon name={editing === p.id ? 'x' : 'edit'} size={14} />
                         </button>
                       </div>
+                      {/*
+                        WHERE THIS APPLICANT'S ALLOTMENT LANDS. Shown only when
+                        they hold more than one demat — a single account is not a
+                        choice, and a picker with one option is noise on a screen
+                        whose whole job is one clear action per stage.
+
+                        Per applicant, not per batch: a family can credit each
+                        member's shares to a different account, and each list is
+                        that member's own.
+                      */}
+                      {(p.demats?.length ?? 0) > 1 && (
+                        <div className="pf-demat">
+                          <span className="pf-demat-l">Credit shares to</span>
+                          <select className="input" value={dematBy[p.id] ?? ''}
+                            aria-label={`Demat account for ${p.fullName}`}
+                            onChange={(e) => setDematBy((m) => ({ ...m, [p.id]: e.target.value || null }))}>
+                            {(p.demats ?? []).map((d) => (
+                              <option key={d.id ?? 'default'} value={d.id ?? ''}>
+                                {dematLabel(d)}{d.isDefault ? ' · default' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {editing === p.id && (
                         <div className="pf-edit">
                           <BidPicker compact choice={c} onChange={(nc) => setOverrides((o) => ({ ...o, [p.id]: nc }))} />

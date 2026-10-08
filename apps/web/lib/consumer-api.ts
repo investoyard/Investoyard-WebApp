@@ -1,4 +1,5 @@
 'use client';
+import type { DematAccountView } from '@investoyard/shared-types';
 /**
  * Consumer (B2C investor) API client + session. Separate from the operator session
  * (lib/operator.ts) — a customer signs in with mobile + OTP and gets their own JWT.
@@ -111,6 +112,12 @@ export interface ApiProfile {
   mobile?: string;
   /** PAN is locked in the edit form once any application exists */
   hasApplications?: boolean;
+  /**
+   * EVERY demat on this applicant, default first — built server-side by
+   * dematAccountsFor(). The depository/dpId/clientId above are the same
+   * account as demats[0]; never join the two here.
+   */
+  demats?: DematAccountView[];
 }
 /** Raw input sent on create (PII encrypted server-side into the vault). */
 export interface ProfileInput {
@@ -140,6 +147,14 @@ export const createProfile = (input: ProfileInput) =>
 /** Partial edit — omitted fields keep their values; PAN/bank/UPI replaced only when non-empty. */
 export const updateProfile = (id: string, input: Partial<ProfileInput>) =>
   authedConsumer<ApiProfile>(`/profiles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+/** Add an ADDITIONAL demat. Returns the whole refreshed applicant, so the caller
+ *  never merges a partial response into its own copy. */
+export const addDemat = (profileId: string, input: { depository: Depository; dpId?: string; clientId: string; label?: string }) =>
+  authedConsumer<ApiProfile>(`/profiles/${profileId}/demat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+/** Retire one. Never a hard delete — a submitted bid names its demat to the exchange. */
+export const retireDemat = (profileId: string, dematId: string) =>
+  authedConsumer<ApiProfile>(`/profiles/${profileId}/demat/${dematId}`, { method: 'DELETE' });
+
 /** Deletes when the applicant has no applications; otherwise deactivates (history kept). */
 export const deleteProfile = (id: string) =>
   authedConsumer<{ deleted?: boolean; deactivated?: boolean }>(`/profiles/${id}`, { method: 'DELETE' });
@@ -147,6 +162,8 @@ export const deleteProfile = (id: string) =>
 // ---- applications ----
 export interface CreateApplicationInput {
   investorProfileId: string;
+  /** Which demat the allotment credits to. null/omitted = the applicant default. */
+  dematAccountId?: string | null;
   ipoId: string;
   category: string;
   lots: number;

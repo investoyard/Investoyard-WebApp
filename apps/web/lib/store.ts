@@ -1,4 +1,5 @@
 'use client';
+import type { DematAccountView } from '@investoyard/shared-types';
 /**
  * Investoyard web — client-side mock store (localStorage-backed).
  * Stands in for the live API until it's hosted: auth (OTP), investor profiles
@@ -22,6 +23,9 @@ export interface Profile {
   depository: Depository;
   dpId: string;
   clientId: string;
+  /** Every demat on this applicant, default first — carried through from the
+   *  API so the apply picker reads the same list the profile screen shows. */
+  demats?: DematAccountView[];
   upiId?: string;
   bankAccount?: string;
   ifsc?: string;
