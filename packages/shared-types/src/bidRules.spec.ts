@@ -1,4 +1,4 @@
-import { normaliseBidCategory, bidRights, mayReviseTo, mayCancel } from './bidRules';
+import { normaliseBidCategory, bidRights, mayReviseTo, mayCancel, mayChangeUpi } from './bidRules';
 
 describe('category normalisation', () => {
   it('folds every shape the live table and the exchanges actually use', () => {
@@ -85,5 +85,47 @@ describe('cancellation', () => {
   it('treats the reserved portions as retail — flagged for counsel in the source', () => {
     expect(mayCancel('employee', true).ok).toBe(true);
     expect(mayCancel('shareholder', true).ok).toBe(true);
+  });
+});
+
+describe('mayChangeUpi', () => {
+  it('is a plain edit before the bid reaches an exchange', () => {
+    expect(mayChangeUpi('submitted', false)).toEqual({ ok: true, needsExchange: false });
+    expect(mayChangeUpi('draft', false)).toEqual({ ok: true, needsExchange: false });
+  });
+
+  it('needs an exchange modify once the bid is there but the mandate is not accepted', () => {
+    for (const s of ['submitted', 'dp_verified', 'mandate_pending']) {
+      expect(mayChangeUpi(s, true)).toEqual({ ok: true, needsExchange: true });
+    }
+  });
+
+  it('REFUSES once funds are blocked — a block cannot be moved to another ID', () => {
+    for (const s of ['upi_blocked', 'confirmed']) {
+      const r = mayChangeUpi(s, true);
+      expect(r.ok).toBe(false);
+      expect(r.needsExchange).toBe(false);
+      expect(r.reason).toContain('already blocked');
+      expect(r.reason).toContain('Withdraw this application');
+    }
+  });
+
+  it('refuses a decided application', () => {
+    for (const s of ['allotted', 'not_allotted', 'released', 'cancelled']) {
+      expect(mayChangeUpi(s, true).ok).toBe(false);
+    }
+  });
+
+  it('allows a rejected bid to be fixed — that is the main reason to change a UPI ID', () => {
+    // "Rejected due to invalid UPI" is one of the sentences the UPI status line
+    // now shows, and this is the action it should lead to.
+    expect(mayChangeUpi('rejected', true)).toEqual({ ok: true, needsExchange: true });
+  });
+
+  it('ignores category — fixing a typo is not a revision of the bid', () => {
+    expect(mayChangeUpi('mandate_pending', true)).toEqual(mayChangeUpi('mandate_pending', true));
+    // sanity: the up-only rule that blocks an HNI lowering a bid does not reach here
+    expect(mayCancel('nii', true).ok).toBe(false);
+    expect(mayChangeUpi('mandate_pending', true).ok).toBe(true);
   });
 });

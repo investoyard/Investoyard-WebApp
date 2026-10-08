@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from './applications.service';
-import { AllotmentCheckDto, CreateApplicationDto, CreateBulkApplicationDto, FormsPdfDto, RecordAllotmentDto } from './applications.dto';
+import { AllotmentCheckDto, ChangeUpiDto, CreateApplicationDto, CreateBulkApplicationDto, FormsPdfDto, RecordAllotmentDto } from './applications.dto';
 
 /**
  * Public allotment checker (no auth) — the registrar-style lookup: PAN + IPO
@@ -50,6 +50,16 @@ export class ApplicationsController {
   @Delete(':id')
   withdraw(@Req() req: any, @Param('id') id: string) {
     return this.apps.withdraw(req.user.sub, id);
+  }
+
+  /*
+   * On-the-spot UPI ID change (sir's requirement 2). A literal path segment
+   * rather than a bare id, same reason as the demat routes: the UUID-in-path
+   * shape has been intercepted upstream before.
+   */
+  @Post(':id/change-upi')
+  changeUpi(@Req() req: any, @Param('id') id: string, @Body() dto: ChangeUpiDto) {
+    return this.apps.changeUpi(req.user.sub, id, dto.upiId);
   }
 
   /** Prefilled ASBA bank form (the `pdf` apply method's download). */

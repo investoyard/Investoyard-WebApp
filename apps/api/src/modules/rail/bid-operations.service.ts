@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { mayCancel, mayReviseTo, dematForApplication } from '@investoyard/shared-types';
+import { mayCancel, mayReviseTo, mayChangeUpi, dematForApplication } from '@investoyard/shared-types';
+import { buildBidSubmission, type BidSubmission } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PiiVaultService } from '../../common/pii-vault.service';
 import { RailService } from './rail.service';
 
 /**
@@ -27,7 +29,11 @@ import { RailService } from './rail.service';
 export class BidOperationsService {
   private readonly log = new Logger(BidOperationsService.name);
 
-  constructor(private prisma: PrismaService, private rail: RailService) {}
+  constructor(
+    private prisma: PrismaService,
+    private rail: RailService,
+    private vault: PiiVaultService,
+  ) {}
 
   /** The share quantity a bid currently stands at. */
   private qtyOf(app: { shareQty: number | null; lots: number; ipo?: { lotSize: number | null } }) {
@@ -204,6 +210,38 @@ export class BidOperationsService {
   }
 
   /**
+   * The investor changed their UPI ID — tell the exchange if it needs telling.
+   *
+   * This does NOT write the UPI ID: that lives on the applicant profile, is
+   * vaulted there, and `toSubmission` resolves it fresh on every post. So the
+   * operation row carries no payment detail at all, and a retry a minute later
+   * still sends whatever the profile says now. Queueing a modify is purely
+   * "restate this bid's payment instruction".
+   *
+   * `mayChangeUpi` decides, and its middle case is the point: before the bid
+   * reaches an exchange there is nothing to tell, and once funds are blocked the
+   * change is refused outright — a block sits in the account behind the OLD ID
+   * and the exchange cannot move it.
+   *
+   * Quantity and price are deliberately unchanged, which is also why this is
+   * not `queueModify`: that one is bound by the ICDR up-only rule because it
+   * revises the bid. Fixing a mistyped UPI ID is not a revision, so an HNI may
+   * do it.
+   */
+  async queueUpiChange(applicationId: string) {
+    const app = await this.loadApp(applicationId);
+    const atExchange = this.atExchange(app);
+    const check = mayChangeUpi(app.status, atExchange);
+    if (!check.ok) throw new BadRequestException(check.reason);
+    if (!check.needsExchange) return { queued: false as const, reason: 'This bid is not with an exchange yet, so there is nothing to restate.' };
+
+    const op = await this.prisma.bidOperation.create({
+      data: this.opData(app, 'modify', this.qtyOf(app), app.bidPrice != null ? Number(app.bidPrice) : null),
+    });
+    return { queued: true as const, operationId: op.id };
+  }
+
+  /**
    * Post pending operations to their exchange.
    *
    * Deliberately tolerant: one failing row must not stop the rest of the queue,
@@ -246,7 +284,7 @@ export class BidOperationsService {
   /** One operation → one exchange call → the row updated with what came back. */
   private async postOne(op: any): Promise<boolean> {
     const app = op.application;
-    const req = this.toSubmission(op, app);
+    const req = await this.toSubmission(op, app);
     const call = op.action === 'modify' ? this.rail.orchestrator.modify(req, op.memberCredentialId)
       : op.action === 'cancel' ? this.rail.orchestrator.cancel(req, op.memberCredentialId)
       : this.rail.orchestrator.submit(req, op.memberCredentialId);
@@ -302,7 +340,7 @@ export class BidOperationsService {
    * a different one is worse than a bid that does not go. Same reasoning as the
    * rail builder already refusing a print payload with no PAN or DP ID.
    */
-  private toSubmission(op: any, app: any): any {
+  private async toSubmission(op: any, app: any): Promise<BidSubmission> {
     const demat = dematForApplication(app.profile, app.profile?.dematAccounts ?? [], app.dematAccountId);
     if (!demat) {
       throw new Error(
@@ -311,20 +349,44 @@ export class BidOperationsService {
         + 'Refusing to bid rather than credit a different account.',
       );
     }
-    return {
+
+    /*
+     * PII is resolved HERE, just before the call, and never stored on the
+     * operation row — the same just-in-time rule the print path follows.
+     *
+     * A failed resolve becomes an EMPTY string on purpose: `buildBidSubmission`
+     * refuses an empty PAN or UPI with wording that names the applicant, which
+     * is far more use than a vault stack trace on a closing-day queue.
+     */
+    const pan = await this.resolveOrBlank(app.profile?.panTokenRef);
+    const upi = await this.resolveOrBlank(app.profile?.upiTokenRef);
+
+    return buildBidSubmission({
       activity: op.action,
       clientRef: app.remark ?? app.id,
       symbol: app.ipo?.symbol,
-      applicationNumber: app.applicationNumber ?? undefined,
       category: app.category,
-      quantity: op.qty,
-      atCutoff: op.atCutoff,
-      price: op.price != null ? Number(op.price) : undefined,
-      pan: app.profile?.pan,
+      applicationNumber: app.applicationNumber,
+      bidReferenceNumber: app.bidReferenceNumber,
+      applicantName: app.profile?.fullName,
+      pan,
+      depository: demat.depository,
       dpId: demat.dpId,
       clientId: demat.clientId,
-      depository: demat.depository,
-      applicantName: app.profile?.fullName,
-    };
+      upi,
+      asbaBlockRef: app.asbaBlockRef,
+      quantity: op.qty,
+      atCutOff: op.atCutoff,
+      price: op.price != null ? Number(op.price) : null,
+      // The stored rupee amount of the bid. At cut-off there is no price on the
+      // bid, so this is the only source for the exchange's `amount` field.
+      amount: app.amount != null ? Number(app.amount) : null,
+    });
+  }
+
+  /** Vault resolve that answers '' instead of throwing — see `toSubmission`. */
+  private async resolveOrBlank(ref?: string | null): Promise<string> {
+    if (!ref) return '';
+    try { return await this.vault.resolve(ref); } catch { return ''; }
   }
 }

@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { fmtDateTime, type ApplicationView } from '@investoyard/shared-types';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
-import { listApplications, withdrawApplication } from '../../lib/api';
+import { changeApplicationUpi, listApplications, withdrawApplication } from '../../lib/api';
 import { inr } from '../../lib/format';
 import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
@@ -71,6 +71,17 @@ function upiDotColor(status: string): string {
   return ui.amber; // mandate_pending / submitted — the investor still has something to do
 }
 
+/**
+ * Statuses where offering a UPI change makes sense.
+ *
+ * Deliberately NOT `upi_blocked` / `confirmed`: the block sits in the account
+ * behind the OLD UPI ID and the exchange cannot move it, so the server refuses
+ * those (`mayChangeUpi`). Offering a button that can only fail would be worse
+ * than not offering one. `rejected` IS here — a rejected mandate is the main
+ * reason an investor needs this.
+ */
+const UPI_CHANGEABLE = ['draft', 'submitted', 'dp_verified', 'mandate_pending', 'rejected'];
+
 // SEBI: a bid may be withdrawn while the issue is still open and isn't decided yet.
 const WITHDRAWABLE = ['submitted', 'mandate_pending', 'upi_blocked', 'dp_verified', 'confirmed'];
 const IN_PROGRESS = ['submitted', 'dp_verified', 'mandate_pending', 'upi_blocked', 'confirmed'];
@@ -82,6 +93,11 @@ export default function ApplicationsScreen() {
   const [apps, setApps] = useState<ApplicationView[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Which application's UPI ID is being edited inline, and the typed value. */
+  const [upiEdit, setUpiEdit] = useState<string | null>(null);
+  const [upiVal, setUpiVal] = useState('');
+  const [upiErr, setUpiErr] = useState<string | null>(null);
+  const [upiNote, setUpiNote] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (token) setApps(await listApplications(token));
@@ -98,6 +114,21 @@ export default function ApplicationsScreen() {
     setRefreshing(true);
     try { await load(); } finally { setRefreshing(false); }
   }, [load]);
+
+  const onSaveUpi = async (id: string) => {
+    if (!token || !upiVal.trim()) return;
+    setBusyId(id); setUpiErr(null);
+    try {
+      // The server's own note says how many bids were restated — the UPI lives
+      // on the applicant, so a change can reach more than this one.
+      const r = await changeApplicationUpi(token, id, upiVal.trim());
+      setUpiNote((n) => ({ ...n, [id]: r.note }));
+      setUpiEdit(null); setUpiVal('');
+      await load();
+    } catch (e: any) {
+      setUpiErr(String(e?.message ?? e));
+    } finally { setBusyId(null); }
+  };
 
   const onWithdraw = async (id: string) => {
     if (!token) return;
@@ -216,6 +247,54 @@ export default function ApplicationsScreen() {
                   </View>
                 ) : null}
 
+                {/* On-the-spot UPI ID change (requirement 2). Sits directly under
+                    the exchange's UPI sentence, because "Rejected due to invalid
+                    UPI" is the main reason anyone comes here. `mayChangeUpi` is
+                    enforced on the server; this only decides what to OFFER. */}
+                {a.applyMethod === 'native' && UPI_CHANGEABLE.includes(a.status) ? (
+                  <View style={{ marginTop: 9 }}>
+                    {upiEdit === a.id ? (
+                      <View style={styles.upiEdit}>
+                        <TextInput
+                          style={styles.upiInput}
+                          value={upiVal}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="email-address"
+                          placeholder="name@okaxis"
+                          placeholderTextColor={ui.muted}
+                          onChangeText={setUpiVal}
+                        />
+                        {upiErr ? <Text style={styles.upiEditErr}>{upiErr}</Text> : null}
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Button
+                            small
+                            label="Save UPI ID"
+                            busy={busyId === a.id}
+                            onPress={() => onSaveUpi(a.id)}
+                            style={{ flex: 1 }}
+                          />
+                          <Button
+                            small
+                            variant="ghost"
+                            label="Cancel"
+                            onPress={() => { setUpiEdit(null); setUpiVal(''); setUpiErr(null); }}
+                            style={{ flex: 1 }}
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => { setUpiEdit(a.id); setUpiVal(''); setUpiErr(null); }}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.upiChangeLink}>Change UPI ID</Text>
+                      </Pressable>
+                    )}
+                    {upiNote[a.id] ? <Text style={styles.upiEditOk}>{upiNote[a.id]}</Text> : null}
+                  </View>
+                ) : null}
+
                 {(a.categorySubscribedTimes != null || a.allotmentOddsPct != null) ? (
                   <View style={styles.oddsRow}>
                     <Text style={styles.oddsK}>Category subscription (live)</Text>
@@ -315,6 +394,15 @@ const styles = StyleSheet.create({
   upiDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
   upiTxt: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.title, lineHeight: 17 },
   upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  upiChangeLink: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.indigo },
+  upiEdit: { gap: 8 },
+  upiInput: {
+    borderWidth: 1, borderColor: ui.divider, borderRadius: 10, backgroundColor: ui.card,
+    paddingHorizontal: 11, paddingVertical: 10,
+    fontFamily: fonts.semibold, fontSize: 13.5, fontWeight: '600', color: ui.title,
+  },
+  upiEditErr: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.red, lineHeight: 17 },
+  upiEditOk: { fontFamily: fonts.semibold, fontSize: 12, fontWeight: '600', color: ui.green, marginTop: 6, lineHeight: 16 },
   missingBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 10, gap: 4 },
   missingTxt: { fontSize: 12.5, color: ui.red, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },

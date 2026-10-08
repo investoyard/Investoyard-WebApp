@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { RailService } from '../rail/rail.service';
 import { SubmissionQueueService } from '../queue/submission-queue.service';
+import { BidOperationsService } from '../rail/bid-operations.service';
+import { ProfilesService } from '../profiles/profiles.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
 import { buildAsbaPdf } from './asba-pdf';
@@ -14,7 +16,7 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel, mayChangeUpi } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
 const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
@@ -29,12 +31,16 @@ const ASBA_INCLUDE = {
 
 @Injectable()
 export class ApplicationsService {
+  private readonly log = new Logger(ApplicationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private vault: PiiVaultService,
     private rail: RailService,
     private queue: SubmissionQueueService,
     private notifications: NotificationsService,
+    private bidOps: BidOperationsService,
+    private profiles: ProfilesService,
   ) {}
 
   async list(userId: string) {
@@ -650,6 +656,80 @@ export class ApplicationsService {
    * notifies the investor. TODO(rail): once live, also send the rail's cancel
    * activity when an applicationNumber exists.
    */
+  /**
+   * On-the-spot UPI ID change for one application (sir's requirement 2).
+   *
+   * Offered from the application itself rather than only the profile screen,
+   * because that is where an investor lands when the exchange says *"Rejected
+   * due to invalid UPI"* — the sentence the UPI status line now shows.
+   *
+   * THE UPI ID LIVES ON THE APPLICANT, NOT THE APPLICATION, and that is the
+   * whole subtlety here. Changing it changes it for every bid that applicant
+   * has, so restating only the one the investor clicked would leave a SIBLING
+   * application at the exchange carrying a payment instruction we have silently
+   * replaced. Every live bid of that applicant is restated, and the reply says
+   * how many — so the investor is told it reached more than the one in front of
+   * them rather than discovering it later.
+   *
+   * ORDER MATTERS: the rule is checked BEFORE the vault is touched. Refusing
+   * after writing would leave the profile holding a new UPI ID while the bid at
+   * the exchange still names the old one, which is worse than refusing.
+   */
+  async changeUpi(userId: string, id: string, upiId: string) {
+    const app = await this.prisma.application.findFirst({
+      where: { id, userId },
+      select: { id: true, status: true, applicationNumber: true, rail: true, investorProfileId: true },
+    });
+    if (!app) throw new NotFoundException();
+    if (!app.investorProfileId) {
+      // A records-only partner print carries no applicant of ours to change.
+      throw new BadRequestException('This application has no applicant profile, so its UPI ID cannot be changed here.');
+    }
+
+    const atExchange = !!app.applicationNumber && !!app.rail;
+    const check = mayChangeUpi(app.status, atExchange);
+    if (!check.ok) throw new BadRequestException(check.reason);
+
+    await this.profiles.setUpi(userId, app.investorProfileId, upiId);
+
+    /* Every bid of this applicant that the exchange is holding and has not yet
+       blocked. `queueUpiChange` re-checks each one, so a sibling that IS
+       blocked is skipped rather than refused — the investor asked about this
+       application, and one blocked sibling must not fail the whole action. */
+    const siblings = await this.prisma.application.findMany({
+      where: {
+        userId,
+        investorProfileId: app.investorProfileId,
+        applicationNumber: { not: null },
+        rail: { not: null },
+        status: { in: ['submitted', 'dp_verified', 'mandate_pending', 'rejected'] },
+      },
+      select: { id: true },
+    });
+
+    let restated = 0;
+    for (const s of siblings) {
+      try {
+        const r = await this.bidOps.queueUpiChange(s.id);
+        if (r.queued) restated++;
+      } catch (e: any) {
+        // Already-decided or blocked siblings land here; the UPI is still saved.
+        this.log.warn(`UPI change: skipped ${s.id} — ${e?.message ?? e}`);
+      }
+    }
+
+    return {
+      ...(await this.getOne(userId, app.id)),
+      upiChange: {
+        saved: true,
+        restatedToExchange: restated,
+        note: restated > 0
+          ? `Saved. ${restated} bid${restated === 1 ? '' : 's'} at the exchange ${restated === 1 ? 'is' : 'are'} being restated with the new UPI ID.`
+          : 'Saved. This bid has not reached an exchange yet, so there is nothing to restate.',
+      },
+    };
+  }
+
   async withdraw(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({ where: { id, userId }, include: { ipo: true } });
     if (!app) throw new NotFoundException();

@@ -216,6 +216,21 @@ export interface ApiApplication {
 }
 export const listApplications = () => authedConsumer<ApiApplication[]>('/applications', { method: 'GET' });
 
+/**
+ * Change the UPI ID on a placed application (requirement 2).
+ *
+ * `restatedToExchange` is how many of that APPLICANT's live bids were queued
+ * for a modify — the UPI lives on the applicant, not the application, so a
+ * change can reach more bids than the one the investor was looking at. Show the
+ * server's `note` rather than composing your own; it is the one that knows.
+ */
+export const changeApplicationUpi = (id: string, upiId: string) =>
+  authedConsumer<ApiApplication & {
+    upiChange: { saved: boolean; restatedToExchange: number; note: string };
+  }>(`/applications/${id}/change-upi`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upiId }),
+  });
+
 /** Fetch a PDF (with auth) and trigger a browser download using the server's filename. */
 async function downloadPdf(path: string, method: 'GET' | 'POST', body?: any): Promise<void> {
   const res = await fetch(`${API}${path}`, {

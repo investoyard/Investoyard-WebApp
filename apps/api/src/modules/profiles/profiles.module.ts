@@ -10,6 +10,6 @@ import { ProfilesService } from './profiles.service';
   imports: [JwtModule.register({})],
   controllers: [ProfilesPublicController, ProfilesController],
   providers: [ProfilesService, PrismaService, PiiVaultService, JwtAuthGuard],
-  exports: [PiiVaultService],
+  exports: [ProfilesService, PiiVaultService],
 })
 export class ProfilesModule {}

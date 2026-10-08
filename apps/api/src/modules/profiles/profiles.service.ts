@@ -68,6 +68,28 @@ export class ProfilesService {
     }
   }
 
+  /**
+   * Set just the UPI ID on one applicant.
+   *
+   * Public so the applications side can offer an on-the-spot change without
+   * re-implementing the two rules that govern a UPI ID — the `name@handle`
+   * shape and the admin-managed handle allow-list. `assertUpiAllowed` stays
+   * private and this is the one way in; a second copy of that regex is exactly
+   * how the two surfaces would start disagreeing about what a valid UPI is.
+   */
+  async setUpi(userId: string, profileId: string, upiId: string) {
+    const existing = await this.prisma.investorProfile.findFirst({
+      where: { id: profileId, userId },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('No such applicant.');
+    await this.assertUpiAllowed(upiId);
+    await this.prisma.investorProfile.update({
+      where: { id: profileId },
+      data: { upiTokenRef: await this.vault.tokenize(upiId) },
+    });
+  }
+
   async list(userId: string) {
     // Deactivated profiles are hidden everywhere; their applications keep history.
     const rows = await this.prisma.investorProfile.findMany({

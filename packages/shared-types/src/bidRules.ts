@@ -103,3 +103,47 @@ export function mayCancel(
   const r = bidRights(category);
   return r.mayWithdraw ? { ok: true } : { ok: false, reason: r.reason };
 }
+
+/**
+ * May this application's UPI ID be changed, and does the exchange need telling?
+ *
+ * Three states, not two, and the middle one is the whole reason this is a
+ * function rather than an `if`:
+ *
+ *  • Nothing placed yet — the bid exists only in our database, so changing the
+ *    UPI is an edit. Nothing to tell anyone.
+ *  • At the exchange, mandate not yet accepted — the change is real work: the
+ *    exchange is holding a bid whose payment instruction has to be restated, so
+ *    a MODIFY is queued carrying the new UPI (`upi` is an applicant-level field
+ *    on /transactions/add, so a modify restates it).
+ *  • Funds already blocked — REFUSED. The block lives in the account behind the
+ *    OLD UPI ID, and the exchange has no concept of moving it. Pointing the bid
+ *    at a different ID would leave the money blocked where nobody is looking
+ *    for it. The way out is to cancel and re-apply, which is a different button
+ *    and a decision for the investor to make knowingly.
+ *
+ * Category plays no part: this is not a revision of the bid, so the ICDR
+ * up-only rule that governs `mayReviseTo` does not apply. An HNI may fix a
+ * mistyped UPI ID.
+ */
+export function mayChangeUpi(
+  status: string | null | undefined,
+  atExchange: boolean,
+): { ok: boolean; needsExchange: boolean; reason?: string } {
+  const s = String(status ?? '').trim().toLowerCase();
+
+  if (['allotted', 'not_allotted', 'released', 'cancelled', 'withdrawn'].includes(s)) {
+    return { ok: false, needsExchange: false, reason: 'This application is already decided — its UPI ID cannot be changed.' };
+  }
+  if (s === 'upi_blocked' || s === 'confirmed') {
+    return {
+      ok: false,
+      needsExchange: false,
+      reason:
+        'The funds are already blocked against the current UPI ID, and a block cannot be moved to another ID. '
+        + 'Withdraw this application and apply again if you need to use a different UPI ID.',
+    };
+  }
+  if (!atExchange) return { ok: true, needsExchange: false };
+  return { ok: true, needsExchange: true };
+}

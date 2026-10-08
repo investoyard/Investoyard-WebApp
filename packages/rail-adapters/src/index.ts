@@ -17,6 +17,7 @@ export * from './callbacks/rail-callback.auth';
 export { RailCallbackService } from './callbacks/rail-callback.service';
 export type { ApplicationRepo, Notifier, StatusPatch } from './callbacks/rail-callback.service';
 export * from './submission/submission-worker';
+export * from './submission/build-bid-submission';
 
 import { NseEipoAdapter } from './nse-eipo.adapter';
 import { BseIbbsAdapter } from './bse-ibbs.adapter';

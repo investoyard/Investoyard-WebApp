@@ -6,12 +6,13 @@ import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RailModule } from '../rail/rail.module';
 import { QueueModule } from '../queue/queue.module';
+import { ProfilesModule } from '../profiles/profiles.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AllotmentPublicController, ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
 
 @Module({
-  imports: [RailModule, QueueModule, NotificationsModule, JwtModule.register({})],
+  imports: [RailModule, QueueModule, NotificationsModule, ProfilesModule, JwtModule.register({})],
   controllers: [ApplicationsController, AllotmentPublicController],
   providers: [ApplicationsService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
   exports: [ApplicationsService],

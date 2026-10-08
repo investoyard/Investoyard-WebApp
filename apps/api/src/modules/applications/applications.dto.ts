@@ -57,3 +57,14 @@ export class CreateBulkApplicationDto {
   @IsOptional() @IsBoolean() dataSharingConsent?: boolean;
   @IsOptional() @IsString() consentNoticeVersion?: string;
 }
+
+/**
+ * On-the-spot UPI ID change for a placed application.
+ *
+ * Shape only here — the handle allow-list is admin-managed and lives in the
+ * database, so `ProfilesService.assertUpiAllowed` is the one place that decides
+ * whether `@okaxis` is real. A second regex in a DTO would be a second opinion.
+ */
+export class ChangeUpiDto {
+  @IsString() upiId!: string;
+}
