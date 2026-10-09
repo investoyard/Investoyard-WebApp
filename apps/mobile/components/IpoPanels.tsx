@@ -3,23 +3,65 @@
  * timeline and GMP. Content parity with the web IpoCard/detail panels; styled
  * to the elevated fintech language (micro-labels, tinted fills, soft dividers).
  */
-import { StyleSheet, Text, View } from 'react-native';
-import { fonts, microLabel, ui } from '../lib/theme';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { fonts, microLabel, shadowCard, ui } from '../lib/theme';
 import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
-import { LABEL } from '@investoyard/shared-types';
+import { LABEL, appWiseRows } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
+/**
+ * Share-wise rows with an Application-wise view behind a toggle (2026-10-09).
+ *
+ * A TOGGLE, not a second table: the phone row already carries a category, a
+ * bar, a sub-line and a multiple, and web's own day-wise uses exactly this
+ * control for the same choice — one vocabulary across the two surfaces.
+ *
+ * The toggle appears ONLY when the data is there. `appWiseRows` returns empty
+ * unless a row carries both a bid count and a multiple, which is most of the
+ * catalogue: the exchanges report bid counts for a minority of issues. Offering
+ * an empty view would be worse than not offering one.
+ *
+ * Which categories the Application-wise view lists — and why QIB never does —
+ * is `APP_WISE_ORDER` in shared-types/appWise.ts, read by this panel and by
+ * both web surfaces so a category cannot be dropped from two of three.
+ */
 export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
+  const [view, setView] = useState<'shares' | 'apps'>('shares');
   const t = calc.subscriptionTable(ipo);
   if (!t) return <Text style={s.muted}>Subscription not open yet.</Text>;
+
+  const appRows = appWiseRows(t.rows);
+  const hasApps = appRows.length > 0;
+  const shown = hasApps ? view : 'shares';
+  const rows = shown === 'apps' ? appRows : t.rows;
+  const totalApps = appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0);
+
   return (
     <View>
-      {t.rows.map((r) => {
-        const under = r.times < 1;
-        const w = Math.max(4, Math.min(100, (r.times / 15) * 100));
+      {hasApps ? (
+        <View style={s.subSeg}>
+          {([['shares', 'Share-wise'], ['apps', 'Application-wise']] as const).map(([k, label]) => (
+            <Pressable
+              key={k}
+              onPress={() => setView(k)}
+              style={({ pressed }) => [s.subSegBtn, shown === k && s.subSegBtnOn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={[s.subSegTxt, shown === k && s.subSegTxtOn]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {rows.map((r) => {
+        /* The bar is the same 15× ramp in both views so a reader switching
+           between them is comparing like with like. */
+        const times = shown === 'apps' ? (r.applicationsTimes ?? 0) : r.times;
+        const under = times < 1;
+        const w = Math.max(4, Math.min(100, (times / 15) * 100));
         return (
           <View style={s.subRow} key={r.cat}>
             <Text style={s.subCat}>{r.cat}</Text>
@@ -27,15 +69,27 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
               <View style={s.track}>
                 <View style={[s.fill, { width: `${w}%`, backgroundColor: catColor(r.cat) }]} />
               </View>
-              <Text style={s.subBook}>book {shC(r.bookSize)} · applied {shC(r.subscribed)}</Text>
+              <Text style={s.subBook}>
+                {shown === 'apps'
+                  /* Applications RECEIVED against those needed for 1× — the two
+                     figures the Reserved column on an SME lot ladder does not
+                     carry, which is why this view exists at all. */
+                  ? `need ${shC(r.req1x ?? 0)} for 1× · got ${shC(r.bidCount ?? 0)}`
+                  : `book ${shC(r.bookSize)} · applied ${shC(r.subscribed)}`}
+              </Text>
             </View>
-            <Text style={[s.subX, under && s.subUnder]}>{r.times}×</Text>
+            <Text style={[s.subX, under && s.subUnder]}>{times}×</Text>
           </View>
         );
       })}
+
       <View style={s.subTotal}>
-        <Text style={s.subTotalK}>Total subscription</Text>
-        <Text style={s.subTotalV}>{t.total.times}×</Text>
+        <Text style={s.subTotalK}>
+          {shown === 'apps' ? 'Total applications' : 'Total subscription'}
+        </Text>
+        <Text style={s.subTotalV}>
+          {shown === 'apps' ? shC(totalApps) : `${t.total.times}×`}
+        </Text>
       </View>
     </View>
   );
@@ -185,6 +239,15 @@ const s = StyleSheet.create({
   },
   subTotalK: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   subTotalV: { fontSize: 16, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  /* Share-wise / Application-wise toggle — the house seg pattern from the home
+     tab (slateTint trough, white raised pill), narrowed to sit inside a Card. */
+  subSeg: {
+    flexDirection: 'row', backgroundColor: ui.slateTint, borderRadius: 11, padding: 3, marginBottom: 12,
+  },
+  subSegBtn: { flex: 1, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  subSegBtnOn: { backgroundColor: '#ffffff', ...shadowCard, elevation: 2 },
+  subSegTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
+  subSegTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   /* reservation */
   alloc: { flexDirection: 'row', height: 28, borderRadius: 9, overflow: 'hidden', marginBottom: 12 },
   allocSeg: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },

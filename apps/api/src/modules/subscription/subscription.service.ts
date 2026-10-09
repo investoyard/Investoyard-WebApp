@@ -795,6 +795,23 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       : 0;
     const sharesPerApp = (category: string): number => {
       if (category === 'hni' || category === 'hni2' || category === 'nii') return shniMinShares;
+      /*
+       * QIB RETURNS 0, so `mk()` never sets `applicationsSubscribed` for it.
+       *
+       * The docblock above this function has always said "QIB — no
+       * per-application ratio meaningful (institutional)", and the code did not
+       * do it: with no QIB branch it fell through to `lotSize`, i.e. it priced
+       * institutional bids as if each one were a single retail lot. That stored
+       * a QIB application multiple on 4 records (SPECTRAA · JSIPL · ADROITIND ·
+       * RKFAL) and the day-wise table published it.
+       *
+       * `minApplicationLots('qib')` in shared-types returns 0 for the same
+       * reason, which is why `APP_WISE_ORDER` leaves QIB out of the
+       * Application-wise panel entirely. The bid COUNT is still stored and
+       * still real — the exchange reported it; it is only the multiple, which
+       * needs a minimum bid to divide by, that cannot be computed.
+       */
+      if (category === 'qib') return 0;
       return lotSize && lotSize > 0 ? lotSize : 0;
     };
 

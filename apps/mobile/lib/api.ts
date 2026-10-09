@@ -23,43 +23,16 @@ function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
-const MOCK: IpoDetail[] = [
-  {
-    id: '1', symbol: 'ACME', name: 'Acme Technologies Ltd', type: 'mainboard', status: 'open',
-    openDate: '2026-06-20', closeDate: '2026-06-22', allotmentDate: '2026-06-25', listingDate: '2026-06-27',
-    priceBandMin: 100, priceBandMax: 105, lotSize: 142, minAmount: 14910, issueSize: '₹500 Cr', registrar: 'Link Intime',
-    subscriptionTimes: 12.4, gmp: 18, gmpPct: 17.1,
-    about: 'Acme Technologies is a cloud infrastructure company serving enterprise customers across India and South-East Asia.',
-    subscription: [
-      { category: 'qib', timesSubscribed: 24.1, asOf: '' },
-      { category: 'nii', timesSubscribed: 9.8, asOf: '' },
-      { category: 'retail', timesSubscribed: 6.2, asOf: '' },
-      { category: 'total', timesSubscribed: 12.4, asOf: '' },
-    ],
-  },
-  {
-    id: '2', symbol: 'BETA', name: 'Beta Industries Ltd', type: 'sme', status: 'upcoming',
-    openDate: '2026-06-26', closeDate: '2026-06-28', listingDate: '2026-07-03',
-    priceBandMin: 55, priceBandMax: 58, lotSize: 2000, minAmount: 116000, issueSize: '₹42 Cr',
-    gmp: 6, gmpPct: 10.3, about: 'Beta Industries manufactures precision auto components for OEMs.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 18, gcpPct: 9 },
-  },
-  {
-    id: '3', symbol: 'ZETA', name: 'Zeta Foods Ltd', type: 'mainboard', status: 'listed',
-    openDate: '2026-06-05', closeDate: '2026-06-09', listingDate: '2026-06-13',
-    priceBandMin: 220, priceBandMax: 230, lotSize: 65, minAmount: 14950, listingGainPct: 14.2, subscriptionTimes: 48.7,
-  },
-];
 
 // The API's list endpoint returns full detail rows (same serializer as by-symbol),
 // so cards can show subscription/reservation/lot expanders without a second fetch.
 export async function getIpos(): Promise<IpoFull[]> {
   try {
     const res = await fetch(`${API_BASE}/ipos`);
-    if (!res.ok) return MOCK.map(enrich);
+    if (!res.ok) return [];
     return ((await res.json()) as IpoDetail[]).map(enrich);
   } catch {
-    return MOCK.map(enrich);
+    return [];
   }
 }
 
@@ -68,9 +41,7 @@ export async function getIpo(symbol: string): Promise<IpoFull | undefined> {
     const res = await fetch(`${API_BASE}/ipos/by-symbol/${encodeURIComponent(symbol)}`);
     if (res.ok) return enrich((await res.json()) as IpoDetail);
   } catch {}
-  // offline/dev fallback
-  const m = MOCK.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
-  return m ? enrich(m) : undefined;
+  return undefined;
 }
 
 /** Record a standalone consent (e.g. the GMP disclaimer) for the signed-in user. */
@@ -102,7 +73,10 @@ export async function requestOtp(mobile: string): Promise<{ requestId: string }>
     });
     if (res.ok) return res.json();
   } catch {}
-  return { requestId: `mock-${mobile}` }; // offline/dev fallback (use OTP 123456)
+  /* No offline fallback. A `mock-` requestId opened the OTP screen on a request
+     the server never saw, and the code below then accepted 123456 against it —
+     a login with no account behind it. Fail here so the screen can say so. */
+  throw new Error('Could not reach Investoyard. Check your connection and try again.');
 }
 
 export async function verifyOtp(requestId: string, otp: string): Promise<{ accessToken: string } | null> {
@@ -112,11 +86,12 @@ export async function verifyOtp(requestId: string, otp: string): Promise<{ acces
     });
     if (res.ok) return res.json();
   } catch {}
-  return otp === '123456' ? { accessToken: 'mock-token' } : null; // dev fallback
+  /* NO client-side '123456'. The server decides, and in production only the real
+     OTP is accepted (`SmsService`); this branch minted a `mock-token` whenever the
+     API was merely unreachable, so every authed screen then failed one by one
+     instead of the login saying what was wrong. */
+  return null;
 }
-
-// In-memory demo store of applications (until the live API/DB is wired).
-const localApplications: ApplicationView[] = [];
 
 export async function createApplication(token: string, input: CreateApplicationInput): Promise<ApplicationView> {
   try {
@@ -127,13 +102,13 @@ export async function createApplication(token: string, input: CreateApplicationI
     });
     if (res.ok) { const j = await res.json(); return j.application ?? j; }
   } catch {}
-  // dev fallback — record locally
-  const app: ApplicationView = {
-    id: `local-${localApplications.length + 1}`, ipoId: input.ipoId, status: 'mandate_pending',
-    applyMethod: input.applyMethod, amount: 0,
-  };
-  localApplications.unshift(app);
-  return app;
+  /*
+   * THROW, never a local record. This used to push a fake application into an
+   * in-memory list and RETURN IT AS SUCCESS, so an investor saw "applied",
+   * found the row in their list, and nothing existed anywhere. An apply that
+   * did not reach the server has to fail loudly — it is money and a bid window.
+   */
+  throw new Error('Your application could not be submitted — please check your connection and try again.');
 }
 
 /** Family / group apply — the whole batch goes to the exchange as ONE bulk call. */
@@ -220,7 +195,9 @@ export async function listApplications(token: string): Promise<ApplicationView[]
     const res = await fetch(`${API_BASE}/applications`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) return res.json();
   } catch {}
-  return localApplications;
+  /* Empty, not a stale local store — an investor must never be shown an
+     application list that is missing bids they really placed. */
+  return [];
 }
 
 export async function registerDevice(token: string, deviceToken: string): Promise<void> {
@@ -265,8 +242,11 @@ export async function withdrawConsent(token: string, type: string): Promise<bool
 
 // ── Investor profiles (PII vault) ─────────────────────────────────────────────
 // These MUST persist server-side: apply sends the server profile UUID as
-// `investorProfileId`, so unlike the demo stores above there is no local fallback
-// — a failed create throws so the UI can surface the reason (e.g. duplicate PAN).
+// `investorProfileId`, so a failed create throws and the UI surfaces the reason
+// (e.g. duplicate PAN). Every other call in this file now behaves the same way
+// — the demo stores and offline fallbacks this comment used to contrast against
+// were removed on 2026-10-09, because each of them reported success for
+// something that had not happened.
 
 export interface CreateProfileInput {
   relationship: string;

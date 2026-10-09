@@ -42,29 +42,49 @@ export default function LoginScreen() {
     }, []),
   );
 
+  /*
+   * EVERY handler catches. `requestOtp` used to fall back to a `mock-` request
+   * id and `verifyOtp` used to accept 123456 client-side, so neither could ever
+   * fail and none of these needed a catch. Now that an unreachable server fails
+   * honestly, an uncaught rejection would leave `busy` true and the button
+   * spinning for ever — which is a worse bug than the one being removed.
+   */
+  const msg = (e: unknown) => String((e as any)?.message ?? e) || 'Something went wrong. Please try again.';
+
   const onGetOtp = async () => {
     if (!/^\d{10}$/.test(mobile)) { setError('Enter a valid 10-digit mobile'); return; }
     setBusy(true); setError(null);
-    const { requestId } = await requestOtp(mobile);
-    setRequestId(requestId); setBusy(false);
-    setTimeout(() => otpRef.current?.focus(), 250);
+    try {
+      const { requestId } = await requestOtp(mobile);
+      setRequestId(requestId);
+      setTimeout(() => otpRef.current?.focus(), 250);
+    } catch (e) {
+      setError(msg(e));
+    } finally { setBusy(false); }
   };
 
   const onVerify = async () => {
     if (!requestId) return;
     setBusy(true); setError(null);
-    const res = await verifyOtp(requestId, otp);
-    setBusy(false);
-    if (res?.accessToken) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); }
-    else setError('Invalid code');
+    try {
+      const res = await verifyOtp(requestId, otp);
+      if (res?.accessToken) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); }
+      else setError('Invalid code');
+    } catch (e) {
+      setError(msg(e));
+    } finally { setBusy(false); }
   };
 
   const onResend = async () => {
     if (busy) return;
     setOtp(''); setError(null);
     setBusy(true);
-    const { requestId } = await requestOtp(mobile);
-    setRequestId(requestId); setBusy(false);
+    try {
+      const { requestId } = await requestOtp(mobile);
+      setRequestId(requestId);
+    } catch (e) {
+      setError(msg(e));
+    } finally { setBusy(false); }
   };
 
   return (

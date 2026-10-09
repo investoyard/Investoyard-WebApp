@@ -8,7 +8,7 @@ import { statusChip } from '@/components/IpoCard';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
-import { titleCase, shortName, fmtDateTime } from '@investoyard/shared-types';
+import { titleCase, shortName, fmtDateTime, appWiseRows } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -38,24 +38,6 @@ const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
 /** "₹1644 Cr" for large, "₹32.15 Cr" for small — matches the ipopremium sample. */
 const fmtCr = (n: number) => `₹${n >= 1000 ? Math.round(n).toLocaleString('en-IN') : n.toFixed(2)} Cr`;
 
-/**
- * Which categories the Application-wise view shows, and their order.
- *
- * Employee and Shareholder are deliberately ABSENT (operator, 2026-09-28).
- * Application-wise divides a category's bids by the applications needed to
- * reach 1×, and that needs a minimum-bid rule: Retail has one (a lot), both HNI
- * bands have one (₹2 L). A preferential reservation has none — bidding patterns
- * vary too widely — so the row could only ever print `Req 1×` as 0 and a times
- * figure divided by nothing. Both still appear in SHARE-wise, where the shares
- * basis is real.
- *
- * Defined once because the hub card and the detail panel each had their own
- * copy of this literal, so dropping a category meant remembering to do it twice.
- */
-/* Employee, shareholder and policyholder are back (2026-09-30). They left on
-   2026-09-28 because Req 1x could only print 0 without a minimum bid; the
-   demand shows they bid in whole lots, so the figure is real. */
-const APP_WISE_ORDER: Record<string, number> = { hni: 0, hni2: 1, retail: 2, employee: 3, shareholder: 4, policyholder: 5 };
 
 /* `fmtDateTime` ("18-Sep-2026 4:16 PM", the format sir chose) moved to
    shared-types on 2026-09-28 — the IPO card's subscription tooltip needs the
@@ -570,10 +552,7 @@ export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total:
  *  footnote); Total moved AFTER Req 1× so the reader compares
  *  "needed for 1×" against "came in". */
 export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
-  const APP_ORDER: Record<string, number> = APP_WISE_ORDER;
-  const appRows = rows
-    .filter((r) => r.applicationsTimes != null && r.bidCount != null && r.key != null && r.key in APP_ORDER)
-    .sort((a, b) => APP_ORDER[a.key!] - APP_ORDER[b.key!]);
+  const appRows = appWiseRows(rows);
   if (appRows.length === 0) return null;
   const totalApps = appRows.reduce((s, r) => s + (r.bidCount ?? 0), 0);
   return (
@@ -586,10 +565,10 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
           <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
           <tbody>
             {appRows.map((r) => {
-              // req1x from subscriptionTable() — HNI ÷ sHNI-min, Retail ÷ lot
-              // for the derivable categories. Employee / Shareholder no longer
-              // reach this table at all (see APP_WISE_ORDER) — they had nothing
-              // to divide by, so their Req 1× could only ever read 0.
+              // req1x from subscriptionTable() — HNI ÷ sHNI-min, Retail ÷ lot,
+              // the reserved quotas ÷ one lot. Which categories reach this table
+              // at all, and why QIB never does, is `APP_WISE_ORDER` in
+              // shared-types/appWise.ts.
               const req1x = r.req1x ?? 0;
               return (
                 <tr key={r.key}>
@@ -757,10 +736,7 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
   const withData = ipos
     .map((i) => {
       const table = subscriptionTable(i);
-      const APP_ORDER: Record<string, number> = APP_WISE_ORDER;
-      const appRows = table?.rows
-        .filter((r) => r.applicationsTimes != null && r.bidCount != null && r.key != null && r.key in APP_ORDER)
-        .sort((a, b) => APP_ORDER[a.key!] - APP_ORDER[b.key!]) ?? [];
+      const appRows = appWiseRows(table?.rows ?? []);
       return { ipo: i, appRows };
     })
     .filter((x) => x.appRows.length > 0);
