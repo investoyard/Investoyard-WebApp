@@ -31,6 +31,7 @@
   --c-hni2: #7c4dff;      /* Small HNI (₹2-10 L) */
   --c-emp: #0f766e;       /* Employee — teal, distinct from all four above */
   --c-shareholder: #be185d; /* Shareholder / policy-holder — rose */
+  --c-mm: #5c6187;          /* SME market maker — slate; a liquidity obligation, not an investor category */
 
   /* neutral foundation (layered) */
   --bg: #f4f3f8;

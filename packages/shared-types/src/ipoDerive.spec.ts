@@ -6,7 +6,7 @@
  * that were actually broken on 2026-10-07, so a regression on any of them puts
  * a wrong number back in front of an investor.
  */
-import { subscriptionTable, lotLadder, reservedPctFor, offeredByBucket } from './ipoDerive';
+import { subscriptionTable, lotLadder, reservedPctFor, offeredByBucket, reservation } from './ipoDerive';
 
 const RES = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
 const RSME = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
@@ -152,5 +152,118 @@ describe('reservedPctFor — the record first, the generic split only as fallbac
 
   it('is 0 for a category nobody has declared, rather than guessing', () => {
     expect(reservedPctFor({}, 'policyholder', RES)).toBe(0);
+  });
+});
+
+/**
+ * The reservation legend must reconcile to the TOTAL ISSUE SIZE.
+ *
+ * Reported by the operator on 2026-10-09 against IPOPremium's RKFAL table: our
+ * legend summed to 94.97% with no Market maker row, because `reservation()`
+ * read `extra.shareResv` only and `marketmaker` was not even in its bucket
+ * list — carve-outs live in `extra.carveouts`.
+ *
+ * Both fixtures are the REAL stored records.
+ */
+const RKFAL = {
+  symbol: 'RKFAL',
+  type: 'sme',
+  lotSize: 1600,
+  priceBandMin: 77,
+  priceBandMax: 82,
+  issueSize: '349900000',
+  extra: {
+    totalShares: '4267200',
+    carveouts: { employee: '', marketmaker: '214400', shareholder: '', policyholder: '' },
+    carveoutBasis: { employee: 'amount', marketmaker: 'shares', shareholder: 'amount', policyholder: 'amount' },
+    shareResv: {
+      qib: { sharesUpper: '43200', source: 'operator' },
+      hni: { sharesUpper: '1070400', source: 'operator' },
+      hni2: { sharesUpper: '536000', source: 'operator' },
+      retail: { sharesUpper: '2403200', source: 'operator' },
+    },
+  },
+};
+
+describe('reservation() — the legend reconciles to the issue size', () => {
+  it('adds the Market maker row, and RKFAL then sums to 100%', () => {
+    const rows = reservation(RKFAL as any);
+    const mm = rows.find((r) => r.key === 'marketmaker');
+    expect(mm).toBeTruthy();
+    expect(mm!.shares).toBe(214400);
+    expect(mm!.cat).toBe('Market maker');       // not "MARKETMAKER"
+    const shares = rows.reduce((a, r) => a + r.shares, 0);
+    expect(shares).toBe(4267200);               // === extra.totalShares
+    const pct = rows.reduce((a, r) => a + r.pct, 0);
+    expect(Math.abs(pct - 100)).toBeLessThan(0.05);
+  });
+
+  it('reproduces IPOPremium RKFAL percentages to the digit', () => {
+    const rows = reservation(RKFAL as any);
+    const pct = (k: string) => rows.find((r) => r.key === k)!.pct;
+    expect(pct('qib')).toBeCloseTo(1.01, 2);
+    expect(pct('retail')).toBeCloseTo(56.32, 2);
+    expect(pct('marketmaker')).toBeCloseTo(5.02, 2);
+    // Their table groups the two HNI bands as one 37.65% row.
+    expect(pct('hni') + pct('hni2')).toBeCloseTo(37.65, 1);
+  });
+
+  it('puts the carve-out AFTER the split rows, as every reference prints it', () => {
+    const rows = reservation(RKFAL as any);
+    expect(rows[rows.length - 1].key).toBe('marketmaker');
+  });
+
+  it('DERIVES the percentage from the count, so the two agree on a row', () => {
+    /* SPECTRAA stores percentages of the NET offer (49.9473 etc.) beside counts
+       that are of the GROSS, so the legend printed QIB 49.95% next to a count
+       that is 47.42% of the issue size. The count decides now. */
+    const SPECTRAA = {
+      type: 'sme', lotSize: 1200, priceBandMin: 112, priceBandMax: 118,
+      issueSize: '425200000',
+      extra: {
+        totalShares: '3603600',
+        carveouts: { marketmaker: '182400' },
+        carveoutBasis: { marketmaker: 'shares' },
+        shareResv: {
+          qib: { pct: '49.9473', sharesUpper: '1708800' },
+          hni: { pct: '10.0316', sharesUpper: '343200' },
+          hni2: { pct: '5.0158', sharesUpper: '171600' },
+          retail: { pct: '35.0053', sharesUpper: '1197600' },
+        },
+      },
+    };
+    const rows = reservation(SPECTRAA as any);
+    const qib = rows.find((r) => r.key === 'qib')!;
+    expect(qib.pct).toBeCloseTo(47.42, 1);      // was 49.95 — the stored net-basis figure
+    expect(qib.shares).toBe(1708800);
+    const shares = rows.reduce((a, r) => a + r.shares, 0);
+    expect(shares).toBe(3603600);
+  });
+
+  it('still honours a stored percentage when there is no count to derive from', () => {
+    const pctOnly = {
+      type: 'mainboard', lotSize: 10, priceBandMin: 95, priceBandMax: 100,
+      issueSize: '1000000000',
+      extra: { totalShares: '10000000', shareResv: { qib: { pct: '50' }, retail: { pct: '35' } } },
+    };
+    const rows = reservation(pctOnly as any);
+    expect(rows.find((r) => r.key === 'qib')!.pct).toBe(50);
+  });
+
+  it('does not double-count a quota already held as a shareResv row', () => {
+    /* A legacy record with its employee quota in the TABLE and the carve-out
+       also set must show one employee row, not two. */
+    const both = {
+      type: 'mainboard', lotSize: 10, priceBandMin: 95, priceBandMax: 100,
+      issueSize: '1000000000',
+      extra: {
+        totalShares: '10000000',
+        carveouts: { employee: '100000' },
+        carveoutBasis: { employee: 'shares' },
+        shareResv: { qib: { sharesUpper: '5000000' }, employee: { sharesUpper: '100000' } },
+      },
+    };
+    const rows = reservation(both as any);
+    expect(rows.filter((r) => r.key === 'employee')).toHaveLength(1);
   });
 });

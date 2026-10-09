@@ -31,7 +31,7 @@
  */
 import { computeIssue, type IssueInputs } from './computeIssue';
 import { rulePackFor, inferRegulationBasis } from './issueRules';
-import { carveoutAt } from './carveouts';
+import { carveoutAt, CARVEOUT_KEYS } from './carveouts';
 import { minApplicationShares, minApplicationLots } from './minApplication';
 import { issueInputsFrom, parseIssueSizeRupees, type IssueInputSource } from './issueInputs';
 /* TYPE-only, and from the barrel on purpose: `SubscriptionRow` is declared in
@@ -239,21 +239,61 @@ export function reservation(ipo: IpoFull): ResRow[] {
       const shares = Number(row.sharesUpper) > 0
         ? Number(row.sharesUpper)
         : Number(row.sharesLower) > 0 ? Number(row.sharesLower) : 0;
-      let pct = Number(row.pct);
-      if (!Number.isFinite(pct) || pct <= 0) {
-        // pct blank — derive from the stored count ÷ totalShares, both at the UPPER band (2026-09-22 fix:
-        // Employee had sharesLower=433437 but pct='' → an earlier engine
-        // gave it a phantom 5%. Deriving from what's actually entered is
-        // honest; skip if neither is present).
-        pct = totalShares > 0 && shares > 0
-          ? +((shares / totalShares) * 100).toFixed(2)
-          : 0;
-      }
+      /*
+       * THE COUNT DECIDES THE PERCENTAGE (2026-10-09). This used to print the
+       * stored `pct` whenever one existed and only derive when it was blank —
+       * and the two are on DIFFERENT BASES. An operator's percentage is the
+       * ICDR split, a share of the NET offer; the count beside it is a share of
+       * the GROSS. So SPECTRAA printed `QIB 49.95%` next to a count that is
+       * 47.42% of the issue size: the percentage and the number on its own row
+       * disagreed, on 7 records.
+       *
+       * Deriving from the count fixes that and makes the column reconcile to
+       * the issue size, which is the basis every reference publishes (verified
+       * against IPOPremium's RKFAL table: QIB 1.01%, Individual 56.32% — ours
+       * to the digit). The stored percentage is still the fallback for a record
+       * that has percentages and no counts yet.
+       */
+      let pct = totalShares > 0 && shares > 0
+        ? +((shares / totalShares) * 100).toFixed(2)
+        : Number(row.pct);
+      if (!Number.isFinite(pct) || pct <= 0) pct = 0;
       if (pct <= 0 && shares <= 0) continue;
       const amount = pct > 0 ? (parseIssueValue(ipo.issueSize) * pct) / 100 : shares * priceMax;
       const effShares = shares > 0 ? shares : Math.round((totalShares * pct) / 100);
       rows.push({ key: k, cat: subCatLabel(k), pct, shares: effShares, amount });
     }
+
+    /*
+     * CARVE-OUT ROWS — the reason this table did not add up to the issue size.
+     *
+     * A preferential reservation lives in `extra.carveouts`, never in
+     * `shareResv`, and the bucket list above does not even contain
+     * `marketmaker`. So on RKFAL the legend showed four rows summing to 94.97%
+     * and the missing 5.02% WAS the market maker — the operator's report, and
+     * the last of the carve-out blind spots.
+     *
+     * Appended after the split rows, which is also the order IPOPremium and
+     * Chittorgarh print them in: the split first, then what came off the top.
+     * Skipped when the same category is already present as a `shareResv` row
+     * with a count, so a legacy record that holds its employee quota in the
+     * table is not counted twice.
+     */
+    const already = new Set(rows.filter((r) => r.shares > 0).map((r) => r.key));
+    for (const key of CARVEOUT_KEYS) {
+      if (already.has(key)) continue;
+      const { shares, rupees } = carveoutAt(key, ((ipo as any).extra ?? {}) as any, priceMax);
+      if (shares <= 0) continue;
+      rows.push({
+        key,
+        cat: subCatLabel(key),
+        pct: totalShares > 0 ? +((shares / totalShares) * 100).toFixed(2) : 0,
+        shares,
+        // Its OWN price — a discounted quota valued at the band price reads high.
+        amount: rupees,
+      });
+    }
+
     if (rows.length) return rows;
   }
   // no reservation table yet — fall back to the exchange's own category split
@@ -312,6 +352,10 @@ export function subCatLabel(key: string): string {
     case 'employee': return 'Employee';
     case 'shareholder': return 'Shareholder';
     case 'policyholder': return 'Policyholder';
+    // "Market maker", the wording every reference uses (IPOPremium,
+    // Chittorgarh). Without this case it fell through to `key.toUpperCase()`
+    // and would have rendered "MARKETMAKER".
+    case 'marketmaker': return 'Market maker';
     case 'total': return 'Total';
     default: return key.toUpperCase();
   }

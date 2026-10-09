@@ -10,7 +10,16 @@ export function catColor(cat: string): string {
   if (c.includes('retail') || c.includes('rii')) return 'var(--c-retail)';
   if (c.includes('b-hni') || c.includes('b_hni') || c.includes('bhni') || c.includes('hni 2') || c.includes('hni2')) return 'var(--c-hni2)';
   if (c.includes('hni') || c.includes('nii')) return 'var(--c-hni1)';
-  if (c.includes('emp')) return 'var(--brand-400)';
+  /* MARKET MAKER before the employee test, and in its own colour: an SME
+     market maker is a liquidity obligation, not an investor category, and VANS
+     carries BOTH quotas — they would have been the same swatch in one bar.
+     Slate reads as "not an investor" and collides with none of the five. */
+  if (c.includes('market')) return 'var(--c-mm)';
+  /* `--c-emp` and `--c-shareholder` have existed since the subscription rebuild
+     and this function ignored both, handing every reserved quota the generic
+     brand tint. The tokens are the palette; use them. */
+  if (c.includes('emp')) return 'var(--c-emp)';
+  if (c.includes('shareholder') || c.includes('policyholder')) return 'var(--c-shareholder)';
   return 'var(--brand-400)';
 }
 
