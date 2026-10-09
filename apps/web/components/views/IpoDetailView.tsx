@@ -12,7 +12,7 @@ import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, exchangeLabels, toneOf } from '@investoyard/shared-types';
+import { LABEL, titleCase, exchangeLabels, toneOf, docLabel, isPublicDoc } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -67,6 +67,12 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
   }
   const finMax = ipo.financialRows ? Math.max(1, ...ipo.financialRows[0].values) : 1;
 
+  /* Public documents: everything except the internal ASBA print blanks
+     (`asba_form_*`), which are operator assets and never shown publicly.
+     Resolved once — it gates the section, the nav entry and the list, and three
+     copies of the same filter is how those three drift apart. */
+  const publicDocs = (ipo.documents ?? []).filter(isPublicDoc);
+
   // "How to apply" & "FAQs" intentionally omitted from the tab nav — their sections still render on scroll.
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -74,6 +80,10 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
     { id: 'gmp', label: LABEL.gmp },
     ...(ipo.financialRows ? [{ id: 'financials', label: 'Financials' }] : []),
     ...(ipo.about ? [{ id: 'about', label: 'About' }] : []),
+    /* Documents gets its own tab now that it is its own section. It is the one
+       an investor goes looking for by name ("where's the RHP?"), and until
+       today it was unreachable on 469 records. */
+    ...(publicDocs.length > 0 ? [{ id: 'documents', label: 'Documents' }] : []),
   ];
 
   return (
@@ -374,28 +384,54 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 )}
               </div>
 
-              {ipo.type === 'sme' && ipo.smeCompliance && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="between"><h3>{tr('detail.smeNorms')}</h3>{ipo.smeCompliance.meetsNorms && <span className="badge-ok">{tr('detail.meetsNorms')}</span>}</div>
-                  <div style={{ marginTop: 8 }}>
-                    <div className="kv"><span className="k">₹1cr EBITDA test</span><span className="v">{ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'}</span></div>
-                    <div className="kv"><span className="k">OFS %</span><span className="v mono">{ipo.smeCompliance.ofsPct ?? '—'}%</span></div>
-                    <div className="kv"><span className="k">GCP %</span><span className="v mono">{ipo.smeCompliance.gcpPct ?? '—'}%</span></div>
-                  </div>
-                </div>
-              )}
+            </section>
+          )}
 
-              {(ipo.documents ?? []).filter((d) => !d.type?.startsWith('asba_form')).length > 0 && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <h3>Documents</h3>
-                  <div style={{ marginTop: 8 }}>
-                    {/* internal ASBA print blanks (asba_form_*) are operator assets — never shown publicly */}
-                    {ipo.documents!.filter((d) => !d.type?.startsWith('asba_form')).map((d) => (
-                      <div className="kv" key={d.type}><span className="k">{d.type}</span><a href={d.url} className="linklike" target="_blank" rel="noreferrer">Open ↗</a></div>
-                    ))}
-                  </div>
+          {/*
+            * SME norms and Documents used to sit INSIDE `section#about`, whose
+            * gate is the company description / strengths / contact info. So on
+            * any record where the operator had not written that prose, both
+            * panels were invisible even though the data was there — measured at
+            * 469 records with public documents nobody could see (298 mainboard,
+            * 171 SME) against 40 that rendered. It read as an SME fault only
+            * because SME records rarely carry the rich About content.
+            *
+            * Each is now gated on ITS OWN data. A panel must never depend on
+            * another panel's content being present.
+            */}
+          {ipo.type === 'sme' && ipo.smeCompliance && (
+            <section id="sme-norms">
+              <div className="section-title">SME norms</div>
+              <div className="panel">
+                <div className="between"><h3>{tr('detail.smeNorms')}</h3>{ipo.smeCompliance.meetsNorms && <span className="badge-ok">{tr('detail.meetsNorms')}</span>}</div>
+                <div style={{ marginTop: 8 }}>
+                  <div className="kv"><span className="k">₹1cr EBITDA test</span><span className="v">{ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'}</span></div>
+                  <div className="kv"><span className="k">OFS %</span><span className="v mono">{ipo.smeCompliance.ofsPct ?? '—'}%</span></div>
+                  <div className="kv"><span className="k">GCP %</span><span className="v mono">{ipo.smeCompliance.gcpPct ?? '—'}%</span></div>
                 </div>
-              )}
+              </div>
+            </section>
+          )}
+
+          {publicDocs.length > 0 && (
+            <section id="documents">
+              <div className="section-title">Documents</div>
+              <div className="panel">
+                <div className="doc-list">
+                  {publicDocs.map((d, i) => (
+                    /* Key on url+index, not `type`: a record may carry two
+                       documents of the same type (two RHP parts, say), and a
+                       duplicate React key drops one of them from the list. */
+                    <div className="kv" key={`${d.url}-${i}`}>
+                      <span className="k">{docLabel(d.type)}</span>
+                      <a href={d.url} className="linklike" target="_blank" rel="noreferrer">Open ↗</a>
+                    </div>
+                  ))}
+                </div>
+                <p className="faint" style={{ fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+                  Filed with SEBI / the exchange by the issuer. Opens on the issuer&apos;s or the regulator&apos;s site.
+                </p>
+              </div>
             </section>
           )}
 

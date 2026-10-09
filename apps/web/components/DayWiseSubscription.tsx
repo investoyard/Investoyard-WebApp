@@ -63,7 +63,7 @@ function AppCellView({ c }: { c?: AppCell | null }) {
 }
 
 export function DayWiseSubscription({
-  subLog, subLogHour, closeDate, bare, sme,
+  subLog, subLogHour, closeDate, bare,
 }: {
   subLog: DayEntry[];
   subLogHour: HourEntry[];
@@ -72,10 +72,6 @@ export function DayWiseSubscription({
   /** Drop the `.panel` shell and the heading — for the /subscription modal,
    *  whose own title bar already says whose day-wise this is and how to use it. */
   bare?: boolean;
-  /** SME reads its application count off the Lot Ladder's Reserved column, so
-   *  `AppWisePanel` is hidden there (operator, 2026-09-22) and this toggle
-   *  follows it — one vocabulary, not two. */
-  sme?: boolean;
 }) {
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [view, setView] = useState<View>('shares');
@@ -83,7 +79,7 @@ export function DayWiseSubscription({
      figures reach the log from 2026-09-30 and CANNOT be backfilled, so every
      day logged before then — and every issue that closed before then — has
      none, and offering an empty view would be worse than not offering it. */
-  const hasApps = !sme && [...subLog, ...subLogHour].some(
+  const hasApps = [...subLog, ...subLogHour].some(
     (e) => e?.apps && Object.values(e.apps).some((c) => c && (c.x != null || c.n != null)),
   );
   const shown: View = hasApps ? view : 'shares';

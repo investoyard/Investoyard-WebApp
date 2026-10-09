@@ -30,7 +30,7 @@ import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
-import { exchangeLabels, LABEL } from '@investoyard/shared-types';
+import { exchangeLabels, LABEL, docLabel, isPublicDoc } from '@investoyard/shared-types';
 
 /* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
    listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
@@ -120,8 +120,11 @@ export default function IpoDetailScreen() {
   // ex.anchors was rendered on this screen; hidden 2026-09-09 (identities
   // are for the operator report only). Kept parsed out here as a marker
   // in case the operator ever asks for an aggregate summary — see web parity.
-  const DOC_LABEL: Record<string, string> = { drhp: 'DRHP', rhp: 'RHP', anchor: 'Anchor allocation', prospectus: 'Prospectus' };
-  const docs = (ipo.documents ?? []).filter((d) => d.url && DOC_LABEL[d.type?.toLowerCase?.() ?? '']);
+  /* The label map that used to live here was FOUR entries and was used as the
+     FILTER, so a document typed Financials or Other was dropped from the page
+     rather than shown with a plain label. `isPublicDoc` / `docLabel` are the
+     shared resolvers (shared-types/ipoDocs) — web renders the same list. */
+  const docs = (ipo.documents ?? []).filter(isPublicDoc);
 
   /* ---- pinned section-nav plumbing (identity + chips never scroll away) ---- */
   // Section order follows the stage: what matters NOW comes first (before the
@@ -414,12 +417,16 @@ export default function IpoDetailScreen() {
             <KV k="Listing on" v={exchanges} last={docs.length === 0} />
             {docs.map((d, i) => (
               <Pressable
-                key={d.url}
+                key={`${d.url}-${i}`}
                 onPress={() => Linking.openURL(d.url).catch(() => {})}
                 style={({ pressed }) => [styles.kv, i === docs.length - 1 && { borderBottomWidth: 0 }, pressed && { opacity: 0.6 }]}
               >
-                <Text style={styles.kvK}>{DOC_LABEL[d.type.toLowerCase()]}</Text>
-                <Text style={[styles.kvV, { color: ui.indigo }]}>Open PDF ›</Text>
+                <Text style={styles.kvK}>{docLabel(d.type)}</Text>
+                {/* "Open ↗", not "Open PDF": of the 543 public documents on the
+                    catalogue, 468 are .zip (NSE archives serve RHPs zipped) and
+                    69 are .html — only 6 are actually PDFs, so the old label was
+                    wrong 537 times out of 543. Same wording as web. */}
+                <Text style={[styles.kvV, { color: ui.indigo }]}>Open ↗</Text>
               </Pressable>
             ))}
           </Card>

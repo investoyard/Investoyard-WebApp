@@ -304,7 +304,6 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
             subLog={subLogOf(dayWise)}
             subLogHour={Array.isArray((dayWise as any).extra?.subLogHour) ? (dayWise as any).extra.subLogHour : []}
             closeDate={dayWise.closeDate}
-            sme={dayWise.type === 'sme'}
             bare
           />
           <p style={{ margin: '12px 0 0' }}>
@@ -471,11 +470,22 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
                 with two-line cells) to sit as its own column alongside
                 Share-wise and Application-wise. */}
             <ShareWisePanel rows={table.rows} total={table.total} price={price} />
-            {/* Application-wise panel is mainboard-only. SME's per-category
-                application count is folded into the Lot Ladder's Reserved
-                column, so a separate Application-wise table would just
-                repeat the same numbers (operator ask, 2026-09-22). */}
-            {ipo.type !== 'sme' && <AppWisePanel rows={table.rows} />}
+            {/*
+              * SME SHOWS THIS TOO (operator ask, 2026-10-09). It was hidden on
+              * 2026-09-22 on the grounds that SME's application count is
+              * "folded into the Lot Ladder's Reserved column, so a separate
+              * table would just repeat the same numbers" — and that is true of
+              * ONE of the four columns. Reserved IS `req1x`; the panel also
+              * carries Total (applications RECEIVED) and Times (the
+              * by-applications multiple), and neither appeared anywhere else
+              * on an SME page.
+              *
+              * Safe to show unconditionally: the panel returns null when no row
+              * carries a bid count, so an SME issue the exchange gives no
+              * application figures for renders nothing rather than an empty
+              * table. 4 of the 9 SME issues with subscription rows have them.
+              */}
+            <AppWisePanel rows={table.rows} />
             <LotLadderPanel ipo={ipo} />
           </div>
         </div>

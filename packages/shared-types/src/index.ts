@@ -257,3 +257,4 @@ export * from './operationalContract';
 export * from './bidRules';
 export * from './unblockRules';
 export * from './sponsorBank';
+export * from './ipoDocs';
