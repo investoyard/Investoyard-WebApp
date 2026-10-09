@@ -42,9 +42,38 @@
  * Measured before this was written: all nine satisfy all four, and the
  * reconstructed QIB lands at a legal ICDR share of the net offer (about 49.9%
  * on seven, 20.0% on HIMALAYAN and AXIOMGAS — SME QIB is a ceiling, not a
- * floor). BLACKOPAL, EIMS and VANS have the same shape and NO `anchorShares`,
- * so there is nothing to add back: they need the RHP and are left alone. A
- * guess would have been cheap and wrong.
+ * floor).
+ *
+ * --infer-anchor HANDLES THE THREE WITH NO STORED ANCHOR — BLACKOPAL, EIMS and
+ * VANS — by taking the shortfall itself as the anchor. That loses witness (1),
+ * the only one that reads a figure a human entered, so the rest have to carry
+ * the decision alone and TWO MORE ARE ADDED:
+ *
+ *   5. all four of qib/hni/hni2/retail must ALREADY carry a count — the table
+ *      is complete apart from QIB. This is what tells "QIB is net of the
+ *      anchor" apart from "the table was never finished", and it is why
+ *      PRIORITY cannot be touched: only its QIB row was ever entered, so
+ *      inferring would double QIB and declare the table done.
+ *   6. the implied anchor must be 25-60% of the reconstructed QIB. Sixteen
+ *      records are short with no anchor figure and FOURTEEN are short by 1-679
+ *      shares — rounding, not an anchor.
+ *
+ * ...and the QIB ceiling is checked against 75%, the highest ICDR allows under
+ * 6(2), rather than 50%: MVELECTRO is a legitimate 75% record, so a 50% ceiling
+ * would be a rule about one regulation basis dressed up as a rule about
+ * legality. PRIORITY's implied QIB is 100% of the net offer and fails either.
+ *
+ * MEASURED CATALOGUE-WIDE BEFORE THIS WAS IMPLEMENTED: exactly those three
+ * fire. ANNU is the record the set exists for — its implied QIB is a
+ * plausible-looking 20.00% of the net offer and would have passed on percentage
+ * alone; LOT ALIGNMENT is the single guard that stops it, at 23,422.82 lots.
+ *
+ * `anchorShares` IS NOT WRITTEN, not even under --infer-anchor. The QIB count is
+ * FORCED by reconciliation and lot alignment; the anchor is the INFERRED part,
+ * and storing it would make the page print "Net (post anchor) · actual" — a
+ * label this codebase reserves for an allotment read off the intimation letter,
+ * which a reader can check against the exchange. These three go on saying
+ * "Gross", which is the honest statement of what is known about them.
  *
  * `sharesLower` TOO, BUT ONLY ON A SHARE-SIZED OFFER, where the count does not
  * move with the price and the two bands must therefore be equal. SAIURJA is the
@@ -70,10 +99,15 @@ const st = require('@investoyard/shared-types');
 const p = new PrismaClient();
 
 const APPLY = process.argv.includes('--apply');
+/** Take the shortfall itself as the anchor, for a record that stores none.
+ *  Two extra guards apply — see the docblock. */
+const INFER = process.argv.includes('--infer-anchor');
 const ONLY = (() => { const i = process.argv.indexOf('--only'); return i > 0 ? process.argv[i + 1] : null; })();
 const BACKUP_DIR = 'C:/ProgramData/Investoyard/backups';
 
 const SPLIT = ['qib', 'hni', 'hni2', 'retail', 'other'];
+/** The four that a complete table always fills. `other` is not one of them. */
+const CORE = ['qib', 'hni', 'hni2', 'retail'];
 const CARVEOUTS = ['employee', 'shareholder', 'policyholder', 'marketmaker'];
 const fn = (v) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
 const inr = (n) => n.toLocaleString('en-IN');
@@ -120,9 +154,10 @@ const carveoutShares = (ex, price) => CARVEOUTS.reduce((a, k) => a + st.carveout
     const ex = ipo.extra || {};
     const sr = ex.shareResv || {};
     const qibRow = sr.qib;
-    const anchor = fn(ex.anchorShares);
+    const stated = fn(ex.anchorShares);
     const qib = fn(qibRow && qibRow.sharesUpper);
-    if (!qibRow || qib <= 0 || anchor <= 0) continue;
+    if (!qibRow || qib <= 0) continue;
+    if (stated <= 0 && !INFER) continue;
 
     const price = Number(ipo.priceBandMax) || Number(ipo.priceBandMin);
     if (!(price > 0)) continue;
@@ -134,38 +169,52 @@ const carveoutShares = (ex, price) => CARVEOUTS.reduce((a, k) => a + st.carveout
     const shortBy = totals.totalCap - splitSum - cvSum;
     if (shortBy <= 0) continue;                 // not short — not this fault
 
+    /* INFERRED mode takes the shortfall as the anchor; otherwise the stored
+       figure is the anchor and the shortfall has to equal it. */
+    const inferred = stated <= 0;
+    const anchor = inferred ? shortBy : stated;
     const full = qib + anchor;
     const lot = Number(ipo.lotSize) || 0;
     const after = splitSum - qib + full + cvSum;
+    const anchorPctOfQib = full > 0 ? (anchor / full) * 100 : 0;
+    const pctOfNet = totals.cap > 0 ? (full / totals.cap) * 100 : 0;
 
     const guards = {
       shortIsAnchor: Math.abs(shortBy - anchor) <= 2,
       reconciles: Math.abs(totals.totalCap - after) <= 2,
       lotAligned: lot > 0 && full % lot === 0,
-      anchorUnderCap: full > 0 && (anchor / full) * 100 <= 60.001,
+      anchorUnderCap: full > 0 && anchorPctOfQib <= 60.001,
     };
+    if (inferred) {
+      /* Witness (1) is gone — `shortIsAnchor` is true by construction here, so
+         it proves nothing. These three carry the decision instead. */
+      guards.allFourRows = CORE.every((k) => fn(sr[k] && sr[k].sharesUpper) > 0);
+      guards.anchorSubstantial = anchorPctOfQib >= 25;
+      /* 75% is ICDR 6(2)'s ceiling, the highest the regulation allows. */
+      guards.qibLegal = totals.cap > 0 && pctOfNet <= 75.001;
+    }
     const row = {
-      symbol: ipo.symbol, id: ipo.id, lot, price,
+      symbol: ipo.symbol, id: ipo.id, lot, price, inferred,
       issueSizeShares: totals.totalCap, netOffer: totals.cap,
       qibBefore: qib, anchor, qibAfter: full,
       lowerBefore: fn(qibRow.sharesLower),
       sharesSized: isSharesSized(ex),
-      pctOfNet: totals.cap > 0 ? (full / totals.cap) * 100 : 0,
-      anchorPctOfQib: full > 0 ? (anchor / full) * 100 : 0,
-      shortBy, guards,
+      pctOfNet, anchorPctOfQib, shortBy, guards,
     };
     (Object.values(guards).every(Boolean) ? plan : refused).push(row);
   }
 
   const w = (s, n) => String(s).padStart(n);
-  console.log('symbol        QIB before      + anchor  =   QIB after    lots    % of net   anchor % QIB   lower band');
+  console.log(APPLY ? '' : (INFER ? '--infer-anchor: the shortfall is taken as the anchor where none is stored\n' : ''));
+  console.log('symbol        QIB before      + anchor  =   QIB after    lots    % of net   anchor % QIB   anchor     lower band');
   for (const r of plan) {
     const lower = r.sharesSized
       ? (r.lowerBefore === r.qibAfter ? 'already right' : `${inr(r.lowerBefore)} -> ${inr(r.qibAfter)}`)
       : 'untouched (Rs-sized)';
-    console.log(`${r.symbol.padEnd(12)} ${w(inr(r.qibBefore), 11)}  ${w(inr(r.anchor), 11)}  ${w(inr(r.qibAfter), 11)}  ${w(r.qibAfter / r.lot, 6)}  ${w(r.pctOfNet.toFixed(4), 9)}  ${w(r.anchorPctOfQib.toFixed(2), 12)}   ${lower}`);
+    console.log(`${r.symbol.padEnd(12)} ${w(inr(r.qibBefore), 11)}  ${w(inr(r.anchor), 11)}  ${w(inr(r.qibAfter), 11)}  ${w(r.qibAfter / r.lot, 6)}  ${w(r.pctOfNet.toFixed(4), 9)}  ${w(r.anchorPctOfQib.toFixed(2), 12)}   ${r.inferred ? 'INFERRED' : 'stored  '}   ${lower}`);
   }
-  console.log(`\n${plan.length} record(s) to repair`);
+  const inf = plan.filter((r) => r.inferred).length;
+  console.log(`\n${plan.length} record(s) to repair${inf ? ` — ${inf} with an INFERRED anchor, which is NOT written to the record` : ''}`);
 
   if (refused.length) {
     console.log('\nREFUSED — the same shape, but a guard did not hold, so a human decides:');
