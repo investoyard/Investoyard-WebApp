@@ -96,11 +96,28 @@ export function issueInputsFrom(src: IssueInputSource): IssueInputs {
   const ex: Record<string, any> = src.extra ?? {};
   const sr: Record<string, any> = ex.shareResv ?? {};
 
-  /** A category's percentage, honouring the row's own on/off switch. */
+  /**
+   * A category's percentage.
+   *
+   * `on` IS VESTIGIAL AND IS NO LONGER READ (2026-10-09). The admin form has
+   * no on/off concept — it writes `pct` / `sharesUpper` / `sharesLower` /
+   * `source` — and the flag survives only on 13 legacy records that also still
+   * carry the long-stripped `count` / `req1x` / `remark` fields.
+   *
+   * It was kept on 2026-10-03 on the strength of a claim that every stored
+   * `on: false` row has an empty `pct`, so that honouring it changed nothing.
+   * THAT CLAIM WAS FALSE. Five mainboard records — ANNU · SYMBIOTEC · HYTECH ·
+   * SKYWAYS · LUMINO — carry `on: false` on all four split rows while holding
+   * complete data (SKYWAYS: QIB 49.92% / 1,49,76,000 shares), so this mapper
+   * returned `{}` for them and `computeIssue` produced no categories at all.
+   * MOLBIO is the counter-example that shows the stored values are simply
+   * inconsistent: `on: true` on its four rows, with no counts.
+   *
+   * `pct > 0` is the real test, and it is the one the admin form's own mapper
+   * has always used.
+   */
   const pct = (k: string): number => {
-    const row = sr[k];
-    if (!row || row.on === false) return 0;
-    const v = num(row.pct);
+    const v = num(sr[k]?.pct);
     return v > 0 ? v : 0;
   };
 

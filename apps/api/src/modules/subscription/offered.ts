@@ -136,7 +136,15 @@ export function offeredFromIpo(
   const out = new Map<Bucket, number>();
   for (const b of BUCKETS) {
     const row = resv[b];
-    if (!row || row.on === false) continue;
+    /* `on` IS VESTIGIAL AND IS NOT READ — the fourth and last reader of it
+       (2026-10-09). The admin form has no such concept, so no new record can
+       carry one; 13 legacy records do, and five of those — ANNU · SYMBIOTEC ·
+       HYTECH · SKYWAYS · LUMINO — hold `on: false` on rows that carry a
+       percentage AND a count, which meant this resolver had no denominator for
+       them and the poller would have discarded every tick. All five closed long
+       ago so nothing was lost, but a flag three other readers now ignore must
+       not survive here. See `pct()` in packages/shared-types/src/issueInputs.ts. */
+    if (!row) continue;
     // Source 1: direct sharesLower/Upper — wins whenever present.
     const direct = directOf(row);
     if (direct > 0) { out.set(b, direct); continue; }

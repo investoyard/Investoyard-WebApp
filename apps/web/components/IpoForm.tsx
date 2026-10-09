@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, offerTotals, totalSharesAt, sponsorBankNames, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -77,7 +77,16 @@ const SZ_ROWS: { key: string; label: string; extra?: boolean }[] = [
 const RESV_ROWS: { key: string; label: string }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI (Big)' }, { key: 'hni2', label: 'HNI (Small)' },
   { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' },
-  { key: 'policyholder', label: 'Policyholder' }, { key: 'other', label: 'Other' },
+  { key: 'policyholder', label: 'Policyholder' },
+  /* MARKET MAKER (2026-10-09, operator report on RKFAL). It was left out as
+     "an SME-only reservation that was never one of the seven categories", and
+     that is true — but it IS part of the offer, it comes off the top exactly as
+     the other carve-outs do, and the public legend started showing it the day
+     before. Leaving it out here made the admin screen the ONE surface that
+     hides a figure the operator had entered, and the Total it was missing from
+     is the check they actually run. */
+  { key: 'marketmaker', label: 'Market Maker' },
+  { key: 'other', label: 'Other' },
 ];
 
 type Doc = {
@@ -316,10 +325,17 @@ function derivedTotalSharesOf(f: FormState): number {
  * allocation floors.
  */
 const CARVEOUT_KEYS = ['employee', 'shareholder', 'policyholder', 'marketmaker'] as const;
-/** The carve-outs that also appear as a row in the reservation table. The
- *  market maker has no row — it is an SME-only reservation and was never one
- *  of the seven categories. */
-const CARVEOUT_ROWS: string[] = ['employee', 'shareholder', 'policyholder'];
+/** The carve-outs rendered as a READ-ONLY row in the reservation table, and
+ *  excluded from the percentage split. All four, since 2026-10-09. */
+const CARVEOUT_ROWS: string[] = ['employee', 'shareholder', 'policyholder', 'marketmaker'];
+/** ...of which these three ALSO have a legacy `shareResv` row an operator could
+ *  have typed a quota into, which is what E-RESV looks for. The market maker
+ *  never had one — no record in the catalogue carries `shareResv.marketmaker`. */
+const CARVEOUT_TABLE_KEYS: string[] = ['employee', 'shareholder', 'policyholder'];
+const CARVEOUT_LABEL: Record<string, string> = {
+  employee: 'Employee', shareholder: 'Shareholder',
+  policyholder: 'Policyholder', marketmaker: 'Market maker',
+};
 
 /** The three carve-out fields, addressed by the key the engine uses. */
 function carveoutInput(f: FormState, key: string): { value: string; basis: string; discount: string } {
@@ -358,7 +374,7 @@ function carveoutAt(f: FormState, price: number): { shares: number; rupees: numb
  * `computeIssue` floored it to a lot (53,99,370) and Autofill used the quotient
  * again. `totalShares` is now always populated, so all three divide one number.
  */
-function offerTotalsOf(f: FormState): { cap: number; floor: number } {
+function offerTotalsOf(f: FormState): { cap: number; floor: number; totalCap: number; totalFloor: number } {
   /* NET of carve-outs at EACH band. Every percentage in the reservation table
      is a percentage of the NET offer — ICDR takes preferential reservations off
      the top first — and Chittorgarh states it outright for RUNWALENTR: total
@@ -370,7 +386,10 @@ function offerTotalsOf(f: FormState): { cap: number; floor: number } {
      cheaper shares" — which is true only when every leg is priced in rupees.
      See `offerTotals()` for what that cost. */
   const t = offerTotals(offerSourceOf(f), fnum(f.priceBandMax) || fnum(f.priceBandMin), fnum(f.priceBandMin));
-  return { cap: t.cap, floor: t.floor };
+  /* `cap`/`floor` are NET of carve-outs — what the percentages divide.
+     `totalCap`/`totalFloor` are the whole issue, which is what the reservation
+     table has to add back up to. */
+  return { cap: t.cap, floor: t.floor, totalCap: t.totalCap, totalFloor: t.totalFloor };
 }
 
 /** What Autofill writes and what the drift check must compare against. */
@@ -1186,13 +1205,11 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    * `shown` picks the upper-band scenario (or the final price when set); the
    * reservation table renders BOTH bands' share counts side-by-side now
    * (operator ask 2026-09-10), so the old per-panel band toggle was retired.
-   * `shown` still drives the downstream derived columns (Amount Reserved,
-   * Forms-for-1x, totals) at the upper/final price — the standard ICDR view.
+   * `shown` drives the summary strip, the anchor panel and the validation
+   * post-conditions. It no longer feeds the reservation table's columns: those
+   * are all on the OFFERED basis now — see `shownRow`.
    */
   const shown = derived.scenarios.final ?? derived.scenarios.cap ?? derived.primary;
-
-  /** derived row for a reservation key, or undefined when it cannot be computed */
-  const derivedRow = (key: string) => shown?.categories.find((c: any) => c.key === key);
 
   /**
    * What the Share Count column ACTUALLY SHOWS for one split row: the stored
@@ -1216,16 +1233,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     return pct > 0 && total > 0 ? derivedCountAt(total, pct) : 0;
   };
 
-  /** The reservation table's Total row — percentages, shares and rupees. */
-  const resvTotals = (() => {
-    const cats = shown?.categories ?? [];
-    const pct = cats.reduce((a: number, c: any) => a + c.pct, 0);
-    return {
-      pct: Math.round(pct * 1000) / 1000,
-      shares: cats.reduce((a: number, c: any) => a + c.shares, 0),
-      amount: cats.reduce((a: number, c: any) => a + c.amount, 0),
-    };
-  })();
 
   /**
    * The RHP's own sentence, generated rather than typed.
@@ -1280,12 +1287,16 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
        reservation evaporate — AUGMONT (employee 0.691%) and NSE (employee
        43,33,437 shares) are the two in the catalogue, and both need the figure
        moved to the carve-out field. */
-    for (const key of CARVEOUT_ROWS) {
+    /* The three that have a legacy table row, NOT CARVEOUT_ROWS — the market
+       maker joined that list on 2026-10-09 and has no row to have been typed
+       into. The label also came off a two-way ternary, so a POLICYHOLDER quota
+       would have been reported as a shareholder one. */
+    for (const key of CARVEOUT_TABLE_KEYS) {
       const pct = fnum(form.shareResv[key]?.pct);
       const count = Number(String(form.shareResv[key]?.sharesUpper ?? '').replace(/[^\d]/g, ''));
       const cv = fnum(carveoutInput(form, key).value);
       if ((pct > 0 || count > 0) && !(cv > 0)) {
-        const label = key === 'employee' ? 'Employee' : 'Shareholder';
+        const label = CARVEOUT_LABEL[key];
         out.push({
           code: 'E-RESV',
           msg: `This record holds a ${label.toLowerCase()} quota in the reservation table (${pct > 0 ? `${pct}%` : `${count.toLocaleString('en-IN')} shares`}), where nothing reads it. A ${label.toLowerCase()} reservation comes off the TOP — move it to the ${label} carve-out above, in shares if the RHP states a count.`,
@@ -1359,6 +1370,102 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const legSumCr = legSumCrOf(form);
   const derivedTotalShares = derivedTotalSharesOf(form);
   const offerTotals = offerTotalsOf(form);
+
+  /**
+   * The ONE price this table values every row at — the final issue price when
+   * the operator has set one, else the band cap. The carve-out rows use it too,
+   * so the Total can be the sum of what the rows actually show.
+   */
+  const resvPrice = shown?.price || fnum(form.priceBandMax) || fnum(form.priceBandMin);
+
+  /**
+   * What the Share (%) column ACTUALLY SHOWS for one split row — the mirror of
+   * `shownCount`, and the Total must sum THESE.
+   *
+   * THE TOTAL USED TO READ THE ENGINE, and the engine cannot see a reservation
+   * stated as COUNTS: `issueInputsFrom` maps percentages, so a record with
+   * counts and no percentages hands `computeIssue` an empty `reservation` and
+   * it returns no categories at all. On 24 records — EVERY ONE SME, which is
+   * how an SME RHP gets entered — each row showed a real percentage derived
+   * from its count while the Total underneath read 0. RKFAL is the operator's
+   * report: QIB 1.07 · bHNI 26.41 · sHNI 13.23 · Retail 59.30, total 0.
+   *
+   * Third time this Total has been wrong and the same cause every time: it
+   * re-derived the rows instead of summing the column it sits under.
+   */
+  const shownPct = (key: string, total: number): number => {
+    const row = form.shareResv[key];
+    if (!row) return 0;
+    const stored = fnum(row.sharesUpper);
+    /* A stored count outranks a typed percentage, so the percentage is whatever
+       that count works out to — exactly what the row cell renders. */
+    if (stored > 0 && (row.source === 'exchange' || row.source === 'operator') && total > 0) {
+      return (stored / total) * 100;
+    }
+    return fnum(row.pct);
+  };
+
+  /**
+   * Everything this table shows for one SPLIT row, from one resolver so the row
+   * and the Total cannot disagree.
+   *
+   * It is wholly on the OFFERED basis, which is what the table is for: counts
+   * ROUND, and the figures the exchange and every information site publish are
+   * the offered ones. The Amount and Forms columns used to read `computeIssue`'s
+   * ALLOCATION figures — floored to a lot with the residual absorbed by the
+   * largest quota — so the rupee figure disagreed with the share count printed
+   * beside it, and on PRIORITY, where only the QIB row is entered, residual
+   * absorption handed QIB the whole net offer and the cell read ₹250 Cr for a
+   * 50% quota. Forms-for-1× goes through `minApplicationShares()`, the one
+   * minimum-bid definition, so the three other readers of it cannot drift.
+   */
+  const shownRow = (key: string) => {
+    const count = shownCount(key, 'sharesUpper', offerTotals.cap);
+    const minApp = minApplicationShares(key, {
+      lotSize: fnum(form.lotSize), priceCap: resvPrice, sme: form.type === 'sme',
+    });
+    return {
+      count,
+      pct: shownPct(key, offerTotals.cap),
+      amount: count * resvPrice,
+      apps: minApp > 0 && count > 0 ? Math.ceil(count / minApp) : undefined,
+      allottees: minApp > 0 && count > 0 ? Math.floor(count / minApp) : undefined,
+    };
+  };
+
+  /**
+   * The reservation table's two Total rows.
+   *
+   * TWO, because the operator runs two different checks and one row cannot
+   * answer both. The split percentages are of the NET offer, which is what they
+   * add to 100% of; the share counts have to add back up to the ISSUE SIZE,
+   * carve-outs included — "our total not matched with total issue size" was the
+   * operator's own words, about the legend, the day before this. `grossPct` is
+   * the fraction of the issue the table accounts for and should read 100: it is
+   * the diagnostic, so a record whose rows are short reads 71.55 rather than
+   * looking complete.
+   */
+  const resvTotals = (() => {
+    const splitKeys = RESV_ROWS.filter((r) => !CARVEOUT_ROWS.includes(r.key)).map((r) => r.key);
+    const rows = splitKeys.map((k) => shownRow(k));
+    const floorPrice = fnum(form.priceBandMin) || resvPrice;
+    const cvCap = carveoutAt(form, resvPrice);
+    const cvFloor = carveoutAt(form, floorPrice);
+    const shares = rows.reduce((a, r) => a + r.count, 0);
+    const sharesFloor = splitKeys.reduce((a, k) => a + shownCount(k, 'sharesLower', offerTotals.floor), 0);
+    const amount = rows.reduce((a, r) => a + r.amount, 0);
+    const grossShares = shares + cvCap.shares;
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    return {
+      pct: r2(rows.reduce((a, r) => a + r.pct, 0)),
+      shares, sharesFloor, amount,
+      carveoutShares: cvCap.shares,
+      grossShares,
+      grossSharesFloor: sharesFloor + cvFloor.shares,
+      grossAmount: amount + cvCap.rupees,
+      grossPct: offerTotals.totalCap > 0 ? r2((grossShares / offerTotals.totalCap) * 100) : 0,
+    };
+  })();
 
   /**
    * Is this offer sized in SHARES rather than rupees?
@@ -2131,18 +2238,17 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>from carve-out</div>
                         </td>
                         {(() => {
-                          const pMax = fnum(form.priceBandMax) || fnum(form.priceBandMin);
-                          const pMin = fnum(form.priceBandMin) || pMax;
-                          const cvCap = carveoutOneAt(form, r.key, pMax);
+                          const pMin = fnum(form.priceBandMin) || resvPrice;
+                          const cvCap = carveoutOneAt(form, r.key, resvPrice);
                           const cvFloor = carveoutOneAt(form, r.key, pMin);
-                          const gross = offerTotals.cap + carveoutAt(form, pMax).shares;
                           const dash = <span className="muted">—</span>;
+                          const gross = offerTotals.totalCap;
                           const pctOfTotal = cvCap.shares > 0 && gross > 0 ? (cvCap.shares / gross) * 100 : 0;
                           const at = (v: number) => (v > 0 ? v.toLocaleString('en-IN') : dash);
                           return (
                             <>
                               <td className="r mono" title="% of the TOTAL issue — a carve-out is not part of the net offer the other rows divide">
-                                {pctOfTotal > 0 ? pctOfTotal.toFixed(3) : dash}
+                                {pctOfTotal > 0 ? pctOfTotal.toFixed(2) : dash}
                               </td>
                               <td className="rc-derived r">{at(cvCap.shares)}</td>
                               {!sharesSized && <td className="rc-derived r">{at(cvFloor.shares)}</td>}
@@ -2171,7 +2277,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           const stored = fnum(row?.sharesUpper);
                           const authoritative = stored > 0 && (row?.source === 'exchange' || row?.source === 'operator');
                           if (authoritative && offerTotals.cap > 0) {
-                            const pct = (stored / offerTotals.cap) * 100;
+                            const pct = shownPct(r.key, offerTotals.cap);
                             return (
                               <td className="r mono" title={`Derived from the stored count: ${stored.toLocaleString('en-IN')} ÷ ${Math.round(offerTotals.cap).toLocaleString('en-IN')} net offer. The count is the ${row.source === 'exchange' ? "exchange's" : 'entered'} figure and outranks a typed percentage.`}>
                                 {pct.toFixed(2)}
@@ -2192,7 +2298,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         {(() => {
                           const catCap = derived.scenarios.cap?.categories.find((c: any) => c.key === r.key);
                           const catFloor = derived.scenarios.floor?.categories.find((c: any) => c.key === r.key);
-                          const d = derivedRow(r.key);   // for downstream (amount, apps) — uses `shown` (upper by default)
+                          const sr = shownRow(r.key);    // amount + forms, on the OFFERED basis — see shownRow
                           const dash = <span className="muted">—</span>;
                           const upperOv = Number(String(form.shareResv[r.key].sharesUpper ?? '').replace(/[^\d]/g, ''));
                           const lowerOv = Number(String(form.shareResv[r.key].sharesLower ?? '').replace(/[^\d]/g, ''));
@@ -2208,8 +2314,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                              marker on QIB — ±102 on VARMORA, ±100 on SHAHINVEST,
                              immediately after a Replace all. Comparing an offered
                              count against an allocation count can only mislead.
-                             `derivedRow()` below still uses the allocation figure,
-                             because applications-for-1× IS an allocation question. */
+                             Since 2026-10-09 the WHOLE table is on this basis —
+                             Amount Reserved and Forms-for-1× came off the engine
+                             too, so no cell disagrees with the count beside it. */
                           const pct = fnum(form.shareResv[r.key].pct);
                           const derUpper = pct > 0 && offerTotals.cap > 0 ? derivedCountAt(offerTotals.cap, pct) : catCap?.shares;
                           const derLower = pct > 0 && offerTotals.floor > 0 ? derivedCountAt(offerTotals.floor, pct) : catFloor?.shares ?? catCap?.shares;
@@ -2262,10 +2369,10 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                                 </div>
                               </td>
                               )}
-                              <td className="rc-derived r">{d ? `₹${(d.amount / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">{sr.amount > 0 ? `₹${(sr.amount / 1e7).toFixed(2)} Cr` : dash}</td>
                               <td className="rc-derived r">
-                                {d?.appsFor1x != null
-                                  ? <span title={d.maxAllottees != null ? `Applications that can be allotted at 1× — capacity, not demand. Allottees: ${d.maxAllottees.toLocaleString('en-IN')}` : undefined}>{d.appsFor1x.toLocaleString('en-IN')}</span>
+                                {sr.apps != null
+                                  ? <span title={sr.allottees != null ? `Applications that can be allotted at 1× — capacity, not demand. Allottees: ${sr.allottees.toLocaleString('en-IN')}` : undefined}>{sr.apps.toLocaleString('en-IN')}</span>
                                   : dash}
                               </td>
                             </>
@@ -2275,47 +2382,60 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     )))}
                     {/* The total is the check an operator actually runs: does the
                         split add back up to the offer? Reading it off four rows
-                        by eye is exactly how a 100.691% table shipped. */}
-                    {shown && (
+                        by eye is exactly how a 100.691% table shipped.
+
+                        TWO ROWS, because there are two questions. The split
+                        percentages are of the NET offer and add to 100% of it;
+                        the share counts have to add back up to the ISSUE SIZE,
+                        carve-outs included. Showing only the first is what sent
+                        the operator to IPOPremium with "our total not matched
+                        with total issue size".
+
+                        NOT gated on `shown` any more. That is the engine's
+                        scenario, and the engine sees nothing on a record whose
+                        reservation is stated as COUNTS — which is every one of
+                        the 24 SME records that enter it that way. The totals are
+                        the table's own sums now, so they render whenever the
+                        table has anything in it. */}
+                    {(resvTotals.shares > 0 || resvTotals.pct > 0) && (
+                      <>
                       <tr className="resv-total">
                         {/* 6 columns: Category · % · Upper · Lower · Amount · Forms */}
-                        <td style={{ fontWeight: 700 }} title="Sums the split rows only. A preferential reservation comes off the top BEFORE the split, so the carve-out rows above are shown for information and excluded here.">Total <span className="muted" style={{ fontWeight: 400 }}>(net offer)</span></td>
-                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.pct}</td>
-                        {/* Sum the column ACTUALLY SHOWN, not `computeIssue`'s
+                        <td style={{ fontWeight: 700 }} title="Sums the split rows only. A preferential reservation comes off the top BEFORE the split, so the carve-out rows above are excluded here and counted in the issue-size row below.">Total <span className="muted" style={{ fontWeight: 400 }}>(net offer)</span></td>
+                        <td className="r mono" style={{ fontWeight: 700 }} title="The split percentages, which are percentages of the NET offer. 100% is what this should read.">{resvTotals.pct}</td>
+                        {/* Every figure here sums the column ACTUALLY SHOWN —
+                            `shownRow`/`shownCount` — never `computeIssue`'s
                             scenarios. The engine holds a stated share count
-                            fixed across both price scenarios — right for an
-                            offer quoted in SHARES, and there is not one in the
-                            catalogue: all 35 fresh and 23 OFS legs are quoted
-                            in RUPEES, so the count genuinely moves with the
-                            price. The two totals therefore came out IDENTICAL
-                            while the Lower column beneath them summed to
-                            something else entirely — VARMORA showed
-                            4,78,38,855 over rows adding to 5,05,72,503. A total
-                            that does not equal its own column is a bug whatever
-                            the right model is. */}
-                        {(() => {
-                          /* Sums the SPLIT rows only, so it equals the NET
-                             offer — the same thing the percentages above add to
-                             100% of (operator's call, 2026-09-30). The carve-out
-                             rows are shown in this table but excluded here on
-                             purpose: ICDR takes a preferential reservation off
-                             the top BEFORE the split, so adding them would give
-                             a figure the percentages cannot reconcile to. The
-                             row says "net offer" rather than "Total" so that
-                             exclusion reads as deliberate, not as an omission. */
-                          const sum = (field: 'sharesUpper' | 'sharesLower', total: number) =>
-                            RESV_ROWS.reduce((s, r) => (CARVEOUT_ROWS.includes(r.key)
-                              ? s : s + shownCount(r.key, field, total)), 0);
-                          return (
-                            <>
-                              <td className="r mono" style={{ fontWeight: 700 }}>{sum('sharesUpper', offerTotals.cap).toLocaleString('en-IN')}</td>
-                              {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{sum('sharesLower', offerTotals.floor).toLocaleString('en-IN')}</td>}
-                            </>
-                          );
-                        })()}
+                            fixed across both price scenarios, so on a ₹-quoted
+                            offer the two totals came out IDENTICAL while the
+                            Lower column beneath them summed to something else:
+                            VARMORA showed 4,78,38,855 over rows adding to
+                            5,05,72,503. A total that does not equal its own
+                            column is a bug whatever the right model is. */}
+                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.shares.toLocaleString('en-IN')}</td>
+                        {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.sharesFloor.toLocaleString('en-IN')}</td>}
                         <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.amount / 1e7).toFixed(2)} Cr</td>
                         <td />
                       </tr>
+                      {resvTotals.carveoutShares > 0 && (
+                        <tr className="resv-total">
+                          <td style={{ fontWeight: 700 }} title="The split rows plus every carve-out — what the whole offer is made of. This is the figure to check against Total issue size (shares).">Total <span className="muted" style={{ fontWeight: 400 }}>(issue size)</span></td>
+                          {/* The fraction of the ISSUE the table accounts for,
+                              and it should read 100. It is the diagnostic, so a
+                              record whose rows are short reads 71.55 instead of
+                              looking complete — 17 records in the catalogue do
+                              not reconcile and need their RHPs. */}
+                          <td className="r mono" style={{ fontWeight: 700 }}
+                              title={`${resvTotals.grossShares.toLocaleString('en-IN')} of ${Math.round(offerTotals.totalCap).toLocaleString('en-IN')} shares. Anything under 100% means the reservation table is incomplete.`}>
+                            {resvTotals.grossPct}
+                          </td>
+                          <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.grossShares.toLocaleString('en-IN')}</td>
+                          {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.grossSharesFloor.toLocaleString('en-IN')}</td>}
+                          <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.grossAmount / 1e7).toFixed(2)} Cr</td>
+                          <td />
+                        </tr>
+                      )}
+                      </>
                     )}
                   </tbody>
                 </table>

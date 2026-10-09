@@ -225,7 +225,12 @@ export function reservation(ipo: IpoFull): ResRow[] {
       // extends the buckets list.
       if (k === ('nii' as any) && hasHni && hasHni2) continue;
       const row = resv[k];
-      if (!row || row.on === false) continue;
+      /* `on` is vestigial and no longer read — see the note on `pct()` in
+         issueInputs.ts. Honouring it meant ANNU · SYMBIOTEC · HYTECH ·
+         SKYWAYS · LUMINO published NO reservation legend at all, on five
+         mainboard records holding percentages AND share counts on every
+         category. A row with neither is still skipped below. */
+      if (!row) continue;
       /* UPPER band first — the same precedence `directOffered()` / `directOf()`
          already use, and the industry convention: exchanges, Chittorgarh,
          Bumtaria and IPOPremium all publish the offered count at the cap price.
@@ -406,7 +411,8 @@ export function offeredByBucket(ipo: IpoFull): Record<string, number> {
   if (derivedTotal <= 0) derivedTotal = totalOfferedShares(ipo);
   const out: Record<string, number> = {};
   for (const b of BUCKETS) {
-    const row = resv[b]; if (!row || row.on === false) continue;
+    // `on` is vestigial and no longer read — see `pct()` in issueInputs.ts.
+    const row = resv[b]; if (!row) continue;
     const direct = directOffered(row);
     if (direct > 0) { out[b] = direct; continue; }
     const pct = Number(row.pct);

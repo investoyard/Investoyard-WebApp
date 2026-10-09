@@ -133,29 +133,38 @@ describe('a carve-out key is excluded from the category split', () => {
     expect(issueInputsFrom(src).reservation.other).toBe(2);
   });
 
-  it('honours a row’s own on/off switch', () => {
+  it('ignores `on`, which is vestigial — the percentage still goes', () => {
     const src = { ...SAIURJA, extra: { ...SAIURJA.extra, shareResv: { ...SAIURJA.extra.shareResv, hni2: { pct: '5.0602', on: false } } } };
-    expect(issueInputsFrom(src).reservation.hni2).toBeUndefined();
+    expect(issueInputsFrom(src).reservation.hni2).toBe(5.0602);
   });
 });
 
-describe('a row with NO `on` key is ON — the bug that zeroed 39 records', () => {
+describe('`on` IS NOT READ — the flag that zeroed 39 records, then 5 more', () => {
   /**
    * `on` is VESTIGIAL. The admin form has no concept of it: `Resv` carries
    * `pct` / `sharesLower` / `sharesUpper` / `source` and nothing else, and the
    * form's own engine mapping tests `pct > 0` alone. Only 13 of the 72 records
    * with a reservation table still hold an `on` anywhere — legacy rows that
-   * also still carry the long-stripped `count` / `req1x` / `remark` — and
-   * EVERY stored `on: false` row has an empty `pct`, so it contributes nothing
-   * either way.
+   * also still carry the long-stripped `count` / `req1x` / `remark`.
    *
-   * Both old public mappers nevertheless required it to be TRUTHY
-   * (`r?.on && Number.isFinite(v)`), so on the 59 records that carry no `on`
-   * they returned a reservation of all zeros and `derive()` produced no
-   * categories at all. Measured across the catalogue: **39 records go from an
-   * all-zero split to real figures** once this is read correctly. Web's own
-   * `reservation()` — in the same file as one of those mappers — had always
-   * used `on === false`, which is the correct reading.
+   * IT COST TWO ROUNDS, in opposite directions. Both old public mappers
+   * required it to be TRUTHY (`r?.on && Number.isFinite(v)`), so on the 59
+   * records carrying no `on` at all they returned a reservation of all zeros
+   * and `derive()` produced no categories: **39 records** went from an
+   * all-zero split to real figures when that was fixed on 2026-10-03.
+   *
+   * The weaker test `on === false` was kept then, on the stated grounds that
+   * every stored `on: false` row has an empty `pct` so it changed nothing.
+   * **THAT WAS FALSE, and this file said so in a test title while asserting
+   * the opposite.** Five mainboard records — ANNU · SYMBIOTEC · HYTECH ·
+   * SKYWAYS · LUMINO — carry `on: false` on all four split rows while holding
+   * complete data, so `reservation()` returned NO ROWS and those five
+   * published no reservation legend at all, `offeredByBucket()` gave them no
+   * Book Size, and this mapper gave the engine nothing. MOLBIO is the
+   * counter-example that shows the stored values are simply inconsistent:
+   * `on: true` on its four rows, and no counts.
+   *
+   * So the flag is not read anywhere any more. `pct > 0` is the real test.
    */
   const noOnKey = {
     ...SAIURJA,
@@ -188,7 +197,41 @@ describe('a row with NO `on` key is ON — the bug that zeroed 39 records', () =
       ...noOnKey,
       extra: { ...noOnKey.extra, shareResv: { ...noOnKey.extra.shareResv, hni2: { pct: '5.0602', on: false } } },
     };
-    expect(issueInputsFrom(src).reservation.hni2).toBeUndefined();
+    expect(issueInputsFrom(src).reservation.hni2).toBe(5.0602);
+  });
+
+  /**
+   * SKYWAYS as actually stored — `on: false` on every row, beside a percentage
+   * AND a count. This is the record the 2026-10-03 reasoning said could not
+   * exist; there are five of it.
+   */
+  const SKYWAYS = {
+    type: 'mainboard',
+    lotSize: 100,
+    priceBandMin: 131,
+    priceBandMax: 138,
+    issueSize: 4140000000,
+    extra: {
+      shareResv: {
+        qib: { on: false, pct: '49.92', source: 'derived', sharesLower: '15776200', sharesUpper: '14976000' },
+        hni: { on: false, pct: '10.03', source: 'derived', sharesLower: '3169700', sharesUpper: '3009000' },
+        hni2: { on: false, pct: '5.01', source: 'derived', sharesLower: '1583300', sharesUpper: '1503000' },
+        retail: { on: false, pct: '35.04', source: 'derived', sharesLower: '11073700', sharesUpper: '10512000' },
+        other: { on: false, pct: '' },
+      },
+    },
+  };
+
+  it('reads all four of SKYWAYS’ rows, which used to come back empty', () => {
+    expect(issueInputsFrom(SKYWAYS).reservation).toEqual({
+      qib: 49.92, hni: 10.03, hni2: 5.01, retail: 35.04,
+    });
+  });
+
+  it('so SKYWAYS gets real categories instead of none', () => {
+    const cats = computeIssue(issueInputsFrom(SKYWAYS)).primary!.categories;
+    expect(cats.map((c) => c.key).sort()).toEqual(['hni', 'hni2', 'qib', 'retail']);
+    expect(cats.every((c) => c.shares > 0 && c.amount > 0)).toBe(true);
   });
 });
 

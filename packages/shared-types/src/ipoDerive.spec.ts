@@ -250,6 +250,45 @@ describe('reservation() — the legend reconciles to the issue size', () => {
     expect(rows.find((r) => r.key === 'qib')!.pct).toBe(50);
   });
 
+  /**
+   * `on: false` ON A ROW THAT HOLDS DATA. Five mainboard records store exactly
+   * this — ANNU · SYMBIOTEC · HYTECH · SKYWAYS · LUMINO — and while the flag
+   * was honoured `reservation()` returned NO ROWS for them, so those five
+   * published no reservation legend at all, and `offeredByBucket()` gave them
+   * no Book Size either. The flag is vestigial; see `pct()` in issueInputs.ts.
+   */
+  const SKYWAYS = {
+    type: 'mainboard', lotSize: 100, priceBandMin: 131, priceBandMax: 138,
+    issueSize: 4140000000,
+    extra: {
+      shareResv: {
+        qib: { on: false, pct: '49.92', source: 'derived', sharesLower: '15776200', sharesUpper: '14976000' },
+        hni: { on: false, pct: '10.03', source: 'derived', sharesLower: '3169700', sharesUpper: '3009000' },
+        hni2: { on: false, pct: '5.01', source: 'derived', sharesLower: '1583300', sharesUpper: '1503000' },
+        retail: { on: false, pct: '35.04', source: 'derived', sharesLower: '11073700', sharesUpper: '10512000' },
+        other: { on: false, pct: '' },
+      },
+    },
+  };
+
+  it('renders a legend for a row flagged `on: false` — it is vestigial', () => {
+    const rows = reservation(SKYWAYS as any);
+    expect(rows.map((r) => r.key).sort()).toEqual(['hni', 'hni2', 'qib', 'retail']);
+    // the UPPER band, per the industry convention
+    expect(rows.find((r) => r.key === 'qib')!.shares).toBe(14976000);
+    expect(rows.reduce((a, r) => a + r.shares, 0)).toBe(30000000);
+  });
+
+  it('and gives it a Book Size, which it also had none of', () => {
+    const book = offeredByBucket(SKYWAYS as any);
+    expect(book.qib).toBe(14976000);
+    expect(book.retail).toBe(10512000);
+  });
+
+  it('still skips a row holding neither a percentage nor a count', () => {
+    expect(reservation(SKYWAYS as any).find((r) => r.key === 'other')).toBeUndefined();
+  });
+
   it('does not double-count a quota already held as a shareResv row', () => {
     /* A legacy record with its employee quota in the TABLE and the carve-out
        also set must show one employee row, not two. */

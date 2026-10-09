@@ -140,6 +140,47 @@ describe('the stated total is honoured only when the OPERATOR stated it', () => 
   });
 });
 
+describe('the vestigial `on` flag is not read', () => {
+  /**
+   * SKYWAYS as stored: `on: false` on every row, beside a percentage AND a
+   * count. Five mainboard records look like this — ANNU · SYMBIOTEC · HYTECH ·
+   * SKYWAYS · LUMINO — and while the flag was honoured this resolver returned
+   * an EMPTY MAP for them, which is the one condition `computeSubs` cannot
+   * recover from: it discards the exchange's demand on every tick and nothing
+   * is stored. All five closed long before this was found, so nothing was
+   * actually lost; the fix is so that a flag three other readers now ignore
+   * cannot go on meaning something here.
+   */
+  const SKYWAYS = {
+    issueSize: 4140000000,
+    priceBandMin: 131,
+    priceBandMax: 138,
+    lotSize: 100,
+    extra: {
+      shareResv: {
+        qib: { on: false, pct: '49.92', source: 'derived', sharesLower: '15776200', sharesUpper: '14976000' },
+        hni: { on: false, pct: '10.03', source: 'derived', sharesLower: '3169700', sharesUpper: '3009000' },
+        hni2: { on: false, pct: '5.01', source: 'derived', sharesLower: '1583300', sharesUpper: '1503000' },
+        retail: { on: false, pct: '35.04', source: 'derived', sharesLower: '11073700', sharesUpper: '10512000' },
+        other: { on: false, pct: '' },
+      },
+    },
+  };
+
+  it('resolves every bucket, where it used to return nothing at all', () => {
+    const m = offeredFromIpo(SKYWAYS as any);
+    expect(m).not.toBeNull();
+    expect([...m!.keys()].sort()).toEqual(['hni', 'hni2', 'qib', 'retail']);
+    // UPPER band, per the industry convention
+    expect(m!.get('qib')).toBe(14976000);
+    expect(m!.get('retail')).toBe(10512000);
+  });
+
+  it('still leaves out a row holding neither a percentage nor a count', () => {
+    expect(offeredFromIpo(SKYWAYS as any)!.has('other' as any)).toBe(false);
+  });
+});
+
 describe('precedence between the three sources', () => {
   it('a stored COUNT wins for its own bucket, whatever the percentages imply', () => {
     const m = offeredFromIpo({
@@ -191,12 +232,12 @@ describe('precedence between the three sources', () => {
     expect(m.get('employee')).toBe(54496);
   });
 
-  it('skips a row switched explicitly off', () => {
+  it('IGNORES a row switched explicitly off — the flag is vestigial', () => {
     const m = offeredFromIpo({
       ...BOOK_BUILT,
       extra: { shareResv: { ...BOOK_BUILT.extra.shareResv, hni2: { pct: '5', on: false } } },
     })!;
-    expect(m.has('hni2')).toBe(false);
+    expect(m.has('hni2')).toBe(true);
     expect(m.has('hni')).toBe(true);
   });
 });
