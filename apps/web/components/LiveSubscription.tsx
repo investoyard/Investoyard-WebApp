@@ -126,7 +126,7 @@ export function LiveSubscription({
       {/* Share-wise + Application-wise — same components /subscription/v2 uses. */}
       <div className="subv2-ln-detail" style={{ marginTop: 14 }}>
         <div className="subv2-det-in">
-          <ShareWisePanel rows={rows} total={total} price={price} />
+          <ShareWisePanel rows={rows} total={total} price={price} anchorDeducted={anchorDeducted} anchorBasis={anchorBasis} />
           {/* SME shows this too (operator ask, 2026-10-09) — the Lot Ladder's
               Reserved column is only the Req 1× figure, not the applications
               received or the by-applications multiple. See the longer note at
@@ -148,14 +148,13 @@ export function LiveSubscription({
           issue may not have used — the anchor book can close under 60%, so an
           estimate is an upper bound. Both produce a Net QIB and only one is a
           fact, so the reader is told which. */}
+      {/* THE ANCHOR SENTENCE MOVED INTO ShareWisePanel (2026-10-10) so the two
+          dedicated subscription pages carry it too — they rendered the same
+          anchor-deducted QIB and said nothing about it. Repeating it here would
+          print it twice on this page. */}
       <p className="lsx-note">
-        {anchorDeducted <= 0
-          ? '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'
-          : anchorBasis === 'estimated'
-            ? '*QIB Book Size is Net (post anchor) — the anchor is ESTIMATED from the reserved percentage, not the allotment.'
-            : '*QIB Book Size is Net (post anchor), from the actual anchor allotment.'}
-        {hasBand && ` Amounts at the ${band} band (₹${price}).`}
-        {' '}Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
+        {hasBand && `Amounts at the ${band} band (₹${price}). `}
+        Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
       </p>
     </div>
   );

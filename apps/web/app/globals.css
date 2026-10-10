@@ -4079,6 +4079,14 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   color: var(--text-muted);
   line-height: 1.5;
 }
+/* Same treatment, inside the subv2 panel namespace — the anchor note sits
+   under the Share-wise table on all three subscription surfaces. */
+.subv2-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
 
 /* share button */
 /* Action rail — a COLUMN, not a row. The grid reserves 44px for this slot and

@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getIpos, type IpoFull } from '@/lib/api';
-import { subscriptionTable, lotLadder, type SubRowT, subCatLabel } from '@/lib/ipoCalc';
+import { subscriptionTable, lotLadder, type SubRowT, type AnchorBasis, subCatLabel } from '@/lib/ipoCalc';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
@@ -451,7 +451,7 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
                 2026-09-18). Lot ladder is now compact enough (3 rows, 3 cols
                 with two-line cells) to sit as its own column alongside
                 Share-wise and Application-wise. */}
-            <ShareWisePanel rows={table.rows} total={table.total} price={price} />
+            <ShareWisePanel rows={table.rows} total={table.total} price={price} anchorDeducted={table.anchorDeducted} anchorBasis={table.anchorBasis} />
             {/*
               * SME SHOWS THIS TOO (operator ask, 2026-10-09). It was hidden on
               * 2026-09-22 on the grounds that SME's application count is
@@ -485,7 +485,38 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
  *  present (see subscriptionTable) and rendered with the `combo` class for
  *  the pastel indigo background. Sub-rows are NOT indented (operator ask). */
 const SHARE_ORDER: Record<string, number> = { qib: 0, nii: 1, hni: 2, hni2: 3, retail: 4, employee: 5, shareholder: 6, policyholder: 7 };
-export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total: SubRowT; price: number }) {
+/**
+ * THE QIB BOOK SIZE IS NET OF THE ANCHOR, AND THE PANEL NOW SAYS SO — on all
+ * three surfaces, because this component is all three (operator ask,
+ * 2026-10-10).
+ *
+ * `subscriptionTable` has deducted the anchor from QIB since 2026-09-21, and
+ * the detail page explained it in a footnote of its own — but `/subscription`
+ * and `/subscription/v2` render the same deducted number and said NOTHING, so
+ * a reader comparing our QIB against the issue's reservation table found it
+ * short by the anchor with no explanation on the page. The note lives HERE now,
+ * next to the table it describes, and `LiveSubscription` no longer repeats it.
+ *
+ * TWO WAYS OF SAYING IT, deliberately. The row LABEL reads "QIB (Ex. Anchor)",
+ * which is what the exchanges, Chittorgarh and IPOPremium all print, so the
+ * number explains itself where it is read; the footnote states which of the
+ * three states produced it.
+ *
+ * THREE STATES, not two. A deduction from a stated share count is the ALLOTMENT
+ * off the intimation letter and a reader can check it against the exchange; one
+ * from `anchorPct` is our own arithmetic against a ceiling the issue may not
+ * have used, so it is an upper bound and not a figure. Both give a net QIB and
+ * only one is a fact.
+ *
+ * NOT THE SAME BASIS AS THE RESERVATION LEGEND, and that is correct rather than
+ * a disagreement: the legend shows the FULL QIB quota (the anchor is a
+ * sub-allocation of it), this shows what is left for the public book. Labelling
+ * this one "(Ex. Anchor)" is what lets a reader reconcile the two.
+ */
+export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorBasis = null }: {
+  rows: SubRowT[]; total: SubRowT; price: number;
+  anchorDeducted?: number; anchorBasis?: AnchorBasis;
+}) {
   /* Value each row at ITS OWN price. A discounted quota valued at the band
      price reads high — RUNWALENTR's employee book showed ₹3.67 Cr where those
      shares cost ₹3.50 Cr at the discounted ₹291. `r.price` falls back to the
@@ -522,7 +553,10 @@ export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total:
               // the two SPLIT rows (hni + hni2), which read as sub-categories.
               const isCombo = r.key === 'nii';
               const isSubcat = r.key === 'hni' || r.key === 'hni2';
-              const label = isCombo ? 'HNI' : r.cat;
+              /* Only when a deduction was actually applied — on a record with no
+                 anchor figure the Book Size IS gross and the label would lie. */
+              const exAnchor = r.key === 'qib' && anchorDeducted > 0;
+              const label = isCombo ? 'HNI' : exAnchor ? 'QIB (Ex. Anchor)' : r.cat;
               const dotKey = isCombo ? 'hni' : dotClassFor(r.key ?? '');
               return (
                 <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
@@ -542,6 +576,13 @@ export function ShareWisePanel({ rows, total, price }: { rows: SubRowT[]; total:
           </tbody>
         </table>
       </div>
+      <p className="subv2-note">
+        {anchorDeducted <= 0
+          ? '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'
+          : anchorBasis === 'estimated'
+            ? `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, which is ESTIMATED from the reserved percentage rather than the allotment.`
+            : `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, from the actual anchor allotment.`}
+      </p>
     </section>
   );
 }

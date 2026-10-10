@@ -1259,112 +1259,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     return parts.length ? `${parts.join(' and ')}.` : '';
   })();
 
-  /**
-   * Blocking checks shown inline — all of them from the ENGINE now.
-   *
-   * The admin form is not the only writer: the Excel importer and the API both
-   * call computeIssue directly, so a rule living in this component is a rule
-   * half the callers skip. B01 · B02 · W01 · B09 · B10 are engine rules and the
-   * form only renders them.
-   *
-   * The one check kept locally is B04, as a post-condition. It should be
-   * unfalsifiable — Step 3 absorbs the residual, so the sum always reconciles —
-   * which is exactly why it is worth asserting rather than assuming.
-   */
-  const issues = useMemo(() => {
-    const out: { code: string; msg: string; blocking: boolean }[] = [];
-    for (const p of derived.issues) out.push({ code: p.code, msg: p.message, blocking: p.severity === 'blocking' });
-    const sc = derived.primary;
-    if (sc) {
-      const sum = sc.categories.reduce((a: number, c: any) => a + c.shares, 0);
-      if (sum !== sc.netOfferShares) {
-        out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
-      }
-    }
-    /* A legacy record whose employee or shareholder quota sits in the
-       reservation table now has it read nowhere: the row is derived and the pct
-       is excluded from the split. Say so loudly rather than letting the
-       reservation evaporate — AUGMONT (employee 0.691%) and NSE (employee
-       43,33,437 shares) are the two in the catalogue, and both need the figure
-       moved to the carve-out field. */
-    /* The three that have a legacy table row, NOT CARVEOUT_ROWS — the market
-       maker joined that list on 2026-10-09 and has no row to have been typed
-       into. The label also came off a two-way ternary, so a POLICYHOLDER quota
-       would have been reported as a shareholder one. */
-    for (const key of CARVEOUT_TABLE_KEYS) {
-      const pct = fnum(form.shareResv[key]?.pct);
-      const count = Number(String(form.shareResv[key]?.sharesUpper ?? '').replace(/[^\d]/g, ''));
-      const cv = fnum(carveoutInput(form, key).value);
-      if ((pct > 0 || count > 0) && !(cv > 0)) {
-        const label = CARVEOUT_LABEL[key];
-        out.push({
-          code: 'E-RESV',
-          msg: `This record holds a ${label.toLowerCase()} quota in the reservation table (${pct > 0 ? `${pct}%` : `${count.toLocaleString('en-IN')} shares`}), where nothing reads it. A ${label.toLowerCase()} reservation comes off the TOP — move it to the ${label} carve-out above, in shares if the RHP states a count.`,
-          blocking: true,
-        });
-      }
-    }
-    /*
-     * W-SUB — NO RESERVATION SPLIT ON AN ISSUE THAT HAS NOT CLOSED YET
-     * (operator ask, 2026-10-06, after ten SME issues closed with no
-     * subscription data at all).
-     *
-     * This is the most expensive omission on the screen and the only one whose
-     * cost is IRREVERSIBLE. `computeSubs` in the poller returns `[]` the moment
-     * it has no denominator — `if (!offeredByBucket || offeredByBucket.size === 0
-     * …) return []` — and `offeredFromIpo()` can only build that map from
-     * `extra.shareResv`. So on a record with no percentages the exchange's
-     * demand is fetched and THROWN AWAY on every tick, once a minute and every
-     * five seconds after 15:30, and nothing is stored. A bidding day that
-     * passes without a reservation table cannot be recovered afterwards: the
-     * usual rescue, `nseShares ÷ timesSubscribed`, needs a row that was
-     * written, and none was.
-     *
-     * DSL · EIMS · EVENTIONS · OMARA · SHREETNB · SJP · SOLLFEGE closed on
-     * 5 Oct and ACMERAIL · PARASYNTEX · TNA on 6 Oct, all ten with zero rows.
-     *
-     * A WARNING, not a blocker, on purpose: an issue is often entered before
-     * its RHP is out, and the percentages genuinely are not known yet. Blocking
-     * the save would just mean the record is not entered at all.
-     *
-     * It needs a CLOSE DATE to fire, which keeps it quiet on a half-typed new
-     * record and on the ~1,200 closed historical rows where the data is already
-     * gone and the warning would be nothing but noise.
-     */
-    /*
-     * A STORED SHARE COUNT COUNTS TOO, and testing only `pct` was a false
-     * positive caught before this shipped. `offeredFromIpo` resolves each
-     * bucket from its count FIRST (`directOf(row)`) and only derives from the
-     * percentage when there is none — so a table filled in with counts off the
-     * RHP and no percentages at all works perfectly, and warning about it would
-     * be telling the operator to fix something that is not broken.
-     *
-     * RKFAL is the live case: no percentages, counts on all four rows
-     * (QIB 43,200 · bHNI 10,70,400 · sHNI 5,36,000 · Retail 24,03,200), six
-     * subscription rows written. The warning must stay silent on it.
-     */
-    const splitFilled = RESV_ROWS
-      .filter((r) => !CARVEOUT_ROWS.includes(r.key))
-      .reduce((a, r) => {
-        const row = form.shareResv[r.key];
-        const cnt = (f: 'sharesUpper' | 'sharesLower') => Number(String(row?.[f] ?? '').replace(/[^\d]/g, ''));
-        return a + (fnum(row?.pct) > 0 || cnt('sharesUpper') > 0 || cnt('sharesLower') > 0 ? 1 : 0);
-      }, 0);
-    const closeYmd = (form.closeDate || '').slice(0, 10);
-    const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    if (splitFilled === 0 && closeYmd && closeYmd >= todayYmd) {
-      const opens = (form.openDate || '').slice(0, 10);
-      const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';
-      out.push({
-        code: 'W-SUB',
-        msg: `No reservation split entered, and this issue ${when} (closes ${closeYmd}). `
-          + 'Until the QIB / HNI / Retail rows carry a percentage or a share count, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
-          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Either percentages or counts will do; you do not need both.',
-        blocking: false,
-      });
-    }
-    return out;
-  }, [derived, form.shareResv, form.closeDate, form.openDate]);
 
   /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
   const legSumCr = legSumCrOf(form);
@@ -1466,6 +1360,167 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       grossPct: offerTotals.totalCap > 0 ? r2((grossShares / offerTotals.totalCap) * 100) : 0,
     };
   })();
+
+  /**
+   * Blocking checks shown inline — all of them from the ENGINE now.
+   *
+   * The admin form is not the only writer: the Excel importer and the API both
+   * call computeIssue directly, so a rule living in this component is a rule
+   * half the callers skip. B01 · B02 · W01 · B09 · B10 are engine rules and the
+   * form only renders them.
+   *
+   * The one check kept locally is B04, as a post-condition. It should be
+   * unfalsifiable — Step 3 absorbs the residual, so the sum always reconciles —
+   * which is exactly why it is worth asserting rather than assuming.
+   */
+  const issues = useMemo(() => {
+    const out: { code: string; msg: string; blocking: boolean }[] = [];
+    for (const p of derived.issues) out.push({ code: p.code, msg: p.message, blocking: p.severity === 'blocking' });
+    const sc = derived.primary;
+    /*
+     * B04 IS A POST-CONDITION ON THE ENGINE'S OWN SPLIT, so it means nothing
+     * when the engine produced no split at all. `issueInputsFrom` maps
+     * PERCENTAGES, so a record stating its reservation as COUNTS hands
+     * `computeIssue` an empty reservation and gets back no categories — and
+     * this then summed them to 0 and blocked with "Category shares total 0
+     * but the net offer is 74,06,000". It fired on EVERY count-only record
+     * (24 of them, all SME, LOANFRONT the 25th) with nothing the operator
+     * could do about it, which is how a blocking banner gets trained into
+     * background noise — the same failure as a false OVERWRITE badge on the
+     * card parser.
+     *
+     * B01 already guards this way: it counts the percentages before
+     * complaining about their sum. An empty set is not a violation.
+     *
+     * The table's own reconciliation is not lost — it is the `Total (issue
+     * size)` row, which reads 100% when complete and is what caught
+     * LOANFRONT.
+     */
+    if (sc && sc.categories.length > 0) {
+      const sum = sc.categories.reduce((a: number, c: any) => a + c.shares, 0);
+      if (sum !== sc.netOfferShares) {
+        out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
+      }
+    }
+    /* A legacy record whose employee or shareholder quota sits in the
+       reservation table now has it read nowhere: the row is derived and the pct
+       is excluded from the split. Say so loudly rather than letting the
+       reservation evaporate — AUGMONT (employee 0.691%) and NSE (employee
+       43,33,437 shares) are the two in the catalogue, and both need the figure
+       moved to the carve-out field. */
+    /* The three that have a legacy table row, NOT CARVEOUT_ROWS — the market
+       maker joined that list on 2026-10-09 and has no row to have been typed
+       into. The label also came off a two-way ternary, so a POLICYHOLDER quota
+       would have been reported as a shareholder one. */
+    for (const key of CARVEOUT_TABLE_KEYS) {
+      const pct = fnum(form.shareResv[key]?.pct);
+      const count = Number(String(form.shareResv[key]?.sharesUpper ?? '').replace(/[^\d]/g, ''));
+      const cv = fnum(carveoutInput(form, key).value);
+      if ((pct > 0 || count > 0) && !(cv > 0)) {
+        const label = CARVEOUT_LABEL[key];
+        out.push({
+          code: 'E-RESV',
+          msg: `This record holds a ${label.toLowerCase()} quota in the reservation table (${pct > 0 ? `${pct}%` : `${count.toLocaleString('en-IN')} shares`}), where nothing reads it. A ${label.toLowerCase()} reservation comes off the TOP — move it to the ${label} carve-out above, in shares if the RHP states a count.`,
+          blocking: true,
+        });
+      }
+    }
+    /*
+     * W-SUB — NO RESERVATION SPLIT ON AN ISSUE THAT HAS NOT CLOSED YET
+     * (operator ask, 2026-10-06, after ten SME issues closed with no
+     * subscription data at all).
+     *
+     * This is the most expensive omission on the screen and the only one whose
+     * cost is IRREVERSIBLE. `computeSubs` in the poller returns `[]` the moment
+     * it has no denominator — `if (!offeredByBucket || offeredByBucket.size === 0
+     * …) return []` — and `offeredFromIpo()` can only build that map from
+     * `extra.shareResv`. So on a record with no percentages the exchange's
+     * demand is fetched and THROWN AWAY on every tick, once a minute and every
+     * five seconds after 15:30, and nothing is stored. A bidding day that
+     * passes without a reservation table cannot be recovered afterwards: the
+     * usual rescue, `nseShares ÷ timesSubscribed`, needs a row that was
+     * written, and none was.
+     *
+     * DSL · EIMS · EVENTIONS · OMARA · SHREETNB · SJP · SOLLFEGE closed on
+     * 5 Oct and ACMERAIL · PARASYNTEX · TNA on 6 Oct, all ten with zero rows.
+     *
+     * A WARNING, not a blocker, on purpose: an issue is often entered before
+     * its RHP is out, and the percentages genuinely are not known yet. Blocking
+     * the save would just mean the record is not entered at all.
+     *
+     * It needs a CLOSE DATE to fire, which keeps it quiet on a half-typed new
+     * record and on the ~1,200 closed historical rows where the data is already
+     * gone and the warning would be nothing but noise.
+     */
+    /*
+     * A STORED SHARE COUNT COUNTS TOO, and testing only `pct` was a false
+     * positive caught before this shipped. `offeredFromIpo` resolves each
+     * bucket from its count FIRST (`directOf(row)`) and only derives from the
+     * percentage when there is none — so a table filled in with counts off the
+     * RHP and no percentages at all works perfectly, and warning about it would
+     * be telling the operator to fix something that is not broken.
+     *
+     * RKFAL is the live case: no percentages, counts on all four rows
+     * (QIB 43,200 · bHNI 10,70,400 · sHNI 5,36,000 · Retail 24,03,200), six
+     * subscription rows written. The warning must stay silent on it.
+     */
+    const splitFilled = RESV_ROWS
+      .filter((r) => !CARVEOUT_ROWS.includes(r.key))
+      .reduce((a, r) => {
+        const row = form.shareResv[r.key];
+        const cnt = (f: 'sharesUpper' | 'sharesLower') => Number(String(row?.[f] ?? '').replace(/[^\d]/g, ''));
+        return a + (fnum(row?.pct) > 0 || cnt('sharesUpper') > 0 || cnt('sharesLower') > 0 ? 1 : 0);
+      }, 0);
+    /*
+     * W-ANCHOR — THE QIB ROW LOOKS LIKE IT HOLDS THE POST-ANCHOR FIGURE
+     * (2026-10-10, after this fault turned up on a THIRTEENTH record).
+     *
+     * The reservation table is the OFFERED reservation: QIB's row is the
+     * whole quota, and the anchor is a SUB-ALLOCATION of it that the panel
+     * below deducts. Entering QIB net of the anchor leaves the table short by
+     * exactly the anchor — and it is a genuinely inviting mistake, because
+     * the exchanges and every information site publish a "QIB (Ex. Anchor)"
+     * line, so that is the number in front of the operator.
+     *
+     * Twelve records were repaired on 2026-10-09 and LOANFRONT was caught
+     * being entered the same way the next morning, three days before it
+     * opened. Thirteen is a systematic trap, not thirteen slips, so the form
+     * has to catch it at entry rather than a script catching it after.
+     *
+     * THE TEST IS THE SHORTFALL EQUALLING THE ANCHOR TO THE SHARE, which is
+     * specific enough that it cannot fire on an ordinary incomplete table: a
+     * record missing a row is short by that row, not by the anchor. A WARNING
+     * and not a blocker, because the engine cannot prove which figure was
+     * meant and an operator may simply be mid-entry.
+     */
+    const anchorEntered = fnum(form.anchorShares);
+    const shortBy = offerTotals.totalCap - resvTotals.grossShares;
+    if (anchorEntered > 0 && Math.abs(shortBy - anchorEntered) <= 2 && resvTotals.shares > 0) {
+      const qibNow = shownCount('qib', 'sharesUpper', offerTotals.cap);
+      out.push({
+        code: 'W-ANCHOR',
+        msg: `The reservation table is short by ${Math.round(shortBy).toLocaleString('en-IN')} shares, which is EXACTLY the anchor allotment entered below. `
+          + `The QIB row looks like it holds the post-anchor figure. This table takes the FULL QIB quota — the anchor is a sub-allocation of it, deducted in the panel below — so QIB should read `
+          + `${(qibNow + anchorEntered).toLocaleString('en-IN')} rather than ${qibNow.toLocaleString('en-IN')}. `
+          + 'Enter the full quota and the table reaches 100% of the issue size on its own.',
+        blocking: false,
+      });
+    }
+    const closeYmd = (form.closeDate || '').slice(0, 10);
+    const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (splitFilled === 0 && closeYmd && closeYmd >= todayYmd) {
+      const opens = (form.openDate || '').slice(0, 10);
+      const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';
+      out.push({
+        code: 'W-SUB',
+        msg: `No reservation split entered, and this issue ${when} (closes ${closeYmd}). `
+          + 'Until the QIB / HNI / Retail rows carry a percentage or a share count, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
+          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Either percentages or counts will do; you do not need both.',
+        blocking: false,
+      });
+    }
+    return out;
+  }, [derived, form, offerTotals, resvTotals, shownCount]);
 
   /**
    * Is this offer sized in SHARES rather than rupees?
@@ -2260,7 +2315,41 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                       </tr>
                     ) : (
                       <tr key={r.key}>
-                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>
+                          {r.label}
+                          {/*
+                            THE ANCHOR, SHOWN WHERE IT ACTUALLY LIVES — INSIDE QIB,
+                            not as a row of its own (operator ask, 2026-10-10).
+
+                            Asked for as a seventh row so the table would reach 100%.
+                            It cannot be one: the four carve-outs come OFF THE TOP and
+                            are mutually exclusive with the split, while the anchor is a
+                            SUB-ALLOCATION of QIB — QIB's count already contains it. A row
+                            would double-count, and the reason that is easy to miss is
+                            that on a record whose QIB is wrongly net of the anchor the
+                            two errors cancel and it reads exactly 100%. On a correctly
+                            entered record the same row gives 128%.
+
+                            A sub-line answers the real question — "where is the anchor in
+                            this table" — without touching the sum, and it is how the
+                            exchanges, Chittorgarh and IPOPremium all print it.
+
+                            Hidden when the anchor exceeds the QIB count, because that is
+                            the broken state W-ANCHOR is already explaining and an
+                            "ex-anchor" of minus seven lakh shares explains nothing.
+                          */}
+                          {r.key === 'qib' && (() => {
+                            const an = fnum(form.anchorShares);
+                            const q = shownCount('qib', 'sharesUpper', offerTotals.cap);
+                            if (!(an > 0) || !(q > an)) return null;
+                            return (
+                              <div className="rc-src rc-src-derived" style={{ marginTop: 2, fontWeight: 400 }}
+                                title="The anchor portion is allotted out of the QIB quota before bidding opens. This row is the FULL quota; the Live Subscription panel shows the ex-anchor book.">
+                                of which anchor {an.toLocaleString('en-IN')} · ex-anchor {(q - an).toLocaleString('en-IN')}
+                              </div>
+                            );
+                          })()}
+                        </td>
                         {/* QIB carries the snap: typing 75 or 50 fills every
                             other row and the regulation basis (see onQibPctChange). */}
                         {(() => {
