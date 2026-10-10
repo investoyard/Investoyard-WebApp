@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
@@ -2314,42 +2314,9 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                         })()}
                       </tr>
                     ) : (
-                      <tr key={r.key}>
-                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>
-                          {r.label}
-                          {/*
-                            THE ANCHOR, SHOWN WHERE IT ACTUALLY LIVES — INSIDE QIB,
-                            not as a row of its own (operator ask, 2026-10-10).
-
-                            Asked for as a seventh row so the table would reach 100%.
-                            It cannot be one: the four carve-outs come OFF THE TOP and
-                            are mutually exclusive with the split, while the anchor is a
-                            SUB-ALLOCATION of QIB — QIB's count already contains it. A row
-                            would double-count, and the reason that is easy to miss is
-                            that on a record whose QIB is wrongly net of the anchor the
-                            two errors cancel and it reads exactly 100%. On a correctly
-                            entered record the same row gives 128%.
-
-                            A sub-line answers the real question — "where is the anchor in
-                            this table" — without touching the sum, and it is how the
-                            exchanges, Chittorgarh and IPOPremium all print it.
-
-                            Hidden when the anchor exceeds the QIB count, because that is
-                            the broken state W-ANCHOR is already explaining and an
-                            "ex-anchor" of minus seven lakh shares explains nothing.
-                          */}
-                          {r.key === 'qib' && (() => {
-                            const an = fnum(form.anchorShares);
-                            const q = shownCount('qib', 'sharesUpper', offerTotals.cap);
-                            if (!(an > 0) || !(q > an)) return null;
-                            return (
-                              <div className="rc-src rc-src-derived" style={{ marginTop: 2, fontWeight: 400 }}
-                                title="The anchor portion is allotted out of the QIB quota before bidding opens. This row is the FULL quota; the Live Subscription panel shows the ex-anchor book.">
-                                of which anchor {an.toLocaleString('en-IN')} · ex-anchor {(q - an).toLocaleString('en-IN')}
-                              </div>
-                            );
-                          })()}
-                        </td>
+                      <Fragment key={r.key}>
+                      <tr>
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
                         {/* QIB carries the snap: typing 75 or 50 fills every
                             other row and the regulation basis (see onQibPctChange). */}
                         {(() => {
@@ -2468,6 +2435,55 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                           );
                         })()}
                       </tr>
+                      {/*
+                        ANCHOR AND EX-ANCHOR AS THEIR OWN LINES (operator ask,
+                        2026-10-10, after the sub-line version).
+
+                        SUB-ROWS OF QIB, NOT SIBLINGS OF IT, and that is the whole
+                        constraint. QIB's count IS the anchor plus the ex-anchor, so
+                        three rows all counting toward the total would treble that
+                        quota. They are excluded from both Total rows for the same
+                        reason the Share-wise panel never sums its NII subtotal
+                        alongside bHNI and sHNI.
+
+                        ON THE SAME BASIS AS THE PARENT — percentages of the NET
+                        offer — so the two visibly add up to the QIB row above them
+                        (29.70 + 20.17 = 49.88). The anchor's share OF QIB is the
+                        other figure worth having and it is the one B09 caps, so it
+                        goes in the tooltip rather than introducing a third basis
+                        into a column that already carries two.
+
+                        Hidden when the anchor is absent or exceeds QIB: the latter
+                        is the state W-ANCHOR is already explaining, and an
+                        ex-anchor of minus seven lakh shares explains nothing.
+                      */}
+                      {r.key === 'qib' && (() => {
+                        const an = fnum(form.anchorShares);
+                        const qCap = shownCount('qib', 'sharesUpper', offerTotals.cap);
+                        const qFloor = shownCount('qib', 'sharesLower', offerTotals.floor);
+                        if (!(an > 0) || !(qCap > an)) return null;
+                        const pctOf = (v: number) => (offerTotals.cap > 0 ? (v / offerTotals.cap) * 100 : 0);
+                        const line = (label: string, cap: number, floor: number, title: string) => (
+                          <tr className="resv-derived-row">
+                            <td style={{ fontWeight: 600, fontSize: 12.5, paddingLeft: 26 }}>
+                              {label}
+                              <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>within QIB</div>
+                            </td>
+                            <td className="r mono" title={title}>{pctOf(cap).toFixed(2)}</td>
+                            <td className="rc-derived r">{cap.toLocaleString('en-IN')}</td>
+                            {!sharesSized && <td className="rc-derived r">{floor > 0 ? floor.toLocaleString('en-IN') : <span className="muted">—</span>}</td>}
+                            <td className="rc-derived r">{`₹${((cap * resvPrice) / 1e7).toFixed(2)} Cr`}</td>
+                            <td className="rc-derived r"><span className="muted">—</span></td>
+                          </tr>
+                        );
+                        return (
+                          <>
+                            {line('Anchor portion', an, an, `The anchor allotment, taken out of the QIB quota before bidding opens — ${((an / qCap) * 100).toFixed(2)}% of QIB. It does not move with the price band, so it is the same count at either band.`)}
+                            {line('QIB (Ex. Anchor)', qCap - an, qFloor > an ? qFloor - an : 0, 'What is left of QIB for the public book once the anchor is allotted. This is the Book Size the Live Subscription panel measures demand against.')}
+                          </>
+                        );
+                      })()}
+                      </Fragment>
                     )))}
                     {/* The total is the check an operator actually runs: does the
                         split add back up to the offer? Reading it off four rows
