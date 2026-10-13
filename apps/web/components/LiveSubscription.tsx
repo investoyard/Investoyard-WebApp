@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { ShareWisePanel, AppWisePanel } from '@/components/SubscriptionHub';
+import { ShareWisePanel, AppWisePanel, DemandPanel } from '@/components/SubscriptionHub';
 import { Icon } from '@/components/Icon';
 import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
 
@@ -133,6 +133,9 @@ export function LiveSubscription({
               the AppWisePanel mount in SubscriptionHub.tsx. The panel
               self-hides when no row carries a bid count. */}
           <AppWisePanel rows={rows} />
+          {/* The detail page carries no Lot ladder, so the Demand card takes
+              the third column directly rather than stacking (2026-10-13). */}
+          <DemandPanel rows={rows} total={total} price={price} />
         </div>
       </div>
 

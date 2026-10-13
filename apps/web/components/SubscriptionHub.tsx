@@ -467,8 +467,15 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
               * application figures for renders nothing rather than an empty
               * table. 4 of the 9 SME issues with subscription rows have them.
               */}
-            <AppWisePanel rows={table.rows} />
-            <LotLadderPanel ipo={ipo} />
+            {/* COLUMN 2 STACKS Application-wise over the Lot ladder, so column
+                3 can carry the new Demand card (operator ask, 2026-10-13).
+                Three grid columns either way — the ladder moved DOWN, it did
+                not move out. */}
+            <div className="subv2-det-stack">
+              <AppWisePanel rows={table.rows} />
+              <LotLadderPanel ipo={ipo} />
+            </div>
+            <DemandPanel rows={table.rows} total={table.total} price={price} />
           </div>
         </div>
       )}
@@ -624,6 +631,73 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
         </table>
       </div>
       <p className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>Total applications: <b>{fmtIn(totalApps)}</b></p>
+    </section>
+  );
+}
+
+/**
+ * SUBSCRIPTION DEMAND, IN ₹ CRORE (operator ask, 2026-10-13, against
+ * ipopremium.in/view/subscription).
+ *
+ * The same four columns as Share-wise, valued in rupees instead of counted in
+ * shares. NO NEW ARITHMETIC: `subscriptionTable` already returns book size,
+ * subscribed and each row's own price, and Share-wise already prints the ₹ Cr
+ * under every share figure. This card is that figure promoted to the headline.
+ *
+ * EACH ROW AT ITS OWN PRICE, not the band price — the same rule Share-wise
+ * follows. A discounted quota valued at the band price reads high: RUNWALENTR's
+ * 1,20,275 employee shares are ₹3.50 Cr at ₹291, not ₹3.67 Cr at ₹305.
+ *
+ * TIMES IS TAKEN FROM `r.times`, NEVER RECOMPUTED FROM THE ₹ FIGURES. The ratio
+ * is identical either way — both sides scale by the same price — so the only
+ * thing recomputing could add is rounding drift between two cards showing the
+ * same issue. One renderer, or two renderers will disagree.
+ *
+ * WHAT THIS CARD DELIBERATELY DOES NOT HAVE: the reference breaks QIB into
+ * FIIs / DIIs / Mutual funds / Others. We store ONE `qib` row — that breakdown
+ * is not in our data at all, and inventing it would be fabrication. Adding it
+ * is a poller and schema change, not a display one.
+ */
+export function DemandPanel({ rows, total, price }: { rows: SubRowT[]; total: SubRowT; price: number }) {
+  if (!rows.length) return null;
+  const at = (shares: number, rowPrice?: number) => {
+    const px = rowPrice && rowPrice > 0 ? rowPrice : price;
+    return px > 0 ? (shares * px) / 1e7 : 0;
+  };
+  // Same order as Share-wise, so the two cards read as one table in two units.
+  const ordered = rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99));
+  const cr = (v: number) => (v > 0 ? v.toFixed(2) : '—');
+  return (
+    <section className="subv2-det-panel">
+      <header>
+        <h4>Subscription Demand</h4>
+        <span className="muted">in ₹ crore</span>
+      </header>
+      <div className="subv2-tbl-wrap">
+        <table className="subv2-tbl">
+          <thead><tr><th>Category</th><th>Offered</th><th>Applied</th><th>Times</th></tr></thead>
+          <tbody>
+            {ordered.map((r) => {
+              const isCombo = r.key === 'nii';
+              const isSubcat = r.key === 'hni' || r.key === 'hni2';
+              return (
+                <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
+                  <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
+                  <td>{cr(at(r.bookSize, r.price))}</td>
+                  <td><b>{cr(at(r.subscribed, r.price))}</b></td>
+                  <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
+                </tr>
+              );
+            })}
+            <tr className="tot">
+              <td>Total</td>
+              <td>{cr(at(total.bookSize, total.price))}</td>
+              <td><b>{cr(at(total.subscribed, total.price))}</b></td>
+              <td className={`tone-${tone(total.times)}`}><b>{total.times.toFixed(2)}×</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
