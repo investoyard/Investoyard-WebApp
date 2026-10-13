@@ -124,6 +124,17 @@ export default function AllotmentListPage() {
           </div>
           <button className="btn" disabled={busy || !ipoId} onClick={() => search(ipoId, 1)}>{busy ? 'Searching…' : 'Search'}</button>
           <button className="btn btn-ghost" disabled={busy} onClick={reset}>Reset</button>
+          {/* A LINK, not a fetch: the export streams and a large IPO runs to
+              hundreds of MB, which must never be held in a browser variable.
+              It carries the same filters the table is showing, so what you get
+              is what you are looking at — including a filtered subset. */}
+          <a
+            className="btn btn-ghost"
+            href={ipoId ? api.allotmentCsvUrl({ ipoId, pan, amountOp, amount, amountField, status }) : undefined}
+            aria-disabled={!ipoId || !result}
+            style={!ipoId || !result ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+            title="Download the rows matching these filters as a CSV, which Excel opens directly"
+          >Export to Excel</a>
         </div>
 
         {summary && (
@@ -150,7 +161,7 @@ export default function AllotmentListPage() {
             <div style={{ overflowX: 'auto' }}>
               <table className="table">
                 <thead><tr>
-                  <th>PAN</th><th>Name</th><th>Application No</th><th>Catg</th>
+                  <th>PAN</th><th>Name</th><th>Application No</th><th>Catg</th><th>TM Name</th>
                   <th style={{ textAlign: 'right' }}>Applied</th><th style={{ textAlign: 'right' }}>Amount</th>
                   <th style={{ textAlign: 'right' }}>Allotted</th><th style={{ textAlign: 'right' }}>Allotted ₹</th>
                   <th style={{ textAlign: 'right' }}>Refund ₹</th><th>Reason</th>
@@ -162,6 +173,10 @@ export default function AllotmentListPage() {
                       <td><div style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name ?? ''}>{r.name || '—'}</div></td>
                       <td className="mono">{r.applicationNo || '—'}</td>
                       <td className="mono">{r.category || '—'}</td>
+                      {/* Null on every row imported before 2026-10-13, and on
+                          any file whose registrar does not ship the column —
+                          a dash says "not in this data", never a wrong name. */}
+                      <td><div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.tmName ?? ''}>{r.tmName || '—'}</div></td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtInt(r.appliedShares)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{money(r.amount)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>

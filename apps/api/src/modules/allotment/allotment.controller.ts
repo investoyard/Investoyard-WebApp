@@ -1,7 +1,8 @@
 import {
-  BadRequestException, Body, Controller, Get, Param, Post, Query,
+  BadRequestException, Body, Controller, Get, Param, Post, Query, Res,
   UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomUUID } from 'crypto';
@@ -77,6 +78,41 @@ export class AllotmentController {
       amount: amount != null && amount !== '' ? Number(amount) : undefined,
       page: page ? Number(page) : undefined,
     });
+  }
+
+  /**
+   * GET /api/admin/allotment/records.csv — the list's Export button.
+   *
+   * Takes the SAME query parameters as /records and hands them to the same
+   * filter builder, so an export is exactly the rows on screen rather than a
+   * second opinion about what the filters meant.
+   *
+   * Streamed, not buffered: a 1M-row IPO is ordinary here and holding the whole
+   * file in memory inside iisnode is the thing the parser already runs in its
+   * own process to avoid.
+   */
+  @Get('records.csv')
+  @RequirePermissions('bids.view')
+  async recordsCsv(
+    @Res() res: Response,
+    @Query('ipoId') ipoId: string,
+    @Query('pan') pan?: string,
+    @Query('amountOp') amountOp?: string,
+    @Query('amount') amount?: string,
+    @Query('amountField') amountField?: string,
+    @Query('status') status?: string,
+  ) {
+    if (!ipoId) throw new BadRequestException('ipoId is required.');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="allotment-${new Date().toISOString().slice(0, 10)}.csv"`);
+    /* UTF-8 BOM: without it Excel reads the file as the system codepage and
+       mangles any non-ASCII name in the registrar's data. */
+    res.write('\uFEFF');
+    await this.svc.exportRecordsCsv(
+      { ipoId, pan, amountOp, amountField, status, amount: amount != null && amount !== '' ? Number(amount) : undefined },
+      (chunk) => res.write(chunk),
+    );
+    res.end();
   }
 
   @Post('archive/:ipoId')

@@ -10,11 +10,14 @@
  *   [applicationNo, pan, dpClientId, category, name,
  *    appliedShares, amount, allottedShares, allottedAmount, refundAmount, reason]
  * Progress goes to stdout as "P <rows>" every 50k; final line is "DONE <rows>".
+ * The header row is reported once as "H <json array>" — see `emitHeaders`.
  */
 import { createReadStream, createWriteStream, openSync, readSync, closeSync } from 'fs';
 import { extname } from 'path';
 
-type Row = [string, string, string, string, string, number, number, number, number, number, string];
+/* `tmName` is APPENDED (index 11), never inserted, so an archive written before
+   2026-10-13 still restores: its rows are 11 long and `r[11]` is undefined. */
+type Row = [string, string, string, string, string, number, number, number, number, number, string, string];
 
 /** header-name candidates, uppercased with non-alphanumerics stripped */
 const COLS: Record<string, string[]> = {
@@ -30,6 +33,15 @@ const COLS: Record<string, string[]> = {
   refund: ['REFUNDAMOUNT', 'RFNDAMT', 'REFUND', 'REFUNDAMT'],
   reason: ['REASONFORREJECTION', 'REASON', 'REJECTIONREASON', 'REJECTREASON', 'REMARKS'],
   status: ['APPLNSTATUS', 'STATUS', 'ALLOTMENTSTATUS'],
+  /* TRADING MEMBER / BROKER (operator ask, 2026-10-13). These candidates are
+     PROVISIONAL: the only registrar file on this box when they were written was
+     a truncated upload that would not parse, so none of them has been checked
+     against a real document. That is exactly why the header row is now recorded
+     on `AllotmentImport.headers` — one real upload names the column and this
+     list stops being a guess. An unmatched column simply leaves the field null;
+     it never writes a wrong value. */
+  tm: ['TMNAME', 'TM', 'TRADINGMEMBER', 'TRADINGMEMBERNAME', 'BROKERNAME', 'BROKER',
+    'MEMBERNAME', 'MEMBER', 'SYNDICATEMEMBER', 'TMCODE', 'BROKERCODE', 'TRADINGMEMBERCODE'],
 };
 const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const num = (v: unknown) => {
@@ -65,8 +77,25 @@ function toRow(cells: unknown[], idx: Record<string, number>): Row | null {
   return [
     applNo, pan, str(get('dp')), str(get('catg')).toUpperCase(), str(get('name')),
     num(get('applied')), num(get('amount')), allotted, num(get('allottedAmt')), num(get('refund')),
-    str(get('reason')),
+    str(get('reason')), str(get('tm')),
   ];
+}
+
+/**
+ * Report the file's OWN header row, once, so the service can store it.
+ *
+ * Registrars ship far more columns than the twelve we map and name them
+ * differently from each other, so the only honest way to add a field is to read
+ * what the document actually says rather than guess at candidates. Recording
+ * this makes the next mapping a lookup instead of a guess — and tells an
+ * operator, without opening the file, what their registrar actually sent.
+ *
+ * Truncated to 200 cells: a corrupt file can report a header row of thousands
+ * of empty cells, and that is not worth storing on every import row.
+ */
+function emitHeaders(cells: unknown[]): void {
+  const names = cells.slice(0, 200).map((c) => str(c)).filter((s, i, a) => s !== '' || i < a.length);
+  process.stdout.write(`H ${JSON.stringify(names)}\n`);
 }
 
 /** buffered NDJSON writer with backpressure */
@@ -109,6 +138,7 @@ async function parseDbf(inPath: string, outPath: string): Promise<number> {
     start += len;
   }
   const idx = mapHeader(fields.map((f) => f.name));
+  emitHeaders(fields.map((f) => f.name));
 
   const writer = makeWriter(outPath);
   let count = 0;
@@ -154,6 +184,7 @@ async function parseSheet(inPath: string, outPath: string): Promise<number> {
       if (m.pan != null && (m.applNo != null || m.applied != null)) { headerAt = r; idx = m; break; }
     }
     if (headerAt < 0) continue;
+    emitHeaders((ws[headerAt] ?? []).map((c: any) => (c ? c.v : null)));
     for (let r = headerAt + 1; r < ws.length; r++) {
       const rowCells = ws[r];
       if (!rowCells) continue;
