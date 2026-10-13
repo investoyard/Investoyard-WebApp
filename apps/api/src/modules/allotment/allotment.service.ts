@@ -137,7 +137,7 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** spawn the parser worker (own 4 GB heap); resolves with the row count */
+  /** spawn the parser worker (own 6 GB heap); resolves with the row count */
   private runWorker(
     inPath: string,
     outPath: string,
@@ -146,7 +146,12 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
   ): Promise<number> {
     return new Promise((resolve, reject) => {
       const worker = join(__dirname, 'parse-allotment.worker.js');
-      const child = spawn(process.execPath, ['--max-old-space-size=4096', worker, inPath, outPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+      /* 6 GB, raised from 4 with the upload limit on 2026-10-13. A 1M-row XLSB
+         needs ~3 GB and the limit went 105 -> 126 MB, so 4 GB would have left
+         the largest permitted file failing INSIDE the parser — after the whole
+         upload — instead of being refused at the door. The box has 24 GB with
+         ~14 GB free and this process is short-lived. */
+      const child = spawn(process.execPath, ['--max-old-space-size=6144', worker, inPath, outPath], { stdio: ['ignore', 'pipe', 'pipe'] });
       let done = -1;
       let stderr = '';
       let out = '';

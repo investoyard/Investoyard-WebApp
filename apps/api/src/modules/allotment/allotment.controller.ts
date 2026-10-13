@@ -13,7 +13,24 @@ import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { AllotmentService, ALLOTMENT_TMP_DIR } from './allotment.service';
 
 const ALLOWED = new Set(['.dbf', '.xlsb', '.xlsx', '.xls', '.csv']);
-const MAX_FILE = 105 * 1024 * 1024; // registrar files run up to ~100 MB per file
+/* 120 MB per file (operator ask, 2026-10-13) with 6 MB of headroom, so a file
+   the operator calls "120 MB" is never refused by a rounding difference.
+
+   RAISING THIS ALONE WOULD HAVE MADE FAILURES WORSE, not better: the parse
+   worker's heap went up with it. A 1M-row XLSB already needs ~3 GB, so a file
+   half again as large would have cleared the upload check and then died inside
+   the worker — trading a clear "too big" at the door for an opaque parse
+   failure after a multi-minute upload.
+
+   AND IT MAY NOT BE REACHABLE: Cloudflare caps request bodies at 100 MB on
+   Free/Pro/Business plans, and every site here is behind Cloudflare. A 120 MB
+   upload is refused at the edge before IIS ever sees it, whatever this says.
+   The evidence is on this box — a 70 MB .xlsb landed in allotment-tmp on
+   2026-10-13 with NO import row and a truncated zip, i.e. the transfer was cut
+   off well under the old 105 MB limit. Uploading past 100 MB needs an
+   Enterprise plan, a grey-clouded upload host, or chunking; it is not a number
+   in this file. */
+const MAX_FILE = 126 * 1024 * 1024;
 
 /** Admin — registrar allotment imports + the allotment-record browser. */
 @Controller('admin/allotment')

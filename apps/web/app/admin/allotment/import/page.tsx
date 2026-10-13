@@ -16,7 +16,7 @@ const fmtDt = (s?: string | null) => (s ? new Date(s).toLocaleString('en-IN', { 
 
 /**
  * Import Allotment — upload the registrar's allottee file(s) per IPO
- * (DBF / XLSB / XLSX / CSV, up to 100 MB; big IPOs come as FILE1..FILEn — upload
+ * (DBF / XLSB / XLSX / CSV, up to 120 MB; big IPOs come as FILE1..FILEn — upload
  * each). Parsing runs server-side in a worker; this page polls the job status.
  */
 export default function ImportAllotmentPage() {
@@ -114,7 +114,7 @@ export default function ImportAllotmentPage() {
     <div style={{ maxWidth: 1100 }}>
       <PageHead
         title="Import Allotment"
-        sub="Upload the registrar's allottee file per IPO — DBF, XLSB, XLSX or CSV, up to 100 MB per file. Big IPOs arrive split as FILE1…FILEn: upload each; duplicate rows are skipped. Our applications are auto-matched by PAN (status + rejection reason)."
+        sub="Upload the registrar's allottee file per IPO — DBF, XLSB, XLSX or CSV, up to 120 MB per file. Big IPOs arrive split as FILE1…FILEn: upload each; duplicate rows are skipped. Our applications are auto-matched by PAN (status + rejection reason)."
       />
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
 

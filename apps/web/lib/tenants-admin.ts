@@ -734,7 +734,7 @@ export interface AllotmentSummary {
   archive?: AllotmentArchiveInfo | null; lastImport?: AllotmentImportRow | null;
 }
 
-/** Upload a registrar allottee file (DBF/XLSB/XLSX/CSV, <=100 MB) with progress. */
+/** Upload a registrar allottee file (DBF/XLSB/XLSX/CSV, <=120 MB) with progress. */
 export function uploadAllotmentFile(ipoId: string, file: File, onProgress?: (pct: number) => void): Promise<AllotmentImportRow> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
