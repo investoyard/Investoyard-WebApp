@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, 'Segoe UI', sans-serif; }
+    a { color: #ffcb32; } a:hover { color: #ffd869; }
+  </style>
+</helmet>
+
+<!-- Profile picture, 400x400. Every platform crops this to a circle, so the
+     mark sits well inside the safe diameter. Works at 32px, which is the size
+     it is actually seen at in a feed. -->
+<div style="width: 400px; height: 400px; background: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 40%, #2a2052 100%); display: flex; align-items: center; justify-content: center;">
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+    <div style="width: 74px; height: 74px; border-radius: 20px; background: #ffcb32;"></div>
+    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 58px; font-weight: 800; letter-spacing: -0.02em; color: #ffffff; line-height: 1;">IY</div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":400,"height":400}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>
