@@ -4108,12 +4108,80 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    under 1100px (Share-wise gets its own row alongside App+Lot stacked),
    single col under 700px so phones stay usable. */
 .subv2-ln-detail { background: var(--surface-2); }
-.subv2-det-in { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; padding: 14px 18px 16px; align-items: start; }
+/*
+ * TRACKS SIZE TO CONTENT, NOT TO A RATIO — the two narrow panels take exactly
+ * what their tables need and Share-wise takes the remainder.
+ *
+ * A fixed `2fr 1fr 1fr` cannot be right here, and the measurement that settles
+ * it is that THE WIDTHS CHANGE WITH THE DATA: the hub renders whichever IPOs
+ * are open, and two cards on one page measured 498/265/286 and 470/299/280 on
+ * the same day. Any ratio tuned to one of those squeezes the other, which is
+ * how a scrollbar appeared inside a card. `minmax(0, auto)` asks each narrow
+ * track for its content and lets it shrink rather than push when there is not
+ * room; below 1400px the row becomes a 2x2 anyway.
+ */
+.subv2-det-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto); gap: 14px; padding: 14px 18px 16px; align-items: start; }
 /* Column 2 holds Application-wise above the Lot ladder; the gap matches the
    grid's own so a stacked column reads the same as a side-by-side one. */
 .subv2-det-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-@media (max-width: 1100px) { .subv2-det-in { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 700px) { .subv2-det-in { grid-template-columns: 1fr; } }
+
+/*
+ * THE PANEL ROW IS BREAKPOINTED ON WHAT THE TABLES ACTUALLY NEED, measured
+ * rather than guessed (2026-10-13, operator report of scrollbars inside the
+ * cards). Every cell in these tables is `white-space: nowrap`, so each one has
+ * a hard natural width and three-across is either possible or it is not:
+ *
+ *   detail page, 3 panels : 390 + 268 + 284 + gaps  =  970px of table
+ *   hub,         4 panels : 481 + 314 + 290 + gaps  = 1113px of table
+ *
+ * plus ~380px of page margin and card padding outside the grid. So three
+ * columns need roughly a 1350-1400px viewport — and the breakpoint was at
+ * 1100, which is how a laptop ended up showing three squeezed columns with the
+ * horizontal scrollbar that exists for PHONES. A scrollbar inside a card reads
+ * as a broken card, and it was: the track had been allowed below its content.
+ *
+ * Below 1400 the row becomes a 2x2 instead, which is not a degraded layout — at
+ * ~500px per panel it is a roomier one, and it pairs the two share/rupee views
+ * on one line and the two per-application views on the next.
+ */
+@media (max-width: 1400px) {
+  .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* The stack DISSOLVES rather than occupying one cell of two — otherwise the
+     second row would be half empty. `display: contents` promotes its children
+     to grid items so the four panels lay out as a true 2x2. */
+  .subv2-det-stack { display: contents; }
+}
+@media (max-width: 700px) { .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+
+/*
+ * THE DETAIL PAGE GETS ITS OWN ARRANGEMENT, because its column is not the
+ * page — and getting that wrong cost a page-wide horizontal scrollbar.
+ *
+ * `main.container` is capped at 1160px and `.detail-layout` spends 330 of it on
+ * the right rail, so the panel row lives in about 766px NO MATTER how wide the
+ * monitor is. Three panels need ~895px of table, so three-across cannot fit
+ * there at any viewport — and because a grid track's automatic minimum is its
+ * CONTENT, the row did not scroll, it pushed: `.detail-layout` resolved to
+ * 985px + 330px = 1315px inside a 1116px parent and the sidebar hung 77px off
+ * the right edge of the page. A viewport breakpoint cannot see that, since the
+ * viewport was never the constraint.
+ *
+ * So: two columns, with Share-wise spanning both. It is the widest table and
+ * the one being read first, and it gets the full 766px instead of 358; the two
+ * secondary panels sit beneath it at ~370 each, which is more than either
+ * needs. Nothing scrolls and nothing pushes.
+ */
+.subv2-detail .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.subv2-detail .subv2-det-in > .subv2-det-panel:first-child { grid-column: 1 / -1; }
+@media (max-width: 700px) { .subv2-detail .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+
+/* A PANEL MAY NEVER WIDEN ITS CONTAINER. Grid tracks take min-content as their
+   automatic minimum, so without this a nowrap table silently pushes the whole
+   page sideways rather than scrolling inside its own card — which is exactly
+   what happened on the detail page. With it, the wrap's overflow-x does the job
+   it was added for. */
+.subv2-det-in { min-width: 0; }
+.subv2-det-in > .subv2-det-panel, .subv2-det-stack > .subv2-det-panel { min-width: 0; }
 
 /* v2 (.subv2-solo) — safer track shrinking. Grid tracks default to
    min-content which lets a wide table push the panel past 1fr, spilling
@@ -4126,10 +4194,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    ~280px. Weighting 1.7 / 1.15 / 1.15 gives them more breathing room
    than the earlier 2 / 1 / 1 which starved the app-wise Times column
    at 1200-1400px viewports. */
-.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.15fr) minmax(0, 1.15fr); }
+.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto); }
 .subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; overflow: hidden; }
 .subv2-solo .subv2-det-in .subv2-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-@media (max-width: 1100px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 1400px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 @media (max-width: 700px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
 
 /* v2 phone (< 480px) — share-wise 4-col table gets extra tight. Hide the
@@ -4155,6 +4223,15 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-tbl-wrap { overflow-x: auto; margin: 0 -6px; }
 .subv2-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
 .subv2-tbl th { text-align: left; padding: 6px 8px; white-space: nowrap; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+/* 8px -> 5px of horizontal padding INSIDE the panel row only, which buys ~24px
+   on every four-column table — the difference between three-across fitting at
+   1400 with slack and fitting by a single pixel. These are dense right-aligned
+   numeric tables in narrow cards, not page-width tables; the vertical rhythm is
+   untouched, so only the gutters tighten. */
+.subv2-det-in .subv2-tbl th { padding-left: 5px; padding-right: 5px; }
+.subv2-det-in .subv2-tbl td { padding-left: 5px; padding-right: 5px; }
+.subv2-det-in .subv2-tbl th:first-child,
+.subv2-det-in .subv2-tbl td:first-child { padding-left: 2px; }
 .subv2-tbl th:not(:first-child) { text-align: right; }
 .subv2-tbl td { padding: 8px 8px; border-top: 1px solid var(--border); vertical-align: top; white-space: nowrap; }
 .subv2-tbl td:not(:first-child) { text-align: right; }
