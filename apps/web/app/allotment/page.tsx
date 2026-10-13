@@ -5,7 +5,7 @@ import { AllotmentCheckerJsonLd } from '@/components/JsonLd';
 
 export const metadata = {
   title: 'IPO Allotment Status Check — by PAN | Investoyard',
-  description: 'Check your IPO allotment status instantly by PAN for recent Mainboard & SME issues, and learn how the basis of allotment works.',
+  description: 'Check IPO allotment status by PAN for Mainboard and SME issues — no account needed, whichever platform the application was made through. Plus how the basis of allotment works.',
 };
 
 export default async function AllotmentPage() {
@@ -14,7 +14,10 @@ export default async function AllotmentPage() {
     <div className="trust-page">
       <AllotmentCheckerJsonLd />
       <h1>Check IPO Allotment</h1>
-      <p className="lead-p">Pick the issue, enter the applicant&apos;s PAN — instant status for applications made on Investoyard.</p>
+      <p className="lead-p">
+        Pick the issue and enter the applicant&apos;s PAN. For issues where we hold the registrar&apos;s allotment
+        file, any PAN works — no account, and it makes no difference where the application was made.
+      </p>
 
       <div className="panel" style={{ padding: 20, marginTop: 18 }}>
         <Suspense fallback={null}>
@@ -31,10 +34,14 @@ export default async function AllotmentPage() {
           credited to the applicant&apos;s demat account before listing, and ASBA blocks for unallotted applications are
           released automatically — the money never left the account.
         </p>
-        <h2>Applied elsewhere?</h2>
+        <h2>Applied somewhere else?</h2>
         <p>
-          This checker covers applications made on Investoyard. If you applied through a bank or another platform, use
-          the issue registrar&apos;s own status page with the same PAN —
+          That is fine. Once we have loaded an issue&apos;s registrar file, this checker answers for{' '}
+          <b>every applicant in that issue</b> — including applications made through a bank, a broker or another
+          platform. Until then it covers applications made on Investoyard.
+        </p>
+        <p>
+          If the issue you want is not in the list yet, use the registrar&apos;s own status page with the same PAN —
           {' '}<a href="https://linkintime.co.in" target="_blank" rel="noopener noreferrer">MUFG Intime (Link Intime)</a>,
           {' '}<a href="https://kfintech.com" target="_blank" rel="noopener noreferrer">KFin Technologies</a> or
           {' '}<a href="https://www.bigshareonline.com" target="_blank" rel="noopener noreferrer">Bigshare Services</a>,
