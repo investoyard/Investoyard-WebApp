@@ -21,7 +21,10 @@ const SWEEP_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const BATCH = 5000;
 
 /** normalized row — same tuple the parser worker emits, one JSON array per line */
-type Row = [string, string, string, string, string, number, number, number, number, number, string];
+/* `tmName` is APPENDED (index 11), never inserted, so an archive written before
+   2026-10-13 still restores — its rows are 11 long and `r[11]` is undefined,
+   which `|| null` turns into a null column rather than a crash. */
+type Row = [string, string, string, string, string, number, number, number, number, number, string, string?];
 
 const toRecord = (ipoId: string, r: Row) => ({
   ipoId,
@@ -36,6 +39,7 @@ const toRecord = (ipoId: string, r: Row) => ({
   allottedAmount: r[8],
   refundAmount: r[9],
   reason: r[10] || null,
+  tmName: r[11] || null,
 });
 
 /**
@@ -92,7 +96,12 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       this.prisma.allotmentImport.update({ where: { id: importId }, data }).catch(() => undefined);
     try {
       await patch({ stage: 'parsing' });
-      const totalRows = await this.runWorker(filePath, ndjsonPath, (n) => patch({ totalRows: n }));
+      const totalRows = await this.runWorker(
+        filePath,
+        ndjsonPath,
+        (n) => patch({ totalRows: n }),
+        (headers) => patch({ headers }),
+      );
       await patch({ stage: 'importing', totalRows });
 
       let imported = 0;
@@ -128,11 +137,21 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** spawn the parser worker (own 4 GB heap); resolves with the row count */
-  private runWorker(inPath: string, outPath: string, onProgress: (rows: number) => unknown): Promise<number> {
+  /** spawn the parser worker (own 6 GB heap); resolves with the row count */
+  private runWorker(
+    inPath: string,
+    outPath: string,
+    onProgress: (rows: number) => unknown,
+    onHeaders?: (headers: string[]) => unknown,
+  ): Promise<number> {
     return new Promise((resolve, reject) => {
       const worker = join(__dirname, 'parse-allotment.worker.js');
-      const child = spawn(process.execPath, ['--max-old-space-size=4096', worker, inPath, outPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+      /* 6 GB, raised from 4 with the upload limit on 2026-10-13. A 1M-row XLSB
+         needs ~3 GB and the limit went 105 -> 126 MB, so 4 GB would have left
+         the largest permitted file failing INSIDE the parser — after the whole
+         upload — instead of being refused at the door. The box has 24 GB with
+         ~14 GB free and this process is short-lived. */
+      const child = spawn(process.execPath, ['--max-old-space-size=6144', worker, inPath, outPath], { stdio: ['ignore', 'pipe', 'pipe'] });
       let done = -1;
       let stderr = '';
       let out = '';
@@ -144,6 +163,11 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
           out = out.slice(nl + 1);
           if (line.startsWith('P ')) onProgress(Number(line.slice(2)) || 0);
           else if (line.startsWith('DONE ')) done = Number(line.slice(5)) || 0;
+          /* The file's own header row. Never fatal: a malformed one costs us a
+             diagnostic, not the import, so it is swallowed rather than thrown. */
+          else if (line.startsWith('H ') && onHeaders) {
+            try { onHeaders(JSON.parse(line.slice(2))); } catch { /* ignore */ }
+          }
         }
       });
       child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
@@ -232,12 +256,8 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Allotment-list search: partial PAN + amount with a > / < / = operator. */
-  async searchRecords(q: {
-    ipoId: string; pan?: string; amountOp?: string; amount?: number;
-    amountField?: string; status?: string; page?: number;
-  }) {
-    const pageSize = 50;
-    const page = Math.max(1, q.page ?? 1);
+  /** ONE filter builder for the list and its export — see `exportRecordsCsv`. */
+  private recordWhere(q: { ipoId: string; pan?: string; amountOp?: string; amount?: number; amountField?: string; status?: string }) {
     const where: any = { ipoId: q.ipoId };
     const pan = (q.pan ?? '').trim().toUpperCase();
     if (pan) where.pan = { startsWith: pan };
@@ -248,11 +268,64 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     }
     if (q.status === 'allotted') where.allottedShares = { gt: 0 };
     else if (q.status === 'not_allotted') where.allottedShares = 0;
+    return where;
+  }
+
+  async searchRecords(q: {
+    ipoId: string; pan?: string; amountOp?: string; amount?: number;
+    amountField?: string; status?: string; page?: number;
+  }) {
+    const pageSize = 50;
+    const page = Math.max(1, q.page ?? 1);
+    const where = this.recordWhere(q);
     const [total, rows] = await Promise.all([
       this.prisma.allotmentRecord.count({ where }),
       this.prisma.allotmentRecord.findMany({ where, orderBy: { id: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }),
     ]);
     return { total, page, pageSize, rows };
+  }
+
+  /**
+   * Stream the matching records out as CSV, for the list page's Export button.
+   *
+   * CURSORED IN BATCHES, never a single findMany. The table holds 2.26 lakh rows
+   * today and a 1M-row IPO is ordinary, so materialising a result set — or
+   * building a real .xlsx workbook, which has to be held whole in memory — is
+   * the same mistake that forces the PARSER into its own process. CSV streams in
+   * constant memory and Excel opens it natively.
+   *
+   * Takes the SAME filter object as `searchRecords`, so what you export is what
+   * you are looking at. Two renderers of one filter would eventually disagree.
+   */
+  async exportRecordsCsv(
+    q: { ipoId: string; pan?: string; amountOp?: string; amount?: number; amountField?: string; status?: string },
+    write: (chunk: string) => unknown,
+  ): Promise<number> {
+    const where = this.recordWhere(q);
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    write('Application No,PAN,Name,DP/Client ID,Category,TM Name,Applied Shares,Amount,Allotted Shares,Allotted Amount,Refund Amount,Reason\n');
+    let cursor: number | undefined;
+    let sent = 0;
+    for (;;) {
+      const batch = await this.prisma.allotmentRecord.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        take: 5000,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (batch.length === 0) break;
+      write(batch.map((r) => [
+        r.applicationNo, r.pan, r.name, r.dpClientId, r.category, r.tmName,
+        r.appliedShares, r.amount, r.allottedShares, r.allottedAmount, r.refundAmount, r.reason,
+      ].map(esc).join(',')).join('\n') + '\n');
+      sent += batch.length;
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < 5000) break;
+    }
+    return sent;
   }
 
   // ── archive / restore / retention ──────────────────────────────────────────

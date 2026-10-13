@@ -716,14 +716,25 @@ export interface AllotmentRecordRow {
   id: number; applicationNo: string; pan: string; dpClientId?: string | null;
   category?: string | null; name?: string | null; appliedShares: number; amount: number;
   allottedShares: number; allottedAmount: number; refundAmount: number; reason?: string | null;
+  /** Trading member / broker as the registrar names it. Null on every row
+   *  imported before 2026-10-13 — only a re-import can fill it. */
+  tmName?: string | null;
 }
+/** The download URL for the list's Export button — the SAME query the table is
+ *  showing, so the file is the rows on screen rather than a second reading of
+ *  the filters. A plain link, not a fetch: the response streams and may run to
+ *  hundreds of MB, which is not something to hold in a browser variable. */
+export const allotmentCsvUrl = (q: {
+  ipoId: string; pan?: string; amountOp?: string; amount?: string; amountField?: string; status?: string;
+}) => `${API}/admin/allotment/records.csv?${qstr(q)}`;
+
 export interface AllotmentArchiveInfo { fileName: string; rows: number; fileSize: number; createdAt: string }
 export interface AllotmentSummary {
   total: number; allotted: number; notAllotted: number;
   archive?: AllotmentArchiveInfo | null; lastImport?: AllotmentImportRow | null;
 }
 
-/** Upload a registrar allottee file (DBF/XLSB/XLSX/CSV, <=100 MB) with progress. */
+/** Upload a registrar allottee file (DBF/XLSB/XLSX/CSV, <=120 MB) with progress. */
 export function uploadAllotmentFile(ipoId: string, file: File, onProgress?: (pct: number) => void): Promise<AllotmentImportRow> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

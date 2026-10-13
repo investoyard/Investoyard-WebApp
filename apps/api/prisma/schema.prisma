@@ -1076,6 +1076,10 @@ model AllotmentRecord {
   allottedAmount Int     @default(0) // whole rupees adjusted for allotment
   refundAmount   Int     @default(0) // whole rupees released
   reason         String? // registrar rejection reason (non-allottees)
+  /// Trading member / broker as the registrar names it. Operator ask
+  /// 2026-10-13. Nullable because every row imported before that date has no
+  /// such value and a re-import is the only way to fill one.
+  tmName         String?
 
   @@unique([ipoId, applicationNo])
   @@index([ipoId, pan])
@@ -1090,6 +1094,12 @@ model AllotmentImport {
   ipo        Ipo       @relation(fields: [ipoId], references: [id])
   fileName   String
   fileSize   Int
+  /// THE FILE'S OWN HEADER ROW, verbatim. Registrars ship far more columns than
+  /// the twelve we map, and their names vary by registrar — so rather than
+  /// guessing at candidates for a new field, record what the document actually
+  /// said and read the mapping off real data. One upload then answers "what is
+  /// the TM column called", permanently, for every registrar we meet.
+  headers    Json?
   format     String // dbf | xlsb | xlsx | xls | csv
   status     String    @default("processing") // processing | done | failed
   stage      String? // parsing | importing | matching (progress hint while processing)

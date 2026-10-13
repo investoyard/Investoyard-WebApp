@@ -4109,6 +4109,9 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    single col under 700px so phones stay usable. */
 .subv2-ln-detail { background: var(--surface-2); }
 .subv2-det-in { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; padding: 14px 18px 16px; align-items: start; }
+/* Column 2 holds Application-wise above the Lot ladder; the gap matches the
+   grid's own so a stacked column reads the same as a side-by-side one. */
+.subv2-det-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 @media (max-width: 1100px) { .subv2-det-in { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) { .subv2-det-in { grid-template-columns: 1fr; } }
 

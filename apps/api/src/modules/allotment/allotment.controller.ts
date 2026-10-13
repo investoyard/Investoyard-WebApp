@@ -1,7 +1,8 @@
 import {
-  BadRequestException, Body, Controller, Get, Param, Post, Query,
+  BadRequestException, Body, Controller, Get, Param, Post, Query, Res,
   UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomUUID } from 'crypto';
@@ -12,7 +13,24 @@ import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { AllotmentService, ALLOTMENT_TMP_DIR } from './allotment.service';
 
 const ALLOWED = new Set(['.dbf', '.xlsb', '.xlsx', '.xls', '.csv']);
-const MAX_FILE = 105 * 1024 * 1024; // registrar files run up to ~100 MB per file
+/* 120 MB per file (operator ask, 2026-10-13) with 6 MB of headroom, so a file
+   the operator calls "120 MB" is never refused by a rounding difference.
+
+   RAISING THIS ALONE WOULD HAVE MADE FAILURES WORSE, not better: the parse
+   worker's heap went up with it. A 1M-row XLSB already needs ~3 GB, so a file
+   half again as large would have cleared the upload check and then died inside
+   the worker — trading a clear "too big" at the door for an opaque parse
+   failure after a multi-minute upload.
+
+   AND IT MAY NOT BE REACHABLE: Cloudflare caps request bodies at 100 MB on
+   Free/Pro/Business plans, and every site here is behind Cloudflare. A 120 MB
+   upload is refused at the edge before IIS ever sees it, whatever this says.
+   The evidence is on this box — a 70 MB .xlsb landed in allotment-tmp on
+   2026-10-13 with NO import row and a truncated zip, i.e. the transfer was cut
+   off well under the old 105 MB limit. Uploading past 100 MB needs an
+   Enterprise plan, a grey-clouded upload host, or chunking; it is not a number
+   in this file. */
+const MAX_FILE = 126 * 1024 * 1024;
 
 /** Admin — registrar allotment imports + the allotment-record browser. */
 @Controller('admin/allotment')
@@ -77,6 +95,41 @@ export class AllotmentController {
       amount: amount != null && amount !== '' ? Number(amount) : undefined,
       page: page ? Number(page) : undefined,
     });
+  }
+
+  /**
+   * GET /api/admin/allotment/records.csv — the list's Export button.
+   *
+   * Takes the SAME query parameters as /records and hands them to the same
+   * filter builder, so an export is exactly the rows on screen rather than a
+   * second opinion about what the filters meant.
+   *
+   * Streamed, not buffered: a 1M-row IPO is ordinary here and holding the whole
+   * file in memory inside iisnode is the thing the parser already runs in its
+   * own process to avoid.
+   */
+  @Get('records.csv')
+  @RequirePermissions('bids.view')
+  async recordsCsv(
+    @Res() res: Response,
+    @Query('ipoId') ipoId: string,
+    @Query('pan') pan?: string,
+    @Query('amountOp') amountOp?: string,
+    @Query('amount') amount?: string,
+    @Query('amountField') amountField?: string,
+    @Query('status') status?: string,
+  ) {
+    if (!ipoId) throw new BadRequestException('ipoId is required.');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="allotment-${new Date().toISOString().slice(0, 10)}.csv"`);
+    /* UTF-8 BOM: without it Excel reads the file as the system codepage and
+       mangles any non-ASCII name in the registrar's data. */
+    res.write('\uFEFF');
+    await this.svc.exportRecordsCsv(
+      { ipoId, pan, amountOp, amountField, status, amount: amount != null && amount !== '' ? Number(amount) : undefined },
+      (chunk) => res.write(chunk),
+    );
+    res.end();
   }
 
   @Post('archive/:ipoId')
