@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { getIpos } from '@/lib/api';
 import { AllotmentChecker } from '@/components/AllotmentChecker';
+import { AllotmentCheckerJsonLd } from '@/components/JsonLd';
 
 export const metadata = {
   title: 'IPO Allotment Status Check — by PAN | Investoyard',
@@ -11,6 +12,7 @@ export default async function AllotmentPage() {
   const ipos = await getIpos();
   return (
     <div className="trust-page">
+      <AllotmentCheckerJsonLd />
       <h1>Check IPO Allotment</h1>
       <p className="lead-p">Pick the issue, enter the applicant&apos;s PAN — instant status for applications made on Investoyard.</p>
 

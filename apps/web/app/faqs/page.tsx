@@ -1,4 +1,5 @@
 import { FaqBrowser, type FaqGroup } from '@/components/FaqBrowser';
+import { FaqPageJsonLd } from '@/components/JsonLd';
 
 export const metadata = {
   title: 'Help & FAQs | Investoyard',
@@ -146,8 +147,12 @@ const GROUPS: FaqGroup[] = [
 ];
 
 export default function FaqsPage() {
+  // Structured data comes from the same GROUPS the page renders — `t` is the
+  // plain-text answer, which is what schema.org requires.
+  const faqEntries = GROUPS.flatMap((g) => g.items.map(({ q, t }) => ({ q, t })));
   return (
     <div className="trust-page gl-page">
+      <FaqPageJsonLd entries={faqEntries} />
       <h1>Help &amp; FAQs</h1>
       <p className="lead-p">Quick answers about applying, allotment, GMP and your data. New to the jargon? Start with the <a className="linklike" href="/glossary">IPO Glossary</a>.</p>
       <FaqBrowser groups={GROUPS} />

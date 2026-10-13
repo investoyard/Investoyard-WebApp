@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investoyard OG card</title>
+<style>
+  /* Source for apps/web/public/og-default.png — rasterise with scripts/og/build-og.cmd.
+     Self-contained and offline: headless Chrome gets no network, so fonts must be
+     local. Segoe UI ships with Windows and is metrically close to the brand face. */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 64px 72px;
+    /* Vertical, not the brand's 150deg diagonal: PNG filters predict row-wise,
+       so a gradient whose rows are each a flat colour compresses to a fraction
+       of the size. WhatsApp drops previews on heavy images, and that is the
+       channel this card exists for. */
+    background: linear-gradient(180deg, #4a3a95 0%, #3c2e7e 45%, #2a2052 100%);
+    font-family: "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mark { display: flex; align-items: center; gap: 18px; }
+  .dot { width: 28px; height: 28px; border-radius: 8px; background: #ffcb32; }
+  .word { font-size: 26px; font-weight: 700; letter-spacing: .22em; }
+  h1 {
+    font-size: 88px; font-weight: 700; line-height: 1.02; letter-spacing: -.03em;
+    max-width: 16ch;
+  }
+  .sub {
+    margin-top: 24px; font-size: 33px; line-height: 1.35; max-width: 940px;
+    color: rgba(255,255,255,.82); font-weight: 400;
+  }
+  footer { display: flex; align-items: baseline; justify-content: space-between; }
+  .url { font-size: 30px; font-weight: 700; color: #ffcb32; }
+  .entity { font-size: 22px; color: rgba(255,255,255,.66); }
+</style>
+</head>
+<body>
+  <div class="mark">
+    <div class="dot"></div>
+    <div class="word">INVESTOYARD</div>
+  </div>
+
+  <div>
+    <h1>India&rsquo;s IPO companion</h1>
+    <p class="sub">Track every Mainboard and SME IPO &mdash; and apply for your whole family in one flow.</p>
+  </div>
+
+  <footer>
+    <div class="url">newipo.finwave.co</div>
+    <div class="entity">Safal Capital Services Pvt Ltd</div>
+  </footer>
+</body>
+</html>

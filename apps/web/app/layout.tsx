@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { ChromeWrapper } from '@/components/ChromeWrapper';
 import { PwaRegister } from '@/components/PwaRegister';
+import { SITE_ORIGIN } from '@/lib/site';
+import { OrganizationJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
 const inter = Inter({
@@ -17,7 +19,22 @@ const jakarta = Plus_Jakarta_Sans({
   weight: ['600', '700', '800'],
 });
 
+/**
+ * The share card every forward renders.
+ *
+ * A static asset rather than a generated `opengraph-image.tsx`: Next 14's
+ * bundled @vercel/og cannot be imported on Windows (it resolves its own font
+ * with `path.join` over a file:// URL, producing an invalid path), so
+ * ImageResponse fails the export outright. The file is produced from the
+ * design canvas instead — see apps/web/public/README-og.md.
+ */
+const OG_IMAGE = { url: '/og-default.png', width: 1200, height: 630, alt: 'Investoyard — India’s IPO companion' };
+
 export const metadata: Metadata = {
+  // Absolute base for every relative url Next resolves: the `canonical` and
+  // `languages` values the detail routes return, plus og:image / twitter:image.
+  // Without it those canonicals never resolve to a real origin.
+  metadataBase: new URL(SITE_ORIGIN),
   title: 'Investoyard — IPO information & application platform, India',
   description:
     'Track every Mainboard and SME IPO in India — dates, price band, live subscription, GMP and allotment. Apply for yourself and your family with your own PAN, demat and UPI.',
@@ -25,7 +42,22 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: { icon: '/favicon.ico', shortcut: '/favicon.ico', apple: '/icon.svg' },
   appleWebApp: { capable: true, title: 'Investoyard', statusBarStyle: 'default' },
-  openGraph: { title: 'Investoyard', description: 'India’s IPO companion — track & apply, the easy way.' },
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Investoyard',
+    locale: 'en_IN',
+    url: '/',
+    title: 'Investoyard — India’s IPO companion',
+    description: 'Track every Mainboard and SME IPO — and apply for your whole family in one flow.',
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Investoyard — India’s IPO companion',
+    description: 'Track every Mainboard and SME IPO — and apply for your whole family in one flow.',
+    images: [OG_IMAGE],
+  },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`}>
       <body>
+        <OrganizationJsonLd />
         <ChromeWrapper>{children}</ChromeWrapper>
         <PwaRegister />
       </body>
