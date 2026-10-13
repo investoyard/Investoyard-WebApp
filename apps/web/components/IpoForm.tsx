@@ -1,47 +1,137 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { Loader } from '@/components/ui/Loader';
+import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
 import { PageHead, Panel, Field, Toggle } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { PreanchorReviewModal } from '@/components/PreanchorReviewModal';
+import { IpoNoteReviewModal } from '@/components/IpoNoteReviewModal';
+import { AnchorReviewModal } from '@/components/AnchorReviewModal';
+import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
 const ISSUE_TYPES = ['IPO', 'FPO', 'Rights Issue', 'OFS'] as const;
+/**
+ * Tabs in the order of docs/ipo-entry-spec.md §8: each one depends only on the
+ * tabs before it. That is not housekeeping — the reservation split cannot be
+ * derived without lot size and a price, so Pricing HAS to precede Offer, and
+ * bid windows depend on whether there is an anchor round, so Timeline follows
+ * it. Identity, dates and three intermediary blocks used to share tab 1.
+ */
+/**
+ * The tab order is the ORDER OF WORK, not the running order of the offer
+ * document.
+ *
+ * Everything an issue needs before it can take an application or print a form
+ * comes first — Issue Setup through Documents. What only comes into existence
+ * later sits behind that and is marked `later`: the company write-up, which
+ * fills the public detail page and blocks nothing, and the figures the
+ * registrar and the exchanges publish once the issue has listed. An operator
+ * entering a live issue can stop at Documents and know the record is fit to
+ * open bidding on.
+ *
+ * `Anchor` is its own tab because its data used to sit in two places — the
+ * portion on Offer & Reservation, the investor roster over on About Company —
+ * so the roster could not be checked against the total it came out of.
+ */
+/**
+ * Six tabs, in the order of work (operator decision, 2026-09-04). This was
+ * ten. Three moves went into the collapse:
+ *
+ *   Anchor merged INTO Offer & Reservation — anchor is a portion of the same
+ *   table and reading the roster against the total it comes out of is what
+ *   the two-tab layout was preventing.
+ *
+ *   Intermediaries merged INTO Timeline — dates and who is involved sit
+ *   together in the operator's head.
+ *
+ *   About Company and After Listing moved INTO Review & Publish as
+ *   collapsible sections. Both are content that fills the public detail page
+ *   and blocks nothing operational; keeping them out of the primary flow
+ *   matches sir's "we can add the details a bit later".
+ */
 const TABS: { key: string; label: string; icon: IconName }[] = [
-  { key: 'basic', label: 'Basic Details', icon: 'box' },
-  { key: 'shares', label: 'Shares & Reservation', icon: 'chart' },
-  { key: 'company', label: 'About Company', icon: 'globe' },
+  { key: 'basic', label: 'Issue Setup', icon: 'box' },
+  { key: 'pricing', label: 'Pricing', icon: 'rupee' },
+  { key: 'offer', label: 'Offer, Reservation & Anchor', icon: 'chart' },
+  { key: 'timeline', label: 'Timeline & Parties', icon: 'calendar' },
   { key: 'docs', label: 'Documents', icon: 'doc' },
-  { key: 'series', label: 'Application Series', icon: 'list' },
+  { key: 'review', label: 'Review & Publish', icon: 'check' },
 ];
 // Shares Size Info rows
-const SZ_CATS = ['qib', 'hni', 'retail', 'employee', 'shareholder', 'other'];
 const SZ_ROWS: { key: string; label: string; extra?: boolean }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI', extra: true }, { key: 'retail', label: 'Retail', extra: true },
   { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' }, { key: 'other', label: 'Other' },
 ];
-const SZ_TAIL: { key: string; label: string }[] = [{ key: 'anchor', label: 'Anchor' }, { key: 'qibpost', label: 'QIB Post Anchor' }];
 // Share Reservation rows — HNI (Big) and HNI (Small) grouped together
 const RESV_ROWS: { key: string; label: string }[] = [
   { key: 'qib', label: 'QIB' }, { key: 'hni', label: 'HNI (Big)' }, { key: 'hni2', label: 'HNI (Small)' },
-  { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' }, { key: 'other', label: 'Other' },
+  { key: 'retail', label: 'Retail' }, { key: 'employee', label: 'Employee' }, { key: 'shareholder', label: 'ShareHolder' },
+  { key: 'policyholder', label: 'Policyholder' },
+  /* MARKET MAKER (2026-10-09, operator report on RKFAL). It was left out as
+     "an SME-only reservation that was never one of the seven categories", and
+     that is true — but it IS part of the offer, it comes off the top exactly as
+     the other carve-outs do, and the public legend started showing it the day
+     before. Leaving it out here made the admin screen the ONE surface that
+     hides a figure the operator had entered, and the Total it was missing from
+     is the check they actually run. */
+  { key: 'marketmaker', label: 'Market Maker' },
+  { key: 'other', label: 'Other' },
 ];
 
-type Doc = { type: string; name: string; url: string };
+type Doc = {
+  type: string; name: string; url: string;
+  /** Form-only. Which source picker the operator selected. Kept out of the
+   *  DB payload — inferred from the URL shape on load, then the operator
+   *  can toggle explicitly (empty rows have no URL to infer from). */
+  source?: 'upload' | 'url';
+};
 type Partner = { member: string; exchange: string };
 type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
-type SzCell = { share: string; minP: string; maxP: string; ncd: string; ind: string; hni: string };
-type Resv = { on: boolean; pct: string; count: string; remark: string; req1x: string };
-const blankSz = (): SzCell => ({ share: '', minP: '', maxP: '', ncd: '', ind: '', hni: '' });
-const blankShares = (): Record<string, SzCell> => Object.fromEntries([...SZ_CATS, 'anchor', 'qibpost'].map((k) => [k, blankSz()]));
-const blankResv = (): Resv => ({ on: false, pct: '', count: '', remark: '', req1x: '' });
+/**
+ * A reservation row as STORED: the percentage, plus optional exact share
+ * counts at each end of the price band.
+ *
+ * `sharesLower` / `sharesUpper` are the operator's optional reconciliation
+ * against the exchange's own numbers — NSE PREANCHOR prints figures AT THE
+ * LOWER BAND, so the anchor/preanchor parser writes into `sharesLower`; the
+ * upper-band count is either derived from the percentage or typed by the
+ * operator when they have both numbers to hand. Every downstream figure
+ * (amount reserved, forms-for-1x) keeps deriving off `pct` regardless, so a
+ * typed count is a display override, not a source of truth.
+ *
+ * The 2026-09-10 grid dropped the per-row `on` toggle — a row is now
+ * "active" when it has a non-empty `pct`. Legacy `on:false` rows are
+ * loaded with pct as-is (the operator can zero it out or delete) and the
+ * legacy `sharesActual` value migrates onto `sharesLower`.
+ */
+/**
+ * `source` records WHERE a stored share count came from, which is the one thing
+ * the table could never say (2026-09-24). Without it every count looked alike,
+ * so Autofill and `normalise-reservation-shares.js` overwrote exchange figures
+ * with approximations of themselves — and the script's `source === 'operator'`
+ * guard protected nothing, because no row had ever carried the field.
+ *
+ *   exchange — the PREANCHOR / anchor parser, i.e. the exchange's own number
+ *   operator — typed into the cell by hand, usually off the RHP
+ *   derived  — written by Autofill or the script from `pct × total`
+ *
+ * Only `derived` may be replaced without asking. The first two outrank the
+ * derivation whenever they disagree with it.
+ */
+type ResvSource = 'exchange' | 'operator' | 'derived';
+type Resv = { pct: string; sharesLower?: string; sharesUpper?: string; source?: ResvSource };
+const blankResv = (): Resv => ({ pct: '' });
 const blankShareResv = (): Record<string, Resv> => Object.fromEntries(RESV_ROWS.map((r) => [r.key, blankResv()]));
 interface FormState {
   symbol: string; name: string; type: string; issueType: string; status: string; faceValue: string; lotSize: string; isin: string;
@@ -50,7 +140,40 @@ interface FormState {
   startBid: boolean; startPrint: boolean; // operator gates: apply/pre-apply + ASBA form printing
   categoryName: string; // IPO Category master name (drives type via its platform mapping)
   priceBandMin: string; priceBandMax: string;
-  retailDiscount: string; retailCutOff: string; ncdMaxSeries: string; maxAmtRetail: string; noOfApp: string;
+  retailDiscount: string;
+  /** applications RECEIVED — an operator observation. Not to be confused with
+   *  applications-for-1x, which the engine derives. Was `noOfApp`. */
+  applicationsReceived: string;
+  /** offer structure — drives every derived figure (spec §5 Steps 1-2) */
+  mechanism: string; regulationBasis: string;
+  /** Which exchanges this issue lists on. SME usually lists on ONE platform;
+   *  mainboard usually both. Previously invented by the API from the board. */
+  exNse: boolean; exBse: boolean;
+  /** total offer in ₹ Cr — Fresh/OFS below split it */
+  issueSizeCr: string;
+  tickSize: string; employeeDiscount: string; shareholderDiscount: string; policyholderDiscount: string; finalIssuePrice: string;
+  /** anchor as a % of the QIB quota — the input B09 checks against the rule pack */
+  anchorPct: string;
+  /** off-the-top reservations, taken before the category split */
+  cvEmployee: string; cvShareholder: string; cvPolicyholder: string; cvMarketMaker: string;
+  /**
+   * Each carve-out's unit: `amount` (₹ Cr) or `shares`. RHPs state an employee
+   * reservation as a SHARE COUNT — RUNWALENTR reserves 1,20,275 — and that
+   * count is not lot-aligned, so no rupee figure reproduces it exactly. ₹ Cr
+   * was the only option until 2026-09-25, which is why RUNWALENTR's employee
+   * reservation could not be entered at all and its QIB book published 57,376
+   * shares too large while the issue was live.
+   */
+  cvEmployeeBasis: string; cvShareholderBasis: string; cvPolicyholderBasis: string; cvMarketMakerBasis: string;
+  /** per-applicant employee caps, ₹ — the RHP states both */
+  empMaxPerApplicant: string; empInitialPerApplicant: string;
+  /** anchor detail beyond the % of QIB */
+  anchorMfPct: string; lockin1Pct: string; lockin1Days: string; lockin2Days: string;
+  /** the withdrawal trigger, % of the fresh issue */
+  minSubscriptionPct: string;
+  /** SEBI's UPI mandate confirmation deadline */
+  upiMandateCutoff: string;
+  freshBasis: string; freshValue: string; ofsBasis: string; ofsValue: string;
   bseListingPrice: string; nseListingPrice: string;
   registrar: string; registrarEmail: string; registrarPhone: string; registrarUrl: string;
   logoUrl: string; companyWebsite: string; companyPromoter: string;
@@ -59,10 +182,51 @@ interface FormState {
   anchorDate: string; refundDate: string;
   openDate: string; closeDate: string; qibCloseDate: string; allotmentDate: string; dematDate: string; listingDate: string;
   documents: Doc[]; leads: string[]; partners: Partner[]; pdfSeries: Series[]; onlineSeries: Series[];
-  sharesSize: Record<string, SzCell>; shareResv: Record<string, Resv>; resvRemarks: string; resvRemarks2: string;
+  shareResv: Record<string, Resv>; resvRemarks: string;
   asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
   asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
-  anchors: { name: string; amount: string }[]; // picked from the Anchor Investors master, ₹ amount per IPO
+  /**
+   * Anchor book as allotted, from the anchor intimation. `shares` and `pct`
+   * come off the document beside the amount; the three are cross-checked
+   * against each other and against `anchorShares` in the panel.
+   */
+  anchors: { name: string; shares: string; pct: string; amount: string }[];
+  /**
+   * Total offer in SHARES as the offer document states it. Authoritative —
+   * see the `totalShares` note on IssueInputs.
+   */
+  totalShares: string;
+  /**
+   * Where `totalShares` came from, for the same reason `Resv.source` exists:
+   * once the figure is filled in automatically, nothing else can tell an
+   * offer-document count from one we divided out of a ₹ total.
+   *
+   *   operator — typed by hand, off the RHP. Never overwritten.
+   *   derived  — round(₹ total ÷ upper band). Kept in step automatically.
+   *
+   * The distinction is load-bearing, not bookkeeping. Of the ten records
+   * holding both figures only TWO agree: overwriting a stated count would
+   * have turned VARMORA's 4,78,38,855 into 4,78,39,189 and put back the
+   * 300-share gap fixed in 1d89bc7, and flattened ADROITIND's 1,12,47,000 —
+   * round precisely because the document states it — into 1,12,47,015.
+   */
+  totalSharesSource: string;
+  /** anchor book as allotted: the portion in shares and the price it struck */
+  anchorShares: string; anchorPrice: string;
+  /** the bank that warehouses UPI mandates for this issue */
+  sponsorBank: string;
+  /**
+   * What kind of offer this is, as distinct from which board it lists on.
+   * The FPO variants of 48 catalogue reports depend on it.
+   */
+  instrument: string;
+  /**
+   * Two rungs of one classification. `sector` is the broad, master-backed group
+   * (Finance · Pharma · IT · Bank); `industry` is the exchanges' fine Basic
+   * Industry beneath it (146 values). Many industries roll up into one sector,
+   * which is how the 850 already-classified records got a sector without re-entry.
+   */
+  sector: string; industry: string;
 }
 const blankForm = (): FormState => ({
   symbol: '', name: '', type: 'mainboard', issueType: 'IPO', status: 'upcoming', faceValue: '', lotSize: '', isin: '',
@@ -71,7 +235,16 @@ const blankForm = (): FormState => ({
   startBid: false, startPrint: false, // OFF until the operator explicitly opens bidding/printing
   categoryName: '',
   priceBandMin: '', priceBandMax: '',
-  retailDiscount: '', retailCutOff: '', ncdMaxSeries: '', maxAmtRetail: '', noOfApp: '',
+  retailDiscount: '', applicationsReceived: '',
+  mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
+  exNse: true, exBse: true, issueSizeCr: '',
+  tickSize: '', employeeDiscount: '', shareholderDiscount: '', policyholderDiscount: '', finalIssuePrice: '', anchorPct: '',
+  cvEmployee: '', cvShareholder: '', cvPolicyholder: '', cvMarketMaker: '',
+  // 'amount' is the back-compatible default — every legacy carve-out is ₹ Cr.
+  cvEmployeeBasis: 'amount', cvShareholderBasis: 'amount', cvPolicyholderBasis: 'amount', cvMarketMakerBasis: 'amount',
+  empMaxPerApplicant: '', empInitialPerApplicant: '',
+  anchorMfPct: '', lockin1Pct: '', lockin1Days: '', lockin2Days: '',
+  minSubscriptionPct: '', upiMandateCutoff: '',
   bseListingPrice: '', nseListingPrice: '',
   registrar: '', registrarEmail: '', registrarPhone: '', registrarUrl: '',
   logoUrl: '', companyWebsite: '', companyPromoter: '',
@@ -80,14 +253,147 @@ const blankForm = (): FormState => ({
   anchorDate: '', refundDate: '',
   openDate: '', closeDate: '', qibCloseDate: '', allotmentDate: '', dematDate: '', listingDate: '',
   documents: [], leads: [], partners: [], pdfSeries: [], onlineSeries: [],
-  sharesSize: blankShares(), shareResv: blankShareResv(), resvRemarks: '', resvRemarks2: '',
+  shareResv: blankShareResv(), resvRemarks: '',
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
   anchors: [],
+  totalShares: '', totalSharesSource: '', anchorShares: '', anchorPrice: '', sponsorBank: '',
+  instrument: 'ipo', sector: '', industry: '',
 });
 const ASBA_TYPES = ['asba_form_resident', 'asba_form_syndicate', 'asba_form_single', 'asba_form_shareholder'];
 const str = (v: any) => (v == null ? '' : String(v));
 const toDT = (v: any) => { const s = v == null ? '' : String(v); return s.length === 10 ? s + 'T00:00' : s; };
+
+/** Loose numeric read — the inputs strip punctuation, a paste does not. */
+const fnum = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+
+/**
+ * Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total.
+ * Pure and module-level because three callers need the SAME expression: the
+ * read-only total field, the payload (both the column and `extra` — see the
+ * ORIENTCABL note there) and the share count derived below.
+ */
+function legSumCrOf(f: FormState): string {
+  const price = fnum(f.priceBandMax) || fnum(f.priceBandMin);
+  const leg = (basis: string, v: string) => (basis === 'none' ? 0 : basis === 'amount' ? fnum(v) : price ? (fnum(v) * price) / 1e7 : 0);
+  const sum = leg(f.freshBasis, f.freshValue) + leg(f.ofsBasis, f.ofsValue);
+  return sum > 0 ? sum.toFixed(2) : '';
+}
+
+/**
+ * FormState in the shape `offerTotals()` reads. The engine's resolver is the
+ * authority; this screen only translates its own field names into it.
+ */
+function offerSourceOf(f: FormState): OfferSource {
+  return {
+    fresh: { basis: f.freshBasis, value: f.freshValue },
+    ofs: { basis: f.ofsBasis, value: f.ofsValue },
+    issueSizeCr: f.issueSizeCr,
+    totalShares: f.totalShares,
+    carveouts: { employee: f.cvEmployee, shareholder: f.cvShareholder, policyholder: f.cvPolicyholder, marketmaker: f.cvMarketMaker },
+    carveoutBasis: { employee: f.cvEmployeeBasis, shareholder: f.cvShareholderBasis, policyholder: f.cvPolicyholderBasis, marketmaker: f.cvMarketMakerBasis },
+    employeeDiscount: f.employeeDiscount,
+    shareholderDiscount: f.shareholderDiscount,
+    policyholderDiscount: f.policyholderDiscount,
+  };
+}
+
+/**
+ * The offer total in SHARES at the upper band — what the *Total issue size
+ * (shares)* field fills itself with.
+ *
+ * ROUNDED, never floored to a lot: this is the count the offer document PRINTS,
+ * and real offers are routinely not lot-aligned (ESDS states 1,76,47,058
+ * against a lot of 34). ₹90.17 Cr ÷ ₹167 = 53,99,401.1976 → 53,99,401, which is
+ * SHAHINVEST's stated figure to the share. Same rule as the reservation counts:
+ * the OFFERED figure rounds, the ALLOCATION figure floors.
+ */
+function derivedTotalSharesOf(f: FormState): number {
+  return totalSharesAt(offerSourceOf(f), fnum(f.priceBandMax) || fnum(f.priceBandMin));
+}
+
+/**
+ * What the carve-outs consume at a given price — in shares AND in rupees,
+ * because the two are needed for different questions and a discount makes them
+ * disagree.
+ *
+ * A SHARES carve-out is taken verbatim: an employee reservation is a stated
+ * count and is routinely not lot-aligned (RUNWALENTR's 1,20,275 against a lot
+ * of 49). `computeIssue` still floors it to a lot — that is the ALLOCATION
+ * rule — while this is the OFFERED figure the exchange and every information
+ * site publish. Same split as the reservation counts: offered rounds,
+ * allocation floors.
+ */
+const CARVEOUT_KEYS = ['employee', 'shareholder', 'policyholder', 'marketmaker'] as const;
+/** The carve-outs rendered as a READ-ONLY row in the reservation table, and
+ *  excluded from the percentage split. All four, since 2026-10-09. */
+const CARVEOUT_ROWS: string[] = ['employee', 'shareholder', 'policyholder', 'marketmaker'];
+/** ...of which these three ALSO have a legacy `shareResv` row an operator could
+ *  have typed a quota into, which is what E-RESV looks for. The market maker
+ *  never had one — no record in the catalogue carries `shareResv.marketmaker`. */
+const CARVEOUT_TABLE_KEYS: string[] = ['employee', 'shareholder', 'policyholder'];
+const CARVEOUT_LABEL: Record<string, string> = {
+  employee: 'Employee', shareholder: 'Shareholder',
+  policyholder: 'Policyholder', marketmaker: 'Market maker',
+};
+
+/** The three carve-out fields, addressed by the key the engine uses. */
+function carveoutInput(f: FormState, key: string): { value: string; basis: string; discount: string } {
+  if (key === 'employee') return { value: f.cvEmployee, basis: f.cvEmployeeBasis, discount: f.employeeDiscount };
+  if (key === 'shareholder') return { value: f.cvShareholder, basis: f.cvShareholderBasis, discount: f.shareholderDiscount };
+  if (key === 'policyholder') return { value: f.cvPolicyholder, basis: f.cvPolicyholderBasis, discount: f.policyholderDiscount };
+  return { value: f.cvMarketMaker, basis: f.cvMarketMakerBasis, discount: '' };
+}
+
+/** ONE carve-out at a price. Per-key because the reservation table reports each
+ *  on its own row — summing them there would show the employee row the
+ *  shareholder reservation as well. */
+function carveoutOneAt(f: FormState, key: string, price: number): { shares: number; rupees: number } {
+  if (!(price > 0)) return { shares: 0, rupees: 0 };
+  const { value, basis, discount } = carveoutInput(f, key);
+  const v = fnum(value);
+  if (v <= 0) return { shares: 0, rupees: 0 };
+  const p = price - fnum(discount);
+  const at = p > 0 ? p : price;
+  if (basis === 'shares') { const s = Math.round(v); return { shares: s, rupees: s * at }; }
+  const r = v * 1e7;
+  return { shares: Math.round(r / at), rupees: r };
+}
+
+function carveoutAt(f: FormState, price: number): { shares: number; rupees: number } {
+  return CARVEOUT_KEYS.reduce((a, k) => {
+    const c = carveoutOneAt(f, k, price);
+    return { shares: a.shares + c.shares, rupees: a.rupees + c.rupees };
+  }, { shares: 0, rupees: 0 });
+}
+
+/**
+ * The two totals every reservation count divides out of — at the cap price and
+ * at the floor price. ONE resolver, because three of them disagreed whenever no
+ * count was stated: the public page used the raw quotient (53,99,401.1976),
+ * `computeIssue` floored it to a lot (53,99,370) and Autofill used the quotient
+ * again. `totalShares` is now always populated, so all three divide one number.
+ */
+function offerTotalsOf(f: FormState): { cap: number; floor: number; totalCap: number; totalFloor: number } {
+  /* NET of carve-outs at EACH band. Every percentage in the reservation table
+     is a percentage of the NET offer — ICDR takes preferential reservations off
+     the top first — and Chittorgarh states it outright for RUNWALENTR: total
+     1,63,98,962, employee 1,20,275, net 1,62,78,687, and QIB's 81,39,344 is
+     50% of the NET (49.63% of the total). Deriving from the gross put 57,376
+     shares too many in QIB on a live issue.
+
+     The floor band used to be `net × cap ÷ floor` — "the same MONEY buying
+     cheaper shares" — which is true only when every leg is priced in rupees.
+     See `offerTotals()` for what that cost. */
+  const t = offerTotals(offerSourceOf(f), fnum(f.priceBandMax) || fnum(f.priceBandMin), fnum(f.priceBandMin));
+  /* `cap`/`floor` are NET of carve-outs — what the percentages divide.
+     `totalCap`/`totalFloor` are the whole issue, which is what the reservation
+     table has to add back up to. */
+  return { cap: t.cap, floor: t.floor, totalCap: t.totalCap, totalFloor: t.totalFloor };
+}
+
+/** What Autofill writes and what the drift check must compare against. */
+const derivedCountAt = (total: number, pct: number) => Math.round((total * pct) / 100);
 
 export function IpoForm({ ipoId }: { ipoId?: string }) {
   const me = useOperator();
@@ -98,10 +404,22 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const [tab, setTab] = useState('basic');
   const [loading, setLoading] = useState(editing);
   const [busy, setBusy] = useState(false);
+  // NSE PREANCHOR parser — see PreanchorReviewModal for the whole review flow
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState<api.ParsedPreanchor | null>(null);
+  // Anchor intimation — a separate button, its own modal (roster shape)
+  const [parsingCard, setParsingCard] = useState(false);
+  const [parsedCard, setParsedCard] = useState<api.ParsedCard | null>(null);
+  const [parsingAnchor, setParsingAnchor] = useState(false);
+  const [parsedAnchor, setParsedAnchor] = useState<api.ParsedAnchor | null>(null);
+  // IPO Note — arrives after PREANCHOR; fills exact dates and financials
+  const [parsingNote, setParsingNote] = useState(false);
+  const [parsedNote, setParsedNote] = useState<api.ParsedIpoNote | null>(null);
   const [uploading, setUploading] = useState(false);
   const [docBusy, setDocBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -126,12 +444,48 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           asbaSingle: str((d.documents ?? []).find((x) => x.type === 'asba_form_single')?.url),
           asbaShareholder: str((d.documents ?? []).find((x) => x.type === 'asba_form_shareholder')?.url),
           asbaResidentName: str(ex.asbaNames?.resident), asbaSyndicateName: str(ex.asbaNames?.syndicate), asbaSingleName: str(ex.asbaNames?.single), asbaShareholderName: str(ex.asbaNames?.shareholder),
+          // legacy rows carry name + amount only; the two new columns read blank
           anchors: Array.isArray(ex.anchors)
-            ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? ''), amount: String(a?.amount ?? '') }))
+            ? ex.anchors.map((a: any) => ({
+                name: String(a?.name ?? ''), shares: str(a?.shares),
+                pct: str(a?.pct), amount: String(a?.amount ?? ''),
+              }))
             : [],
+          totalShares: str(ex.totalShares),
+          // A record saved before the field existed carries a count but no
+          // provenance. Treat that as `operator`: it was typed by hand, since
+          // nothing else could have written it — the opposite default would
+          // let the auto-fill overwrite every RHP count in the catalogue.
+          totalSharesSource: str(ex.totalSharesSource) || (str(ex.totalShares) ? 'operator' : ''),
+          anchorShares: str(ex.anchorShares),
+          anchorPrice: str(ex.anchorPrice), sponsorBank: str(ex.sponsorBank),
+          instrument: str((d as any).instrument) || 'ipo',
+          sector: str(ex.sector), industry: str(ex.industry),
           // ---- extended fields (from extra JSON) ----
           issueType: ex.issueType ?? 'IPO', faceValue: str(ex.faceValue), categoryName: str(ex.categoryName),
-          retailDiscount: str(ex.retailDiscount), retailCutOff: str(ex.retailCutOff), ncdMaxSeries: str(ex.ncdMaxSeries), maxAmtRetail: str(ex.maxAmtRetail), noOfApp: str(ex.noOfApp),
+          retailDiscount: str(ex.retailDiscount),
+          // `noOfApp` is the legacy name for the same operator observation
+          applicationsReceived: str(ex.applicationsReceived ?? ex.noOfApp),
+          mechanism: str(ex.mechanism) || 'book_built', regulationBasis: str(ex.regulationBasis),
+          exNse: (d.exchanges ?? []).some((x: string) => /nse/i.test(x)) || !(d.exchanges ?? []).length,
+          exBse: (d.exchanges ?? []).some((x: string) => /bse/i.test(x)) || !(d.exchanges ?? []).length,
+          issueSizeCr: str(ex.issueSizeCr ?? d.issueSizeCr ?? ''),
+          tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
+          shareholderDiscount: str(ex.shareholderDiscount), policyholderDiscount: str(ex.policyholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
+          anchorPct: str(ex.anchorPct),
+          cvEmployeeBasis: str(ex.carveoutBasis?.employee) || 'amount',
+          cvShareholderBasis: str(ex.carveoutBasis?.shareholder) || 'amount',
+          cvPolicyholderBasis: str(ex.carveoutBasis?.policyholder) || 'amount',
+          cvMarketMakerBasis: str(ex.carveoutBasis?.marketmaker) || 'amount',
+          cvEmployee: str(ex.carveouts?.employee), cvShareholder: str(ex.carveouts?.shareholder),
+          cvPolicyholder: str(ex.carveouts?.policyholder),
+          cvMarketMaker: str(ex.carveouts?.marketmaker),
+          empMaxPerApplicant: str(ex.empMaxPerApplicant), empInitialPerApplicant: str(ex.empInitialPerApplicant),
+          anchorMfPct: str(ex.anchorMfPct), lockin1Pct: str(ex.lockin1Pct),
+          lockin1Days: str(ex.lockin1Days), lockin2Days: str(ex.lockin2Days),
+          minSubscriptionPct: str(ex.minSubscriptionPct), upiMandateCutoff: str(ex.upiMandateCutoff),
+          freshBasis: str(ex.fresh?.basis) || 'none', freshValue: str(ex.fresh?.value),
+          ofsBasis: str(ex.ofs?.basis) || 'none', ofsValue: str(ex.ofs?.value),
           bseListingPrice: str(ex.bseListingPrice), nseListingPrice: str(ex.nseListingPrice),
           qibCloseDate: str(ex.qibCloseDate), dematDate: str(ex.dematDate),
           anchorDate: str(ex.anchorDate), refundDate: str(ex.refundDate),
@@ -140,9 +494,22 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           companyDescription: str(ex.companyDescription), companyStrength: str(ex.companyStrength), companyFinancials: str(ex.companyFinancials), contactInfo: str(ex.contactInfo),
           faqs: Array.isArray(ex.faqs) ? ex.faqs : [], leads: Array.isArray(ex.leads) ? ex.leads : [], partners: Array.isArray(ex.partners) ? ex.partners : [],
           pdfSeries: Array.isArray(ex.pdfSeries) ? ex.pdfSeries : [], onlineSeries: Array.isArray(ex.onlineSeries) ? ex.onlineSeries : [],
-          sharesSize: ex.sharesSize ?? blankShares(),
-          shareResv: ex.shareResv ?? (() => { const sr = blankShareResv(); (d.reservations ?? []).forEach((k) => { if (sr[k]) sr[k].on = true; }); return sr; })(),
-          resvRemarks: str(ex.resvRemarks), resvRemarks2: str(ex.resvRemarks2),
+          // legacy rows carry count/remark/req1x — read the inputs only and let
+          // the derived columns come from the engine
+          shareResv: ex.shareResv
+            ? Object.fromEntries(RESV_ROWS.map((r) => [r.key, {
+                pct: str(ex.shareResv[r.key]?.pct),
+                // legacy `sharesActual` was the NSE PREANCHOR figure — LOWER band.
+                sharesLower: str(ex.shareResv[r.key]?.sharesLower ?? ex.shareResv[r.key]?.sharesActual),
+                sharesUpper: str(ex.shareResv[r.key]?.sharesUpper),
+                source: ex.shareResv[r.key]?.source as ResvSource | undefined,
+              }]))
+            // Legacy `reservations` array from older records — kept as
+            // hint metadata, but no explicit "on" flag any more (a row is
+            // active when it carries a pct). Left as blank rows; operator
+            // fills the percentage themselves.
+            : blankShareResv(),
+          resvRemarks: str(ex.resvRemarks),
         };
         initial.current = loaded; setForm(loaded);
       } catch (e: any) { setErr(String(e?.message ?? e)); }
@@ -166,9 +533,45 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   const setDoc = (i: number, part: Partial<Doc>) => set({ documents: form.documents.map((d, x) => (x === i ? { ...d, ...part } : d)) });
   const setPartner = (i: number, part: Partial<Partner>) => set({ partners: form.partners.map((d, x) => (x === i ? { ...d, ...part } : d)) });
   const setFaq = (i: number, part: Partial<{ q: string; a: string }>) => set({ faqs: form.faqs.map((f, x) => (x === i ? { ...f, ...part } : f)) });
-  const setSz = (key: string, part: Partial<SzCell>) => set({ sharesSize: { ...form.sharesSize, [key]: { ...form.sharesSize[key], ...part } } });
   const setResv = (key: string, part: Partial<Resv>) => set({ shareResv: { ...form.shareResv, [key]: { ...form.shareResv[key], ...part } } });
-  const szSum = (field: keyof SzCell) => SZ_CATS.reduce((a, k) => a + (Number(form.sharesSize[k]?.[field]) || 0), 0);
+
+  /**
+   * Snap the reservation table to a standard ICDR split when the operator
+   * types a known QIB percentage. Sir's decision (2026-09-04): typing 75 fills
+   * NIB Big 10, NIB Small 5, Retail 10 and marks the issue as 6(2); typing
+   * 50 fills NIB Big 10, NIB Small 5, Retail 35 and marks it 6(1). Everything
+   * remains editable afterwards — this is a snap, not a lock.
+   *
+   * Only the four base categories are touched. Employee, shareholder and
+   * "other" reservations are their own decisions and left alone; if a special
+   * quota reduces retail, the operator adjusts retail by hand after the snap.
+   *
+   * Any QIB value other than 50 or 75 is left as typed — snapping to a
+   * non-standard number would be a guess.
+   */
+  const STANDARD_SPLITS: Record<string, { basis: string; rows: Record<string, string> }> = {
+    '75': { basis: 'icdr_6_2', rows: { qib: '75', hni: '10', hni2: '5', retail: '10' } },
+    '50': { basis: 'icdr_6_1', rows: { qib: '50', hni: '10', hni2: '5', retail: '35' } },
+  };
+  /** For any QIB % the operator types, derive NII (15%, split 2:1 into
+   *  hni:hni2 = 10:5) and Retail = 100 − QIB − 15. Basis follows the
+   *  same 50 / 75 thresholds. Exact 50 or 75 keeps the existing snap-map
+   *  answer (identical numbers, just avoids the retail rounding). Any
+   *  QIB above 85 or below 0 stays free-form — the operator likely
+   *  meant to type it and let the form flag it via B01. */
+  const onQibPctChange = (raw: string) => {
+    const clean = raw.replace(/[^\d.]/g, '');
+    const std = STANDARD_SPLITS[clean];
+    const q = Number(clean);
+    if (!std && (!Number.isFinite(q) || q <= 0 || q > 85)) { setResv('qib', { pct: clean }); return; }
+    const rows = std ? std.rows : {
+      qib: clean, hni: '10', hni2: '5', retail: String(+(100 - q - 15).toFixed(2)),
+    };
+    const basis = std ? std.basis : q <= 50 ? 'icdr_6_1' : q >= 75 ? 'icdr_6_2' : form.regulationBasis;
+    const next = { ...form.shareResv };
+    for (const [k, v] of Object.entries(rows)) next[k] = { ...next[k], pct: v };
+    set({ shareResv: next, regulationBasis: basis });
+  };
   const setSeries = (key: 'pdfSeries' | 'onlineSeries', i: number, part: Partial<Series>) => set({ [key]: form[key].map((s, x) => (x === i ? { ...s, ...part } : s)) } as Partial<FormState>);
   const activate = (key: 'pdfSeries' | 'onlineSeries', i: number) => set({ [key]: form[key].map((s, x) => ({ ...s, active: x === i })) } as Partial<FormState>);
   const addSeries = (key: 'pdfSeries' | 'onlineSeries') => set({ [key]: [...form[key], { member: form.partners[0]?.member ?? '', from: '', to: '', active: form[key].length === 0, ...(key === 'onlineSeries' ? { exchange: 'NSE' } : {}) }] } as Partial<FormState>);
@@ -192,6 +595,12 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // Anchor Investors master (Masters → Anchor Investors) — picked per IPO with a ₹ amount
   const [anchorOpts, setAnchorOpts] = useState<api.MasterRow[]>([]);
   useEffect(() => { api.fetchMaster('anchors').then(setAnchorOpts).catch(() => {}); }, []);
+  // Sector master (Masters → Sectors) — the dropdown can also create into it
+  const [sectorOpts, setSectorOpts] = useState<api.MasterRow[]>([]);
+  useEffect(() => { api.fetchMaster('sectors').then(setSectorOpts).catch(() => {}); }, []);
+  // Industry master (Masters → Industries) — same picker pattern as sector
+  const [industryOpts, setIndustryOpts] = useState<api.MasterRow[]>([]);
+  useEffect(() => { api.fetchMaster('industries').then(setIndustryOpts).catch(() => {}); }, []);
   const onAsbaFile = async (slot: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', file?: File | null) => {
     if (!file) return;
     setAsbaBusy(slot); setErr(null);
@@ -200,10 +609,26 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     finally { setAsbaBusy(null); }
   };
 
+  /** SME lists on NSE Emerge / BSE SME; mainboard on the main boards. */
+  const exchangeList = (): string[] => {
+    // stores 'NSE Emerge' for SME; the screen shows it as 'NSE SME'
+    return exchangesFor(form.type === 'sme', form.exNse, form.exBse);
+  };
+
   const payload = (): api.IpoWrite => ({
-    name: form.name, type: form.type, status: form.status,
+    name: form.name, type: form.type, status: form.status, instrument: form.instrument,
     priceBandMin: num(form.priceBandMin), priceBandMax: num(form.priceBandMax), lotSize: num(form.lotSize),
-    issueSizeCr: szSum('maxP') > 0 ? szSum('maxP') : undefined,
+    /* The COLUMN has to agree with `extra.issueSizeCr` below, and until
+       2026-09-25 it could not: when both legs are entered the total field
+       goes READ-ONLY and renders `legSumCr`, so `form.issueSizeCr` keeps
+       whatever was typed before that — usually the Fresh leg alone, or
+       nothing at all. Every legged issue therefore desynced by
+       construction. ORIENTCABL published `Issue Size ₹320 Cr` (its Fresh
+       leg) against a ₹552 Cr offer, with the reservation rupee amounts
+       derived off the same wrong figure. Same expression both places. */
+    issueSizeCr: (num(legSumCr || form.issueSizeCr) ?? 0) > 0 ? num(legSumCr || form.issueSizeCr) : undefined,
+    // explicit, not invented from the board — an SME issue may list on one platform only
+    exchanges: exchangeList(),
     registrar: form.registrar || undefined, isin: form.isin || undefined, logoUrl: form.logoUrl || undefined,
     objectsOfIssue: form.objectsOfIssue || undefined,
     openDate: form.openDate ? form.openDate.slice(0, 10) : undefined, closeDate: form.closeDate ? form.closeDate.slice(0, 10) : undefined,
@@ -219,7 +644,29 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     autoPollSubscription: form.autoPollSubscription,
     extra: {
       issueType: form.issueType, faceValue: form.faceValue, categoryName: form.categoryName,
-      retailDiscount: form.retailDiscount, retailCutOff: retailCutOffCalc, ncdMaxSeries: form.ncdMaxSeries, maxAmtRetail: form.maxAmtRetail, noOfApp: form.noOfApp,
+      retailDiscount: form.retailDiscount,
+      // retailCutOff is NOT written — it is price cap minus retail discount,
+      // recomputed wherever it is shown (spec B23).
+      applicationsReceived: form.applicationsReceived,
+      // mirrored under the old key while readers migrate — remove once
+      // nothing greps for `noOfApp` (web/lib/api.ts was the last one)
+      noOfApp: form.applicationsReceived,
+      mechanism: form.mechanism, regulationBasis: form.regulationBasis || undefined,
+      issueSizeCr: legSumCr || form.issueSizeCr,
+      tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
+      shareholderDiscount: form.shareholderDiscount, policyholderDiscount: form.policyholderDiscount, finalIssuePrice: form.finalIssuePrice,
+      anchorPct: form.anchorPct,
+      anchorMfPct: form.anchorMfPct, lockin1Pct: form.lockin1Pct,
+      lockin1Days: form.lockin1Days, lockin2Days: form.lockin2Days,
+      empMaxPerApplicant: form.empMaxPerApplicant, empInitialPerApplicant: form.empInitialPerApplicant,
+      minSubscriptionPct: form.minSubscriptionPct, upiMandateCutoff: form.upiMandateCutoff,
+      carveouts: { employee: form.cvEmployee, shareholder: form.cvShareholder, policyholder: form.cvPolicyholder, marketmaker: form.cvMarketMaker },
+      // Kept in a SEPARATE key rather than reshaping `carveouts` to {basis,value}:
+      // three live records already carry the flat shape and the Excel importer
+      // writes it, so a reshape would need every reader migrated in one go.
+      carveoutBasis: { employee: form.cvEmployeeBasis, shareholder: form.cvShareholderBasis, policyholder: form.cvPolicyholderBasis, marketmaker: form.cvMarketMakerBasis },
+      fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis, value: Number(form.freshValue) || 0 },
+      ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis, value: Number(form.ofsValue) || 0 },
       anchorDate: form.anchorDate, refundDate: form.refundDate,
       bseListingPrice: form.bseListingPrice, nseListingPrice: form.nseListingPrice,
       openDate: form.openDate, closeDate: form.closeDate, qibCloseDate: form.qibCloseDate, dematDate: form.dematDate,
@@ -230,9 +677,37 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
       asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName, shareholder: form.asbaShareholderName },
       // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
-      anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), amount: a.amount.trim() })),
+      anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({
+        name: a.name.trim(), shares: a.shares.trim(), pct: a.pct.trim(), amount: a.amount.trim(),
+      })),
+      // stated share counts — inputs, not derivations (see the note in IssueInputs)
+      totalShares: form.totalShares,
+      // Persisted so the form, `computeIssue` and the public page divide ONE
+      // number — see offerTotalsOf. The flag is what keeps a derived count
+      // from later passing as an offer-document figure.
+      totalSharesSource: form.totalShares.trim() ? (form.totalSharesSource || 'operator') : undefined,
+      anchorShares: form.anchorShares,
+      anchorPrice: form.anchorPrice, sponsorBank: form.sponsorBank,
+      sector: form.sector, industry: form.industry,
       startBid: form.startBid, startPrint: form.startPrint,
-      sharesSize: form.sharesSize, shareResv: form.shareResv, resvRemarks: form.resvRemarks, resvRemarks2: form.resvRemarks2,
+      // pct + optional per-band overrides (sharesLower / sharesUpper).
+      // No `on` flag — a row is active when its pct is non-empty. The old
+      // `sharesActual` alias has been retired; parser paths now write
+      // `sharesLower` (see PREANCHOR footnote — figures are at the lower band).
+      shareResv: Object.fromEntries(RESV_ROWS.map((r) => {
+        const c = form.shareResv[r.key];
+        const sl = String(c.sharesLower ?? '').trim();
+        const su = String(c.sharesUpper ?? '').trim();
+        return [r.key, {
+          pct: c.pct,
+          ...(sl ? { sharesLower: sl } : {}),
+          ...(su ? { sharesUpper: su } : {}),
+          // Only meaningful alongside a count; a bare pct row has nothing to
+          // attribute, and carrying a stale source would mislabel the next fill.
+          ...((sl || su) && c.source ? { source: c.source } : {}),
+        }];
+      })),
+      resvRemarks: offerRemark || form.resvRemarks,
     },
   });
 
@@ -248,6 +723,230 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
   const onReset = () => { setForm(initial.current); setErr(null); setSavedMsg('Form reset.'); };
 
+  /**
+   * Upload an NSE PREANCHOR PDF and open the review modal with what came back.
+   * Nothing writes to form state here — that happens when the operator hits
+   * Fill in the modal. A parser error surfaces as a banner rather than a
+   * modal, so the operator can retry with a different file.
+   */
+  const onParsePreanchor = async (file: File) => {
+    setParsing(true); setErr(null); setSavedMsg(null);
+    try {
+      const p = await api.parsePreanchor(file);
+      setParsed(p);
+    } catch (e: any) {
+      setErr(`Could not read the PREANCHOR file: ${String(e?.message ?? e)}`);
+    } finally { setParsing(false); }
+  };
+
+  /**
+   * Apply the operator's ticked rows onto form state. Every incoming key maps
+   * onto a form field 1:1, EXCEPT `__leads` which carries a JSON-encoded
+   * array (the modal encodes it that way so a comma in a lead manager's
+   * name never accidentally splits it back at the boundary).
+   */
+  const onApplyPreanchor = (patch: Record<string, string>) => {
+    const next: Partial<typeof form> = {};
+    // Reservation overrides are folded into a fresh shareResv so all four
+    // NSE counts land in one setState — writing them one-by-one over N
+    // renders would be racy in principle even if it usually wins
+    const nextShareResv = { ...form.shareResv };
+    let shareResvChanged = false;
+
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === '__leads') { try { next.leads = JSON.parse(v); } catch { /* ignore */ } continue; }
+      if (k.startsWith('__sr:')) {
+        const cat = k.slice(5);                       // qib | hni | hni2 | retail
+        if (nextShareResv[cat]) {
+          // NSE PREANCHOR prints share counts AT THE LOWER BAND (per its
+          // own footnote), so the parser fills sharesLower — not the
+          // legacy `sharesActual` name, and not the upper-band cell.
+          // The exchange's own figure — outranks anything derived from a pct.
+          nextShareResv[cat] = { ...nextShareResv[cat], sharesLower: v, source: 'exchange' };
+          shareResvChanged = true;
+        }
+        continue;
+      }
+      // __srp:<cat> writes the PERCENTAGE side of the reservation split.
+      // Paired with __sr:<cat> by the PREANCHOR modal so a single tick
+      // fills sharesLower AND the pct that downstream derivations read.
+      if (k.startsWith('__srp:')) {
+        const cat = k.slice(6);
+        if (nextShareResv[cat]) {
+          nextShareResv[cat] = { ...nextShareResv[cat], pct: v };
+          shareResvChanged = true;
+        }
+        continue;
+      }
+      // Exchange checkboxes — 'both'|'nse'|'bse'. Booleans on the form,
+      // so a plain string assignment would corrupt the checkbox state.
+      if (k === '__exchanges') {
+        next.exNse = v !== 'bse';
+        next.exBse = v !== 'nse';
+        continue;
+      }
+      // Fresh / OFS — the form encodes each as a basis dropdown +
+      // value string. A ₹ Cr amount lands as { basis: 'amount', value }.
+      if (k === '__fresh') { next.freshBasis = 'amount'; next.freshValue = v; continue; }
+      if (k === '__ofs')   { next.ofsBasis = 'amount';   next.ofsValue = v;   continue; }
+      // anchorDate is a datetime-local input on the form; a bare ISO date
+      // from the Note gets stamped 10:00 (bid open) so the input accepts it.
+      if (k === 'anchorDate' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        (next as any).anchorDate = `${v}T10:00`;
+        continue;
+      }
+      (next as any)[k] = v;
+    }
+    if (shareResvChanged) (next as any).shareResv = nextShareResv;
+
+    // Anchor-date fallback: when the parser gave openDate but no
+    // anchorDate, derive as openDate − 1 business day (Mon-Fri only,
+    // ignoring holidays — operator decision 2026-09-09). Only fills when
+    // neither the patch nor the form already carries an anchor date, so a
+    // hand-typed value or an anchor-letter extraction wins over the fallback.
+    if (!next.anchorDate && !form.anchorDate && (next.openDate || patch.openDate)) {
+      const openIso = String((next.openDate ?? patch.openDate ?? '')).slice(0, 10);
+      const anchorIso = prevBusinessDay(openIso);
+      if (anchorIso) (next as any).anchorDate = `${anchorIso}T10:00`;
+    }
+
+    set(next);
+    setSavedMsg(`Filled ${Object.keys(patch).length} field${Object.keys(patch).length === 1 ? '' : 's'} from PREANCHOR. Save to keep.`);
+  };
+
+  /** IPO Note upload. Same shape as PREANCHOR — different endpoint, different
+   *  modal. The applier reuses `onApplyPreanchor` because the accepted patch
+   *  is a plain field-name → value map that the same code handles. */
+  const onParseNote = async (file: File) => {
+    setParsingNote(true); setErr(null); setSavedMsg(null);
+    try { setParsedNote(await api.parseIpoNote(file)); }
+    catch (e: any) { setErr(`Could not read the IPO Note: ${String(e?.message ?? e)}`); }
+    finally { setParsingNote(false); }
+  };
+
+  /**
+   * IPO summary card (an IMAGE, so Vision is the only route — there is no text
+   * layer to try first, unlike every other import on this screen).
+   */
+  const onParseCard = async (file: File) => {
+    setParsingCard(true); setErr(null); setSavedMsg(null);
+    try { setParsedCard(await api.parseCard(file)); }
+    catch (e: any) { setErr(`Could not read the IPO card: ${String(e?.message ?? e)}`); }
+    finally { setParsingCard(false); }
+  };
+
+  /**
+   * Apply the ticked rows onto form state.
+   *
+   * The modal hands back a flat patch keyed by FORM field names, with two
+   * shapes it cannot express directly: a reservation percentage lives inside
+   * `form.shareResv[k].pct`, and a carve-out pairs a value with a basis. Both
+   * are unpacked here so the modal stays a presentation component and this file
+   * keeps sole ownership of the form's shape.
+   */
+  const onApplyCard = (patch: Record<string, unknown>) => {
+    setForm((f) => {
+      const next: any = { ...f };
+      const resv = { ...f.shareResv };
+      for (const [k, v] of Object.entries(patch)) {
+        const pct = k.match(/^pct_(\w+)$/);
+        if (pct) { resv[pct[1]] = { ...resv[pct[1]], pct: String(v) }; continue; }
+        const cv = k.match(/^cv_(employee|shareholder|policyholder)(_basis)?$/);
+        if (cv) {
+          const field = cv[1] === 'employee' ? 'cvEmployee' : cv[1] === 'shareholder' ? 'cvShareholder' : 'cvPolicyholder';
+          next[cv[2] ? `${field}Basis` : field] = String(v);
+          continue;
+        }
+        /*
+         * A CARD STATES A DAY; THREE OF THESE FIELDS STORE A `datetime-local`.
+         *
+         * `anchorDate` / `openDate` / `closeDate` hold `2026-10-13T10:00`, and
+         * writing a bare `2026-10-13` into a datetime-local input makes it
+         * INVALID — the control renders empty. That is why the operator reported
+         * the anchor, open and close dates as "not being fetched" on the first
+         * real card (2026-10-07): they parsed correctly, applied, and then
+         * vanished from the screen.
+         *
+         * The existing time is kept when there is one, because it is the
+         * operator's — bidding opens and closes at hours the card never states.
+         * With nothing to keep, fall back to the SEBI bidding window: 10:00 for
+         * the anchor book and the open, 17:00 for the close.
+         */
+        if ((k === 'anchorDate' || k === 'openDate' || k === 'closeDate') && typeof v === 'string') {
+          const ymd = v.slice(0, 10);
+          const existing = String((f as any)[k] ?? '');
+          const time = existing.includes('T') ? existing.slice(11, 16) : (k === 'closeDate' ? '17:00' : '10:00');
+          next[k] = `${ymd}T${time}`;
+          continue;
+        }
+        if (k === 'exchanges' && Array.isArray(v)) {
+          /* The form holds two booleans, not a list. A card naming only one
+             exchange must not silently clear the other, so each is OR-ed. */
+          const list = v.map((x) => String(x).toLowerCase()).join(" ");
+          if (/nse/.test(list)) next.exNse = true;
+          if (/bse/.test(list)) next.exBse = true;
+          continue;
+        }
+        next[k] = v;
+      }
+      next.shareResv = resv;
+      return next;
+    });
+    setParsedCard(null);
+    setSavedMsg('Card applied to the form — nothing is saved until you press Save.');
+  };
+
+  /** Same shape as PREANCHOR upload — different endpoint, different modal. */
+  const onParseAnchor = async (file: File) => {
+    setParsingAnchor(true); setErr(null); setSavedMsg(null);
+    try { setParsedAnchor(await api.parseAnchor(file)); }
+    catch (e: any) { setErr(`Could not read the Anchor Intimation: ${String(e?.message ?? e)}`); }
+    finally { setParsingAnchor(false); }
+  };
+
+  /**
+   * Apply the anchor parser output onto form state. Roster replaces
+   * form.anchors, totals go into form.anchorShares / form.anchorPrice — same
+   * fields the Phase-B Anchor panel writes to. Nothing here writes to the
+   * catalog; Save on the entry form is still what persists.
+   */
+  const onApplyAnchor = (payload: {
+    anchorShares: string; anchorPrice: string; anchorDate?: string;
+    investors: { name: string; shares: string; pct: string; amount: string }[];
+  }) => {
+    const patch: Partial<typeof form> = {
+      anchorShares: payload.anchorShares,
+      anchorPrice: payload.anchorPrice,
+      anchors: payload.investors,
+    };
+    // If the intimation carries an anchor date, prefer it — anchor bidding
+    // is on the trading day BEFORE the issue opens, and the letter is
+    // authoritative when it's stamped. Only fill when the form is empty
+    // so a hand-typed value the operator already committed isn't clobbered.
+    if (payload.anchorDate && !form.anchorDate) {
+      // anchorDate on the form is a datetime-local string; stamp 10:00
+      // (bid open) if the parser gave date-only.
+      patch.anchorDate = /T\d{2}:\d{2}/.test(payload.anchorDate)
+        ? payload.anchorDate
+        : `${payload.anchorDate}T10:00`;
+    }
+    set(patch);
+    setSavedMsg(`Filled anchor roster (${payload.investors.length} investor${payload.investors.length === 1 ? '' : 's'}) from the Intimation. Save to keep.`);
+  };
+
+  /** openDate − 1 business day (Mon-Fri only, ignoring holidays — operator
+   *  decision 2026-09-09). The anchor bid is on the trading day before the
+   *  issue opens, so this is the fallback when neither the IPO Note nor the
+   *  Anchor Intimation prints an explicit anchor date. */
+  const prevBusinessDay = (iso: string): string | undefined => {
+    if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return undefined;
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() - 1);
+    while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6) dt.setUTCDate(dt.getUTCDate() - 1);
+    return dt.toISOString().slice(0, 10);
+  };
+
   const tabIdx = TABS.findIndex((t) => t.key === tab);
   const go = (d: number) => { const t = TABS[tabIdx + d]; if (t) { setTab(t.key); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); } };
 
@@ -255,18 +954,27 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   // the Registrar dropdown. HOOKS MUST STAY ABOVE THE EARLY RETURNS below (React #310).
   const [leadMasters, setLeadMasters] = useState<api.MasterRow[]>([]);
   const [registrarMasters, setRegistrarMasters] = useState<api.MasterRow[]>([]);
+  const [sponsorBankMasters, setSponsorBankMasters] = useState<api.MasterRow[]>([]);
   const [issueTypeMasters, setIssueTypeMasters] = useState<api.MasterRow[]>([]);
   const [categoryMasters, setCategoryMasters] = useState<api.MasterRow[]>([]);
   useEffect(() => {
     api.fetchMaster('lead-managers').then((r) => setLeadMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('registrars').then((r) => setRegistrarMasters(r.filter((x) => x.active))).catch(() => {});
+    api.fetchMaster('sponsor-banks').then((r) => setSponsorBankMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('issue-types').then((r) => setIssueTypeMasters(r.filter((x) => x.active))).catch(() => {});
     api.fetchMaster('ipo-categories').then((r) => setCategoryMasters(r.filter((x) => x.active))).catch(() => {});
   }, []);
 
-  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
-  if (loading) return <Loader />;
   const phase = ipoPhase({ status: form.status, openDate: form.openDate, closeDate: form.closeDate, allotmentDate: form.allotmentDate, listingDate: form.listingDate });
+  /** Once bidding has closed the live-subscription poller has nothing to fetch —
+   *  the exchange stops publishing new numbers and the flag becomes visual
+   *  noise. Auto-false on load AND disable the toggle so an operator can't
+   *  turn it back on for a closed issue. Server enforces the same on save. */
+  const isClosed = phase.phase === 'closed' || phase.phase === 'allotment' || phase.phase === 'listed' || phase.phase === 'withdrawn';
+  useEffect(() => {
+    if (isClosed && form.autoPollSubscription) set({ autoPollSubscription: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClosed]);
 
   const issueTypeOptions = issueTypeMasters.length ? issueTypeMasters.map((t) => t.name) : [...ISSUE_TYPES];
   /** Selecting an issue type auto-matches its linked IPO Category (and the platform type). */
@@ -288,6 +996,619 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
   };
 
   // Retail Cut Off is derived: price-band max − retail discount (discount 0 ⇒ equals max band).
+  /**
+   * The single derivation, recomputed on every keystroke.
+   *
+   * Share Count / Require for 1X / Category Remark are READ-ONLY projections of
+   * this — the legacy form let an operator type them beside the percentages they
+   * come from, and nothing reconciled the two. That is how three of six records
+   * ended up publishing wrong figures.
+   */
+  const derived = useMemo(() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, "")); return Number.isFinite(x) ? x : 0; };
+    const reservation: Record<string, number> = {};
+    /* Employee and Shareholder are EXCLUDED: both are carve-outs taken off the
+       top, so counting them again among the percentages of the net offer would
+       reserve those shares twice. This is the AUGMONT fault — Σ = 100.691%
+       because the 0.691% employee quota was typed into the table, and the
+       overshoot was absorbed into QIB rather than reported. A legacy record
+       carrying either pct now raises E-RESV below instead of quietly deriving
+       from it. */
+    for (const r of RESV_ROWS) {
+      if (CARVEOUT_ROWS.includes(r.key)) continue;
+      const v = n(form.shareResv[r.key]?.pct); if (v > 0) reservation[r.key] = v;
+    }
+    /*
+     * THE THIRD MAPPER, and deliberately still its own. The two READ-ONLY
+     * surfaces now share `issueInputsFrom()` in shared-types (2026-10-03); this
+     * one cannot, because it maps LIVE FORM STATE — strings mid-edit, a basis
+     * the operator is still choosing — rather than a stored record, and it is
+     * the only caller that passes `dates` (564 of 1,267 stored records would
+     * raise a date issue, so the read-only surfaces leave them out).
+     *
+     * It is also the mapper that was RIGHT all along: it excluded the carve-out
+     * rows above and passed `carveouts` below, which is exactly what the other
+     * two were missing. Keep it in step with the shared one by hand, and when
+     * you add a field here ask whether that file needs it too.
+     */
+    const inputs: IssueInputs = {
+      board: form.type === 'sme' ? 'sme' : 'mainboard',
+      mechanism: form.mechanism === 'fixed_price' ? 'fixed_price' : 'book_built',
+      regulationBasis: (form.regulationBasis || undefined) as any,
+      lotSize: n(form.lotSize),
+      priceFloor: n(form.priceBandMin),
+      priceCap: n(form.priceBandMax),
+      issueSizeCr: n(form.issueSizeCr) || undefined,
+      totalShares: n(form.totalShares) || undefined,
+      fresh: form.freshBasis === 'none' ? undefined : { basis: form.freshBasis as LegBasis, value: n(form.freshValue) },
+      ofs: form.ofsBasis === 'none' ? undefined : { basis: form.ofsBasis as LegBasis, value: n(form.ofsValue) },
+      reservation,
+      discounts: {
+        retail: n(form.retailDiscount),
+        employee: n(form.employeeDiscount),
+        shareholder: n(form.shareholderDiscount),
+        policyholder: n(form.policyholderDiscount),
+      },
+      // The basis was hardcoded to 'amount' until 2026-09-25, so a reservation
+      // the RHP states in SHARES had to be converted to ₹ by hand — and the
+      // conversion could not be exact, because the count is not lot-aligned.
+      carveouts: [
+        { key: 'employee', basis: (form.cvEmployeeBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvEmployee) },
+        { key: 'shareholder', basis: (form.cvShareholderBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvShareholder) },
+        { key: 'policyholder', basis: (form.cvPolicyholderBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvPolicyholder) },
+        { key: 'marketmaker', basis: (form.cvMarketMakerBasis === 'shares' ? 'shares' : 'amount') as CarveoutBasis, value: n(form.cvMarketMaker) },
+      ].filter((c) => c.value > 0),
+      // the datetime-local fields carry a time; the rules only want the day
+      dates: {
+        open: form.openDate.slice(0, 10) || undefined,
+        close: form.closeDate.slice(0, 10) || undefined,
+        allotment: form.allotmentDate.slice(0, 10) || undefined,
+        refund: form.refundDate.slice(0, 10) || undefined,
+        demat: form.dematDate.slice(0, 10) || undefined,
+        listing: form.listingDate.slice(0, 10) || undefined,
+      },
+      finalIssuePrice: n(form.finalIssuePrice) || undefined,
+      anchor: n(form.anchorPct) > 0 || n(form.anchorShares) > 0
+        ? {
+            pctOfQib: n(form.anchorPct) || undefined,
+            mfPct: n(form.anchorMfPct) || undefined,
+            shares: n(form.anchorShares) || undefined,
+            price: n(form.anchorPrice) || undefined,
+          }
+        : undefined,
+    };
+    return computeIssue(inputs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.type, form.mechanism, form.regulationBasis, form.lotSize, form.priceBandMin, form.priceBandMax,
+      form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue, form.retailDiscount,
+      form.issueSizeCr, form.totalShares, form.cvEmployee, form.cvShareholder, form.cvPolicyholder, form.cvMarketMaker,
+      form.anchorPct, form.anchorMfPct, form.anchorShares, form.anchorPrice, form.finalIssuePrice,
+      form.openDate, form.closeDate, form.allotmentDate, form.refundDate, form.dematDate, form.listingDate,
+      JSON.stringify(form.shareResv)]);
+
+  /**
+   * The anchor roster against the portion it was allotted out of.
+   *
+   * This is the check that makes typing the per-investor counts worth doing:
+   * the intimation lists every investor and states the total, so the rows have
+   * a right answer and a mistyped digit shows up immediately. Percentages are
+   * only tallied when every row carries one — a partially filled column would
+   * always read as short.
+   */
+  const anchorRoster = useMemo(() => {
+    const rows = form.anchors.filter((a) => a.name.trim());
+    const counted = rows.filter((a) => a.shares.trim());
+    if (!counted.length) return null;
+    const shares = counted.reduce((t, a) => t + (Number(a.shares) || 0), 0);
+    const total = Number(form.anchorShares) || 0;
+    const parts = [`${counted.length} of ${rows.length} investor${rows.length === 1 ? '' : 's'} priced — ${shares.toLocaleString('en-IN')} shares`];
+    let ok = true;
+    if (total > 0) {
+      const diff = shares - total;
+      if (diff === 0) parts.push(`matching the ${total.toLocaleString('en-IN')} allotted`);
+      else {
+        ok = false;
+        parts.push(`${Math.abs(diff).toLocaleString('en-IN')} ${diff > 0 ? 'over' : 'short of'} the ${total.toLocaleString('en-IN')} allotted`);
+      }
+    }
+    if (rows.length && rows.every((a) => a.pct.trim())) {
+      const pct = rows.reduce((t, a) => t + (Number(a.pct) || 0), 0);
+      // the intimation rounds each row to two decimals, so the column rarely
+      // lands on exactly 100 — half a point of drift is the document's, not ours
+      if (Math.abs(pct - 100) > 0.5) { ok = false; parts.push(`percentages total ${pct.toFixed(2)}%, not 100%`); }
+    }
+    return { ok, text: parts.join(' · ') };
+  }, [JSON.stringify(form.anchors), form.anchorShares]);
+
+  /**
+   * Why the derivation is empty, in the operator's words.
+   *
+   * computeIssue needs a lot size, a price and an offer size; without them it
+   * returns nothing and every derived cell used to fall back to a dash with no
+   * explanation. Naming the missing input is the difference between a form that
+   * looks broken and one that is telling you what it still needs.
+   */
+  const derivedBlockedWhy = (() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const missing: string[] = [];
+    if (!n(form.lotSize)) missing.push('Lot Size');
+    if (!n(form.priceBandMax) && !n(form.priceBandMin) && !n(form.finalIssuePrice)) missing.push('a price');
+    if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') missing.push('the offer size (Fresh / OFS, or the total)');
+    if (!missing.length) return 'Enter at least one reservation percentage to see the split.';
+    return `Add ${missing.join(' and ')} on the Pricing and Offer tabs — share counts, amounts and forms-for-1x are all derived from them.`;
+  })();
+
+  /**
+   * What each tab is still missing, keyed by tab.
+   *
+   * The complaint about this screen has always been its length, and length is
+   * only a problem when you cannot see where you stand in it. A tab that still
+   * owes something carries a count; a tab that is done carries a tick. The two
+   * `later` tabs are excluded on purpose — they are not gaps, they are work
+   * that does not exist yet, and counting them would make a record that is
+   * ready to open bidding look unfinished.
+   *
+   * These are ENTRY prerequisites for taking an application and printing a
+   * form. The regulatory checks stay where they were, on Review & Publish —
+   * this is "have you typed it in", not "is it legal".
+   */
+  const tabGaps = useMemo(() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    // Keys must match the TABS keys above; a mismatch here silently drops a
+    // gap into a tab that no longer exists.
+    const g: Record<string, string[]> = { basic: [], pricing: [], offer: [], timeline: [], docs: [] };
+
+    if (!form.symbol.trim()) g.basic.push('Symbol');
+    if (!form.name.trim()) g.basic.push('IPO name');
+    if (!form.exNse && !form.exBse) g.basic.push('at least one exchange');
+
+    if (!n(form.lotSize)) g.pricing.push('Lot size');
+    if (!n(form.priceBandMin) && !n(form.finalIssuePrice)) g.pricing.push('a price');
+    if (!n(form.faceValue)) g.pricing.push('Face value');
+
+    // offer + anchor are one tab now (2026-09-04), so anchor gaps land in offer
+    if (!n(form.issueSizeCr) && form.freshBasis === 'none' && form.ofsBasis === 'none') g.offer.push('the offer size');
+    if (!RESV_ROWS.some((r) => n(form.shareResv[r.key]?.pct) > 0)) g.offer.push('the reservation split');
+    // the anchor portion is optional — an issue may simply not have one — so
+    // this only complains once the operator has started filling it in
+    if (n(form.anchorShares) > 0 && !n(form.anchorPrice)) g.offer.push('the anchor allocation price');
+    if (form.anchors.length > 0 && !n(form.anchorPct) && !n(form.anchorShares)) g.offer.push('the anchor portion');
+
+    // timeline + parties are one tab now, so registrar/leads land in timeline
+    if (!form.openDate) g.timeline.push('Open date');
+    if (!form.closeDate) g.timeline.push('Close date');
+    if (!form.registrar.trim()) g.timeline.push('Registrar');
+    if (!form.leads.length) g.timeline.push('Lead manager');
+
+    // printing is a first-class flow here, and it cannot run without a blank
+    if (form.startPrint && !form.asbaResident && !form.asbaSingle) g.docs.push('a blank ASBA form');
+
+    return g;
+  }, [form.symbol, form.name, form.exNse, form.exBse, form.lotSize, form.priceBandMin, form.finalIssuePrice,
+      form.faceValue, form.issueSizeCr, form.freshBasis, form.ofsBasis, form.anchorPct, form.anchorShares,
+      form.anchorPrice, form.anchors.length, form.openDate, form.closeDate, form.registrar, form.leads.length,
+      form.startPrint, form.asbaResident, form.asbaSingle, JSON.stringify(form.shareResv)]);
+
+  /** How many entry prerequisites are still outstanding across the whole form. */
+  const gapsLeft = Object.values(tabGaps).reduce((a, v) => a + v.length, 0);
+
+  /**
+   * Which price scenario the reservation table shows.
+   *
+   * For a book-built issue fixed by AMOUNT with a real price band, the share
+   * count moves with the price — 680 Cr ÷ 546 gives one number, ÷ 575 gives
+   * another. NSE PREANCHOR uses the lower ("calculated at the Lower end of
+   * the price band"); operator's rationale is that most issues actually price
+   * at the upper, so upper is the practical view. Default upper; toggle for
+   * lower for reconciling against NSE.
+   *
+   * `shown` picks the upper-band scenario (or the final price when set); the
+   * reservation table renders BOTH bands' share counts side-by-side now
+   * (operator ask 2026-09-10), so the old per-panel band toggle was retired.
+   * `shown` drives the summary strip, the anchor panel and the validation
+   * post-conditions. It no longer feeds the reservation table's columns: those
+   * are all on the OFFERED basis now — see `shownRow`.
+   */
+  const shown = derived.scenarios.final ?? derived.scenarios.cap ?? derived.primary;
+
+  /**
+   * What the Share Count column ACTUALLY SHOWS for one split row: the stored
+   * count when there is one, the percentage derivation otherwise.
+   *
+   * The Total must sum THESE. It used to re-derive every row from its
+   * percentage, so editing a COUNT left the cell showing the new figure while
+   * the Total went on adding the old derived one — the operator's report, and
+   * the same fault the 2026-09-25 note was written about in a different guise.
+   * Editing a PERCENTAGE always worked, which is why it looked intermittent.
+   *
+   * `field` picks the band: `sharesUpper` against the cap total, `sharesLower`
+   * against the floor total.
+   */
+  const shownCount = (key: string, field: 'sharesUpper' | 'sharesLower', total: number): number => {
+    const row = form.shareResv[key];
+    if (!row) return 0;
+    const stored = Number(String(row[field] ?? '').replace(/[^\d]/g, ''));
+    if (Number.isFinite(stored) && stored > 0) return stored;
+    const pct = fnum(row.pct);
+    return pct > 0 && total > 0 ? derivedCountAt(total, pct) : 0;
+  };
+
+
+  /**
+   * The RHP's own sentence, generated rather than typed.
+   *
+   * Every input for it is already on this tab, so asking an operator to retype
+   * it in prose is asking for a fourth place the offer can disagree with
+   * itself. A SHARES leg is quoted in shares and an AMOUNT leg in ₹ Cr,
+   * because that is the number the prospectus actually commits to.
+   */
+  const offerRemark = (() => {
+    const n = (v: string) => { const x = Number(String(v).replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+    const leg = (basis: string, v: string) => {
+      const val = n(v);
+      if (basis === 'none' || !val) return null;
+      return basis === 'amount'
+        ? `up to ₹${val.toLocaleString('en-IN')} Cr`
+        : `up to ${val.toLocaleString('en-IN')} equity shares`;
+    };
+    const fresh = leg(form.freshBasis, form.freshValue);
+    const ofs = leg(form.ofsBasis, form.ofsValue);
+    const parts: string[] = [];
+    if (fresh) parts.push(`Fresh Issue of ${fresh}`);
+    if (ofs) parts.push(`Offer for Sale of ${ofs}`);
+    return parts.length ? `${parts.join(' and ')}.` : '';
+  })();
+
+
+  /** Fresh + OFS in ₹ Cr, so the operator can see the legs reconcile to the total. */
+  const legSumCr = legSumCrOf(form);
+  const derivedTotalShares = derivedTotalSharesOf(form);
+  const offerTotals = offerTotalsOf(form);
+
+  /**
+   * The ONE price this table values every row at — the final issue price when
+   * the operator has set one, else the band cap. The carve-out rows use it too,
+   * so the Total can be the sum of what the rows actually show.
+   */
+  const resvPrice = shown?.price || fnum(form.priceBandMax) || fnum(form.priceBandMin);
+
+  /**
+   * What the Share (%) column ACTUALLY SHOWS for one split row — the mirror of
+   * `shownCount`, and the Total must sum THESE.
+   *
+   * THE TOTAL USED TO READ THE ENGINE, and the engine cannot see a reservation
+   * stated as COUNTS: `issueInputsFrom` maps percentages, so a record with
+   * counts and no percentages hands `computeIssue` an empty `reservation` and
+   * it returns no categories at all. On 24 records — EVERY ONE SME, which is
+   * how an SME RHP gets entered — each row showed a real percentage derived
+   * from its count while the Total underneath read 0. RKFAL is the operator's
+   * report: QIB 1.07 · bHNI 26.41 · sHNI 13.23 · Retail 59.30, total 0.
+   *
+   * Third time this Total has been wrong and the same cause every time: it
+   * re-derived the rows instead of summing the column it sits under.
+   */
+  const shownPct = (key: string, total: number): number => {
+    const row = form.shareResv[key];
+    if (!row) return 0;
+    const stored = fnum(row.sharesUpper);
+    /* A stored count outranks a typed percentage, so the percentage is whatever
+       that count works out to — exactly what the row cell renders. */
+    if (stored > 0 && (row.source === 'exchange' || row.source === 'operator') && total > 0) {
+      return (stored / total) * 100;
+    }
+    return fnum(row.pct);
+  };
+
+  /**
+   * Everything this table shows for one SPLIT row, from one resolver so the row
+   * and the Total cannot disagree.
+   *
+   * It is wholly on the OFFERED basis, which is what the table is for: counts
+   * ROUND, and the figures the exchange and every information site publish are
+   * the offered ones. The Amount and Forms columns used to read `computeIssue`'s
+   * ALLOCATION figures — floored to a lot with the residual absorbed by the
+   * largest quota — so the rupee figure disagreed with the share count printed
+   * beside it, and on PRIORITY, where only the QIB row is entered, residual
+   * absorption handed QIB the whole net offer and the cell read ₹250 Cr for a
+   * 50% quota. Forms-for-1× goes through `minApplicationShares()`, the one
+   * minimum-bid definition, so the three other readers of it cannot drift.
+   */
+  const shownRow = (key: string) => {
+    const count = shownCount(key, 'sharesUpper', offerTotals.cap);
+    const minApp = minApplicationShares(key, {
+      lotSize: fnum(form.lotSize), priceCap: resvPrice, sme: form.type === 'sme',
+    });
+    return {
+      count,
+      pct: shownPct(key, offerTotals.cap),
+      amount: count * resvPrice,
+      apps: minApp > 0 && count > 0 ? Math.ceil(count / minApp) : undefined,
+      allottees: minApp > 0 && count > 0 ? Math.floor(count / minApp) : undefined,
+    };
+  };
+
+  /**
+   * The reservation table's two Total rows.
+   *
+   * TWO, because the operator runs two different checks and one row cannot
+   * answer both. The split percentages are of the NET offer, which is what they
+   * add to 100% of; the share counts have to add back up to the ISSUE SIZE,
+   * carve-outs included — "our total not matched with total issue size" was the
+   * operator's own words, about the legend, the day before this. `grossPct` is
+   * the fraction of the issue the table accounts for and should read 100: it is
+   * the diagnostic, so a record whose rows are short reads 71.55 rather than
+   * looking complete.
+   */
+  const resvTotals = (() => {
+    const splitKeys = RESV_ROWS.filter((r) => !CARVEOUT_ROWS.includes(r.key)).map((r) => r.key);
+    const rows = splitKeys.map((k) => shownRow(k));
+    const floorPrice = fnum(form.priceBandMin) || resvPrice;
+    const cvCap = carveoutAt(form, resvPrice);
+    const cvFloor = carveoutAt(form, floorPrice);
+    const shares = rows.reduce((a, r) => a + r.count, 0);
+    const sharesFloor = splitKeys.reduce((a, k) => a + shownCount(k, 'sharesLower', offerTotals.floor), 0);
+    const amount = rows.reduce((a, r) => a + r.amount, 0);
+    const grossShares = shares + cvCap.shares;
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    return {
+      pct: r2(rows.reduce((a, r) => a + r.pct, 0)),
+      shares, sharesFloor, amount,
+      carveoutShares: cvCap.shares,
+      grossShares,
+      grossSharesFloor: sharesFloor + cvFloor.shares,
+      grossAmount: amount + cvCap.rupees,
+      grossPct: offerTotals.totalCap > 0 ? r2((grossShares / offerTotals.totalCap) * 100) : 0,
+    };
+  })();
+
+  /**
+   * Blocking checks shown inline — all of them from the ENGINE now.
+   *
+   * The admin form is not the only writer: the Excel importer and the API both
+   * call computeIssue directly, so a rule living in this component is a rule
+   * half the callers skip. B01 · B02 · W01 · B09 · B10 are engine rules and the
+   * form only renders them.
+   *
+   * The one check kept locally is B04, as a post-condition. It should be
+   * unfalsifiable — Step 3 absorbs the residual, so the sum always reconciles —
+   * which is exactly why it is worth asserting rather than assuming.
+   */
+  const issues = useMemo(() => {
+    const out: { code: string; msg: string; blocking: boolean }[] = [];
+    for (const p of derived.issues) out.push({ code: p.code, msg: p.message, blocking: p.severity === 'blocking' });
+    const sc = derived.primary;
+    /*
+     * B04 IS A POST-CONDITION ON THE ENGINE'S OWN SPLIT, so it means nothing
+     * when the engine produced no split at all. `issueInputsFrom` maps
+     * PERCENTAGES, so a record stating its reservation as COUNTS hands
+     * `computeIssue` an empty reservation and gets back no categories — and
+     * this then summed them to 0 and blocked with "Category shares total 0
+     * but the net offer is 74,06,000". It fired on EVERY count-only record
+     * (24 of them, all SME, LOANFRONT the 25th) with nothing the operator
+     * could do about it, which is how a blocking banner gets trained into
+     * background noise — the same failure as a false OVERWRITE badge on the
+     * card parser.
+     *
+     * B01 already guards this way: it counts the percentages before
+     * complaining about their sum. An empty set is not a violation.
+     *
+     * The table's own reconciliation is not lost — it is the `Total (issue
+     * size)` row, which reads 100% when complete and is what caught
+     * LOANFRONT.
+     */
+    if (sc && sc.categories.length > 0) {
+      const sum = sc.categories.reduce((a: number, c: any) => a + c.shares, 0);
+      if (sum !== sc.netOfferShares) {
+        out.push({ code: 'B04', msg: `Category shares total ${sum.toLocaleString('en-IN')} but the net offer is ${sc.netOfferShares.toLocaleString('en-IN')}.`, blocking: true });
+      }
+    }
+    /* A legacy record whose employee or shareholder quota sits in the
+       reservation table now has it read nowhere: the row is derived and the pct
+       is excluded from the split. Say so loudly rather than letting the
+       reservation evaporate — AUGMONT (employee 0.691%) and NSE (employee
+       43,33,437 shares) are the two in the catalogue, and both need the figure
+       moved to the carve-out field. */
+    /* The three that have a legacy table row, NOT CARVEOUT_ROWS — the market
+       maker joined that list on 2026-10-09 and has no row to have been typed
+       into. The label also came off a two-way ternary, so a POLICYHOLDER quota
+       would have been reported as a shareholder one. */
+    for (const key of CARVEOUT_TABLE_KEYS) {
+      const pct = fnum(form.shareResv[key]?.pct);
+      const count = Number(String(form.shareResv[key]?.sharesUpper ?? '').replace(/[^\d]/g, ''));
+      const cv = fnum(carveoutInput(form, key).value);
+      if ((pct > 0 || count > 0) && !(cv > 0)) {
+        const label = CARVEOUT_LABEL[key];
+        out.push({
+          code: 'E-RESV',
+          msg: `This record holds a ${label.toLowerCase()} quota in the reservation table (${pct > 0 ? `${pct}%` : `${count.toLocaleString('en-IN')} shares`}), where nothing reads it. A ${label.toLowerCase()} reservation comes off the TOP — move it to the ${label} carve-out above, in shares if the RHP states a count.`,
+          blocking: true,
+        });
+      }
+    }
+    /*
+     * W-SUB — NO RESERVATION SPLIT ON AN ISSUE THAT HAS NOT CLOSED YET
+     * (operator ask, 2026-10-06, after ten SME issues closed with no
+     * subscription data at all).
+     *
+     * This is the most expensive omission on the screen and the only one whose
+     * cost is IRREVERSIBLE. `computeSubs` in the poller returns `[]` the moment
+     * it has no denominator — `if (!offeredByBucket || offeredByBucket.size === 0
+     * …) return []` — and `offeredFromIpo()` can only build that map from
+     * `extra.shareResv`. So on a record with no percentages the exchange's
+     * demand is fetched and THROWN AWAY on every tick, once a minute and every
+     * five seconds after 15:30, and nothing is stored. A bidding day that
+     * passes without a reservation table cannot be recovered afterwards: the
+     * usual rescue, `nseShares ÷ timesSubscribed`, needs a row that was
+     * written, and none was.
+     *
+     * DSL · EIMS · EVENTIONS · OMARA · SHREETNB · SJP · SOLLFEGE closed on
+     * 5 Oct and ACMERAIL · PARASYNTEX · TNA on 6 Oct, all ten with zero rows.
+     *
+     * A WARNING, not a blocker, on purpose: an issue is often entered before
+     * its RHP is out, and the percentages genuinely are not known yet. Blocking
+     * the save would just mean the record is not entered at all.
+     *
+     * It needs a CLOSE DATE to fire, which keeps it quiet on a half-typed new
+     * record and on the ~1,200 closed historical rows where the data is already
+     * gone and the warning would be nothing but noise.
+     */
+    /*
+     * A STORED SHARE COUNT COUNTS TOO, and testing only `pct` was a false
+     * positive caught before this shipped. `offeredFromIpo` resolves each
+     * bucket from its count FIRST (`directOf(row)`) and only derives from the
+     * percentage when there is none — so a table filled in with counts off the
+     * RHP and no percentages at all works perfectly, and warning about it would
+     * be telling the operator to fix something that is not broken.
+     *
+     * RKFAL is the live case: no percentages, counts on all four rows
+     * (QIB 43,200 · bHNI 10,70,400 · sHNI 5,36,000 · Retail 24,03,200), six
+     * subscription rows written. The warning must stay silent on it.
+     */
+    const splitFilled = RESV_ROWS
+      .filter((r) => !CARVEOUT_ROWS.includes(r.key))
+      .reduce((a, r) => {
+        const row = form.shareResv[r.key];
+        const cnt = (f: 'sharesUpper' | 'sharesLower') => Number(String(row?.[f] ?? '').replace(/[^\d]/g, ''));
+        return a + (fnum(row?.pct) > 0 || cnt('sharesUpper') > 0 || cnt('sharesLower') > 0 ? 1 : 0);
+      }, 0);
+    /*
+     * W-ANCHOR — THE QIB ROW LOOKS LIKE IT HOLDS THE POST-ANCHOR FIGURE
+     * (2026-10-10, after this fault turned up on a THIRTEENTH record).
+     *
+     * The reservation table is the OFFERED reservation: QIB's row is the
+     * whole quota, and the anchor is a SUB-ALLOCATION of it that the panel
+     * below deducts. Entering QIB net of the anchor leaves the table short by
+     * exactly the anchor — and it is a genuinely inviting mistake, because
+     * the exchanges and every information site publish a "QIB (Ex. Anchor)"
+     * line, so that is the number in front of the operator.
+     *
+     * Twelve records were repaired on 2026-10-09 and LOANFRONT was caught
+     * being entered the same way the next morning, three days before it
+     * opened. Thirteen is a systematic trap, not thirteen slips, so the form
+     * has to catch it at entry rather than a script catching it after.
+     *
+     * THE TEST IS THE SHORTFALL EQUALLING THE ANCHOR TO THE SHARE, which is
+     * specific enough that it cannot fire on an ordinary incomplete table: a
+     * record missing a row is short by that row, not by the anchor. A WARNING
+     * and not a blocker, because the engine cannot prove which figure was
+     * meant and an operator may simply be mid-entry.
+     */
+    const anchorEntered = fnum(form.anchorShares);
+    const shortBy = offerTotals.totalCap - resvTotals.grossShares;
+    if (anchorEntered > 0 && Math.abs(shortBy - anchorEntered) <= 2 && resvTotals.shares > 0) {
+      const qibNow = shownCount('qib', 'sharesUpper', offerTotals.cap);
+      out.push({
+        code: 'W-ANCHOR',
+        msg: `The reservation table is short by ${Math.round(shortBy).toLocaleString('en-IN')} shares, which is EXACTLY the anchor allotment entered below. `
+          + `The QIB row looks like it holds the post-anchor figure. This table takes the FULL QIB quota — the anchor is a sub-allocation of it, deducted in the panel below — so QIB should read `
+          + `${(qibNow + anchorEntered).toLocaleString('en-IN')} rather than ${qibNow.toLocaleString('en-IN')}. `
+          + 'Enter the full quota and the table reaches 100% of the issue size on its own.',
+        blocking: false,
+      });
+    }
+    const closeYmd = (form.closeDate || '').slice(0, 10);
+    const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (splitFilled === 0 && closeYmd && closeYmd >= todayYmd) {
+      const opens = (form.openDate || '').slice(0, 10);
+      const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';
+      out.push({
+        code: 'W-SUB',
+        msg: `No reservation split entered, and this issue ${when} (closes ${closeYmd}). `
+          + 'Until the QIB / HNI / Retail rows carry a percentage or a share count, the subscription poller has no Book Size to measure demand against, so it DISCARDS the exchange\'s figures on every poll and no day-wise history is kept. '
+          + 'Those days cannot be recovered later — ten SME issues closed this way on 5–6 Oct with no subscription data at all. Either percentages or counts will do; you do not need both.',
+        blocking: false,
+      });
+    }
+    return out;
+  }, [derived, form, offerTotals, resvTotals, shownCount]);
+
+  /**
+   * Is this offer sized in SHARES rather than rupees?
+   *
+   * It decides whether the reservation table needs two share-count columns or
+   * one. A share-sized offer reserves the SAME count whichever price the book
+   * strikes at, so an upper and a lower column would print the identical figure
+   * twice and imply a difference that does not exist. Only a rupee-sized offer
+   * buys more shares at the floor than at the cap.
+   *
+   * Read off the Fresh / OFS leg basis rather than a new "sized by" control —
+   * the operator already states it there, and a second switch for the same fact
+   * is a second thing that can disagree. EVERY priced leg must be share-based:
+   * a mixed offer still moves with price, so it keeps both columns.
+   */
+  const legBases = [form.freshBasis, form.ofsBasis].filter((b) => b && b !== 'none');
+  const sharesSized = legBases.length > 0 && legBases.every((b) => b === 'shares');
+
+  /**
+   * The offer-size chain, closed: ₹ total → share count → the counts we derived.
+   *
+   * Step 1 keeps `totalShares` in step with the ₹ total and the band whenever
+   * the figure is OURS (`derived`, or still blank). A count the operator typed
+   * is `operator` and is never touched — of the ten records carrying both
+   * figures only two agree, and overwriting is exactly how VARMORA's 300-share
+   * gap would come back.
+   *
+   * Step 2 refreshes the reservation rows WE derived, off whatever total is now
+   * effective. Those are our own snapshots, so nothing the operator entered is
+   * lost; `exchange` and `operator` rows keep their counts and the drift hint
+   * explains which side is stale. That is the whole difference between this and
+   * the single Autofill button Phase 0 removed, which replaced every row alike.
+   *
+   * The updater returns `f` untouched when there is nothing to do, so React
+   * bails out of the render and the effect cannot feed itself.
+   */
+  useEffect(() => {
+    setForm((f) => {
+      let next = f;
+
+      const want = derivedTotalSharesOf(f);
+      if (f.totalSharesSource !== 'operator' && want > 0 && String(want) !== f.totalShares) {
+        next = { ...next, totalShares: String(want), totalSharesSource: 'derived' };
+      }
+
+      const { cap, floor } = offerTotalsOf(next);
+      if (cap > 0) {
+        let resv = next.shareResv;
+        let touched = false;
+        for (const r of RESV_ROWS) {
+          const row = resv[r.key];
+          if (!row || row.source !== 'derived') continue;
+          const pct = fnum(row.pct);
+          if (pct <= 0) continue;
+          const upper = String(derivedCountAt(cap, pct));
+          const lower = String(derivedCountAt(floor, pct));
+          if (row.sharesUpper === upper && row.sharesLower === lower) continue;
+          if (!touched) { resv = { ...resv }; touched = true; }
+          resv[r.key] = { ...row, sharesUpper: upper, sharesLower: lower };
+        }
+        if (touched) next = { ...next, shareResv: resv };
+      }
+      return next;
+    });
+  }, [form.issueSizeCr, form.freshBasis, form.freshValue, form.ofsBasis, form.ofsValue,
+    form.priceBandMin, form.priceBandMax, form.totalShares, form.totalSharesSource, form.shareResv]);
+
+  /**
+   * ISIN check digit (ISO 6166): expand letters to digits, double alternate
+   * digits from the right, sum, and the total must reach the next multiple of
+   * ten. A typo in an ISIN otherwise surfaces as a failed exchange bid.
+   */
+  const isinHint = (() => {
+    const v = form.isin.trim().toUpperCase();
+    if (!v) return null;
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(v)) return 'Not a valid ISIN shape (2 letters + 9 + check digit).';
+    const digits = v.slice(0, 11).split('').map((c) => (/[0-9]/.test(c) ? c : String(c.charCodeAt(0) - 55))).join('');
+    let sum = 0;
+    const rev = digits.split('').reverse();
+    for (let i = 0; i < rev.length; i++) {
+      let d = Number(rev[i]);
+      if (i % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+      sum += d;
+    }
+    const check = (10 - (sum % 10)) % 10;
+    return check === Number(v[11]) ? 'Checksum valid.' : `Checksum fails — expected ${check} as the last digit.`;
+  })();
+
   const retailCutOffCalc = (() => {
     const max = Number(form.priceBandMax);
     if (!Number.isFinite(max) || max <= 0) return '';
@@ -295,15 +1616,6 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     return String(Math.max(0, max - disc));
   })();
 
-  const szInput = (key: string, field: keyof SzCell) => <input className="input mono" value={form.sharesSize[key][field]} onChange={(e) => setSz(key, { [field]: e.target.value } as Partial<SzCell>)} />;
-  const szRow = (r: { key: string; label: string; extra?: boolean }) => (
-    <tr key={r.key}>
-      <th className="sz-lbl">{r.label}</th>
-      <td>{szInput(r.key, 'share')}</td><td>{szInput(r.key, 'minP')}</td><td>{szInput(r.key, 'maxP')}</td>
-      {r.extra ? <><td>{szInput(r.key, 'ncd')}</td><td>{szInput(r.key, 'ind')}</td><td>{szInput(r.key, 'hni')}</td></>
-        : <><td className="sz-off" /><td className="sz-off" /><td className="sz-off" /></>}
-    </tr>
-  );
 
   // Application-series members are restricted to the partners added in Basic Details → IPO Partner.
   const partnerMembers = Array.from(new Set(form.partners.map((p) => p.member).filter(Boolean)));
@@ -336,6 +1648,22 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     );
   };
 
+  /*
+   * Both guards live HERE, below every hook, and must stay below them.
+   *
+   * They used to sit above the two useMemo calls (`derived` and `issues`).
+   * `loading` starts as `editing`, so opening an existing IPO returned <Loader/>
+   * on the first render — those two hooks never ran. When the fetch resolved and
+   * loading flipped false, the next render reached them, React counted more
+   * hooks than the render before, and the whole screen died with error #310
+   * ("Rendered more hooks than during the previous render").
+   *
+   * It only ever hit Edit: on /catalog/new `editing` is false, so the first
+   * render already runs every hook and the counts match.
+   */
+  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
+  if (loading) return <Loader />;
+
   return (
     <div className="ipo-form">
       <PageHead
@@ -345,6 +1673,37 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         actions={
           <>
             <a className="btn btn-secondary" href="/admin/catalog"><Icon name="arrow-right" size={15} style={{ transform: 'rotate(180deg)' }} /> Back to List</a>
+            {/* Auto-fill from an NSE PREANCHOR PDF. Read-only — the review
+                modal decides what actually lands in the form; Save on this
+                page is still what writes to the catalog. */}
+            <label className={`btn btn-secondary${parsing ? ' disabled' : ''}`} title="Upload the NSE Security Parameters PDF for this issue">
+              <Icon name="upload" size={15} />
+              {parsing ? 'Reading…' : 'Fill from PREANCHOR'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsing}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParsePreanchor(f); e.currentTarget.value = ''; }} />
+            </label>
+            {/* An IMAGE, not a PDF — the one-page summary cards circulated
+                before an issue opens. Accept only what the Messages API takes
+                as an image block; a PDF dropped here would be rejected by the
+                endpoint, so the picker does not offer one. */}
+            <label className={`btn btn-secondary${parsingCard ? ' disabled' : ''}`} title="Upload an IPO summary card image (JPEG or PNG). Reads the offer, band, lot, percentages, reservation and timeline — you confirm each field before it is applied.">
+              <Icon name="upload" size={15} />
+              {parsingCard ? 'Reading…' : 'Fill from IPO card'}
+              <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden disabled={parsingCard}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseCard(f); e.currentTarget.value = ''; }} />
+            </label>
+            <label className={`btn btn-secondary${parsingAnchor ? ' disabled' : ''}`} title="Upload the Anchor Investor Intimation Letter (usually arrives the evening before opening)">
+              <Icon name="upload" size={15} />
+              {parsingAnchor ? 'Reading…' : 'Fill from Anchor Intimation'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsingAnchor}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseAnchor(f); e.currentTarget.value = ''; }} />
+            </label>
+            <label className={`btn btn-secondary${parsingNote ? ' disabled' : ''}`} title="Upload the merchant banker's IPO Note (Axis format). Overwrites the timetable estimates with the exact dates from the Note.">
+              <Icon name="upload" size={15} />
+              {parsingNote ? 'Reading…' : 'Fill from IPO Note'}
+              <input type="file" accept="application/pdf,.pdf" hidden disabled={parsingNote}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onParseNote(f); e.currentTarget.value = ''; }} />
+            </label>
             <button className="btn btn-secondary" onClick={onReset}><Icon name="refresh" size={15} /> Reset</button>
             <button className="btn" disabled={busy} onClick={onSave}><Icon name="check" size={15} /> {busy ? 'Saving…' : 'Save IPO'}</button>
           </>
@@ -353,13 +1712,42 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {savedMsg && <div className="banner ok" style={{ marginBottom: 14 }}>{savedMsg}</div>}
 
+      {/* Where the record stands, in one line, before the tabs rather than
+          after them — an operator should not have to reach Review & Publish to
+          find out whether the thing can open bidding. */}
+      <div className={`iform-state ${gapsLeft ? 'off' : 'ok'}`}>
+        <Icon name={gapsLeft ? 'dot' : 'check'} size={14} />
+        {gapsLeft === 0 ? (
+          <span>Ready to open bidding and print forms. <b>About Company</b> and <b>After Listing</b> can be filled in later.</span>
+        ) : (
+          <span>
+            <b>{gapsLeft}</b> {gapsLeft === 1 ? 'entry is' : 'entries are'} still needed before this issue can take an application or print a form —{' '}
+            {TABS.filter((t) => tabGaps[t.key]?.length).map((t, i, arr) => (
+              <span key={t.key}>
+                <button type="button" className="iform-jump" onClick={() => setTab(t.key)}>{t.label}</button>
+                {i < arr.length - 1 ? ', ' : ''}
+              </span>
+            ))}.
+          </span>
+        )}
+      </div>
+
       <div className="card"><div className="card-pad" style={{ paddingBottom: 20 }}>
         <div className="iform-tabs" role="tablist">
-          {TABS.map((t) => (
-            <button key={t.key} role="tab" aria-selected={tab === t.key} className={`iform-tab${tab === t.key ? ' on' : ''}`} onClick={() => setTab(t.key)}>
-              <span className="ic"><Icon name={t.icon} size={16} /></span>{t.label}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const gaps = tabGaps[t.key];
+            const done = gaps != null && gaps.length === 0;
+            return (
+              <button key={t.key} role="tab" aria-selected={tab === t.key}
+                className={`iform-tab${tab === t.key ? ' on' : ''}`}
+                title={gaps?.length ? `Still needed: ${gaps.join(', ')}` : undefined}
+                onClick={() => setTab(t.key)}>
+                <span className="ic"><Icon name={t.icon} size={16} /></span>{t.label}
+                {gaps?.length ? <span className="iform-gap">{gaps.length}</span> : null}
+                {done && <span className="iform-ok" aria-label="complete"><Icon name="check" size={12} /></span>}
+              </button>
+            );
+          })}
         </div>
 
         {/* ================= Basic Details ================= */}
@@ -367,10 +1755,55 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           <div className="fstack">
             <Panel title="Basic Information">
               <div className="form-grid">
-                <Field label="IPO Name / Company" required span={2}><input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Acme Technologies Limited" /></Field>
-                <Field label="Symbol" required><input className="input mono" value={form.symbol} onChange={(e) => set({ symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="ACME" /></Field>
-                <Field label="Issue Type" required><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
-                <Field label="IPO Category" required>
+                <Field label="IPO Name / Company" required value={form.name} span={2}><input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Acme Technologies Limited" /></Field>
+                <Field label="Symbol" required value={form.symbol}><input className="input mono" value={form.symbol} onChange={(e) => set({ symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })} placeholder="ACME" /></Field>
+                {/* Instrument is NOT the board: an FPO can be Mainboard or SME.
+                    Keeping them apart is what makes the FPO report variants
+                    possible — before this the four we hold were findable only by
+                    searching for "Further Public Offer" inside a text field. */}
+                <Field label="Instrument" hint="what kind of offer this is — separate from the board">
+                  <select className="input" value={form.instrument} onChange={(e) => set({ instrument: e.target.value })}>
+                    <option value="ipo">IPO — Initial Public Offer</option>
+                    <option value="fpo">FPO — Further Public Offer</option>
+                    <option value="reit">REIT</option>
+                    <option value="invit">InvIT</option>
+                  </select>
+                </Field>
+                {/* Two rungs of one classification — see the FormState note. */}
+                <Field label="Sector" hint="broad group used for filtering and reports">
+                  <SearchSelect
+                    options={sectorOpts.filter((o) => o.active).map((o) => ({ value: o.name, label: o.name }))}
+                    value={form.sector}
+                    onChange={(v) => set({ sector: v })}
+                    placeholder="Search sectors…"
+                    createLabel={(n) => `+ Add “${n}” as a new sector`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('sectors', { name });
+                        setSectorOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
+                </Field>
+                <Field label="Industry" hint="the exchange's detailed classification, beneath the sector">
+                  <SearchSelect
+                    options={industryOpts.filter((o) => o.active).map((o) => ({ value: o.name, label: o.name }))}
+                    value={form.industry}
+                    onChange={(v) => set({ industry: v })}
+                    placeholder="Search industries…"
+                    createLabel={(n) => `+ Add "${n}" as a new industry`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('industries', { name });
+                        setIndustryOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
+                </Field>
+                <Field label="Issue Type" required value={form.issueType}><select className="input" value={form.issueType} onChange={(e) => pickIssueType(e.target.value)}>{Array.from(new Set([...issueTypeOptions, form.issueType].filter(Boolean))).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+                <Field label="IPO Category" required value={form.categoryName || form.type}>
                   {categoryMasters.length ? (
                     <select className="input" value={form.categoryName || ''} onChange={(e) => pickCategory(e.target.value)}>
                       <option value="">— select category —</option>
@@ -380,23 +1813,39 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                     <select className="input" value={form.type} onChange={(e) => set({ type: e.target.value })}><option value="mainboard">Main Board IPO</option><option value="sme">SME IPO</option></select>
                   )}
                 </Field>
-                <Field label="ISIN"><input className="input mono" value={form.isin} onChange={(e) => set({ isin: e.target.value })} placeholder="INE000000000" /></Field>
-                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-                  <Field label="Face Value (₹)"><input className="input mono" value={form.faceValue} onChange={(e) => set({ faceValue: e.target.value })} placeholder="2.00" /></Field>
-                  <Field label="Lot Size"><input className="input mono" value={form.lotSize} onChange={(e) => set({ lotSize: e.target.value })} placeholder="1" /></Field>
+                <Field label="ISIN" required value={form.isin} hint={isinHint ?? undefined}>
+                  <input className="input mono" value={form.isin}
+                    onChange={(e) => set({ isin: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) })}
+                    placeholder="INE000000000" />
+                </Field>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  <Field label="Face Value (₹)" required value={form.faceValue}><input className="input mono" value={form.faceValue} onChange={(e) => set({ faceValue: e.target.value })} placeholder="2.00" /></Field>
                   <Field label="Is Active"><div style={{ paddingTop: 3 }}><Toggle on={isActive} onChange={(v) => set({ status: v ? 'upcoming' : 'withdrawn' })} /></div></Field>
+                  {/* Shareholder / Employee quotas are now CARVE-OUT ROWS on the
+                      Offer tab — a quota exists because shares are set aside for
+                      it, not because a switch was flipped. */}
                   <Field label="Shareholder Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowShareholder} onChange={(v) => set({ allowShareholder: v })} /></div></Field>
                   <Field label="Employee Allowed"><div style={{ paddingTop: 3 }}><Toggle on={form.allowEmployee} onChange={(v) => set({ allowEmployee: v })} /></div></Field>
                 </div>
-                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                   <Field label="Start Bid" hint="ON → investors can apply / pre-apply. OFF → Apply hidden on site & app."><div style={{ paddingTop: 3 }}><Toggle on={form.startBid} onChange={(v) => set({ startBid: v })} /></div></Field>
                   <Field label="Start Printing" hint="ON → prefilled ASBA form printing available. OFF → print hidden."><div style={{ paddingTop: 3 }}><Toggle on={form.startPrint} onChange={(v) => set({ startPrint: v })} /></div></Field>
+                  {/* Which exchanges this issue lists on — CHOSEN, not inferred.
+                      The API used to write ['NSE','BSE'] for every mainboard issue
+                      and both SME platforms for every SME one, so an issue on a
+                      single platform was recorded as listing on two. */}
+                  <Field label={form.type === 'sme' ? 'NSE SME' : 'NSE'} hint="listed on this exchange">
+                    <div style={{ paddingTop: 3 }}><Toggle on={form.exNse} onChange={(v) => set({ exNse: v })} /></div>
+                  </Field>
+                  <Field label={form.type === 'sme' ? 'BSE SME' : 'BSE'} hint={form.type === 'sme' ? 'SME usually lists on ONE platform' : 'listed on this exchange'}>
+                    <div style={{ paddingTop: 3 }}><Toggle on={form.exBse} onChange={(v) => set({ exBse: v })} /></div>
+                  </Field>
                   {editing && (
-                    <div style={{ gridColumn: 'span 3' }}>
-                      <Field label="Live subscription">
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <Field label="Live subscription" hint={isClosed ? 'Polling stops once the issue closes — turned off automatically.' : undefined}>
                         <div style={{ paddingTop: 3, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                          <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} />
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub}><Icon name="refresh" size={13} /> Refresh now</button>
+                          <Toggle on={form.autoPollSubscription} onChange={(v) => set({ autoPollSubscription: v })} disabled={isClosed} />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshSub} disabled={isClosed}><Icon name="refresh" size={13} /> Refresh now</button>
                           {subMsg && <span className="muted" style={{ fontSize: 12 }}>{subMsg}</span>}
                         </div>
                       </Field>
@@ -406,31 +1855,965 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               </div>
             </Panel>
 
-            <Panel title="Pricing & Issue">
+            {/* Pricing moved to its own tab — Reservation cannot be derived
+                without the lot size and the price scenarios, so pricing has to
+                come first (spec §8). */}
+
+
+          </div>
+        )}
+
+        {/* ================= Shares & Reservation ================= */}
+        {tab === 'pricing' && (
+          <div className="fstack">
+            <Panel title="Price & lot" desc="The reservation split cannot be derived without these, which is why pricing comes before it.">
               <div className="form-grid">
-                <Field label="Price band — min (₹)"><input className="input mono" value={form.priceBandMin} onChange={(e) => set({ priceBandMin: e.target.value })} /></Field>
-                <Field label="Price band — max (₹)"><input className="input mono" value={form.priceBandMax} onChange={(e) => set({ priceBandMax: e.target.value })} /></Field>
-                <Field label="Retail Discount (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
-                <Field label="Retail Cut Off (₹)" hint="auto: max band − discount"><input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} /></Field>
-                <Field label="Max amt — Retail (₹)"><input className="input mono" value={form.maxAmtRetail} onChange={(e) => set({ maxAmtRetail: e.target.value })} /></Field>
-                <Field label="No. of App"><input className="input mono" value={form.noOfApp} onChange={(e) => set({ noOfApp: e.target.value.replace(/\D/g, '') })} /></Field>
+                <Field label="Mechanism" required>
+                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
+                    <option value="book_built">Book-built</option>
+                    <option value="fixed_price">Fixed price</option>
+                  </select>
+                </Field>
+                <Field label="Lot Size" required value={form.lotSize} hint="shares per application lot">
+                  <input className="input mono" value={form.lotSize} onChange={(e) => set({ lotSize: e.target.value })} placeholder="1" />
+                </Field>
+                <Field label={form.mechanism === 'fixed_price' ? 'Issue price (₹)' : 'Price band — min (₹)'} required value={form.priceBandMin}>
+                  <input className="input mono" value={form.priceBandMin} onChange={(e) => set({ priceBandMin: e.target.value })} />
+                </Field>
+                <Field label="Price band — max (₹)" required={form.mechanism !== 'fixed_price'} value={form.mechanism === 'fixed_price' ? 'n/a' : form.priceBandMax} hint={form.mechanism === 'fixed_price' ? 'not used for a fixed-price issue' : undefined}>
+                  <input className="input mono" value={form.priceBandMax} disabled={form.mechanism === 'fixed_price'} onChange={(e) => set({ priceBandMax: e.target.value })} />
+                </Field>
+                <Field label="Tick size (₹)"><input className="input mono" value={form.tickSize} onChange={(e) => set({ tickSize: e.target.value })} placeholder="1" /></Field>
+                <Field label="Final issue price (₹)" hint="set after the book closes; becomes the displayed scenario">
+                  <input className="input mono" value={form.finalIssuePrice} onChange={(e) => set({ finalIssuePrice: e.target.value })} />
+                </Field>
               </div>
             </Panel>
 
+            <Panel title="Discounts" desc="Per-category discount off the offer price. Each lowers that category's minimum application.">
+              <div className="form-grid">
+                <Field label="Retail (₹)"><input className="input mono" value={form.retailDiscount} onChange={(e) => set({ retailDiscount: e.target.value })} /></Field>
+                <Field label="Employee (₹)"><input className="input mono" value={form.employeeDiscount} onChange={(e) => set({ employeeDiscount: e.target.value })} /></Field>
+                <Field label="Shareholder (₹)"><input className="input mono" value={form.shareholderDiscount} onChange={(e) => set({ shareholderDiscount: e.target.value })} /></Field>
+                <Field label="Policyholder (₹)"><input className="input mono" value={form.policyholderDiscount} onChange={(e) => set({ policyholderDiscount: e.target.value })} /></Field>
+                <Field label="Retail cut-off (₹)" hint="derived: max band − retail discount">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={retailCutOffCalc} />
+                </Field>
+              </div>
+            </Panel>
+
+          </div>
+        )}
+        {tab === 'offer' && (
+          <div className="fstack">
+            <Panel title="Offer structure" desc="What is being offered, and under which regulation. These four inputs drive every derived figure below.">
+              <div className="form-grid">
+                <Field label="Mechanism">
+                  <select className="input" value={form.mechanism} onChange={(e) => set({ mechanism: e.target.value })}>
+                    <option value="book_built">Book-built</option>
+                    <option value="fixed_price">Fixed price</option>
+                  </select>
+                </Field>
+                <Field label="Regulation basis" hint={`auto: ${derived.rulePack.label}`}>
+                  <select className="input" value={form.regulationBasis} onChange={(e) => set({ regulationBasis: e.target.value })}>
+                    <option value="">Auto — from the QIB %</option>
+                    <option value="icdr_6_1">ICDR 6(1) — QIB up to 50%</option>
+                    <option value="icdr_6_2">ICDR 6(2) — QIB at least 75%</option>
+                  </select>
+                </Field>
+                <Field label="Fresh issue" hint="new shares issued by the company">
+                  <div className="leg-split">
+                    <select className="input" value={form.freshBasis} onChange={(e) => set({ freshBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.freshValue} disabled={form.freshBasis === 'none'}
+                      onChange={(e) => set({ freshValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+                <Field label="Offer for sale" hint="existing shares sold by shareholders">
+                  <div className="leg-split">
+                    <select className="input" value={form.ofsBasis} onChange={(e) => set({ ofsBasis: e.target.value })}>
+                      <option value="none">Not set</option><option value="amount">₹ Cr</option><option value="shares">Shares</option>
+                    </select>
+                    <input className="input mono" value={form.ofsValue} disabled={form.ofsBasis === 'none'}
+                      onChange={(e) => set({ ofsValue: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </div>
+                </Field>
+              </div>
+              {form.freshBasis === 'none' && form.ofsBasis === 'none' && (
+                <p className="hint" style={{ marginTop: 6 }}>
+                  Until one of these is set, the public detail page shows a Fresh / OFS split
+                  <b> estimated at 85 / 15</b> rather than the real one.
+                </p>
+              )}
+            </Panel>
+            {/* The "Shares Size Info" grid is gone (brief §3: DROP). Its share
+                counts and ₹Cr columns were typed by hand beside the percentages
+                they are computed from; they are now the derived panel below.
+                Its NCD / IND / HNI columns were debt-issue fields that belong on
+                an NCD form, not here. */}
+            {/* ONE issue size, not two.
+                This panel used to show a typed "Total issue size" beside a
+                derived "Fresh + OFS", with nothing saying which was
+                authoritative — and the typed one carried a placeholder of 290,
+                which read as a computed total for every issue that was not
+                MVELECTRO. Enter the legs and the total is derived from them;
+                the manual box appears only when there are no legs to derive
+                from, which is how the legacy records were entered. */}
+            <Panel title="Offer size" desc="Derived from the Fresh Issue and Offer for Sale legs above.">
+              <div className="form-grid">
+                {legSumCr ? (
+                  <Field label="Total issue size (₹ Cr)" required value={legSumCr} hint="derived from the two legs above">
+                    <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }} value={legSumCr} />
+                  </Field>
+                ) : (
+                  <Field label="Total issue size (₹ Cr)" required value={form.issueSizeCr}
+                    hint="no Fresh / OFS legs entered — enter the total the RHP states">
+                    <input className="input mono" value={form.issueSizeCr}
+                      onChange={(e) => set({ issueSizeCr: e.target.value.replace(/[^\d.]/g, '') })} />
+                  </Field>
+                )}
+                {/* The count the offer document actually prints, and the one
+                    every category divides out of. A ₹ total only approximates
+                    it — it is rounded to two decimals in Cr, and the price is
+                    a guess until the issue prices. */}
+                {/* Auto-filled from the ₹ total at the upper band, and still
+                    EDITABLE — unlike the ₹ field above, which goes read-only
+                    once the legs derive it. The two are not the same case:
+                    legs → ₹ is addition, ₹ → shares is a division by a price
+                    out of a figure already rounded to two decimals in Cr. Of
+                    the ten records holding both counts only two agree, and a
+                    read-only box would make ADROITIND's 1,12,47,000 and
+                    SWASTIKAIN's 86,95,946 impossible to enter at all. */}
+                <Field label="Total issue size (shares)" value={form.totalShares}
+                  hint={form.totalSharesSource === 'operator'
+                    ? (derivedTotalShares > 0 && String(derivedTotalShares) !== form.totalShares
+                        ? `as the offer document states it — it wins over the ₹ total, which derives ${derivedTotalShares.toLocaleString('en-IN')}`
+                        : 'as the offer document states it — this figure wins over the ₹ total')
+                    : `₹${legSumCr || form.issueSizeCr || '0'} Cr ÷ ₹${form.priceBandMax || form.priceBandMin || '—'}, rounded. Type the offer document's count to override it.`}>
+                  <input className="input mono" value={form.totalShares} placeholder="1,76,47,058"
+                    onChange={(e) => set({ totalShares: e.target.value.replace(/[^\d]/g, ''), totalSharesSource: 'operator' })} />
+                  {(form.totalShares || derivedTotalShares > 0) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <span className={`rc-src rc-src-${form.totalSharesSource === 'operator' ? 'operator' : 'derived'}`}>
+                        {form.totalSharesSource === 'operator' ? 'stated' : 'derived'}
+                      </span>
+                      {form.totalSharesSource === 'operator' && derivedTotalShares > 0
+                        && String(derivedTotalShares) !== form.totalShares && (
+                        /* Clearing the field hands it back to the effect, which
+                           refills and re-stamps it — one path, not two. */
+                        <button type="button" className="linklike" style={{ fontSize: 11.5 }}
+                          onClick={() => set({ totalShares: '', totalSharesSource: '' })}>
+                          use derived ({derivedTotalShares.toLocaleString('en-IN')})
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </Field>
+                {/* Only worth showing for a STATED count, where it reconciles
+                    two independently entered figures. Against a derived count
+                    it just reconstitutes the ₹ total it was divided out of. */}
+                {form.totalShares && form.totalSharesSource === 'operator' && derived.primary && (
+                  <Field label="Implied at this price" hint="derived — the ₹ value of the stated count">
+                    <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                      value={`₹${((Number(form.totalShares) * derived.primary.price) / 1e7).toFixed(2)} Cr @ ₹${derived.primary.price}`} />
+                  </Field>
+                )}
+              </div>
+            </Panel>
+            <Panel title="Minimum subscription" desc="Below this the issue must be withdrawn and every application refunded.">
+              <div className="form-grid">
+                <Field label="Minimum subscription (% of fresh issue)" hint="90% under ICDR unless the RHP says otherwise">
+                  <input className="input mono" value={form.minSubscriptionPct} placeholder="90"
+                    onChange={(e) => set({ minSubscriptionPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+              </div>
+            </Panel>
+            <Panel title="Carve-outs" desc="Shares set aside off the top, BEFORE the category split — so every percentage below is a percentage of what is left. Enter the unit the RHP states.">
+              <div className="form-grid">
+                {/* Shares or ₹ Cr, because RHPs use both and they are not
+                    interchangeable. An employee reservation is quoted as a
+                    share count (RUNWALENTR: 1,20,275) which is typically NOT
+                    lot-aligned, so no rupee figure reproduces it exactly; and a
+                    ₹ figure has to be divided by the DISCOUNTED price, not the
+                    band price, or the count comes out short and the difference
+                    silently inflates QIB. */}
+                <Field label="Employee" hint={form.cvEmployeeBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.employeeDiscount || 0)) || '—'} (band price less the employee discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvEmployee}
+                      onChange={(e) => set({ cvEmployee: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvEmployeeBasis}
+                      onChange={(e) => set({ cvEmployeeBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
+                </Field>
+                {/* Both are per-APPLICANT rupee caps from the RHP, not sizes of
+                    the quota: an employee may bid up to the max, of which only
+                    the initial amount is allotted before any scale-down. */}
+                <Field label="Employee cap per applicant (₹)" hint="RHP states it; ₹5,00,000 is the usual ceiling">
+                  <input className="input mono" value={form.empMaxPerApplicant} onChange={(e) => set({ empMaxPerApplicant: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                <Field label="Employee initial allotment cap (₹)" hint="usually ₹2,00,000">
+                  <input className="input mono" value={form.empInitialPerApplicant} onChange={(e) => set({ empInitialPerApplicant: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                <Field label="Shareholder" hint={form.cvShareholderBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.shareholderDiscount || 0)) || '—'} (band price less the shareholder discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvShareholder}
+                      onChange={(e) => set({ cvShareholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvShareholderBasis}
+                      onChange={(e) => set({ cvShareholderBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
+                </Field>
+                {/* A POLICYHOLDER quota is its own reservation, not the
+                    shareholder one: it answers to the insurer's policyholders
+                    where the shareholder quota answers to holders of a listed
+                    parent, and an issuer can offer both at once. LIC did. */}
+                <Field label="Policyholder" hint={form.cvPolicyholderBasis === 'shares'
+                  ? 'share count, exactly as the RHP states it'
+                  : `₹ Cr — converted at ₹${(Number(form.priceBandMax || 0) - Number(form.policyholderDiscount || 0)) || '—'} (band price less the policyholder discount)`}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={form.cvPolicyholder}
+                      onChange={(e) => set({ cvPolicyholder: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvPolicyholderBasis}
+                      onChange={(e) => set({ cvPolicyholderBasis: e.target.value })}>
+                      <option value="amount">₹ Cr</option>
+                      <option value="shares">shares</option>
+                    </select>
+                  </div>
+                </Field>
+                {/* Mainboard issues have no market maker, so the field only
+                    appears where it is required — and where leaving it empty
+                    is a blocking fault (B18). */}
+                {form.type === 'sme' && (
+                  <Field label="Market maker" required
+                    hint={`SME issues must reserve at least ${derived.rulePack.marketMakerMinPct}% of the issue`}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input className="input mono" style={{ flex: 1 }} value={form.cvMarketMaker}
+                        onChange={(e) => set({ cvMarketMaker: e.target.value.replace(/[^\d.]/g, '') })} />
+                      <select className="input" style={{ width: 92, flexShrink: 0 }} value={form.cvMarketMakerBasis}
+                        onChange={(e) => set({ cvMarketMakerBasis: e.target.value })}>
+                        <option value="amount">₹ Cr</option>
+                        <option value="shares">shares</option>
+                      </select>
+                    </div>
+                  </Field>
+                )}
+              </div>
+            </Panel>
+
+            <Panel title="Share Reservation" desc="The RHP's share counts are the figures to enter. Percentages derive the counts when the RHP is not to hand — HNI (Big) takes the larger two-thirds of the NII quota.">
+              {/* An all-derived table is an ESTIMATE and must say so. A
+                  percentage split reproduces a real RHP only when the issuer
+                  used round numbers; the counts are rounded to whole
+                  applications and adjusted at the BRLM's discretion, so
+                  Sai Urja's RHP puts QIB at 9,79,200 where 50% of the net offer
+                  is 9,96,000. Nothing here is wrong — it just is not the
+                  document, and the badge is the difference. */}
+              {(() => {
+                const counted = RESV_ROWS.filter((r) => fnum(form.shareResv[r.key]?.sharesUpper) > 0);
+                if (counted.length === 0) return null;
+                const fromDoc = counted.filter((r) => {
+                  const s = form.shareResv[r.key]?.source;
+                  return s === 'exchange' || s === 'operator';
+                });
+                if (fromDoc.length === counted.length) return null;
+                return (
+                  <div className="banner info" style={{ fontSize: 12.5, marginBottom: 12 }}>
+                    <b>Estimated — verify with the RHP.</b>{' '}
+                    {fromDoc.length === 0
+                      ? 'Every count here is derived from the percentages above.'
+                      : `${counted.length - fromDoc.length} of ${counted.length} counts are derived from the percentages above.`}{' '}
+                    An RHP rounds each category to whole applications, so a percentage split rarely reproduces it exactly.
+                  </div>
+                );
+              })()}
+              {/* SEBI splits the NII quota two-thirds to bids above ₹10 L (Big) and
+                  one-third to ₹2–10 L (Small), so Big is ALWAYS the larger share.
+                  Three live records had the two transposed, which fed wrong
+                  "applications for 1×" figures to the public site — the numbers
+                  still add to 100%, so nothing else catches it. A warning, not a
+                  block: the operator may be entering a genuinely unusual issue. */}
+              {issues.length > 0 && (
+                <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {issues.map((v: { code: string; msg: string; blocking: boolean }) => (
+                    <div key={v.code + v.msg} className={`banner ${v.blocking ? 'warn' : 'info'}`}>
+                      <b>{v.blocking ? 'Fix before publishing' : 'Check'}:</b> {v.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* the derived total, so the operator can see the split resolve live */}
+              {shown && (
+                <div className="rc-summary">
+                  <span><i>Net offer</i>{shown.netOfferShares.toLocaleString('en-IN')} sh</span>
+                  <span><i>Upper band</i>₹{derived.scenarios.cap?.price ?? shown.price}</span>
+                  {derived.scenarios.floor && derived.scenarios.floor.price !== derived.scenarios.cap?.price && (
+                    <span><i>Lower band</i>₹{derived.scenarios.floor.price}</span>
+                  )}
+                  {/* SHARES, not lots. A stated share count is not lot-aligned,
+                      so the remainder genuinely isn't a whole number of lots —
+                      residualLots printed raw as "1.0297029702970297 lots"
+                      (104 ÷ 101) on VARMORA. Shares is the honest unit and
+                      needs no rounding at all. */}
+                  {shown.residualTo && (
+                    <span><i>Residual</i>{Math.round(shown.residualLots * (Number(form.lotSize) || 1)).toLocaleString('en-IN')} sh → {CATEGORY_LABELS[shown.residualTo] ?? shown.residualTo}</span>
+                  )}
+                  <span className="muted">{derived.rulePack.label}</span>
+                </div>
+              )}
+              {/* Autofill button — computes shares from % × issue size / band
+                  price (industry convention: reservation tables on Bumtaria /
+                  Chittorgarh / IPOPremium / mainboard sheets all display shares
+                  at the UPPER band, since that's the offered-shares count the
+                  exchanges themselves use for their times computation).
+                  Operator ask 2026-09-22: VARMORA reservation counts didn't
+                  match other providers because a manual entry divided by the
+                  midband price. This button fills both overrides in one click. */}
+              {(() => {
+                const num = (v: string | undefined) => { const x = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(x) ? x : 0; };
+                const lot = num(form.lotSize);
+                const pMax = num(form.priceBandMax);
+                // ONE resolver, shared with the auto-fill effect and the drift
+                // check below, so the three cannot drift apart again.
+                const { cap: capTotal, floor: floorTotal } = offerTotalsOf(form);
+                const canFill = pMax > 0 && lot > 0 && capTotal > 0;
+                const anyPctSet = RESV_ROWS.some((r) => num(form.shareResv[r.key]?.pct) > 0);
+                if (!canFill || !anyPctSet) return null;
+
+                /* ROUNDED, not floored to lot — these cells are the OFFERED-SHARES
+                   figure the exchanges and every information site publish, and
+                   those are the raw percentage of the offer. VARMORA proved it:
+                   round(47,838,855 × 50%) = 2,39,19,428, exactly the broker's
+                   number, where floor-to-lot gave 2,39,19,426. `computeIssue`
+                   keeps flooring with residual absorption — that is the spec's
+                   ALLOCATION rule (you cannot allot a fraction of a lot) and a
+                   different question from what the issue offered. */
+                const shareOf = (total: number, pct: number) => Math.round((total * pct) / 100);
+
+                const filled = (r: { key: string }) =>
+                  (form.shareResv[r.key].sharesUpper ?? '').trim() !== '' ||
+                  (form.shareResv[r.key].sharesLower ?? '').trim() !== '';
+                const entered = RESV_ROWS.filter((r) => num(form.shareResv[r.key]?.pct) > 0 && filled(r));
+                const blanks = RESV_ROWS.filter((r) => num(form.shareResv[r.key]?.pct) > 0 && !filled(r));
+
+                /* Fills BLANK rows only unless `replace` is passed. A stored
+                   count is the exchange's own figure (operator, 2026-09-24), so
+                   overwriting one silently replaces data we trust with an
+                   approximation — which is exactly what this button used to do
+                   on every row after a single confirm. */
+                const autofill = (replace: boolean) => {
+                  const targets = replace ? RESV_ROWS : blanks;
+                  // Rows the SERVER derived can be refreshed silently; an
+                  // exchange or hand-typed figure is the thing being destroyed,
+                  // so only those are worth naming in the prompt.
+                  const authored = entered.filter((r) => form.shareResv[r.key].source !== 'derived');
+                  if (replace && authored.length) {
+                    const ok = window.confirm(
+                      `Replace ${authored.length} count${authored.length === 1 ? '' : 's'} that came from the exchange or were typed by hand?\n\n`
+                      + 'Those outrank a derived value — the derivation only approximates them.',
+                    );
+                    if (!ok) return;
+                  }
+                  const next = { ...form.shareResv };
+                  for (const r of targets) {
+                    const pct = num(form.shareResv[r.key]?.pct);
+                    if (pct <= 0) continue;
+                    next[r.key] = {
+                      ...next[r.key],
+                      sharesUpper: String(shareOf(capTotal, pct)),
+                      sharesLower: String(shareOf(floorTotal, pct)),
+                      source: 'derived',
+                    };
+                  }
+                  set({ shareResv: next });
+                };
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flex: 1 }}>
+                      Fill share counts from the percentages above and both band prices.
+                      {entered.length > 0 && <> <b>{entered.length} row{entered.length === 1 ? '' : 's'} already {entered.length === 1 ? 'has' : 'have'} a count</b> and will be left alone.</>}
+                    </span>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }}
+                      disabled={blanks.length === 0} onClick={() => autofill(false)}>
+                      {blanks.length > 0 ? `Fill ${blanks.length} blank row${blanks.length === 1 ? '' : 's'}` : 'No blank rows'}
+                    </button>
+                    {entered.length > 0 && (
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '5px 12px', color: 'var(--neg)' }}
+                        onClick={() => autofill(true)}>
+                        Replace all
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* Both bands' share counts are shown side-by-side (operator ask
+                  2026-09-10). NSE PREANCHOR prints its figures at the LOWER
+                  band, so `sharesLower` is what the parser fills; the upper-
+                  band cell derives from the percentage against the upper price.
+                  Both cells accept a manual override — the input under the
+                  derived value. Every downstream figure (Amount Reserved,
+                  Forms for 1X) still derives off pct at the upper band. */}
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table resv-table" style={{ width: '100%' }}>
+                  <thead><tr>
+                    <th>Category</th>
+                    <th className="r">Share (%)</th>
+                    {/* One column when the offer is sized in shares — the count
+                        does not move with the price, so two would print the same
+                        figure twice. */}
+                    <th className="r">{sharesSized ? 'Share Count' : 'Share Count (Upper)'}</th>
+                    {!sharesSized && <th className="r">Share Count (Lower)</th>}
+                    <th className="r">Amount Reserved</th>
+                    <th className="r">Forms required for 1X</th>
+                  </tr></thead>
+                  <tbody>
+                    {RESV_ROWS.map((r) => (CARVEOUT_ROWS.includes(r.key) ? (
+                      /* Employee and Shareholder are PREFERENTIAL RESERVATIONS:
+                         ICDR takes them off the top and every percentage below
+                         applies to what is left. Each therefore has exactly one
+                         home — its carve-out field — and this row only reports
+                         what that resolved to. Offering both was a trap:
+                         AUGMONT's table summed to 100.691% because the 0.691%
+                         employee quota was typed here instead, and QIB silently
+                         absorbed the overshoot. Shown rather than removed so the
+                         table still reads as a complete picture of the offer. */
+                      <tr key={r.key} className="resv-derived-row">
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>
+                          {r.label}
+                          <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>from carve-out</div>
+                        </td>
+                        {(() => {
+                          const pMin = fnum(form.priceBandMin) || resvPrice;
+                          const cvCap = carveoutOneAt(form, r.key, resvPrice);
+                          const cvFloor = carveoutOneAt(form, r.key, pMin);
+                          const dash = <span className="muted">—</span>;
+                          const gross = offerTotals.totalCap;
+                          const pctOfTotal = cvCap.shares > 0 && gross > 0 ? (cvCap.shares / gross) * 100 : 0;
+                          const at = (v: number) => (v > 0 ? v.toLocaleString('en-IN') : dash);
+                          return (
+                            <>
+                              <td className="r mono" title="% of the TOTAL issue — a carve-out is not part of the net offer the other rows divide">
+                                {pctOfTotal > 0 ? pctOfTotal.toFixed(2) : dash}
+                              </td>
+                              <td className="rc-derived r">{at(cvCap.shares)}</td>
+                              {!sharesSized && <td className="rc-derived r">{at(cvFloor.shares)}</td>}
+                              <td className="rc-derived r">{cvCap.rupees > 0 ? `₹${(cvCap.rupees / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">{dash}</td>
+                            </>
+                          );
+                        })()}
+                      </tr>
+                    ) : (
+                      <Fragment key={r.key}>
+                      <tr>
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
+                        {/* QIB carries the snap: typing 75 or 50 fills every
+                            other row and the regulation basis (see onQibPctChange). */}
+                        {(() => {
+                          /* When the stored count is AUTHORITATIVE — the
+                             exchange's figure or one typed off the RHP — the
+                             percentage is no longer an input. It is whatever
+                             that count works out to, and showing an editable
+                             round number beside it invites the operator to
+                             "correct" the percentage and silently disagree with
+                             the document. A `derived` count came FROM the
+                             percentage, so there the percentage stays the
+                             input. */
+                          const row = form.shareResv[r.key];
+                          const stored = fnum(row?.sharesUpper);
+                          const authoritative = stored > 0 && (row?.source === 'exchange' || row?.source === 'operator');
+                          if (authoritative && offerTotals.cap > 0) {
+                            const pct = shownPct(r.key, offerTotals.cap);
+                            return (
+                              <td className="r mono" title={`Derived from the stored count: ${stored.toLocaleString('en-IN')} ÷ ${Math.round(offerTotals.cap).toLocaleString('en-IN')} net offer. The count is the ${row.source === 'exchange' ? "exchange's" : 'entered'} figure and outranks a typed percentage.`}>
+                                {pct.toFixed(2)}
+                                <div className={`rc-src rc-src-${row.source}`} style={{ marginTop: 2 }}>from count</div>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td>{r.key === 'qib'
+                              ? <input className="input mono" value={form.shareResv.qib.pct}
+                                  placeholder="75 or 50" title="Type 75 for ICDR 6(2) or 50 for ICDR 6(1) to fill the standard split"
+                                  onChange={(e) => onQibPctChange(e.target.value)} />
+                              : <input className="input mono" value={form.shareResv[r.key].pct}
+                                  onChange={(e) => setResv(r.key, { pct: e.target.value })} />
+                            }</td>
+                          );
+                        })()}
+                        {(() => {
+                          const catCap = derived.scenarios.cap?.categories.find((c: any) => c.key === r.key);
+                          const catFloor = derived.scenarios.floor?.categories.find((c: any) => c.key === r.key);
+                          const sr = shownRow(r.key);    // amount + forms, on the OFFERED basis — see shownRow
+                          const dash = <span className="muted">—</span>;
+                          const upperOv = Number(String(form.shareResv[r.key].sharesUpper ?? '').replace(/[^\d]/g, ''));
+                          const lowerOv = Number(String(form.shareResv[r.key].sharesLower ?? '').replace(/[^\d]/g, ''));
+                          const hasUpperOv = Number.isFinite(upperOv) && upperOv > 0;
+                          const hasLowerOv = Number.isFinite(lowerOv) && lowerOv > 0;
+                          /* This table is the OFFERED reservation, so its derived
+                             count rounds — the same expression Autofill writes.
+                             It used to read `catCap.shares`, which is
+                             computeIssue's ALLOCATION figure: floored to a lot
+                             with the residual absorbed by the largest quota. The
+                             two differ by the residual, which exceeds a lot, so a
+                             perfectly clean record already showed a false drift
+                             marker on QIB — ±102 on VARMORA, ±100 on SHAHINVEST,
+                             immediately after a Replace all. Comparing an offered
+                             count against an allocation count can only mislead.
+                             Since 2026-10-09 the WHOLE table is on this basis —
+                             Amount Reserved and Forms-for-1× came off the engine
+                             too, so no cell disagrees with the count beside it. */
+                          const pct = fnum(form.shareResv[r.key].pct);
+                          const derUpper = pct > 0 && offerTotals.cap > 0 ? derivedCountAt(offerTotals.cap, pct) : catCap?.shares;
+                          const derLower = pct > 0 && offerTotals.floor > 0 ? derivedCountAt(offerTotals.floor, pct) : catFloor?.shares ?? catCap?.shares;
+                          const upperVal = hasUpperOv ? upperOv : derUpper;
+                          const lowerVal = hasLowerOv ? lowerOv : derLower;
+                          const lot = form.lotSize ? Number(form.lotSize) : 1;
+                          const upperDrift = hasUpperOv && derUpper != null && Math.abs(upperOv - derUpper) > lot;
+                          const lowerDrift = hasLowerOv && derLower != null && Math.abs(lowerOv - derLower) > lot;
+                          const src = (hasUpperOv || hasLowerOv) ? form.shareResv[r.key].source : undefined;
+                          const srcLabel = src === 'exchange' ? 'exchange' : src === 'operator' ? 'typed' : 'derived';
+                          return (
+                            <>
+                              <td className="rc-derived r">
+                                {/* Which side is STALE depends on where the stored
+                                    count came from. A `derived` row that no longer
+                                    matches is an old snapshot — refill it. An
+                                    exchange or hand-typed figure that differs is the
+                                    authority, and the derivation is the approximation
+                                    (operator, 2026-09-24). Without `source` we cannot
+                                    tell, so legacy rows keep the neutral wording. */}
+                                <span className="rc-val" title={upperDrift && derUpper != null ? (
+                                  src === 'derived'
+                                    ? `Stale snapshot: the percentage now derives ${derUpper.toLocaleString('en-IN')}. Use Replace all to refresh it.`
+                                    : src
+                                      ? `${srcLabel} figure — it outranks the derivation, which gives ${derUpper.toLocaleString('en-IN')}.`
+                                      : `Derived from %: ${derUpper.toLocaleString('en-IN')}. Off by ${Math.abs(upperOv - derUpper).toLocaleString('en-IN')} shares.`
+                                ) : undefined}>
+                                  {upperVal != null ? upperVal.toLocaleString('en-IN') : dash}
+                                  {upperDrift && derUpper != null && <sup className="rc-drift-inline"> ±{Math.abs(upperOv - derUpper).toLocaleString('en-IN')}</sup>}
+                                </span>
+                                {src && <div className={`rc-src rc-src-${src}`}>{srcLabel}</div>}
+                                <div className="rc-override">
+                                  <input className="input mono" placeholder="override"
+                                    value={form.shareResv[r.key].sharesUpper ?? ''}
+                                    onChange={(e) => setResv(r.key, { sharesUpper: e.target.value.replace(/[^\d]/g, ''), source: 'operator' })}
+                                    title="Optional override — the exact upper-band share count when it differs from the derived value" />
+                                </div>
+                              </td>
+                              {!sharesSized && (
+                              <td className="rc-derived r">
+                                <span className="rc-val" title={lowerDrift && derLower != null ? `Derived from %: ${derLower.toLocaleString('en-IN')}. Off by ${Math.abs(lowerOv - derLower).toLocaleString('en-IN')} shares.` : undefined}>
+                                  {lowerVal != null ? lowerVal.toLocaleString('en-IN') : dash}
+                                  {lowerDrift && derLower != null && <sup className="rc-drift-inline"> ±{Math.abs(lowerOv - derLower).toLocaleString('en-IN')}</sup>}
+                                </span>
+                                <div className="rc-override">
+                                  <input className="input mono" placeholder="override"
+                                    value={form.shareResv[r.key].sharesLower ?? ''}
+                                    onChange={(e) => setResv(r.key, { sharesLower: e.target.value.replace(/[^\d]/g, ''), source: 'operator' })}
+                                    title="Optional override — NSE PREANCHOR prints figures at the lower band; paste from there when reconciling" />
+                                </div>
+                              </td>
+                              )}
+                              <td className="rc-derived r">{sr.amount > 0 ? `₹${(sr.amount / 1e7).toFixed(2)} Cr` : dash}</td>
+                              <td className="rc-derived r">
+                                {sr.apps != null
+                                  ? <span title={sr.allottees != null ? `Applications that can be allotted at 1× — capacity, not demand. Allottees: ${sr.allottees.toLocaleString('en-IN')}` : undefined}>{sr.apps.toLocaleString('en-IN')}</span>
+                                  : dash}
+                              </td>
+                            </>
+                          );
+                        })()}
+                      </tr>
+                      {/*
+                        ANCHOR AND EX-ANCHOR AS THEIR OWN LINES (operator ask,
+                        2026-10-10, after the sub-line version).
+
+                        SUB-ROWS OF QIB, NOT SIBLINGS OF IT, and that is the whole
+                        constraint. QIB's count IS the anchor plus the ex-anchor, so
+                        three rows all counting toward the total would treble that
+                        quota. They are excluded from both Total rows for the same
+                        reason the Share-wise panel never sums its NII subtotal
+                        alongside bHNI and sHNI.
+
+                        ON THE SAME BASIS AS THE PARENT — percentages of the NET
+                        offer — so the two visibly add up to the QIB row above them
+                        (29.70 + 20.17 = 49.88). The anchor's share OF QIB is the
+                        other figure worth having and it is the one B09 caps, so it
+                        goes in the tooltip rather than introducing a third basis
+                        into a column that already carries two.
+
+                        Hidden when the anchor is absent or exceeds QIB: the latter
+                        is the state W-ANCHOR is already explaining, and an
+                        ex-anchor of minus seven lakh shares explains nothing.
+                      */}
+                      {r.key === 'qib' && (() => {
+                        const an = fnum(form.anchorShares);
+                        const qCap = shownCount('qib', 'sharesUpper', offerTotals.cap);
+                        const qFloor = shownCount('qib', 'sharesLower', offerTotals.floor);
+                        if (!(an > 0) || !(qCap > an)) return null;
+                        const pctOf = (v: number) => (offerTotals.cap > 0 ? (v / offerTotals.cap) * 100 : 0);
+                        const line = (label: string, cap: number, floor: number, title: string) => (
+                          <tr className="resv-derived-row">
+                            <td style={{ fontWeight: 600, fontSize: 12.5, paddingLeft: 26 }}>
+                              {label}
+                              <div className="rc-src rc-src-derived" style={{ marginTop: 2 }}>within QIB</div>
+                            </td>
+                            <td className="r mono" title={title}>{pctOf(cap).toFixed(2)}</td>
+                            <td className="rc-derived r">{cap.toLocaleString('en-IN')}</td>
+                            {!sharesSized && <td className="rc-derived r">{floor > 0 ? floor.toLocaleString('en-IN') : <span className="muted">—</span>}</td>}
+                            <td className="rc-derived r">{`₹${((cap * resvPrice) / 1e7).toFixed(2)} Cr`}</td>
+                            <td className="rc-derived r"><span className="muted">—</span></td>
+                          </tr>
+                        );
+                        return (
+                          <>
+                            {line('Anchor portion', an, an, `The anchor allotment, taken out of the QIB quota before bidding opens — ${((an / qCap) * 100).toFixed(2)}% of QIB. It does not move with the price band, so it is the same count at either band.`)}
+                            {line('QIB (Ex. Anchor)', qCap - an, qFloor > an ? qFloor - an : 0, 'What is left of QIB for the public book once the anchor is allotted. This is the Book Size the Live Subscription panel measures demand against.')}
+                          </>
+                        );
+                      })()}
+                      </Fragment>
+                    )))}
+                    {/* The total is the check an operator actually runs: does the
+                        split add back up to the offer? Reading it off four rows
+                        by eye is exactly how a 100.691% table shipped.
+
+                        TWO ROWS, because there are two questions. The split
+                        percentages are of the NET offer and add to 100% of it;
+                        the share counts have to add back up to the ISSUE SIZE,
+                        carve-outs included. Showing only the first is what sent
+                        the operator to IPOPremium with "our total not matched
+                        with total issue size".
+
+                        NOT gated on `shown` any more. That is the engine's
+                        scenario, and the engine sees nothing on a record whose
+                        reservation is stated as COUNTS — which is every one of
+                        the 24 SME records that enter it that way. The totals are
+                        the table's own sums now, so they render whenever the
+                        table has anything in it. */}
+                    {(resvTotals.shares > 0 || resvTotals.pct > 0) && (
+                      <>
+                      <tr className="resv-total">
+                        {/* 6 columns: Category · % · Upper · Lower · Amount · Forms */}
+                        <td style={{ fontWeight: 700 }} title="Sums the split rows only. A preferential reservation comes off the top BEFORE the split, so the carve-out rows above are excluded here and counted in the issue-size row below.">Total <span className="muted" style={{ fontWeight: 400 }}>(net offer)</span></td>
+                        <td className="r mono" style={{ fontWeight: 700 }} title="The split percentages, which are percentages of the NET offer. 100% is what this should read.">{resvTotals.pct}</td>
+                        {/* Every figure here sums the column ACTUALLY SHOWN —
+                            `shownRow`/`shownCount` — never `computeIssue`'s
+                            scenarios. The engine holds a stated share count
+                            fixed across both price scenarios, so on a ₹-quoted
+                            offer the two totals came out IDENTICAL while the
+                            Lower column beneath them summed to something else:
+                            VARMORA showed 4,78,38,855 over rows adding to
+                            5,05,72,503. A total that does not equal its own
+                            column is a bug whatever the right model is. */}
+                        <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.shares.toLocaleString('en-IN')}</td>
+                        {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.sharesFloor.toLocaleString('en-IN')}</td>}
+                        <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.amount / 1e7).toFixed(2)} Cr</td>
+                        <td />
+                      </tr>
+                      {resvTotals.carveoutShares > 0 && (
+                        <tr className="resv-total">
+                          <td style={{ fontWeight: 700 }} title="The split rows plus every carve-out — what the whole offer is made of. This is the figure to check against Total issue size (shares).">Total <span className="muted" style={{ fontWeight: 400 }}>(issue size)</span></td>
+                          {/* The fraction of the ISSUE the table accounts for,
+                              and it should read 100. It is the diagnostic, so a
+                              record whose rows are short reads 71.55 instead of
+                              looking complete — 17 records in the catalogue do
+                              not reconcile and need their RHPs. */}
+                          <td className="r mono" style={{ fontWeight: 700 }}
+                              title={`${resvTotals.grossShares.toLocaleString('en-IN')} of ${Math.round(offerTotals.totalCap).toLocaleString('en-IN')} shares. Anything under 100% means the reservation table is incomplete.`}>
+                            {resvTotals.grossPct}
+                          </td>
+                          <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.grossShares.toLocaleString('en-IN')}</td>
+                          {!sharesSized && <td className="r mono" style={{ fontWeight: 700 }}>{resvTotals.grossSharesFloor.toLocaleString('en-IN')}</td>}
+                          <td className="r mono" style={{ fontWeight: 700 }}>₹{(resvTotals.grossAmount / 1e7).toFixed(2)} Cr</td>
+                          <td />
+                        </tr>
+                      )}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {!derived.primary && (
+                <div className="banner info" style={{ fontSize: 13, marginTop: 12 }}>{derivedBlockedWhy}</div>
+              )}
+              {/* Generated from the offer legs, not typed. It is the RHP's own
+                  sentence and every input for it is already on this tab. */}
+              <div className="form-grid one" style={{ marginTop: 12 }}>
+                <Field label="Remarks" hint="derived from the offer structure">
+                  <input className="input" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={offerRemark} placeholder="Enter the Fresh Issue / Offer for Sale legs above" />
+                </Field>
+              </div>
+            </Panel>
+
+            {/* Anchor moved into this tab (2026-09-04): it is a sub-allocation
+                of the QIB quota, and reading the roster against the total it
+                comes out of was the point of the merge. */}
+            <Panel title="Anchor portion" desc="A sub-allocation of the QIB quota above, not a category of its own — which is why it is not a row in the reservation table.">
+              <div className="form-grid">
+                <Field label="Anchor (% of QIB)" hint={`${derived.rulePack.label} caps this at ${derived.rulePack.anchorMaxPctOfQib ?? '—'}%`}>
+                  <input className="input mono" value={form.anchorPct} placeholder="60"
+                    onChange={(e) => set({ anchorPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                <Field label="Anchor shares reserved" hint="derived — the portion, at the price above">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.shares.toLocaleString('en-IN') : ''} />
+                </Field>
+                {/* The PUBLISHED figure, not the allocation one — this is what a
+                    reader checks against the exchange and against our own Book
+                    Size. The allocation basis floors to lot and hands QIB the
+                    residual, which on VARMORA read 95,67,755 against the
+                    broker's 95,67,653 (operator, 2026-09-24). The MF splits
+                    below stay on the allocation basis: they are allocations. */}
+                <Field label="Net QIB after anchor" hint="as published">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.netQibOffered.toLocaleString('en-IN') : ''} />
+                </Field>
+                {/* The book as ALLOTTED, off the anchor intimation. Two inputs
+                    and not one, because the count only means anything beside
+                    the price it struck: the reserved portion is fixed in ₹, so
+                    ESDS reserves 52,94,116 at ₹408 and allots 50,34,964 at
+                    ₹429 — the same ₹216 Cr. Comparing the counts alone reads
+                    as a 4.9% shortfall that is not there. */}
+                <Field label="Anchor shares allotted" hint="anchor intimation — what the book actually took">
+                  <input className="input mono" value={form.anchorShares} placeholder="50,34,964"
+                    onChange={(e) => set({ anchorShares: e.target.value.replace(/[^\d]/g, '') })} />
+                </Field>
+                <Field label="Anchor allocation price (₹)" hint="the price the anchor book struck — need not be the issue price">
+                  <input className="input mono" value={form.anchorPrice} placeholder="429"
+                    onChange={(e) => set({ anchorPrice: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                <Field label="Anchor amount allotted" hint="derived — shares × allocation price">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor?.allocatedAmount
+                      ? `₹${(derived.primary.anchor.allocatedAmount / 1e7).toFixed(2)} Cr` : ''} />
+                </Field>
+                <Field label="MF share of anchor (%)" hint={`${derived.rulePack.anchorMfPct}% by default — a third of the anchor book`}>
+                  <input className="input mono" value={form.anchorMfPct} placeholder={String(derived.rulePack.anchorMfPct)}
+                    onChange={(e) => set({ anchorMfPct: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
+                {/* Two DIFFERENT mutual-fund figures, which is why both are
+                    shown: a third of the anchor book, and 5% of what is left of
+                    QIB once the anchor is taken out. */}
+                <Field label="Anchor MF shares" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.anchorMfShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                <Field label="QIB MF shares (post-anchor)" hint="derived">
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.qibMfShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                {/* The anchor book's SECOND reserved slice. With the mutual-fund
+                    third it accounts for 40% of the anchor portion. */}
+                <Field label="Anchor insurer / pension shares" hint={`derived — ${derived.rulePack.anchorInsPensionPct}% of the anchor book`}>
+                  <input className="input mono" readOnly style={{ background: 'var(--bg-subtle)' }}
+                    value={derived.primary?.anchor ? derived.primary.anchor.anchorInsPensionShares.toLocaleString('en-IN') : ''} />
+                </Field>
+                <Field label="Lock-in tranche 1 (%)" hint="usually 50%"><input className="input mono" value={form.lockin1Pct} placeholder="50" onChange={(e) => set({ lockin1Pct: e.target.value.replace(/[^\d.]/g, '') })} /></Field>
+                <Field label="Tranche 1 lock-in (days)" hint="usually 30"><input className="input mono" value={form.lockin1Days} placeholder="30" onChange={(e) => set({ lockin1Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
+                <Field label="Tranche 2 lock-in (days)" hint="usually 90"><input className="input mono" value={form.lockin2Days} placeholder="90" onChange={(e) => set({ lockin2Days: e.target.value.replace(/[^\d]/g, '') })} /></Field>
+              </div>
+            </Panel>
+
+            {/* Sits directly under the portion it is allotted out of: the tally
+                below compares the two, which it could not do while the roster
+                lived over on About Company. */}
+            <Panel title="Anchor investors" desc="From the anchor intimation. Pick the name from the Anchor Investors master (type to filter — new names can be added inline). Names in the master survive the parse; unmatched ones show a ⚠ chip and can be corrected here or added to the master.">
+              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4, maxWidth: 420 }}>
+                {/* Type-to-filter picker over the master. Operator ask 2026-09-10:
+                    the plain <select> was unusable once the master grew past a
+                    dozen rows. `onCreate` writes a new anchor master row on the
+                    fly (same pattern as the Sector field elsewhere on this form). */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <SearchSelect
+                    options={anchorOpts
+                      .filter((o) => o.active && !form.anchors.some((a) => a.name === o.name))
+                      .map((o) => ({ value: o.name, label: o.type ? `${o.name} — ${o.type}` : o.name }))}
+                    value=""
+                    onChange={(v) => {
+                      if (v && !form.anchors.some((a) => a.name === v)) {
+                        set({ anchors: [...form.anchors, { name: v, shares: '', pct: '', amount: '' }] });
+                      }
+                    }}
+                    placeholder="Search anchors…  (type to filter)"
+                    createLabel={(n) => `+ Add “${n}” as a new anchor`}
+                    onCreate={async (name) => {
+                      try {
+                        const row = await api.createMaster('anchors', { name });
+                        setAnchorOpts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+                        set({ anchors: [...form.anchors, { name: row.name, shares: '', pct: '', amount: '' }] });
+                        return row.name;
+                      } catch (e: any) { setErr(String(e?.message ?? e)); return null; }
+                    }}
+                  />
+                </div>
+              </div>
+              {anchorOpts.length === 0 && (
+                <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+                  Master empty — type the anchor name above and click “+ Add … as a new anchor” to seed the master.
+                </div>
+              )}
+              {form.anchors.length > 0 && (
+                <div className="anchor-row anchor-head">
+                  <span className="anchor-name">Investor</span>
+                  <span>Shares</span><span>% of portion</span><span>Amount</span><span />
+                </div>
+              )}
+              {form.anchors.map((a, i) => {
+                const upd = (patch: Partial<typeof a>) =>
+                  set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+                // Warn if the row's name doesn't correspond to an active master
+                // row — the operator can then fix it (type-to-filter above) or
+                // add to master.
+                const inMaster = anchorOpts.some((o) => o.active && o.name === a.name);
+                /** Click ⚠ chip → custom confirm → seed the anchor master
+                 *  with this name (operator ask 2026-09-10, follow-up
+                 *  2026-09-11 replaced the browser confirm with the app's
+                 *  ConfirmDialog for visual consistency). On success we
+                 *  re-fetch the master rather than push-append so the
+                 *  server's canonical row (with `active: true` guaranteed)
+                 *  is what the picker + inMaster check see. */
+                const addToMaster = () => {
+                  if (!a.name.trim()) return;
+                  setConfirm({
+                    title: `Add "${a.name}" to the Anchor Investors master?`,
+                    confirmLabel: 'Add to master',
+                    message: <>New master rows are picked up by the type-to-filter picker above and used by future IPO parses. You can rename or deactivate the row later under <b>Masters → Anchor Investors</b>.</>,
+                    onConfirm: async () => {
+                      try {
+                        await api.createMaster('anchors', { name: a.name.trim() });
+                        // Refetch so the newly-created row is fresh from the
+                        // server — a push-append pattern was leaving `active`
+                        // ambiguous on some responses.
+                        const fresh = await api.fetchMaster('anchors');
+                        setAnchorOpts(fresh);
+                      } catch (e: any) { setErr(String(e?.message ?? e)); }
+                    },
+                  });
+                };
+                return (
+                  <div className="anchor-row" key={a.name}>
+                    <span className="anchor-name">
+                      {a.name}
+                      {!inMaster && a.name.trim() && (
+                        <button type="button" className="pill" onClick={addToMaster}
+                          style={{ marginLeft: 8, background: '#fdebea', color: '#b3372e', fontSize: 10.5, border: 0, cursor: 'pointer' }}
+                          title="Not in the Anchor Investors master — click to add">⚠ not in master</button>
+                      )}
+                    </span>
+                    <input className="input mono" placeholder="10,25,644" value={a.shares}
+                      onChange={(e) => upd({ shares: e.target.value.replace(/[^\d]/g, '') })} />
+                    <input className="input mono" placeholder="20.37" value={a.pct}
+                      onChange={(e) => upd({ pct: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <input className="input mono" placeholder="₹44.00 Cr" value={a.amount}
+                      onChange={(e) => upd({ amount: e.target.value })} />
+                    <button type="button" className="icon-btn danger" title="Remove"
+                      onClick={() => set({ anchors: form.anchors.filter((_, j) => j !== i) })}>
+                      <Icon name="trash" size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+              {anchorRoster && (
+                <p className={`anchor-tally ${anchorRoster.ok ? 'ok' : 'off'}`}>{anchorRoster.text}</p>
+              )}
+            </Panel>
+          </div>
+        )}
+
+        {/* ================= Timeline ================= */}
+        {tab === 'timeline' && (
+          <div className="fstack">
             <Panel title="Important Dates">
               <div className="form-grid">
-                <Field label="Anchor date (date & time)" hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
-                <Field label="Issue Open (date & time)"><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
-                <Field label="Issue Close (date & time)"><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
-                <Field label="Issue Close — QIB (date & time)" hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
-                <Field label="Basis of allotment"><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
-                <Field label="Refund date"><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
-                <Field label="Demat credit"><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
-                <Field label="Listing date"><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
+                <Field label="Anchor date (date & time)" value={form.anchorDate} hint="Anchor investor bidding — day before open"><input type="datetime-local" className="input mono" value={form.anchorDate} onChange={(e) => set({ anchorDate: e.target.value })} /></Field>
+                <Field label="Issue Open (date & time)" required value={form.openDate}><input type="datetime-local" className="input mono" value={form.openDate} onChange={(e) => set({ openDate: e.target.value })} /></Field>
+                <Field label="Issue Close (date & time)" required value={form.closeDate}><input type="datetime-local" className="input mono" value={form.closeDate} onChange={(e) => set({ closeDate: e.target.value })} /></Field>
+                <Field label="Issue Close — QIB (date & time)" value={form.qibCloseDate} hint="Internal — HNI can't bid after"><input type="datetime-local" className="input mono" value={form.qibCloseDate} onChange={(e) => set({ qibCloseDate: e.target.value })} /></Field>
+                <Field label="Basis of allotment" value={form.allotmentDate}><input type="date" className="input mono" value={form.allotmentDate} onChange={(e) => set({ allotmentDate: e.target.value })} /></Field>
+                <Field label="Refund date" value={form.refundDate}><input type="date" className="input mono" value={form.refundDate} onChange={(e) => set({ refundDate: e.target.value })} /></Field>
+                <Field label="Demat credit" value={form.dematDate}><input type="date" className="input mono" value={form.dematDate} onChange={(e) => set({ dematDate: e.target.value })} /></Field>
+                <Field label="Listing date" required value={form.listingDate}><input type="date" className="input mono" value={form.listingDate} onChange={(e) => set({ listingDate: e.target.value })} /></Field>
+                {/* The deadline that actually bites on the last day: a mandate
+                    not confirmed by the cut-off is not a valid application. */}
+                <Field label="UPI mandate cut-off (date & time)" hint="last moment an investor can confirm the mandate">
+                  <input type="datetime-local" className="input mono" value={form.upiMandateCutoff} onChange={(e) => set({ upiMandateCutoff: e.target.value })} />
+                </Field>
+                {/* Named on the offer document beside the cut-off, and the two
+                    belong together: this is the bank the mandate is raised on. */}
+                {/*
+                  * Still ONE comma-separated string in `extra.sponsorBank` — 60
+                  * records already hold one and an issue really can have three —
+                  * but the names now come from Masters → Sponsor Banks, because
+                  * an investor's unblock request is routed by matching them.
+                  * Free text stays reachable: a bank absent from the master, or
+                  * a legacy value like " KOTAK BANK", must remain editable.
+                  */}
+                <Field label="Sponsor bank(s)" hint="warehouses the UPI mandates for this issue — tick each one; unblock requests are emailed to these banks">
+                  {sponsorBankMasters.length ? (
+                    <div className="sb-pick">
+                      {sponsorBankMasters.map((b) => {
+                        const on = sponsorBankNames(form.sponsorBank).some((n) => n.toLowerCase() === b.name.toLowerCase());
+                        return (
+                          <label key={b.id} className={`sb-chip${on ? ' on' : ''}`} title={b.email || 'No email on file — cannot receive unblock requests'}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => {
+                                const cur = sponsorBankNames(form.sponsorBank);
+                                const next = on
+                                  ? cur.filter((n) => n.toLowerCase() !== b.name.toLowerCase())
+                                  : [...cur, b.name];
+                                set({ sponsorBank: next.join(', ') });
+                              }}
+                            />
+                            {b.name}
+                            {!b.email && <span className="sb-noemail" title="No email on file">⚠</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="banner info" style={{ fontSize: 13 }}>Add banks in <b>Masters → Sponsor Banks</b> to pick them here.</div>
+                  )}
+                  <input
+                    className="input mono" style={{ marginTop: 8 }} value={form.sponsorBank}
+                    placeholder="Axis Bank, ICICI Bank"
+                    onChange={(e) => set({ sponsorBank: e.target.value })}
+                  />
+                  {(() => {
+                    /* Say out loud whether unblock requests can be routed. A
+                       name that matches no master row, or a row with no email,
+                       looks identical to a working one until an investor
+                       needs it — which is months later and far from here. */
+                    const names = sponsorBankNames(form.sponsorBank);
+                    if (!names.length) return <div className="faint" style={{ fontSize: 12.5, marginTop: 6 }}>Without this, investors cannot ask the bank to release funds left blocked after allotment.</div>;
+                    const bad = names.filter((n) => {
+                      const m = sponsorBankMasters.find((b) => b.name.toLowerCase() === n.toLowerCase());
+                      return !m || !m.email;
+                    });
+                    return bad.length
+                      ? <div className="banner warn" style={{ fontSize: 13, marginTop: 6 }}>No email on file for <b>{bad.join(', ')}</b> — unblock requests cannot reach {bad.length === 1 ? 'it' : 'them'}. Fix in <b>Masters → Sponsor Banks</b>.</div>
+                      : <div className="faint" style={{ fontSize: 12.5, marginTop: 6 }}>Unblock requests will reach all {names.length === 1 ? 'of it' : `${names.length} of them`}.</div>;
+                  })()}
+                </Field>
               </div>
             </Panel>
 
-            {/* IPO Partner | Syndicate / Lead Managers — side by side */}
+            {/* Intermediaries moved into this tab (2026-09-04). Dates and the
+                people involved sit together in the operator's head. */}
             <div className="form-cols" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
               <div className="fcol">
                 <Panel title="IPO Partner" actions={<button type="button" className="btn btn-secondary btn-sm" disabled={!syndicate.length} onClick={() => set({ partners: [...form.partners, { member: syndicate[0], exchange: '' }] })}><Icon name="plus" size={13} /> Add</button>}>
@@ -476,88 +2859,183 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           </div>
         )}
 
-        {/* ================= Shares & Reservation ================= */}
-        {tab === 'shares' && (
-          <div className="fstack">
-            <Panel title="Shares Size Info">
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table sz-table" style={{ width: '100%' }}>
-                  <thead><tr><th /><th>Share</th><th>Min Price(Cr.)</th><th>Max Price(Cr.)</th><th>NCD Max Price</th><th>IND</th><th>HNI</th></tr></thead>
-                  <tbody>
-                    {SZ_ROWS.map(szRow)}
-                    <tr className="sz-total">
-                      <th className="sz-lbl">Total</th>
-                      <td><input className="input mono" disabled value={szSum('share')} /></td>
-                      <td><input className="input mono" disabled value={szSum('minP').toFixed(2)} /></td>
-                      <td><input className="input mono" disabled value={szSum('maxP').toFixed(2)} /></td>
-                      <td className="sz-off" /><td className="sz-off" /><td className="sz-off" />
-                    </tr>
-                    {SZ_TAIL.map(szRow)}
-                  </tbody>
-                </table>
+        {/* ================= About Company ================= */}
+        {/* ================= Documents ================= */}
+        {tab === 'docs' && (
+          <Panel title="Documents" desc="RHP / DRHP / prospectus and other files. Each row is either an uploaded PDF on our storage or an external URL from SEBI." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ documents: [...form.documents, { type: 'RHP', name: '', url: '' }] })}><Icon name="plus" size={13} /> Add document</button>}>
+            {form.documents.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No documents yet. Click <b>Add document</b>.</div> :
+              <div className="lead-list">
+                {form.documents.map((d, i) => {
+                  // Mode picker — Upload (our storage) or Link (external
+                  // SEBI / exchange URL). `d.source` stores the operator's
+                  // explicit choice; if unset we infer from the URL shape.
+                  // Empty rows (both url and source absent) default to
+                  // 'upload' — most rows have a PDF, and Link is a click
+                  // away for the rest.
+                  const isExternal = /^https?:\/\//i.test(d.url) && !/\/uploads\//i.test(d.url);
+                  const mode: 'upload' | 'url' = d.source ?? (isExternal ? 'url' : 'upload');
+                  const setMode = (m: 'upload' | 'url') => {
+                    if (m === mode) return;
+                    // Clear the URL on mode switch — a stale /uploads/ URL
+                    // on the Link side (or an https:// on the Upload side)
+                    // just confuses. Explicit `source` is what carries the
+                    // mode forward when the URL is empty.
+                    setDoc(i, { url: '', name: '', source: m });
+                  };
+                  return (
+                  <div className="doc-up" key={i}>
+                    <select className="input" value={d.type} onChange={(e) => setDoc(i, { type: e.target.value })}>
+                      {DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div className="doc-src">
+                      <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')} title="Upload a PDF onto our storage">
+                        <Icon name="upload" size={13} /> PDF
+                      </button>
+                      <button type="button" className={mode === 'url' ? 'on' : ''} onClick={() => setMode('url')} title="Paste a SEBI / exchange URL (no PDF needed)">
+                        <Icon name="external" size={13} /> Link
+                      </button>
+                    </div>
+                    {mode === 'upload' ? (
+                      <>
+                        <div className="doc-file">
+                          {d.url
+                            ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></>
+                            : <span className="muted" style={{ fontSize: 13 }}>No file chosen — click Upload, or switch to Link.</span>}
+                        </div>
+                        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {docBusy === i ? 'Uploading…' : d.url ? 'Replace' : <><Icon name="upload" size={14} /> Upload</>}
+                          <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={(e) => onDocFile(i, e.target.files?.[0])} />
+                        </label>
+                      </>
+                    ) : (
+                      <input
+                        className="input mono"
+                        style={{ fontSize: 12.5 }}
+                        placeholder="https://www.sebi.gov.in/…/rhp.pdf"
+                        value={d.url}
+                        onChange={(e) => setDoc(i, { url: e.target.value.trim(), name: e.target.value.trim().split('/').pop() ?? '' })}
+                        title="Paste the SEBI / exchange URL. Opens in a new tab on the public detail page."
+                      />
+                    )}
+                    <button type="button" className="icon-btn danger" onClick={() => set({ documents: form.documents.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
+                  </div>
+                  );
+                })}
+              </div>}
+          </Panel>
+        )}
+        {tab === 'docs' && (() => {
+          const isMainboard = form.type === 'mainboard' && !/ncd|debt/i.test(form.issueType);
+          const slot = (key: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', label: string, hint: string) => (
+            // stacked layout: label+hint on their own line — no fixed column, nothing overlaps
+            <div className="doc-up asba">
+              <div className="doc-lbl">{label}<span className="hint-line">{hint}</span></div>
+              <div className="doc-row">
+                <div className="doc-file">{form[key] ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{(form[(key + 'Name') as keyof FormState] as string) || 'form.pdf'}</span></> : <span className="muted" style={{ fontSize: 13 }}>Not uploaded</span>}</div>
+                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                  {asbaBusy === key ? 'Uploading…' : form[key] ? 'Replace' : <><Icon name="upload" size={14} /> Upload PDF</>}
+                  <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => onAsbaFile(key, e.target.files?.[0])} />
+                </label>
+                {form[key] && <button type="button" className="icon-btn danger" onClick={() => set({ [key]: '', [key + 'Name']: '' } as Partial<FormState>)} title="Remove"><Icon name="trash" size={15} /></button>}
               </div>
-            </Panel>
+            </div>
+          );
+          return (
+            // spaced below the Documents card (the two panels were touching)
+            <div style={{ marginTop: 18 }}>
+              <Panel title="ASBA Print Forms" desc="Blank bid-cum-application PDFs — the system overlays applicant data for the 'apply through bank' print feature.">
+                <div className="lead-list">
+                  {isMainboard ? <>
+                    {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
+                    {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
+                  </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME)')}
+                  {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
+                </div>
+              </Panel>
+            </div>
+          );
+        })()}
 
-            <Panel title="Share Reservation" desc="Tick the categories that apply. HNI (Big) and HNI (Small) are separate quotas.">
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table resv-table" style={{ width: '100%' }}>
-                  <thead><tr><th style={{ width: 40 }} /><th>Category</th><th>Share(%)</th><th>Share Count</th><th>Category Remark</th><th>Require for 1X</th></tr></thead>
-                  <tbody>
-                    {RESV_ROWS.map((r) => (
-                      <tr key={r.key} className={form.shareResv[r.key].on ? 'row-on' : ''}>
-                        <td style={{ textAlign: 'center' }}><input type="checkbox" checked={form.shareResv[r.key].on} onChange={(e) => setResv(r.key, { on: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} /></td>
-                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{r.label}</td>
-                        <td><input className="input mono" value={form.shareResv[r.key].pct} onChange={(e) => setResv(r.key, { pct: e.target.value })} /></td>
-                        <td><input className="input mono" value={form.shareResv[r.key].count} onChange={(e) => setResv(r.key, { count: e.target.value })} /></td>
-                        <td><input className="input" value={form.shareResv[r.key].remark} onChange={(e) => setResv(r.key, { remark: e.target.value })} placeholder="RS.225.00 CR" /></td>
-                        <td><input className="input mono" value={form.shareResv[r.key].req1x} onChange={(e) => setResv(r.key, { req1x: e.target.value })} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="form-grid one" style={{ marginTop: 12 }}>
-                <Field label="Remarks"><input className="input" value={form.resvRemarks} onChange={(e) => set({ resvRemarks: e.target.value })} placeholder="Fresh Issue of Equity Shares of up to Rs. 400 Cr and Offer for Sale…" /></Field>
-                <Field label="Remarks 2"><input className="input" value={form.resvRemarks2} onChange={(e) => set({ resvRemarks2: e.target.value })} placeholder="BRLM: DAM Capital Advisors" /></Field>
-              </div>
-            </Panel>
+        {/* ================= IPO Application Series ================= */}
+        {tab === 'docs' && (
+          <div className="fstack">
+            {seriesPanel('Application Series — PDF Printing', 'Ranges per syndicate member; the active one is used for prefilled-ASBA PDF printing.', 'pdfSeries', 'pdfActive')}
+            {seriesPanel('Application Series — Online Apply', 'Ranges per syndicate member; the active one is used for online applications.', 'onlineSeries', 'onlineActive')}
           </div>
         )}
 
-        {/* ================= About Company ================= */}
-        {tab === 'company' && (
+        {/* ================= After Listing ================= */}
+        {/* Last, because none of it exists yet while the issue is being set up.
+            This used to sit inside Pricing, three tabs before the dates it
+            depends on had even been entered. */}
+        {/* ================= Review & Publish ================= */}
+        {tab === 'review' && (
           <div className="fstack">
-            <Panel title="Anchor investors" desc="Pick from the Anchor Investors master; the ₹ amount is per IPO. Shown on the public detail page.">
-              <div className="row" style={{ gap: 8, marginBottom: form.anchors.length ? 12 : 4 }}>
-                <select
-                  className="input" style={{ maxWidth: 340 }} value=""
-                  onChange={(e) => {
-                    const n = e.target.value;
-                    if (n && !form.anchors.some((a) => a.name === n)) set({ anchors: [...form.anchors, { name: n, amount: '' }] });
-                  }}
-                >
-                  <option value="">+ Add anchor…</option>
-                  {anchorOpts.filter((o) => o.active && !form.anchors.some((a) => a.name === o.name)).map((o) => (
-                    <option key={o.id} value={o.name}>{o.name}{o.type ? ` — ${o.type}` : ''}</option>
-                  ))}
-                </select>
-                {anchorOpts.length === 0 && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>Master empty — add rows in Masters → Anchor Investors.</span>}
-              </div>
-              {form.anchors.map((a, i) => (
-                <div className="anchor-row" key={a.name}>
-                  <span className="anchor-name">{a.name}</span>
-                  <input
-                    className="input mono" style={{ maxWidth: 170 }} placeholder="₹250 Cr"
-                    value={a.amount}
-                    onChange={(e) => set({ anchors: form.anchors.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)) })}
-                  />
-                  <button type="button" className="icon-btn danger" title="Remove"
-                    onClick={() => set({ anchors: form.anchors.filter((_, j) => j !== i) })}>
-                    <Icon name="trash" size={14} />
-                  </button>
+            {/* Every blocking rule in one place. They surface inline on their
+                own tabs too, but a rule you have to go looking for is a rule
+                that gets missed — this is the last screen before Save. */}
+            <Panel title="Checks" desc="Blocking items must be fixed before this issue is fit to publish. Warnings are worth a look but do not stop you.">
+              {issues.length === 0 ? (
+                <div className="banner ok" style={{ fontSize: 13.5, margin: 0 }}>
+                  <b>All checks pass.</b> Nothing is blocking publication.
                 </div>
-              ))}
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {issues.map((v: { code: string; msg: string; blocking: boolean }) => (
+                    <div key={v.code + v.msg} className={`banner ${v.blocking ? 'warn' : 'info'}`} style={{ fontSize: 13.5 }}>
+                      <b>{v.code}</b> · {v.blocking ? 'Blocking' : 'Warning'} — {v.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
             </Panel>
+
+            <Panel title="The issue" desc="What this record says, read back. Everything below is derived — if a figure looks wrong, the input behind it is wrong.">
+              <div className="form-grid">
+                <Field label="Issue"><input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={`${form.symbol || '—'} · ${form.name || '—'}`} /></Field>
+                <Field label="Board & mechanism"><input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={`${form.type === 'sme' ? 'SME' : 'Mainboard'} · ${form.mechanism === 'fixed_price' ? 'Fixed price' : 'Book-built'}`} /></Field>
+                <Field label="Rule pack" hint="selected by board + mechanism + regulation basis">
+                  <input className="input" readOnly style={{ background: 'var(--bg-subtle)' }} value={derived.rulePack.label} />
+                </Field>
+              </div>
+              {derived.primary ? (
+                <>
+                  <div className="rc-summary" style={{ marginTop: 12 }}>
+                    <span><i>At</i>₹{derived.primary.price}</span>
+                    <span><i>Total offer</i>{derived.primary.totalOfferShares.toLocaleString('en-IN')} sh</span>
+                    <span><i>Net offer</i>{derived.primary.netOfferShares.toLocaleString('en-IN')} sh</span>
+                    <span><i>Issue size</i>₹{(derived.primary.totalOfferAmount / 1e7).toFixed(2)} Cr</span>
+                    {derived.primary.anchor && <span><i>Anchor</i>{derived.primary.anchor.shares.toLocaleString('en-IN')} sh</span>}
+                  </div>
+                  <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                    <table className="table" style={{ width: '100%' }}>
+                      <thead><tr><th>Category</th><th className="r">Share (%)</th><th className="r">Share Count</th><th className="r">Amount Reserved</th><th className="r">Forms required for 1X</th></tr></thead>
+                      <tbody>
+                        {derived.primary.categories.map((c: any) => (
+                          <tr key={c.key}>
+                            <td style={{ fontWeight: 600 }}>{c.label}</td>
+                            <td className="r mono">{c.pct}</td>
+                            <td className="r mono">{c.shares.toLocaleString('en-IN')}</td>
+                            <td className="r mono">₹{(c.amount / 1e7).toFixed(2)} Cr</td>
+                            <td className="r mono">{c.appsFor1x != null ? c.appsFor1x.toLocaleString('en-IN') : <span className="muted">—</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="banner info" style={{ fontSize: 13, marginTop: 12 }}>{derivedBlockedWhy}</div>
+              )}
+            </Panel>
+
+            {/* About Company + After Listing moved here (2026-09-04) as
+                collapsible sections. Both fill the public detail page but
+                block nothing operational, so keeping them out of the primary
+                flow matches the operator's own "we can add the details later". */}
+            <details className="iform-optional">
+              <summary><span>About Company</span><span className="iform-opt-hint">optional — fills the public detail page</span></summary>
+              <div className="fstack" style={{ marginTop: 12 }}>
             <Panel title="Company Profile">
               <div className="form-grid">
                 <Field label="Company Logo">
@@ -589,65 +3067,46 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                   ))}
                 </div>}
             </Panel>
-          </div>
-        )}
-
-        {/* ================= Documents ================= */}
-        {tab === 'docs' && (
-          <Panel title="Documents" desc="Upload RHP / DRHP / prospectus and other files shown on the IPO page." actions={<button type="button" className="btn btn-secondary btn-sm" onClick={() => set({ documents: [...form.documents, { type: 'RHP', name: '', url: '' }] })}><Icon name="plus" size={13} /> Add document</button>}>
-            {form.documents.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>No documents yet. Click <b>Add document</b>.</div> :
-              <div className="lead-list">
-                {form.documents.map((d, i) => (
-                  <div className="doc-up" key={i}>
-                    <select className="input" style={{ width: 170 }} value={d.type} onChange={(e) => setDoc(i, { type: e.target.value })}>{DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-                    <div className="doc-file">{d.url ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{d.name || 'file'}</span></> : <span className="muted" style={{ fontSize: 13 }}>No file chosen</span>}</div>
-                    <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                      {docBusy === i ? 'Uploading…' : d.url ? 'Replace' : <><Icon name="upload" size={14} /> Upload</>}
-                      <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={(e) => onDocFile(i, e.target.files?.[0])} />
-                    </label>
-                    <button type="button" className="icon-btn danger" onClick={() => set({ documents: form.documents.filter((_, x) => x !== i) })} title="Remove"><Icon name="trash" size={15} /></button>
-                  </div>
-                ))}
-              </div>}
-          </Panel>
-        )}
-        {tab === 'docs' && (() => {
-          const isMainboard = form.type === 'mainboard' && !/ncd|debt/i.test(form.issueType);
-          const slot = (key: 'asbaResident' | 'asbaSyndicate' | 'asbaSingle' | 'asbaShareholder', label: string, hint: string) => (
-            // stacked layout: label+hint on their own line — no fixed column, nothing overlaps
-            <div className="doc-up asba">
-              <div className="doc-lbl">{label}<span className="hint-line">{hint}</span></div>
-              <div className="doc-row">
-                <div className="doc-file">{form[key] ? <><Icon name="doc" size={15} /> <span className="mono" style={{ fontSize: 12.5 }}>{(form[(key + 'Name') as keyof FormState] as string) || 'form.pdf'}</span></> : <span className="muted" style={{ fontSize: 13 }}>Not uploaded</span>}</div>
-                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                  {asbaBusy === key ? 'Uploading…' : form[key] ? 'Replace' : <><Icon name="upload" size={14} /> Upload PDF</>}
-                  <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => onAsbaFile(key, e.target.files?.[0])} />
-                </label>
-                {form[key] && <button type="button" className="icon-btn danger" onClick={() => set({ [key]: '', [key + 'Name']: '' } as Partial<FormState>)} title="Remove"><Icon name="trash" size={15} /></button>}
               </div>
-            </div>
-          );
-          return (
-            // spaced below the Documents card (the two panels were touching)
-            <div style={{ marginTop: 18 }}>
-              <Panel title="ASBA Print Forms" desc="Blank bid-cum-application PDFs — the system overlays applicant data for the 'apply through bank' print feature.">
-                <div className="lead-list">
-                  {isMainboard ? <>
-                    {slot('asbaResident', 'Resident form', 'Used for bids up to ₹5,00,000 · SYMBOL.pdf')}
-                    {slot('asbaSyndicate', 'Syndicate ASBA form', 'Used for bids above ₹5,00,000 · SYMBOL_SA.pdf')}
-                  </> : slot('asbaSingle', 'Application form', 'Used for all bid amounts (SME / NCD)')}
-                  {form.allowShareholder && slot('asbaShareholder', 'Shareholder form', 'Used for the shareholder category (≤ ₹2,00,000) · SYMBOL_SHA.pdf')}
-                </div>
-              </Panel>
-            </div>
-          );
-        })()}
+            </details>
 
-        {/* ================= IPO Application Series ================= */}
-        {tab === 'series' && (
-          <div className="fstack">
-            {seriesPanel('Application Series — PDF Printing', 'Ranges per syndicate member; the active one is used for prefilled-ASBA PDF printing.', 'pdfSeries', 'pdfActive')}
-            {seriesPanel('Application Series — Online Apply', 'Ranges per syndicate member; the active one is used for online applications.', 'onlineSeries', 'onlineActive')}
+            <details className="iform-optional">
+              <summary><span>After Listing</span><span className="iform-opt-hint">filled once the registrar and the exchanges publish</span></summary>
+              <div className="fstack" style={{ marginTop: 12 }}>
+            <Panel title="After the issue"
+              desc="Filled once the registrar and the exchanges publish. Nothing here is needed to open bidding or print a form.">
+              <div className="form-grid">
+                <Field label="Applications received" hint="what the registrar reported — NOT applications for 1×, which the engine derives on Review & Publish">
+                  <input className="input mono" value={form.applicationsReceived} onChange={(e) => set({ applicationsReceived: e.target.value.replace(/\D/g, '') })} />
+                </Field>
+                <Field label="NSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.nseListingPrice} onChange={(e) => set({ nseListingPrice: e.target.value })} />
+                </Field>
+                <Field label="BSE listing price (₹)" hint="the price it opened at on listing day">
+                  <input className="input mono" value={form.bseListingPrice} onChange={(e) => set({ bseListingPrice: e.target.value })} />
+                </Field>
+              </div>
+              {/* Final issue price is NOT repeated here. It lives on Pricing,
+                  and one value behind two controls is how the two drift apart
+                  in an operator's head. */}
+            </Panel>
+              </div>
+            </details>
+
+            <Panel title="Publishing" desc="Whether the issue is visible, and which flows are open on it.">
+              <div className="form-grid">
+                <Field label="Visible on the site"><div style={{ paddingTop: 3 }}><Toggle on={isActive} onChange={(v) => set({ status: v ? 'upcoming' : 'withdrawn' })} /></div></Field>
+                <Field label="Apply (UPI)"><div style={{ paddingTop: 3 }}><Toggle on={form.startBid} onChange={(v) => set({ startBid: v })} /></div></Field>
+                <Field label="Print forms"><div style={{ paddingTop: 3 }}><Toggle on={form.startPrint} onChange={(v) => set({ startPrint: v })} /></div></Field>
+              </div>
+              {issues.some((v: { blocking: boolean }) => v.blocking) && (
+                <div className="banner warn" style={{ fontSize: 13, marginTop: 12 }}>
+                  This issue has blocking checks outstanding. These three toggles stay under
+                  your control by design — nothing here overrides you — but the figures this
+                  issue publishes will be wrong until the checks above are fixed.
+                </div>
+              )}
+            </Panel>
           </div>
         )}
 
@@ -660,6 +3119,83 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
             : <button type="button" className="btn" disabled={busy} onClick={onSave}><Icon name="check" size={15} /> {busy ? 'Saving…' : 'Save IPO'}</button>}
         </div>
       </div></div>
+
+      {parsed && (
+        <PreanchorReviewModal
+          parsed={parsed}
+          current={{
+            symbol: form.symbol, name: form.name, faceValue: form.faceValue,
+            issueSizeCr: form.issueSizeCr, priceBandMin: form.priceBandMin, priceBandMax: form.priceBandMax,
+            lotSize: form.lotSize, tickSize: form.tickSize, registrar: form.registrar,
+            leads: form.leads, sponsorBank: form.sponsorBank,
+            openDate: form.openDate, closeDate: form.closeDate,
+            qibCloseDate: form.qibCloseDate, upiMandateCutoff: form.upiMandateCutoff,
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
+            type: form.type === 'mainboard' ? 'Mainboard' : form.type === 'sme' ? 'SME' : '',
+            exchanges: form.exNse && form.exBse ? 'NSE + BSE'
+              : form.exNse ? 'NSE only' : form.exBse ? 'BSE only' : '',
+            freshValue: form.freshBasis === 'amount' ? form.freshValue : '',
+            ofsValue: form.ofsBasis === 'amount' ? form.ofsValue : '',
+          }}
+          onClose={() => setParsed(null)}
+          onApply={onApplyPreanchor}
+        />
+      )}
+      {parsedCard && (
+        <CardReviewModal
+          parsed={parsedCard}
+          current={{
+            name: form.name,
+            priceBandMin: form.priceBandMin, priceBandMax: form.priceBandMax,
+            faceValue: form.faceValue, lotSize: form.lotSize, issueSizeCr: form.issueSizeCr,
+            /* The BASIS travels with each leg: without it the modal prints a
+               rupee figure under a "shares" heading, which is how ₹712.13 Cr
+               came to look like 712.13 shares (HD Fire Protect, 2026-10-07). */
+            freshValue: form.freshValue, freshBasis: form.freshBasis,
+            ofsValue: form.ofsValue, ofsBasis: form.ofsBasis,
+            employeeDiscount: form.employeeDiscount, retailDiscount: form.retailDiscount,
+            shareholderDiscount: form.shareholderDiscount,
+            pct_qib: form.shareResv.qib?.pct, pct_hni: form.shareResv.hni?.pct,
+            pct_hni2: form.shareResv.hni2?.pct, pct_retail: form.shareResv.retail?.pct,
+            cv_employee: form.cvEmployee, cv_shareholder: form.cvShareholder,
+            cv_policyholder: form.cvPolicyholder,
+            anchorDate: form.anchorDate, openDate: form.openDate, closeDate: form.closeDate,
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
+            registrar: form.registrar, leads: form.leads, exchanges: [form.exNse && "NSE", form.exBse && "BSE"].filter(Boolean).join(", "),
+          }}
+          onClose={() => setParsedCard(null)}
+          onApply={onApplyCard}
+        />
+      )}
+      {parsedAnchor && (
+        <AnchorReviewModal
+          parsed={parsedAnchor}
+          currentRosterCount={form.anchors.length}
+          onClose={() => setParsedAnchor(null)}
+          onApply={onApplyAnchor}
+        />
+      )}
+      {parsedNote && (
+        <IpoNoteReviewModal
+          parsed={parsedNote}
+          current={{
+            allotmentDate: form.allotmentDate, refundDate: form.refundDate,
+            dematDate: form.dematDate, listingDate: form.listingDate,
+            anchorDate: form.anchorDate ? form.anchorDate.slice(0, 10) : '',
+            hasFinancialsHtml: !!form.companyFinancials?.trim(),
+            hasCompanyDescription: !!form.companyDescription?.trim(),
+            hasCompanyStrength: !!form.companyStrength?.trim(),
+            hasObjectsOfIssue: !!form.objectsOfIssue?.trim(),
+            freshValue: form.freshBasis === 'amount' ? form.freshValue : '',
+            ofsValue: form.ofsBasis === 'amount' ? form.ofsValue : '',
+          }}
+          onClose={() => setParsedNote(null)}
+          onApply={onApplyPreanchor}
+        />
+      )}
+      {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </div>
   );
 }

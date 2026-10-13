@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Matches } from 'class-validator';
+import { IsEnum, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export enum Depository { NSDL = 'NSDL', CDSL = 'CDSL' }
 
@@ -48,4 +48,19 @@ export class UpdateProfileDto {
   @IsOptional() @IsString() pincode?: string;
   @IsOptional() @IsString() email?: string;
   @IsOptional() @Matches(/^\d{10}$/) mobile?: string;
+}
+
+/**
+ * An ADDITIONAL demat on a profile. The identifier rules are not repeated here
+ * — `ProfilesService.normaliseDemat` owns them, because NSDL and CDSL need
+ * different checks and a class-validator decorator cannot see which depository
+ * was sent. This DTO only guarantees the shape.
+ */
+export class AddDematDto {
+  @IsEnum(Depository) depository!: Depository;
+  /** NSDL only; CDSL's 16-digit demat number is the whole identifier. */
+  @IsOptional() @IsString() dpId?: string;
+  @IsString() clientId!: string;
+  /** The investor's own name for it — "Zerodha", "HDFC Sec". */
+  @IsOptional() @IsString() @MaxLength(40) label?: string;
 }

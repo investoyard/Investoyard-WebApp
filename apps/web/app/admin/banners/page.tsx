@@ -30,7 +30,7 @@ export default function BannersPage() {
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  const canManage = operatorCan(me, 'banners.manage');
   const upd = (part: Partial<api.BannerRow>) => setModal((m) => m && { ...m, form: { ...m.form, ...part } });
 
   const save = async () => {

@@ -5,16 +5,25 @@ import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
+import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
+
+const RANGE: [number, string][] = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']];
+
+/** The list, then the four groupings the operator asked for (2026-09-28). */
+type Tab = 'log' | api.CallsSummaryBy;
+const TABS: [Tab, string][] = [['log', 'Calls'], ['partner', 'By partner'], ['day', 'By day'], ['month', 'By month'], ['ipo', 'By IPO']];
 
 /** API Call Report — every partner-API call (success & failure). Partner logins see only their own. */
 export default function PartnerApiCallsPage() {
   const me = useOperator();
   const [data, setData] = useState<api.PartnerReport<api.PartnerApiCallRow> | null>(null);
+  const [sum, setSum] = useState<api.PartnerCallsSummary | null>(null);
   const [tenants, setTenants] = useState<api.PartnerRow[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [days, setDays] = useState(30);
   const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<Tab>('log');
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -25,64 +34,301 @@ export default function PartnerApiCallsPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.fetchTenants().then(setTenants).catch(() => {}); }, []);
 
+  /* The summary is only fetched for the tab being looked at — four groupings
+     of the same window, and nobody reads all four at once. */
+  useEffect(() => {
+    if (tab === 'log') return;
+    setSum(null);
+    api.fetchPartnerApiCallsSummary({ tenantId: tenantId || undefined, days, by: tab })
+      .then((d) => { setSum(d); setErr(null); })
+      .catch((e) => setErr(String(e?.message ?? e)));
+  }, [tab, tenantId, days]);
+
   if (!me) return <Loader />;
   if (!operatorCan(me, 'reports.view')) return <NoAccess />;
 
   const partners = tenants;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.per)) : 1;
+  const scopedName = data?.scoped ? (me.homeTenant?.name ?? '') : '';
 
   return (
     <div style={{ maxWidth: 1360 }}>
       <PageHead title="Partner API — Calls" sub="Every Print-PDF API call, success and failure, with latency." />
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
 
-      <div className="row" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        {data && !data.scoped && (
-          <select className="input" style={{ maxWidth: 260 }} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setPage(1); }}>
-            <option value="">All partners</option>
-            {partners.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+      <div className="tbl-toolbar">
+        {data?.scoped ? (
+          <span className="st lock" title="You’re viewing your own organisation’s data — scope is locked to your tenant.">
+            <Icon name="lock" size={12} />
+            <span className="st-key">Scope:</span> {scopedName || 'your organisation'}
+          </span>
+        ) : (
+          data && (
+            <select
+              className="input"
+              style={{ minWidth: 220, maxWidth: 260 }}
+              value={tenantId}
+              onChange={(e) => { setTenantId(e.target.value); setPage(1); }}
+            >
+              <option value="">All partners</option>
+              {partners.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )
         )}
-        <select className="input" style={{ maxWidth: 160 }} value={days} onChange={(e) => { setDays(Number(e.target.value)); setPage(1); }}>
-          {[7, 30, 90, 365].map((d) => <option key={d} value={d}>Last {d} days</option>)}
-        </select>
+        <div className="seg" role="tablist" aria-label="Time range">
+          {RANGE.map(([d, label]) => (
+            <button
+              key={d}
+              type="button"
+              className={days === d ? 'on' : ''}
+              onClick={() => { setDays(d); setPage(1); }}
+            >{label}</button>
+          ))}
+        </div>
       </div>
 
-      {data === null ? <Loader /> : (
-        <div className="card"><div className="card-pad">
-          {data.rows.length === 0 ? (
-            <div className="muted" style={{ padding: '18px 0', textAlign: 'center' }}>No API calls in this period.</div>
-          ) : (
-            <table className="table">
-              <thead><tr><th>Time</th><th>Partner</th><th>Key</th><th>IPO</th><th>Applicants</th><th>Status</th><th>Time (ms)</th><th>Error</th></tr></thead>
+      {/* Tabs sit OUTSIDE the card, on the toolbar line, matching the range
+          control above — the card head then names whichever view is open.
+          The Partner tab is hidden for a partner login: `scoped` means every
+          row is theirs, so the grouping would be a single row restating the
+          total already in the head. */}
+      <div className="seg" role="tablist" aria-label="View" style={{ marginBottom: 14 }}>
+        {TABS.filter(([k]) => !(k === 'partner' && data?.scoped)).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k}
+            className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      {tab !== 'log' && <SummaryCard sum={sum} tenantId={tenantId} days={days} />}
+
+      {tab === 'log' && (
+      <div className="card">
+        <div className="card-head">
+          <span className="t">
+            Partner API — Calls{' '}
+            {data && <span className="count-badge">{data.total.toLocaleString('en-IN')}</span>}
+          </span>
+        </div>
+
+        {data === null ? <Loader /> : data.rows.length === 0 ? (
+          <div className="card-pad muted" style={{ textAlign: 'center', padding: '28px 0' }}>No API calls in this period.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ width: '100%' }}>
+              <thead><tr>
+                <th>Time</th>
+                <th>Partner</th>
+                <th>Key</th>
+                <th>IPO</th>
+                <th style={{ textAlign: 'right' }}>Applicants</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Latency</th>
+                <th>Error</th>
+              </tr></thead>
               <tbody>
                 {data.rows.map((r, i) => (
                   <tr key={i}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.at).toLocaleString('en-IN')}</td>
+                    <td className="mono" style={{ whiteSpace: 'nowrap', fontSize: 12.5 }}>{new Date(r.at).toLocaleString('en-IN')}</td>
                     <td>{r.partner}</td>
-                    <td className="mono">{r.keyId}</td>
-                    <td className="mono">{r.ipoSymbol ?? '—'}</td>
-                    <td>{r.applicants ?? '—'}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{r.keyId}</td>
+                    <td className="mono" style={{ fontWeight: 700 }}>{r.ipoSymbol ?? '—'}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.applicants ?? '—'}</td>
                     <td>
                       {r.status === 'ok'
-                        ? <span className="pill" style={{ background: 'var(--pos-soft)', color: 'var(--pos)' }}>ok · {r.httpStatus}</span>
-                        : <span className="pill" style={{ background: 'var(--neg-soft)', color: 'var(--neg)' }}>error · {r.httpStatus}</span>}
+                        ? <span className="st ok">ok · {r.httpStatus}</span>
+                        : <span className="st bad">error · {r.httpStatus}</span>}
                     </td>
-                    <td className="mono">{r.durationMs ?? '—'}</td>
-                    <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.error ?? ''}>{r.error ?? '—'}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.durationMs != null ? `${r.durationMs} ms` : '—'}</td>
+                    <td
+                      style={{ maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: r.error ? 'var(--neg)' : undefined }}
+                      title={r.error ?? ''}
+                    >{r.error ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-          {pages > 1 && (
-            <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Prev</button>
-              <span className="muted" style={{ fontSize: 13, alignSelf: 'center' }}>Page {page} / {pages}</span>
-              <button className="btn btn-secondary btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next →</button>
-            </div>
-          )}
-        </div></div>
+          </div>
+        )}
+        {pages > 1 && (
+          <div className="card-pad" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+            <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Prev</button>
+            <span className="muted" style={{ fontSize: 13 }}>Page {page} / {pages}</span>
+            <button className="btn btn-secondary btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next →</button>
+          </div>
+        )}
+      </div>
+      )}
+    </div>
+  );
+}
+
+const HEAD: Record<api.CallsSummaryBy, string> = {
+  partner: 'Partner', day: 'Date', month: 'Month', ipo: 'IPO',
+};
+
+/** What one row of each grouping IS, for the line beside the badge. Pluralised
+ *  because "across 1 partners" is the kind of small wrongness that makes a
+ *  report look unmaintained. */
+const GROUP_NOUN: Record<api.CallsSummaryBy, (n: number) => string> = {
+  partner: (n) => (n === 1 ? 'partner' : 'partners'),
+  day: (n) => (n === 1 ? 'day' : 'days'),
+  month: (n) => (n === 1 ? 'month' : 'months'),
+  ipo: (n) => (n === 1 ? 'IPO' : 'IPOs'),
+};
+
+/** One grouping of the call log. Same shape whichever dimension is chosen. */
+function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | null; tenantId: string; days: number }) {
+  if (sum === null) return <div className="card"><Loader /></div>;
+  /* Latency is a WEIGHTED mean, not a mean of means: a partner with 4 calls and
+     one with 1,800 cannot carry equal weight in a single figure, and averaging
+     the column would let the quiet row distort it. `lastAt` is the max. */
+  const totals = sum.rows.reduce((a, r) => ({
+    calls: a.calls + r.calls, failed: a.failed + r.failed, applicants: a.applicants + r.applicants,
+    msWeighted: a.msWeighted + (r.avgMs ?? 0) * r.calls,
+    lastAt: !a.lastAt || (r.lastAt && r.lastAt > a.lastAt) ? (r.lastAt ?? a.lastAt) : a.lastAt,
+  }), { calls: 0, failed: 0, applicants: 0, msWeighted: 0, lastAt: '' as string });
+  const pctOf = (f: number, c: number) => (c > 0 ? (f / c) * 100 : 0);
+  /* ONE renderer for the failure rate. The Total row used to call toFixed(1)
+     directly while the body rounded whole numbers above 10%, so the same
+     228/1,842 printed as "12%" on the row and "12.4%" on the total and looked
+     like two different figures. */
+  const FailPct = ({ failed, calls }: { failed: number; calls: number }) => {
+    if (failed === 0) return <span className="muted mono">0%</span>;
+    const v = pctOf(failed, calls);
+    return <span className={`st ${v >= 100 ? "bad" : "warn"}`}>{v.toFixed(v >= 10 ? 0 : 1)}%</span>;
+  };
+  const avgMs = totals.calls > 0 ? Math.round(totals.msWeighted / totals.calls) : 0;
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span className="t">
+          {/* The badge counts CALLS, like the one on the Calls log beside it and
+              like the Total row below — it used to count GROUPS, so switching to
+              By partner put a badge reading "1" above a total of 1,842 and the
+              two looked like they disagreed. Two badges in identical style on one
+              page must count the same thing. The group count is still worth
+              showing, so it sits beside it in words, where it cannot be mistaken
+              for the volume. */}
+          {HEAD[sum.by]} summary <span className="count-badge">{totals.calls.toLocaleString('en-IN')}</span>
+          <span className="muted" style={{ fontWeight: 400, fontSize: 12.5, marginLeft: 8 }}>
+            across {sum.rows.length.toLocaleString('en-IN')} {GROUP_NOUN[sum.by](sum.rows.length)}
+          </span>
+        </span>
+        {sum.rows.length > 0 && (
+          <button className="btn btn-secondary btn-sm"
+            onClick={() => api.exportPartnerApiCallsSummaryCsv({ tenantId: tenantId || undefined, days, by: sum.by })}>
+            <Icon name="download" size={14} /> CSV
+          </button>
+        )}
+      </div>
+      {sum.rows.length === 0 ? (
+        <div className="card-pad muted" style={{ textAlign: 'center', padding: '28px 0' }}>No API calls in this period.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ width: '100%' }}>
+            <thead><tr>
+              <th>{HEAD[sum.by]}</th>
+              {sum.by === 'ipo' && <th>Name</th>}
+              {/* The Open column exists because the rows are SORTED by it. A
+                  table ordered by a column it does not show reads as arbitrary,
+                  and the first question would be why the busiest partner is no
+                  longer at the top. */}
+              {sum.by === 'ipo' && <th>Open</th>}
+              <th style={{ textAlign: 'right' }}>Calls</th>
+              <th style={{ textAlign: 'right' }}>Failed</th>
+              <th style={{ textAlign: 'right' }}>Failed %</th>
+              <th style={{ textAlign: 'right' }}>Applicants</th>
+              <th style={{ textAlign: 'right' }}>Avg latency</th>
+              <th>Last call</th>
+            </tr></thead>
+            <tbody>
+              {sum.rows.map((r) => {
+                return (
+                  <tr key={r.key}>
+                    {/* By day, month and IPO the key IS the label — a date or a
+                        symbol. By PARTNER it is a tenant uuid, which is not a
+                        thing anyone can read: the report showed
+                        `4fa93bed-54d3-…` where the partner's name belonged. The
+                        API has always resolved the name (see `tenantNames`); it
+                        was only ever rendered for the IPO grouping, where it
+                        gets a column of its own. */}
+                    <td className={sum.by === 'partner' ? '' : 'mono'}
+                      style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                      title={sum.by === 'partner' ? r.key : undefined}>
+                      {sum.by === 'partner' ? (r.label ?? r.key) : r.key}
+                    </td>
+                    {sum.by === 'ipo' && (
+                      /* No name means the symbol is not in the catalogue —
+                         which IS the diagnosis for every failure on that row. */
+                      <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={r.label ?? 'This symbol is not in the catalogue'}>
+                        {r.label ?? <span className="st bad">not in catalogue</span>}
+                        {/* Mainboard and SME behave differently enough — lot
+                            minimums, QIB ceiling, market maker — that knowing
+                            which one a row is saves opening the IPO. Same chip
+                            as the IPO catalog, so the two surfaces agree. */}
+                        {r.board && (
+                          <span className={`chip ${r.board}`}
+                            style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 999, marginLeft: 8 }}>
+                            {r.board === 'sme' ? 'SME' : 'Mainboard'}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {sum.by === 'ipo' && (
+                      <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {r.openDate ? String(r.openDate).slice(0, 10) : <span className="muted">—</span>}
+                      </td>
+                    )}
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.calls.toLocaleString('en-IN')}</td>
+                    <td className="mono" style={{ textAlign: 'right', color: r.failed > 0 ? 'var(--neg)' : undefined }}>
+                      {r.failed.toLocaleString('en-IN')}
+                    </td>
+                    {/* Every call failing is a different problem from a few
+                        failing, and the rate is what separates them at a glance. */}
+                    <td style={{ textAlign: 'right' }}>
+                      <FailPct failed={r.failed} calls={r.calls} />
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.applicants.toLocaleString('en-IN')}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{r.avgMs} ms</td>
+                    <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                      {r.lastAt ? new Date(r.lastAt).toLocaleString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {/* `tbl-total`, not `resv-total`: that class is scoped to
+                `.resv-table tr.resv-total` and this table is `.table`, so the
+                rule never matched and the row rendered with NO top border and NO
+                background — bold text sitting flush against the last data row.
+                `.table` had no `tfoot` styling at all. A class that looks right
+                in the markup and matches nothing is the quietest kind of CSS
+                bug: the build cannot see it and neither can a diff. */}
+            <tfoot><tr className="tbl-total">
+              <td style={{ fontWeight: 700 }}>Total</td>
+              {/* TWO spacers for the IPO grouping — Name and Open. One short and
+                  every figure in the total row shifts a column left, which is
+                  exactly the misalignment this row was fixed for on 1 Oct. */}
+              {sum.by === 'ipo' && <><td /><td /></>}
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.calls.toLocaleString('en-IN')}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: totals.failed > 0 ? 'var(--neg)' : undefined }}>
+                {totals.failed.toLocaleString('en-IN')}
+              </td>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}><FailPct failed={totals.failed} calls={totals.calls} /></td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.applicants.toLocaleString('en-IN')}</td>
+              {/* Both of these were BLANK, which is half of why the row did not
+                  read as a total. Latency is weighted by call count; the last
+                  call is the latest across every row. */}
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}
+                title="Weighted by call count, so a quiet partner cannot distort it">{avgMs} ms</td>
+              <td className="mono" style={{ fontSize: 12.5, whiteSpace: 'nowrap', fontWeight: 700 }}>
+                {totals.lastAt ? new Date(totals.lastAt).toLocaleString('en-IN') : '—'}
+              </td>
+            </tr></tfoot>
+          </table>
+        </div>
       )}
     </div>
   );

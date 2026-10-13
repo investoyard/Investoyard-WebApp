@@ -3,6 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
+import { EXCHANGES, exchangeLabels, minApplicationShares } from '@investoyard/shared-types';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -18,7 +19,14 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   faceValue?: number;
   freshIssue?: string;
   offerForSale?: string;
-  formsFor1x?: { retail: number; sHni: number; bHni: number };
+  /** Share counts to display alongside the ₹ amounts on the detail page.
+   *  Derived from the ₹ figure and the upper price band. Present only when
+   *  both inputs are available. */
+  freshIssueShares?: number;
+  offerForSaleShares?: number;
+  /** Applications needed for 1× — derived from the operator's REAL reservation
+   *  table + real lot size; a category is absent when we can't compute it. */
+  formsFor1x?: { retail?: number; sHni?: number; bHni?: number };
   appWise?: { key: string; label: string; formsFor1x: number; apps: number; times: number }[];
   totalApps?: number;
   financialYears?: string[];
@@ -57,143 +65,16 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-const MOCK: IpoDetail[] = [
-  {
-    id: '1', symbol: 'ACME', name: 'Acme Technologies Ltd', type: 'mainboard', status: 'open',
-    openDate: '2026-07-01', closeDate: '2026-07-08', allotmentDate: '2026-07-11', listingDate: '2026-07-15',
-    priceBandMin: 100, priceBandMax: 105, lotSize: 142, minAmount: 14910, issueSize: '₹500 Cr', registrar: 'Link Intime',
-    subscriptionTimes: 12.4, gmp: 18, gmpPct: 17.1,
-    about: 'Acme Technologies is a cloud infrastructure company serving enterprise customers across India and South-East Asia.',
-    objectsOfIssue: 'Repayment of borrowings, capital expenditure for data centres, and general corporate purposes.',
-    subscription: [
-      { category: 'qib', timesSubscribed: 24.1, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 9.8, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 6.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 12.4, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹1,240 Cr' },
-      { label: 'PAT (FY25)', value: '₹186 Cr' },
-      { label: 'RoNW', value: '18.4%' },
-      { label: 'P/E (upper)', value: '32.1x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '2', symbol: 'BETA', name: 'Beta Industries Ltd', type: 'sme', status: 'upcoming',
-    openDate: '2026-07-10', closeDate: '2026-07-12', allotmentDate: '2026-07-15', listingDate: '2026-07-18',
-    priceBandMin: 55, priceBandMax: 58, lotSize: 2000, minAmount: 116000, issueSize: '₹42 Cr', registrar: 'Bigshare',
-    gmp: 6, gmpPct: 10.3,
-    about: 'Beta Industries manufactures precision auto components for OEMs.',
-    objectsOfIssue: 'Working capital, plant & machinery, and general corporate purposes.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 18, gcpPct: 9 },
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹118 Cr' },
-      { label: 'PAT (FY25)', value: '₹14.2 Cr' },
-      { label: 'RoNW', value: '21.0%' },
-      { label: 'P/E (upper)', value: '16.4x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '3', symbol: 'ZETA', name: 'Zeta Foods Ltd', type: 'mainboard', status: 'listed',
-    openDate: '2026-06-05', closeDate: '2026-06-09', allotmentDate: '2026-06-11', listingDate: '2026-06-13',
-    priceBandMin: 220, priceBandMax: 230, lotSize: 65, minAmount: 14950, issueSize: '₹820 Cr', registrar: 'KFin Technologies',
-    listingGainPct: 14.2, subscriptionTimes: 48.7, gmp: 31, gmpPct: 13.5,
-    about: 'Zeta Foods is a packaged-foods brand with a national distribution network and a fast-growing exports business.',
-    objectsOfIssue: 'Brand building, capacity expansion and general corporate purposes.',
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹2,010 Cr' },
-      { label: 'PAT (FY25)', value: '₹240 Cr' },
-      { label: 'RoNW', value: '22.7%' },
-      { label: 'P/E (upper)', value: '28.5x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '4', symbol: 'NIMBUS', name: 'Nimbus Renewables Ltd', type: 'mainboard', status: 'open',
-    openDate: '2026-07-02', closeDate: '2026-07-09', allotmentDate: '2026-07-12', listingDate: '2026-07-16',
-    priceBandMin: 312, priceBandMax: 328, lotSize: 45, minAmount: 14760, issueSize: '₹1,150 Cr', registrar: 'KFin Technologies',
-    subscriptionTimes: 3.1, gmp: 42, gmpPct: 12.8,
-    about: 'Nimbus Renewables develops and operates utility-scale solar and wind assets across western India.',
-    objectsOfIssue: 'Funding capacity additions, debt repayment and general corporate purposes.',
-    subscription: [
-      { category: 'qib', timesSubscribed: 5.4, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 2.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 1.9, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 3.1, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹980 Cr' },
-      { label: 'PAT (FY25)', value: '₹141 Cr' },
-      { label: 'RoNW', value: '12.9%' },
-      { label: 'P/E (upper)', value: '34.0x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }, { type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '5', symbol: 'VERDANT', name: 'Verdant Agritech Ltd', type: 'sme', status: 'open',
-    openDate: '2026-06-30', closeDate: '2026-07-07', allotmentDate: '2026-07-10', listingDate: '2026-07-14',
-    priceBandMin: 90, priceBandMax: 95, lotSize: 1200, minAmount: 114000, issueSize: '₹38 Cr', registrar: 'Bigshare',
-    subscriptionTimes: 27.6, gmp: 22, gmpPct: 23.2,
-    about: 'Verdant Agritech makes biological crop-protection inputs distributed to farmers across India.',
-    objectsOfIssue: 'Capacity expansion, working capital and general corporate purposes.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 12, gcpPct: 8 },
-    subscription: [
-      { category: 'qib', timesSubscribed: 18.2, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'nii', timesSubscribed: 41.3, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'retail', timesSubscribed: 30.1, asOf: '2026-06-21T15:00:00Z' },
-      { category: 'total', timesSubscribed: 27.6, asOf: '2026-06-21T15:00:00Z' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '6', symbol: 'HELIOS', name: 'Helios Financial Services Ltd', type: 'mainboard', status: 'upcoming',
-    openDate: '2026-07-14', closeDate: '2026-07-16', allotmentDate: '2026-07-18', listingDate: '2026-07-22',
-    priceBandMin: 440, priceBandMax: 462, lotSize: 32, minAmount: 14784, issueSize: '₹2,400 Cr', registrar: 'Link Intime',
-    gmp: 28, gmpPct: 6.1,
-    about: 'Helios Financial Services is a retail-focused NBFC offering secured and unsecured lending across 14 states.',
-    objectsOfIssue: 'Augmenting the capital base for onward lending and general corporate purposes.',
-    financials: [
-      { label: 'AUM (FY25)', value: '₹18,200 Cr' },
-      { label: 'PAT (FY25)', value: '₹612 Cr' },
-      { label: 'RoNW', value: '15.8%' },
-      { label: 'P/B (upper)', value: '3.1x' },
-    ],
-    documents: [{ type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '7', symbol: 'AURELIA', name: 'Aurelia Lifesciences Ltd', type: 'mainboard', status: 'upcoming',
-    openDate: '2026-07-17', closeDate: '2026-07-19', allotmentDate: '2026-07-23', listingDate: '2026-07-25',
-    priceBandMin: 178, priceBandMax: 188, lotSize: 78, minAmount: 14664, issueSize: '₹690 Cr', registrar: 'KFin Technologies',
-    about: 'Aurelia Lifesciences is a specialty API and CDMO player supplying regulated markets.',
-    objectsOfIssue: 'Capex for a new API block, debt repayment and general corporate purposes.',
-    documents: [{ type: 'DRHP', url: '#' }],
-  },
-  {
-    id: '8', symbol: 'ORION', name: 'Orion Logistics Ltd', type: 'mainboard', status: 'listed',
-    openDate: '2026-05-28', closeDate: '2026-06-01', allotmentDate: '2026-06-03', listingDate: '2026-06-05',
-    priceBandMin: 145, priceBandMax: 152, lotSize: 98, minAmount: 14896, issueSize: '₹560 Cr', registrar: 'Bigshare',
-    listingGainPct: -4.6, subscriptionTimes: 2.3,
-    about: 'Orion Logistics runs an asset-light third-party logistics and warehousing network.',
-    financials: [
-      { label: 'Revenue (FY25)', value: '₹1,420 Cr' },
-      { label: 'PAT (FY25)', value: '₹58 Cr' },
-      { label: 'RoNW', value: '9.2%' },
-      { label: 'P/E (upper)', value: '41.0x' },
-    ],
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-  {
-    id: '9', symbol: 'KESARI', name: 'Kesari Textiles Ltd', type: 'sme', status: 'listed',
-    openDate: '2026-05-30', closeDate: '2026-06-03', allotmentDate: '2026-06-05', listingDate: '2026-06-09',
-    priceBandMin: 66, priceBandMax: 70, lotSize: 1600, minAmount: 112000, issueSize: '₹29 Cr', registrar: 'Bigshare',
-    listingGainPct: 36.4, subscriptionTimes: 96.2,
-    about: 'Kesari Textiles is an integrated home-textiles exporter.',
-    smeCompliance: { meetsNorms: true, ebitdaTest: true, ofsPct: 0, gcpPct: 14 },
-    documents: [{ type: 'RHP', url: '#' }],
-  },
-];
+/**
+ * Front-site fallback data was DELETED on 2026-09-16 (operator decision).
+ * Previously this held a small demo catalog (ACME / BETA / ZETA / KESARI …)
+ * that safeGet returned when the API was unreachable at build time; the
+ * browser then re-fetched live data on hydration. The failure mode was
+ * ugly: an unreachable API at build time produced a static export shipping
+ * FAKE company names to users. Empty state is honest — the page shows
+ * "No IPOs" if the API is truly down, rather than lying.
+ */
+const MOCK: IpoDetail[] = [];
 
 async function safeGet<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -209,8 +90,12 @@ async function safeGet<T>(path: string, fallback: T): Promise<T> {
 
 /* ----------------------------------------------------------- live-data enrichment */
 function hash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
-const RESERVED: Record<string, number> = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
-const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
+// Fallback reservation splits when the operator hasn't entered a real one on the
+// IPO. Used only as a LAST resort — enrich() reads `ipo.extra.shareResv[cat].pct`
+// first so per-IPO percentages drive the display, matching the ipopremium
+// breakup (QIB / HNI-10L+ / HNI-2-10L / Retail / Employee / Shareholder).
+const RESERVED: Record<string, number> = { qib: 50, hni: 10, hni2: 5, nii: 15, retail: 35, employee: 5, shareholder: 0, total: 100 };
+const RESERVED_SME: Record<string, number> = { qib: 0, hni: 33.3, hni2: 16.7, nii: 50, retail: 50, employee: 0, shareholder: 0, total: 100 };
 const ANCHOR_NAMES = ['Govt Pension Fund Global', 'HDFC Mutual Fund', 'SBI Life Insurance', 'Nomura Funds', 'Abu Dhabi Inv. Authority', 'ICICI Prudential MF', 'Morgan Stanley Asia'];
 
 function gmpSeries(symbol: string, end: number): { day: string; value: number }[] {
@@ -259,13 +144,36 @@ function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate
 function enrich(ipo: IpoDetail): IpoFull {
   const res = ipo.type === 'sme' ? RESERVED_SME : RESERVED;
   const ex: any = (ipo as any).extra ?? {};
+  // Prefer the IPO's OWN reservation percentages when the operator has entered
+  // them — this is the same source the poller uses for its offered denominator,
+  // so the "book size" cells on the card can't disagree with the "times" they
+  // sit next to. The generic RESERVED map only fills in when a category is
+  // missing (e.g. legacy imported rows).
+  const shareResv: any = ex.shareResv ?? {};
+  const pctFor = (cat: string): number => {
+    if (cat === 'total') return 100;
+    // Synthetic 'nii' row from the poller = hni + hni2 combined.
+    if (cat === 'nii') {
+      const a = Number(shareResv.hni?.pct); const b = Number(shareResv.hni2?.pct);
+      if (a > 0 || b > 0) return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0);
+    } else {
+      const p = Number(shareResv[cat]?.pct);
+      if (p > 0) return p;
+    }
+    return res[cat] ?? 0;
+  };
   const f: IpoFull = {
     ...ipo,
     status: effectiveStatus(ipo),
     logo: (ipo as any).logoUrl ?? (ipo as any).logo, // API sends logoUrl; cards/hero read `logo`
-    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: res[s.category] ?? 0 })),
+    subscription: ipo.subscription?.map((s) => ({ ...s, reservedPct: pctFor(s.category) })),
     leadManagers: Array.isArray(ex.leads) && ex.leads.length ? ex.leads : (ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial']),
-    exchanges: ipo.type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'],
+    // The API now sends what the issue ACTUALLY lists on. Only guess when it
+    // is absent, and guess ONE SME platform — assuming both is what made every
+    // SME issue read as "NSE SME · BSE SME" regardless of the truth.
+    exchanges: Array.isArray((ipo as any).exchanges) && (ipo as any).exchanges.length
+      ? (ipo as any).exchanges
+      : (ipo.type === 'sme' ? [EXCHANGES.nseSme] : [EXCHANGES.nse, EXCHANGES.bse]),
   };
   // REAL data wins; synthesized series/anchors are for seed/demo rows ONLY
   // (live rows always carry an `extra` object — never show fabricated data there).
@@ -287,58 +195,155 @@ function enrich(ipo: IpoDetail): IpoFull {
   const upper = ipo.priceBandMax ?? ipo.priceBandMin ?? 1;
   const lot = ipo.lotSize ?? 1;
   f.faceValue = 10;
-  f.freshIssue = `₹${Math.round(cr * (ipo.type === 'sme' ? 1 : 0.85))} Cr`;
-  if (ipo.type !== 'sme' && cr) f.offerForSale = `₹${Math.round(cr * 0.15)} Cr`;
+  /**
+   * Fresh issue / Offer for sale.
+   *
+   * These were an 85/15 GUESS printed on the public detail page as if it came
+   * from the RHP. Now shown only when the operator has actually entered the
+   * split — an absent figure is better than an invented one.
+   */
+  const legCr = (leg: any): number | undefined => {
+    if (!leg || leg.basis === 'none' || !leg.value) return undefined;
+    if (leg.basis === 'amount') return Number(leg.value);
+    return upper > 0 ? (Number(leg.value) * upper) / 1e7 : undefined;   // shares → ₹ Cr
+  };
+  const freshCr = legCr(exAll?.fresh);
+  const ofsCr = legCr(exAll?.ofs);
+  if (freshCr != null) f.freshIssue = `₹${Math.round(freshCr)} Cr`;
+  if (ofsCr != null) f.offerForSale = `₹${Math.round(ofsCr)} Cr`;
+  // Share counts alongside the ₹ amounts — operator ask 2026-09-22, matches
+  // the Mehul Bumtaria issue sheets. Compute from ₹ ÷ upper band; only present
+  // when both inputs land, so the display gracefully hides them otherwise.
+  if (freshCr != null && upper > 0) f.freshIssueShares = Math.round((freshCr * 1e7) / upper);
+  if (ofsCr != null && upper > 0) f.offerForSaleShares = Math.round((ofsCr * 1e7) / upper);
 
-  // Applications required for 1× + app-wise subscription (from live subscription data only)
-  if (ipo.subscription && cr) {
+  /**
+   * Applications required for 1× subscription — REAL data only.
+   *
+   * Derived from the operator's reservation table (extra.shareResv), the actual
+   * lot size and issue size, and the SEBI category floors the bid engine uses
+   * (retail ≤ ₹2L · S-HNI ₹2–10L · B-HNI > ₹10L). A category is omitted when its
+   * reservation isn't set, and the whole block is omitted when the reservation
+   * table hasn't been filled — an estimate presented as fact is worse than
+   * showing nothing.
+   */
+  const resv: any = exAll?.shareResv;
+  if (resv && cr && lot > 0 && upper > 0) {
+    const pctOf = (k: string): number => {
+      const raw = resv?.[k];
+      const v = Number(String(raw?.pct ?? '').replace(/[^\d.]/g, ''));
+      return raw?.on && Number.isFinite(v) && v > 0 ? v : 0;
+    };
     const totalShares = (cr * 1e7) / upper;
-    const retailForms = Math.max(1, Math.round((totalShares * 0.35) / lot));
-    const sHniForms = Math.max(1, Math.round((totalShares * 0.05) / (14 * lot)));
-    const bHniForms = Math.max(1, Math.round((totalShares * 0.10) / (67 * lot)));
-    f.formsFor1x = { retail: retailForms, sHni: sHniForms, bHni: bHniForms };
-    const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
-    const nT = sub.nii ?? sub.hni ?? 0, rT = sub.retail ?? 0;
-    f.appWise = [
-      { key: 'hniBt', label: 'HNI-BT (S-HNI)', formsFor1x: sHniForms, apps: Math.round(sHniForms * nT * 1.1), times: r2(nT * 1.1) },
-      { key: 'hniAt', label: 'HNI-AT (B-HNI)', formsFor1x: bHniForms, apps: Math.round(bHniForms * nT * 0.8), times: r2(nT * 0.8) },
-      { key: 'retail', label: 'Retail', formsFor1x: retailForms, apps: Math.round(retailForms * rT), times: r2(rT) },
-    ];
-    f.totalApps = f.appWise.reduce((a, b) => a + b.apps, 0);
+    const perLot = lot * upper;                                   // ₹ for one lot
+    const minLots = (floorAmt: number) => Math.floor(floorAmt / perLot) + 1;
+    const formsFor = (pct: number, lots: number): number | undefined =>
+      pct > 0 && lots > 0 ? Math.max(1, Math.round((totalShares * pct / 100) / (lots * lot))) : undefined;
+
+    /**
+     * Applications for 1x — same formula the subscription page uses (see
+     * ipoCalc.ts::subscriptionTable): Retail ÷ lotSize, HNI ÷ sHNI-min-shares
+     * where sHNI-min = ceil(₹2L / (lot × priceMax)) × lot. Bypasses
+     * `computeIssue.appsFor1x` which returned undefined for many records —
+     * operator report 2026-09-22: the block was silently hidden on every IPO.
+     */
+    /* Shared with `subscriptionTable()` and `lotLadder()`. This block used one
+       ₹2 L divisor for BOTH HNI bands and a single lot for retail, so bHNI ran
+       ~4.8× high on every issue and SME retail 2× high (2026-09-29). */
+    const minApp = (cat: string): number =>
+      minApplicationShares(cat, { lotSize: lot, priceCap: upper, sme: ipo.type === 'sme' });
+    const bookOf = (k: string): number => {
+      const row = resv?.[k];
+      if (!row) return 0;
+      /* UPPER band first — the industry convention, and what `directOf()` and
+         `reservation()` both use. This preferred `sharesLower` until
+         2026-09-28, so the card's "Applications required for 1×" block and the
+         Live Subscription table printed TWO answers to the same question on
+         the SAME page: ORIENTCABL showed Retail 1,36,152 in the block and
+         1,29,144 in the table, 7,008 apart, with the 4.93× multiple computed
+         against the second. Found by grepping for the convention after fixing
+         `reservation()` — three readers honoured it, two did not. */
+      const direct = Number(row.sharesUpper) > 0 ? Number(row.sharesUpper)
+        : Number(row.sharesLower) > 0 ? Number(row.sharesLower) : 0;
+      if (direct > 0) return direct;
+      const p = pctOf(k);
+      return p > 0 ? (totalShares * p) / 100 : 0;
+    };
+    const formsForCat = (k: string) => {
+      const b = bookOf(k);
+      const m = minApp(k);
+      return b > 0 && m > 0 ? Math.round(b / m) : undefined;
+    };
+    const retail = formsForCat('retail');
+    const sHni = formsForCat('hni2');
+    const bHni = formsForCat('hni');
+    if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
+    // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
+    if (ipo.subscription?.length) {
+      const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
+      const rows = [
+        { key: 'retail', label: 'Retail', forms: retail, times: sub.retail },
+        { key: 'hniBt', label: 'S-HNI', forms: sHni, times: sub.snii ?? sub.nii ?? sub.hni },
+        { key: 'hniAt', label: 'B-HNI', forms: bHni, times: sub.bnii ?? sub.nii ?? sub.hni },
+      ].filter((r): r is { key: string; label: string; forms: number; times: number } =>
+        typeof r.forms === 'number' && typeof r.times === 'number');
+      if (rows.length) {
+        f.appWise = rows.map((r) => ({
+          key: r.key, label: r.label, formsFor1x: r.forms,
+          apps: Math.round(r.forms * r.times), times: r2(r.times),
+        }));
+        // the operator's own figure wins over anything derived
+        // `noOfApp` is the legacy name for the same operator observation
+        const entered = Number(String(exAll?.applicationsReceived ?? exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
+        f.totalApps = Number.isFinite(entered) && entered > 0
+          ? entered
+          : f.appWise.reduce((a, b) => a + b.apps, 0);
+      }
+    }
   }
 
-  // Financials (4-year, synthesized from a deterministic base)
-  const baseRev = Math.max(90, cr * 1.4 + (hash(ipo.symbol) % 200));
-  const g = 1.14 + (hash(ipo.symbol + 'g') % 9) / 100;
-  const rev = [0, 1, 2, 3].map((i) => baseRev / Math.pow(g, i));
-  const pm = 0.08 + (hash(ipo.symbol + 'p') % 9) / 100, em = pm + 0.09;
-  f.financialYears = ['FY26', 'FY25', 'FY24', 'FY23'];
-  f.financialRows = [
-    { metric: 'Total Income', values: rev.map(r2) },
-    { metric: 'EBITDA', values: rev.map((r) => r2(r * em)) },
-    { metric: 'Profit After Tax', values: rev.map((r) => r2(r * pm)) },
-    { metric: 'Net Worth', values: rev.map((r) => r2(r * 0.42)) },
-    { metric: 'Total Assets', values: rev.map((r) => r2(r * 0.75)) },
-    { metric: 'Total Borrowing', values: rev.map((r) => r2(r * 0.22)) },
-  ];
-
-  f.objects = [
-    { text: ipo.objectsOfIssue ?? 'Capacity expansion and capital expenditure', amount: cr ? `₹${Math.round(cr * 0.6)} Cr` : undefined },
-    { text: 'General corporate purposes' },
-  ];
-  f.strengths = ['Experienced promoters and management team', 'Diversified, marquee customer base', 'Integrated and cost-efficient operations', 'Consistent growth in revenue and margins'];
-  f.strategies = ['Expand capacity and product range', 'Deepen distribution and grow exports', 'Invest in automation and technology', 'Strengthen the balance sheet'];
-  f.promoters = [`${ipo.name.split(' ')[0]} Holdings Pvt Ltd`, 'Promoter Family (individuals)'];
+  // Financials / objects / strengths / strategies / promoters are OPERATOR-ENTERED
+  // only. If the operator hasn't filled them in via the admin IPO form, the
+  // detail page simply omits those sections — an honest absence is better
+  // than a fabricated table of 4-year revenue or a generic "Experienced
+  // promoters and management team" string presented as if it came from the
+  // RHP. Removed on 2026-09-16 alongside the MOCK catalog cleanup.
+  if (Array.isArray(exAll?.financialRows) && exAll.financialRows.length) {
+    f.financialRows = exAll.financialRows;
+    f.financialYears = Array.isArray(exAll?.financialYears) && exAll.financialYears.length
+      ? exAll.financialYears
+      : ['FY26', 'FY25', 'FY24', 'FY23'];
+  }
+  if (Array.isArray(exAll?.objects) && exAll.objects.length) {
+    f.objects = exAll.objects;
+  }
+  // ipo.objectsOfIssue (operator's rich HTML) renders on its own path in
+  // IpoDetailView — no synthesis needed here.
+  if (Array.isArray(exAll?.strengths) && exAll.strengths.length) {
+    f.strengths = exAll.strengths.filter(Boolean).map((s: any) => String(s));
+  }
+  if (Array.isArray(exAll?.strategies) && exAll.strategies.length) {
+    f.strategies = exAll.strategies.filter(Boolean).map((s: any) => String(s));
+  }
+  if (Array.isArray((ipo as any).promoters) && (ipo as any).promoters.length) {
+    f.promoters = (ipo as any).promoters;
+  } else if (Array.isArray(exAll?.promoters) && exAll.promoters.length) {
+    f.promoters = exAll.promoters.filter(Boolean).map((s: any) => String(s));
+  }
   f.faqs = [
     { q: `What is the minimum investment in the ${ipo.name} IPO?`, a: `One lot of ${lot} shares — ₹${(ipo.minAmount ?? 0).toLocaleString('en-IN')} at the upper price band of ₹${upper}.` },
     { q: 'How many bids can I place?', a: 'Up to 3 bids per application. Retail applications are capped at ₹2,00,000; above that you must apply in the HNI category.' },
     { q: 'When are the funds debited?', a: 'Funds are blocked via a UPI mandate at application and debited only on allotment. If shares are not allotted, the block is released automatically.' },
-    { q: 'When will the shares list?', a: `Tentative listing on ${ipo.listingDate ?? 'the listing date'} on ${ipo.type === 'sme' ? 'NSE SME / BSE SME' : 'NSE & BSE'}.` },
+    { q: 'When will the shares list?', a: `Tentative listing on ${ipo.listingDate ?? 'the listing date'} on ${exchangeLabels(f.exchanges, ' / ') || (ipo.type === 'sme' ? 'NSE SME' : 'NSE & BSE')}.` },
   ];
   return f;
 }
 
+// MOCK is empty (front-site demo data removed on 2026-09-16), so FULL is [].
+// Kept as a named constant only so mockIpos()'s type signature stays stable
+// for any external caller — never populated.
 const FULL: IpoFull[] = MOCK.map(enrich);
+void FULL; // silence unused-var lint
 
 /** Published news posts (public; empty on failure). */
 export interface PostView {
@@ -368,31 +373,74 @@ export async function getBanners(): Promise<BannerView[]> {
   return safeGet<BannerView[]>('/banners', []);
 }
 
+/**
+ * The archive's page of finished issues — filtered, sorted and counted on the
+ * SERVER. It used to pull the whole catalog and filter in the browser, which
+ * was fine at twelve rows and is not at two thousand.
+ */
+export interface ArchivePage { rows: IpoFull[]; total: number; page: number; perPage: number; years: string[] }
+export async function getArchive(q: {
+  year?: string; month?: string; board?: string; q?: string; page?: number; perPage?: number;
+}): Promise<ArchivePage> {
+  const sp = new URLSearchParams();
+  if (q.year && q.year !== 'all') sp.set('year', q.year);
+  if (q.month && q.month !== 'all') sp.set('month', q.month);
+  if (q.board && q.board !== 'all') sp.set('board', q.board);
+  if (q.q && q.q.trim()) sp.set('q', q.q.trim());
+  if (q.page) sp.set('page', String(q.page));
+  if (q.perPage) sp.set('perPage', String(q.perPage));
+  const empty: ArchivePage = { rows: [], total: 0, page: 1, perPage: 50, years: [] };
+  const r = await safeGet<{ rows: IpoDetail[]; total: number; page: number; perPage: number; years: string[] } | null>(
+    `/ipos/archive?${sp.toString()}`, null);
+  if (!r) return empty;
+  return { ...r, rows: (r.rows ?? []).map(enrich) };
+}
+
 export async function getIpos(): Promise<IpoListItem[]> {
-  // API returns IpoDetail[] (mapped to the shared contract); enrich each into a full card.
-  // On any failure safeGet returns the base MOCK, which is enriched the same way.
-  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  // API returns IpoDetail[] (mapped to the shared contract); enrich each into a card.
+  // On failure safeGet returns [] — empty state, no fake demo rows.
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
   return list.map(enrich);
 }
 
 export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined> {
+  // Live API only — no MOCK fallback (the placeholder-symbol page renders "not found"
+  // when the API is unreachable rather than serving a fake company card).
   const fromApi = await safeGet<IpoDetail | null>(`/ipos/by-symbol/${symbol}`, null);
   if (fromApi) return { ...enrich(fromApi), live: true };
-  return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
+  return undefined;
 }
 
-/** Synchronous mock lookup for client components (apply flow runs on seeded data). */
-export function mockIpoBySymbol(symbol: string): IpoFull | undefined {
-  return FULL.find((i) => i.symbol.toLowerCase() === symbol.toLowerCase());
-}
-export function mockIpos(): IpoFull[] { return FULL; }
+/** Kept as no-ops so existing callers (Portfolio watchlist / lifecycle deriver)
+ *  compile — they already handle undefined / empty. Real detail lookups go
+ *  through getIpoDetail against the live API. */
+export function mockIpoBySymbol(_symbol: string): IpoFull | undefined { return undefined; }
+export function mockIpos(): IpoFull[] { return []; }
 
-/** Symbols to statically generate — the live DB list at build time. Never empty:
- *  `output: export` rejects a dynamic route with zero params, so when the catalog is
- *  empty we fall back to placeholder symbols (their pages are simply unreachable from
- *  the empty home until real IPOs are added). */
+/** Symbols to statically generate — the live DB list at build time.
+ *  `output: export` rejects a dynamic route with zero params, so when the
+ *  catalog is empty at build time we emit a single lightweight placeholder
+ *  handle (`no-ipos`) so the build succeeds; the route's page falls back to
+ *  a client-side live fetch, which is what actually populates it in a
+ *  browser once the API is reachable. */
+const PLACEHOLDER = ['no-ipos'];
 export async function ipoSymbols(): Promise<string[]> {
-  const list = await safeGet<IpoDetail[]>('/ipos', MOCK);
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
   const symbols = list.map((i) => i.symbol);
-  return symbols.length ? symbols : MOCK.map((i) => i.symbol);
+  return symbols.length ? symbols : PLACEHOLDER;
+}
+
+/**
+ * Every URL handle the IPO detail route should statically emit — both the
+ * SEO-friendly `slug` (new) AND the raw `symbol` (backward compat).
+ * External bookmarks still work; new internal links prefer the slug.
+ */
+export async function ipoUrlHandles(): Promise<string[]> {
+  const list = await safeGet<IpoDetail[]>('/ipos', []);
+  const handles = new Set<string>();
+  for (const i of list) {
+    if (i.symbol) handles.add(i.symbol);
+    if (i.slug) handles.add(i.slug);
+  }
+  return handles.size ? [...handles] : PLACEHOLDER;
 }

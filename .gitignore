@@ -34,6 +34,18 @@ coverage/
 .pii-vault.key
 *.pii-vault.key
 
+# Secrets pasted into the repo by mistake — API keys, credential dumps, etc.
+# The proper home for these is admin → Integrations (vaulted) or apps/api/.env
+# (already gitignored via .env). This blocklist catches the common accidents.
+API_Key.txt
+API_KEY.txt
+api_key.txt
+*.apikey
+*.api-key
+*.secret
+secrets.txt
+credentials.txt
+
 # editor/os
 .DS_Store
 Thumbs.db
@@ -43,3 +55,10 @@ apps/api/uploads/
 
 # exchange API documentation (member-confidential; kept out of the repo)
 apis/
+
+# operator's IPO source docs — PREANCHOR, Anchor Intimation, IPO Note PDFs
+# for the D.1 batch importer to walk. Vendor / merchant-banker material;
+# never crosses into git. Path may be Data/ or data/ depending on the
+# operator's setup — both stay ignored.
+Data/
+data/

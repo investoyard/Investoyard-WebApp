@@ -23,6 +23,9 @@ function KycPill({ kyc, profiles }: { kyc: { verified: number; total: number }; 
 export default function ClientsPage() {
   const me = useOperator();
   const canManage = operatorCan(me, 'clients.manage');
+  // Hard delete is superadmin-only. Guarded on the client for the button
+  // to appear, and again on the server before it runs anything.
+  const canHardDelete = !!me?.isSuperAdmin;
   const [rows, setRows] = useState<api.ClientRow[]>([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -58,6 +61,37 @@ export default function ClientsPage() {
       title: `Suspend ${c.name ?? c.mobileMasked ?? 'client'}?`, danger: true, confirmLabel: 'Suspend',
       message: <>The client won’t be able to sign in or apply until reactivated.</>,
       onConfirm: () => setClientStatus(c.id, 'suspended'),
+    });
+  };
+
+  /**
+   * Hard delete — asks with a strong warning that spells out what goes
+   * away. The service enforces superadmin again on the server; the UI
+   * guard is just to hide the option from admin-tier users.
+   */
+  const hardDelete = (c: api.ClientRow) => {
+    const label = c.name ?? c.mobileMasked ?? 'this client';
+    setConfirm({
+      title: `Hard-delete ${label}?`,
+      danger: true,
+      confirmLabel: 'Delete permanently',
+      message: (
+        <>
+          This deletes <b>{label}</b> and <b>everything they own</b>:
+          <ul style={{ margin: '8px 0 6px 18px' }}>
+            <li>{c.profiles} KYC {c.profiles === 1 ? 'profile' : 'profiles'} (PAN, bank, UPI)</li>
+            <li>{c.applications} {c.applications === 1 ? 'application' : 'applications'} and every ledger operation on them</li>
+            <li>Watchlist, consents, device tokens, GMP contributor row</li>
+          </ul>
+          The account and its history are <b>gone</b>. The delete itself is logged in the audit trail. This cannot be undone.
+        </>
+      ),
+      onConfirm: async () => {
+        setBusy(true); setErr(null);
+        try { await api.hardDeleteClient(c.id); await load(); }
+        catch (e: any) { setErr(String(e?.message ?? e)); }
+        finally { setBusy(false); }
+      },
     });
   };
 
@@ -140,7 +174,8 @@ export default function ClientsPage() {
                 {slice.map((c) => (
                   <tr key={c.id}>
                     <td><b>{c.name ?? '—'}</b>{c.email && <div className="muted" style={{ fontSize: 12 }}>{c.email}</div>}</td>
-                    <td className="mono">{c.mobileMasked ?? '—'}</td>
+                    {/* Full mobile for superadmin + admin (server decides), masked otherwise. */}
+                    <td className="mono">{c.mobile ?? c.mobileMasked ?? '—'}</td>
                     <td>{c.tenant.name}{c.status !== 'active' && <span className="st mut" style={{ marginLeft: 6 }}>{c.status}</span>}</td>
                     <td className="mono">{c.profiles}</td>
                     <td><KycPill kyc={c.kyc} profiles={c.profiles} /></td>
@@ -152,6 +187,11 @@ export default function ClientsPage() {
                         {canManage && (
                           <RowMenu>
                             <button className={c.status === 'active' ? 'danger' : ''} disabled={busy} onClick={() => toggleClient(c)}><Icon name="power" size={15} /> {c.status === 'active' ? 'Suspend client' : 'Activate client'}</button>
+                            {canHardDelete && (
+                              <button className="danger" disabled={busy} onClick={() => hardDelete(c)}>
+                                <Icon name="trash" size={15} /> Delete client…
+                              </button>
+                            )}
                           </RowMenu>
                         )}
                       </span>

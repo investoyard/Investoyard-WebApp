@@ -60,6 +60,14 @@ export function catColor(cat: string): string {
   if (c.includes('retail') || c.includes('rii')) return '#3c2e7e';
   if (c.includes('b-hni') || c.includes('b_hni') || c.includes('bhni') || c.includes('hni 2') || c.includes('hni2')) return '#7c4dff';
   if (c.includes('hni') || c.includes('nii')) return '#e0a200';
+  /* KEEP IN STEP WITH `catColor` in apps/web/lib/catColor.ts — the same five
+     category hexes plus the reserved quotas. Market maker is tested BEFORE
+     employee and has its own slate: it is a liquidity obligation rather than an
+     investor category, and VANS carries both quotas, which would otherwise be
+     the same swatch in one bar. */
+  if (c.includes('market')) return '#5c6187';
+  if (c.includes('emp')) return '#0f766e';
+  if (c.includes('shareholder') || c.includes('policyholder')) return '#be185d';
   return '#7565bd';
 }
 /** Readable text colour on a segment — dark on the light gold band, white elsewhere. */

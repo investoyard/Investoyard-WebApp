@@ -94,8 +94,11 @@ export interface IpoMasterEntry {
   priceMin?: number;
   priceMax?: number;
   lotSize?: number;
-  /** `offered` = shares reserved for that category (the denominator for "times subscribed"). */
-  categories?: { code: string; label?: string; offered?: number }[];
+  /** Category codes only — ipomaster doesn't ship offered qty for live issues.
+   *  The subscription poller derives its own denominator from the reservation
+   *  table (`extra.shareResv × issueSize/priceBandMax`); see
+   *  `apps/api/src/modules/subscription/subscription.service.ts`. */
+  categories?: { code: string; label?: string }[];
   raw?: unknown;
 }
 

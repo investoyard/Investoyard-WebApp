@@ -1,33 +1,185 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { BseDemandRow, BseQueryAdapter, CatwiseRow, IpoMasterEntry, MemberCredential, NseQueryAdapter } from '@investoyard/rail-adapters';
+import { BseDemandRow, BseQueryAdapter, CatwiseRow, MemberCredential, NseQueryAdapter } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
+import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
+import { tradingDaysBetween } from '@investoyard/shared-types';
+import { offeredFromIpo, type Bucket } from './offered';
 
-// ── tunables (env-overridable) ────────────────────────────────────────────────
-const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;        // base loop cadence
-const NORMAL_MS = Number(process.env.SUBSCRIPTION_NORMAL_MS) || 20_000;    // per-IPO cadence, normal
-const FAST_MS = Number(process.env.SUBSCRIPTION_FAST_MS) || 10_000;        // per-IPO cadence, closing rush
-const FAST_WINDOW_MIN = Number(process.env.SUBSCRIPTION_FAST_WINDOW_MIN) || 90; // final N min → fast
-const OPEN_FROM_MIN = 10 * 60; // 10:00 IST
-const OPEN_TO_MIN = 17 * 60;   // 17:00 IST
+// ── tunables ─────────────────────────────────────────────────────────────────
+// Base loop cadence — how often tick() runs. NOT the per-IPO refresh; that
+// comes from the runtime tuning below. Env-only (rarely changed).
+const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;
+// Per-IPO cadence DEFAULTS. These are the fallback when nothing's saved in
+// admin → Integrations → Live subscription poller. Every value below is
+// live-overridable via that admin card (operator ask, 2026-09-21).
+const DEFAULT_NORMAL_SEC = 60;   // refresh once a minute during the bidding window
+const DEFAULT_FAST_SEC = 5;      // closing rush: every 5s
+const DEFAULT_FAST_WINDOW_MIN = 90;
+const DEFAULT_POLL_FROM_MIN = 10 * 60;   // 10:00 IST — matches SEBI bidding open
+const DEFAULT_POLL_TO_MIN = 18 * 60;     // 18:00 IST — 1h grace past 17:00 bidding close
+// BIDDING cutoff (SEBI): 17:00 IST — drives the fast-cadence "closing rush"
+// trigger (fast mode kicks in at 17:00 − fastWindowMin, e.g. 15:30 IST for
+// the default 90-min window). Fixed by regulation; NOT tunable.
+const BIDDING_CLOSE_MIN = 17 * 60;
 
 /**
- * NSE category code → our subscription bucket (shared-types SubscriptionRow).
- * Unlisted categories still count toward `total`, they just don't get a named row.
+ * The seven buckets that come out of merging NSE + BSE (matches the operator's
+ * legacy C# workflow: QIB / HNI-Above-10L / HNI-Below-10L / RETAIL / EMPLOYEE /
+ * SHAREHOLDER-or-POLICYHOLDER, plus a rolled-up `total`). `hni` is Big-HNI
+ * (>₹10 L, SEBI's larger 2/3 of NII); `hni2` is Small-HNI (<₹10 L) — same
+ * naming shared-types uses in `CATEGORY_LABELS` and `computeIssue`.
  */
-const BUCKET: Record<string, 'qib' | 'nii' | 'retail' | 'employee'> = {
-  QIB: 'qib',
-  NIB: 'nii', NII: 'nii', HNI: 'nii', SNII: 'nii', BNII: 'nii',
-  RETAIL: 'retail', IND: 'retail', INDIV: 'retail', RII: 'retail',
-  EMP: 'employee', EMPLOYEE: 'employee', EMPL: 'employee',
-};
+
+/**
+ * NSE category code → our bucket. Follows the operator's C# workflow:
+ *   QIB → qib; NIBBT (Below-10L S-HNI) → hni2; NIBAT (Above-10L B-HNI) → hni;
+ *   INDIV / RETAIL → retail; EMPRET → employee; SHARET → shareholder;
+ *   POLRET → policyholder.
+ * Aggregate legacy codes (NIB / NII / HNI) route to `hni` as a best-effort
+ * fallback — we lose the Big/Small split when the exchange doesn't send it.
+ */
+function bucketNse(cat: string): Bucket | null {
+  const c = cat.toUpperCase();
+  if (c === 'QIB') return 'qib';
+  if (c === 'NIBBT') return 'hni2';
+  if (c === 'NIBAT') return 'hni';
+  if (c === 'NIB' || c === 'NII' || c === 'HNI' || c === 'SNII' || c === 'BNII') return 'hni';
+  if (c === 'INDIV' || c === 'RETAIL' || c === 'IND' || c === 'RII') return 'retail';
+  if (c === 'EMPRET' || c === 'EMP' || c === 'EMPLOYEE' || c === 'EMPL') return 'employee';
+  if (c === 'SHARET' || c === 'SHA') return 'shareholder';
+  /* POLICYHOLDER is NOT the shareholder quota, and folding the two together was
+     not cosmetic: on an issue offering both, two categories' demand summed into
+     one row and was measured against a shareholder-only Book Size. LICI carries
+     a stored `shareholder` row at 6.12x with no listed parent — that is LIC's
+     POLICYHOLDER subscription under the wrong name. */
+  if (c === 'POLRET' || c === 'POL') return 'policyholder';
+  return null;
+}
+
+/**
+ * BSE (category, subCategory) → our bucket. Same C# workflow:
+ *   QIB / IC / FI / FII / OTH / MF → qib;
+ *   (CO|NOH, BT) or (IND, OTHERBT) → hni2 (Below-10L);
+ *   (CO|NOH, AT) or (IND, OTHERAT) → hni  (Above-10L);
+ *   (IND, RII) → retail; EMP → employee; SHA → shareholder; POL → policyholder.
+ * The BT / AT split lives in the SUB-category — bucketing on category alone
+ * would collapse Big-HNI and Small-HNI into one row (the mistake the old
+ * 4-bucket NII map made).
+ */
+function bucketBse(cat: string, subCat?: string): Bucket | null {
+  const c = cat.toUpperCase();
+  const s = (subCat ?? '').toUpperCase();
+  if (['QIB', 'IC', 'FI', 'FII', 'OTH', 'MF'].includes(c)) return 'qib';
+  if ((c === 'CO' || c === 'NOH') && s === 'BT') return 'hni2';
+  if ((c === 'CO' || c === 'NOH') && s === 'AT') return 'hni';
+  if (c === 'IND' && s === 'OTHERBT') return 'hni2';
+  if (c === 'IND' && s === 'OTHERAT') return 'hni';
+  if (c === 'IND' && (s === 'RII' || s === '')) return 'retail';
+  if (c === 'RII') return 'retail';
+  if (c === 'EMP' || c === 'EMPLOYEE') return 'employee';
+  if (c === 'SHA') return 'shareholder';
+  if (c === 'POL') return 'policyholder';
+  return null;
+}
+
+/** Per-bucket per-exchange accumulator — the shape sir's plan calls out for step 2 to persist. */
+interface CatAgg {
+  nseShares: number;
+  bseShares: number;
+  nseBids: number;
+  bseBids: number;
+}
+function emptyAgg(): CatAgg { return { nseShares: 0, bseShares: 0, nseBids: 0, bseBids: 0 }; }
+
+/**
+ * Bucket raw NSE + BSE demand rows into the 7-category accumulator. BSE only
+ * ships `totalapplication` as a scalar for the whole issue (not per category),
+ * so we back-solve per-category BSE bid counts from the NSE average
+ * shares-per-bid — the fudge the operator's C# workflow uses:
+ *
+ *   bseBids[hni]         = round( bseShares[hni]         ÷ (nseShares[hni]         ÷ nseBids[hni]) )
+ *   bseBids[hni2]        = round( bseShares[hni2]        ÷ (nseShares[hni2]        ÷ nseBids[hni2]) )
+ *   bseBids[shareholder] = round( bseShares[shareholder] ÷ (nseShares[shareholder] ÷ nseBids[shareholder]) )
+ *   bseBids[employee]    = round( bseShares[employee]    ÷ (nseShares[employee]    ÷ nseBids[employee]) )
+ *   bseBids[retail]      = totalapplication − (hni + hni2 + shareholder + policyholder + employee)
+ *
+ * QIB BSE bids stay 0 — institutional app counts are naturally tiny beside
+ * retail, and folding them into the retail residual keeps the approximation
+ * simple. Employee was previously excluded here too (operator report,
+ * 2026-09-21: NSE showed 12k+ Employee BSE bids missing — extracted below).
+ * When NSE has no bids yet (early minutes), the ratio blows up — we skip
+ * the fudge for the affected bucket and let retail absorb the full BSE
+ * totalapplication.
+ */
+function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
+  buckets: Map<Bucket, CatAgg>;
+  bseTotalApps: number;
+} {
+  const buckets = new Map<Bucket, CatAgg>();
+  const get = (k: Bucket): CatAgg => {
+    let v = buckets.get(k);
+    if (!v) { v = emptyAgg(); buckets.set(k, v); }
+    return v;
+  };
+
+  for (const r of nseRows) {
+    const b = bucketNse(r.category);
+    if (!b) continue;
+    const a = get(b);
+    a.nseShares += r.quantity ?? 0;
+    a.nseBids += r.bidCount ?? 0;
+  }
+
+  // BSE `totalapplication` is repeated on every row — take MAX so partial
+  // parses don't undercount, and defend against absent applications field.
+  let bseTotalApps = 0;
+  for (const r of bseRows) {
+    const b = bucketBse(r.category, r.subCategory);
+    if (b) {
+      const a = get(b);
+      a.bseShares += r.quantity ?? 0;
+    }
+    if (r.applications != null && r.applications > bseTotalApps) bseTotalApps = r.applications;
+  }
+
+  // Back-solve BSE per-category bids from NSE's shares-per-bid ratio.
+  // Employee added 2026-09-21 (operator report: NSE had 12,057 BSE Employee
+  // bids getting silently folded into Retail's residual).
+  let nonRetailBseBids = 0;
+  for (const b of ['hni', 'hni2', 'shareholder', 'policyholder', 'employee'] as Bucket[]) {
+    const a = buckets.get(b);
+    if (!a || a.bseShares <= 0 || a.nseShares <= 0 || a.nseBids <= 0) continue;
+    const nseAvg = a.nseShares / a.nseBids;
+    if (nseAvg <= 0) continue;
+    a.bseBids = Math.max(0, Math.round(a.bseShares / nseAvg));
+    nonRetailBseBids += a.bseBids;
+  }
+  if (bseTotalApps > 0) {
+    const retail = get('retail');
+    retail.bseBids = Math.max(0, bseTotalApps - nonRetailBseBids);
+  }
+
+  return { buckets, bseTotalApps };
+}
+
 
 interface SubRow {
-  category: string;
+  category: string;                 // qib | nii | retail | employee | shareholder | total
   timesSubscribed: number;          // by shares
-  bidCount?: number;                // applications in this category
+  bidCount?: number;                // applications in this category (= nseBids + bseBids)
   applicationsSubscribed?: number;  // by applications (drives retail allotment odds)
+  // Per-exchange breakdown — matches the additive `IpoSubscription` columns
+  // added in step 2. The day-wise report page reads these directly and the
+  // front-site subscription card will read them in step 3 to compute times
+  // at display without a poll-time offered divisor. `null` = unknown for
+  // that exchange (e.g. NSE credential missing this cycle, or BSE bid split
+  // skipped because NSE hadn't opened yet — see bucketize).
+  nseShares?: number;
+  bseShares?: number;
+  nseBids?: number;
+  bseBids?: number;
 }
 interface OpenIpo {
   id: string;
@@ -42,25 +194,31 @@ interface SweepCreds {
   bse: MemberCredential | null;
   bseToken: string | null;
 }
-/** Per-NSE-category demand aggregate: q = shares demanded, b = applications/bids. */
-interface CatAgg {
-  q: number;
-  b: number;
-}
 
 /**
- * SubscriptionService — live IPO subscription poller (NSE Query Server → `ipoSubscription`).
+ * SubscriptionService — live IPO subscription poller (NSE catwise + BSE demandschedule → `ipoSubscription`).
  *
- * A single ${TICK_MS}ms loop, gated so it only calls NSE when it should:
- *   • market window  — 10:00–17:00 IST, Mon–Fri, not an NSE holiday (holidaymaster)
- *   • per IPO        — status=open, within [openDate,closeDate], autoPollSubscription=true
- *   • adaptive       — each IPO refreshes every ${NORMAL_MS/1000}s, tightening to ${FAST_MS/1000}s
- *                      in the final ${FAST_WINDOW_MIN} min of its closing day
- *   • cheap          — ipomaster (offered) + holidays cached once/day; DB rows rewritten only on change
+ * A single ${TICK_MS}ms loop, gated so it only calls the exchanges when it should:
+ *   • market window  — 10:00–18:00 IST default (last hour is a grace window
+ *                      for post-close settlement), Mon–Fri, not an NSE holiday
+ *   • per IPO        — open-date ≤ today ≤ close-date, `hidden:false`, `autoPollSubscription:true`
+ *   • adaptive       — each IPO refreshes every ${DEFAULT_NORMAL_SEC}s, tightening to ${DEFAULT_FAST_SEC}s
+ *                      in the final ${DEFAULT_FAST_WINDOW_MIN} min before the 17:00 bidding cutoff
+ *                      (and through the post-close grace hour). All four values are
+ *                      live-tunable via admin → Integrations → Live subscription poller
+ *   • cheap          — holidays cached once/day; DB rows rewritten only on snapshot change
  *
- * Computes two metrics from /catwise: by SHARES (demand÷offered) and by APPLICATIONS
- * (bidCount÷max-allottees) — the latter drives retail allotment odds on Portfolio.
- * Self-healing: no credential / down Query Server / one bad IPO never aborts the loop.
+ * Buckets match the operator's legacy C# workflow — 7 categories
+ * (qib/hni/hni2/retail/employee/shareholder + total). Offered shares come from
+ * OUR reservation table (`extra.shareResv × issueSize/priceBandMax`) since the
+ * NSE ipomaster endpoint doesn't carry per-category offered qty for
+ * current-day issues.
+ *
+ * For step-1 backwards compatibility with the current front-site subscription card,
+ * hni and hni2 are ROLLED UP into a single `nii` output row (the C# split is used
+ * internally to drive the BSE bid-count fudge). Step 2 will add the per-exchange
+ * columns to `IpoSubscription`; step 3 will emit hni/hni2 separately and move the
+ * times computation to the display layer.
  */
 @Injectable()
 export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
@@ -72,11 +230,44 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   // per-IPO cadence + change-detection state
   private readonly lastFetchAt = new Map<string, number>();
   private readonly lastSnapshot = new Map<string, string>();
-  // daily caches (keyed by IST yyyy-mm-dd)
-  private offeredCache: { day: string; map: Map<string, Map<string, number>> } | null = null;
+  // daily holiday cache (keyed by IST yyyy-mm-dd)
   private holidayCache: { day: string; dates: Set<string> } | null = null;
 
-  constructor(private prisma: PrismaService, private rail: RailService) {}
+  constructor(
+    private prisma: PrismaService,
+    private rail: RailService,
+    private providers: ProviderConfigService,
+  ) {}
+
+  /**
+   * Live tuning read from admin → Integrations → Live subscription poller
+   * (provider key `subscription`). Every knob has an env fallback, so an
+   * unconfigured deploy behaves exactly as before this card existed. The
+   * ProviderConfigService caches with a 60s TTL, so reading on every 10s
+   * tick is effectively free. Missing / non-numeric / <=0 values fall back
+   * to defaults so a bad admin entry can't stall the poller.
+   */
+  private async tuning(): Promise<{
+    normalMs: number; fastMs: number; fastWindowMin: number;
+    fromMin: number; toMin: number;
+  }> {
+    let s: Record<string, any> = {};
+    try {
+      const cfg = await this.providers.effective('subscription');
+      s = (cfg?.settings ?? {}) as Record<string, any>;
+    } catch { /* provider not configured — env/defaults win */ }
+    const positive = (v: any, def: number): number => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : def;
+    };
+    return {
+      normalMs: positive(s.normalSec, Number(process.env.SUBSCRIPTION_NORMAL_SEC) || DEFAULT_NORMAL_SEC) * 1000,
+      fastMs: positive(s.fastSec, Number(process.env.SUBSCRIPTION_FAST_SEC) || DEFAULT_FAST_SEC) * 1000,
+      fastWindowMin: positive(s.fastWindowMin, Number(process.env.SUBSCRIPTION_FAST_WINDOW_MIN) || DEFAULT_FAST_WINDOW_MIN),
+      fromMin: positive(s.fromMin, Number(process.env.SUBSCRIPTION_POLL_FROM_MIN) || DEFAULT_POLL_FROM_MIN),
+      toMin: positive(s.toMin, Number(process.env.SUBSCRIPTION_POLL_TO_MIN) || DEFAULT_POLL_TO_MIN),
+    };
+  }
 
   onModuleInit() {
     if (process.env.SUBSCRIPTION_POLL_DISABLED === 'true') return;
@@ -91,8 +282,9 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   private async tick(): Promise<void> {
     const ist = this.istParts();
     if (!this.isTradingDay(ist)) return;                 // Sat/Sun (holiday check happens after cred)
+    const t = await this.tuning();
     const mins = ist.hour * 60 + ist.minute;
-    if (mins < OPEN_FROM_MIN || mins >= OPEN_TO_MIN) return; // outside 10:00–17:00 IST
+    if (mins < t.fromMin || mins >= t.toMin) return;     // outside operator-configured window
 
     await tenantContext.runUnscoped(async () => {
       const sweep = await this.resolveSweep();
@@ -106,11 +298,104 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       if (ipos.length === 0) return;
 
       const now = Date.now();
-      const due = ipos.filter((i) => now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist));
+      const due = ipos.filter((i) => now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist, t));
       if (due.length === 0) return;
 
-      const offered = await this.ensureOffered(ist.ymd);
-      for (const ipo of due) await this.refreshIpo(ipo, sweep, offered);
+      for (const ipo of due) await this.refreshIpo(ipo, sweep);
+    });
+  }
+
+  /**
+   * WHICH NOT-YET-CLOSED ISSUES THE POLLER CANNOT COMPUTE — the daily check
+   * (operator ask, 2026-10-06, after ten SME issues closed with nothing).
+   *
+   * W-SUB on the IPO form only helps someone who opens that form. These ten were
+   * lost silently over nine days because nobody did, so the gap needs a surface
+   * that comes to the operator instead: this feeds a card on the admin
+   * dashboard, which is the one screen they see every day.
+   *
+   * IT CALLS `offeredFromIpo()` — the poller's own resolver, not a reimplemented
+   * version of its conditions. That is the whole design: an alert that decides
+   * for itself what "cannot be computed" means is an alert that drifts from the
+   * thing it is warning about, and this codebase has paid for that four times
+   * (three mappers into `computeIssue`, four readers of `sharesUpper`). If the
+   * poller would write nothing, this lists it; if the poller would work, it does
+   * not appear. The two cannot disagree.
+   *
+   * `lostDays` / `daysLeft` count TRADING days off the real NSE calendar, so a
+   * weekend or a Gandhi Jayanti is not reported as a lost day — and they are
+   * what makes a row actionable: one bidding day left is an emergency, four
+   * still to come is a note.
+   */
+  async subscriptionReadiness(): Promise<{
+    checkedAt: string;
+    atRisk: {
+      id: string; symbol: string; name: string; board: 'mainboard' | 'sme';
+      openDate: string | null; closeDate: string | null;
+      state: 'open' | 'upcoming';
+      lostDays: number; daysLeft: number;
+      reason: string;
+    }[];
+  }> {
+    return tenantContext.runUnscoped(async () => {
+      const today = this.istParts().ymd;
+      const ipos = await this.prisma.ipo.findMany({
+        where: { hidden: false, closeDate: { gte: new Date(`${today}T00:00:00.000Z`) } },
+        select: {
+          id: true, symbol: true, name: true, type: true,
+          issueSize: true, priceBandMax: true, priceBandMin: true,
+          openDate: true, closeDate: true, extra: true,
+        },
+        orderBy: { closeDate: 'asc' },
+      });
+
+      const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
+      const atRisk = [];
+      for (const i of ipos) {
+        const extra: any = i.extra ?? {};
+        const offered = offeredFromIpo({
+          issueSize: i.issueSize as any,
+          priceBandMax: i.priceBandMax as any,
+          priceBandMin: i.priceBandMin as any,
+          extra,
+        });
+        if (offered !== null) continue;   // the poller can compute it — nothing to say
+
+        /* Name the actual blocker rather than "incomplete". The reservation table
+           is the usual one, but a record can also be missing the price or the
+           size the fallback divides, and those need a different field filling. */
+        const resv = extra.shareResv;
+        const hasRows = resv && typeof resv === 'object'
+          && Object.values(resv).some((r: any) =>
+            Number(String(r?.pct ?? '').replace(/[^\d.]/g, '')) > 0
+            || Number(String(r?.sharesUpper ?? '').replace(/[^\d]/g, '')) > 0
+            || Number(String(r?.sharesLower ?? '').replace(/[^\d]/g, '')) > 0);
+        const price = Number(i.priceBandMax) || Number(i.priceBandMin);
+        const reason = !hasRows
+          ? 'No reservation split — no percentage or share count on any category row.'
+          : !price
+            ? 'No price band, so a percentage-only table has nothing to divide.'
+            : !Number(i.issueSize)
+              ? 'No issue size, so a percentage-only table has nothing to divide.'
+              : 'The reservation table has rows but none resolve to a share count.';
+
+        const o = day(i.openDate), c = day(i.closeDate);
+        atRisk.push({
+          id: i.id,
+          symbol: i.symbol,
+          name: i.name,
+          board: (i.type === 'sme' ? 'sme' : 'mainboard') as 'mainboard' | 'sme',
+          openDate: o,
+          closeDate: c,
+          state: (o && o <= today ? 'open' : 'upcoming') as 'open' | 'upcoming',
+          // days already gone are only "lost" once bidding has actually started
+          lostDays: o && o <= today ? tradingDaysBetween(o, today) : 0,
+          daysLeft: c ? tradingDaysBetween(today > (o ?? today) ? today : (o ?? today), c) : 0,
+          reason,
+        });
+      }
+      return { checkedAt: new Date().toISOString(), atRisk };
     });
   }
 
@@ -122,9 +407,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       if (!sweep.nse && !sweep.bse) return { open: 0, updated: 0, reason: 'no-credential' };
       const ipos = await this.openAutoIpos(this.istParts().ymd, /*ignoreAutoFlag*/ true);
       if (ipos.length === 0) return { open: 0, updated: 0 };
-      const offered = await this.ensureOffered(this.istParts().ymd);
       let updated = 0;
-      for (const ipo of ipos) if (await this.refreshIpo(ipo, sweep, offered)) updated++;
+      for (const ipo of ipos) if (await this.refreshIpo(ipo, sweep)) updated++;
       return { open: ipos.length, updated };
     });
   }
@@ -139,58 +423,182 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true },
       });
       if (!ipo) return { ok: false, reason: 'not-found' };
-      const offered = await this.ensureOffered(this.istParts().ymd);
-      const changed = await this.refreshIpo(ipo, sweep, offered);
+      const changed = await this.refreshIpo(ipo, sweep);
       return { ok: true, changed };
     });
   }
 
-  // ── one IPO: fetch BOTH exchanges → combine per category → write-on-change ───
-  private async refreshIpo(ipo: OpenIpo, sweep: SweepCreds, offered: Map<string, Map<string, number>>): Promise<boolean> {
+  // ── one IPO: fetch BOTH exchanges → 7-cat accumulator → write-on-change ─────
+  private async refreshIpo(ipo: OpenIpo, sweep: SweepCreds): Promise<boolean> {
     try {
-      // Gather per-category demand from each exchange we have a credential for, then
-      // merge (sum) by category. Either side failing/absent → the other still counts.
-      const sources: Map<string, CatAgg>[] = [];
+      // Read the offered-qty inputs alongside `extra` (used for subLog) in one
+      // query. shareResv × issueSize/priceBandMax is the denominator for
+      // times-subscribed — the NSE ipomaster endpoint doesn't carry it.
+      const row = await this.prisma.ipo.findUnique({
+        where: { id: ipo.id },
+        // priceBandMin is selected for the FIXED-PRICE case, where the one
+        // price sits there and priceBandMax is null.
+        select: { extra: true, issueSize: true, priceBandMax: true, priceBandMin: true },
+      });
+      const ex: any = (row?.extra as any) ?? {};
+      const offeredByBucket = offeredFromIpo({
+        issueSize: row?.issueSize as any,
+        priceBandMax: row?.priceBandMax as any,
+        priceBandMin: row?.priceBandMin as any,
+        extra: ex,
+      });
+
+      const nseRows: CatwiseRow[] = [];
+      const bseRows: BseDemandRow[] = [];
       if (sweep.nse) {
-        try {
-          sources.push(fromCatwise(await this.query.getCatwise(ipo.symbol, sweep.nse)));
-        } catch (e: any) { this.log.warn(`${ipo.symbol} NSE: ${e.message}`); }
+        try { nseRows.push(...(await this.query.getCatwise(ipo.symbol, sweep.nse))); }
+        catch (e: any) { this.log.warn(`${ipo.symbol} NSE: ${e.message}`); }
       }
       if (sweep.bse && sweep.bseToken) {
-        try {
-          sources.push(fromBseDemand(await this.bseQuery.getDemandSchedule(ipo.symbol, sweep.bseToken, sweep.bse)));
-        } catch (e: any) { this.log.warn(`${ipo.symbol} BSE: ${e.message}`); }
+        try { bseRows.push(...(await this.bseQuery.getDemandSchedule(ipo.symbol, sweep.bseToken, sweep.bse))); }
+        catch (e: any) { this.log.warn(`${ipo.symbol} BSE: ${e.message}`); }
       }
-      const merged = mergeDemand(sources);
-      const subs = this.computeSubs(merged, offered.get(ipo.symbol.toUpperCase()), ipo.lotSize ?? undefined);
+
+      const { buckets } = bucketize(nseRows, bseRows);
+      /* Same cap-then-floor price resolution as `offeredFromIpo`: this one
+         feeds `shniMinShares`, so on a fixed-price issue reading only the cap
+         left it 0 and no HNI row got an `applicationsSubscribed` figure. */
+      const priceForSubs = Number(row?.priceBandMax ?? 0) || Number(row?.priceBandMin ?? 0) || undefined;
+      const fresh = this.computeSubs(buckets, offeredByBucket, ipo.lotSize ?? undefined, priceForSubs);
+      const subs = await this.keepKnownFigures(ipo, fresh);
       this.lastFetchAt.set(ipo.id, Date.now());
       if (subs.length === 0) {
-        this.log.warn(`${ipo.symbol}: no computable subscription (missing offered qty for its categories?)`);
+        // Either the issue has no demand yet (early minutes), or the IPO row is
+        // missing shareResv / issueSize / priceBandMax so we can't derive offered.
+        this.log.warn(`${ipo.symbol}: no computable subscription (no demand yet, or missing reservation table / issue size / price band)`);
         return false;
       }
       const now = new Date();
       const snap = JSON.stringify(subs);
       const changed = this.lastSnapshot.get(ipo.id) !== snap;
       if (changed) {
-        // Day-wise trend log for the detail page — one entry per IST day,
-        // the day's LATEST snapshot wins. Kept to the last 14 days in extra.subLog.
-        const day = this.istParts().ymd;
-        const row = await this.prisma.ipo.findUnique({ where: { id: ipo.id }, select: { extra: true } });
-        const ex: any = (row?.extra as any) ?? {};
-        const pick = (c: string) => { const s = subs.find((x) => x.category === c); return s ? Number(s.timesSubscribed) : null; };
+        // Day-wise trend log — one entry per day (the latest snapshot each
+        // day wins, capped at 14 days). Front-site detail page's day-wise
+        // table reads this. Extra keys ignored by legacy readers.
+        const istNow = this.istParts();
+        const day = istNow.ymd;
+        const pick = (c: string): number | null => { const s = subs.find((x) => x.category === c); return s ? Number(s.timesSubscribed) : null; };
+        /*
+         * APPLICATION-WISE history (operator ask, 2026-09-30). Until now these
+         * logs carried `timesSubscribed` and nothing else, so the day-wise and
+         * hourly tables could only ever show demand by SHARES — the figures
+         * were already on `SubRow`, they just never reached the log.
+         *
+         * ONE NESTED KEY, not eight more flat ones. `apps` is invisible to every
+         * existing reader, keeps the by-shares shape byte-identical, and is
+         * OMITTED ENTIRELY when no category has bid data — which is most of the
+         * catalogue (23 IPOs of the 318 with subscription rows carry a bid
+         * count), so the common case costs nothing.
+         *
+         * `n` is applications RECEIVED, `x` the by-applications multiple. Both,
+         * because they answer different questions and the live Application-wise
+         * panel already shows the pair.
+         *
+         * HISTORY STARTS HERE and cannot be backfilled: every day and hour
+         * already logged has no application figure and never will, and an issue
+         * that has already closed will never gain one.
+         */
+        const appsOf = (c: string): { n: number | null; x: number | null } | null => {
+          const s = subs.find((x) => x.category === c);
+          if (!s || (s.bidCount == null && s.applicationsSubscribed == null)) return null;
+          return {
+            n: s.bidCount ?? null,
+            x: s.applicationsSubscribed != null ? Number(s.applicationsSubscribed) : null,
+          };
+        };
+        const apps = ['total', 'qib', 'nii', 'retail', 'hni', 'hni2', 'employee', 'shareholder']
+          .reduce<Record<string, { n: number | null; x: number | null }>>((a, c) => {
+            const v = appsOf(c);
+            if (v) a[c] = v;
+            return a;
+          }, {});
+        const snapshot = {
+          total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail'),
+          hni: pick('hni'), hni2: pick('hni2'),
+          employee: pick('employee'), shareholder: pick('shareholder'),
+          ...(Object.keys(apps).length ? { apps } : {}),
+        };
         const subLog = [
           ...(Array.isArray(ex.subLog) ? ex.subLog : []).filter((e: any) => e?.d !== day),
-          { d: day, total: pick('total'), qib: pick('qib'), nii: pick('nii'), retail: pick('retail') },
+          { d: day, ...snapshot },
         ].slice(-14);
+
+        // Hourly rolling window (2026-09-22 operator ask) — one snapshot per
+        // (day, hour). The LATEST snapshot within each hour wins, so the
+        // 60s poller writes ~60x per hour but only the last value sticks.
+        // Cap at 72 entries = 3 days × 24 hours (operator confirmed).
+        // Front-site expands each day-wise row to reveal the hourly trail.
+        const hh = String(istNow.hour).padStart(2, '0');
+        const t = `${hh}:00`;
+        const hourKey = `${day}T${hh}`;
+        const subLogHour = [
+          ...(Array.isArray(ex.subLogHour) ? ex.subLogHour : [])
+            .filter((e: any) => `${e?.d}T${String(e?.t ?? '').slice(0, 2)}` !== hourKey),
+          { d: day, t, ...snapshot },
+        ].slice(-72);
+
+        /*
+         * MERGE the two keys in the database; never write the whole column.
+         *
+         * `{ ...ex, subLog, subLogHour }` was a read-modify-write, and `ex` is
+         * read at the top of this method — TWO network round trips earlier, to
+         * NSE and to BSE. Anything written to `extra` inside that gap was
+         * silently reverted by the poller's stale copy, for every LIVE issue,
+         * once a minute (once every FIVE SECONDS after 15:30). Caught on
+         * 2026-09-25 when a provenance backfill reported 8 rows stamped across
+         * two IPOs and only ORIENTCABL's four survived; ACEVECTOR's were gone
+         * before the next read.
+         *
+         * The operator's saves went the same way — `ipo.service.update()` is
+         * also a read-modify-write of this column, so a Book Size corrected
+         * mid-issue could vanish with nothing to show it ever landed.
+         *
+         * `||` is a jsonb concat evaluated inside Postgres against the CURRENT
+         * row, so there is no window at all: the poller can no longer overwrite
+         * a key it did not write. This is `SERVER_OWNED_EXTRA` enforced from the
+         * other side — that list stops the form deleting these two keys, this
+         * stops the poller deleting everything else.
+         *
+         * `Ipo` carries no RLS policy (setup-rls.sql scopes User /
+         * InvestorProfile / Consent / Application / WatchlistItem /
+         * DeviceToken), so a raw statement here needs no tenant GUC.
+         */
         await this.prisma.$transaction([
           this.prisma.ipoSubscription.deleteMany({ where: { ipoId: ipo.id } }),
           this.prisma.ipoSubscription.createMany({
             data: subs.map((s) => ({
               ipoId: ipo.id, category: s.category, timesSubscribed: s.timesSubscribed,
               bidCount: s.bidCount, applicationsSubscribed: s.applicationsSubscribed,
+              nseShares: s.nseShares, bseShares: s.bseShares,
+              nseBids: s.nseBids, bseBids: s.bseBids,
             })),
           }),
-          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now, extra: { ...ex, subLog } } }),
+          this.prisma.$executeRaw`
+            UPDATE "Ipo"
+               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour })}::jsonb
+             WHERE "id" = ${ipo.id}`,
+          /*
+           * `subscriptionAsOf` deliberately stays on the PRISMA path, in both
+           * this branch and the unchanged-numbers one below. The column is
+           * `timestamp without time zone`, and the two writers do not agree
+           * about it: Prisma stores IST wall-clock (14:08) while a raw
+           * parameter stores true UTC (08:37). Writing it here as well split
+           * the column between the two branches — measured on 2026-09-25,
+           * ACEVECTOR at 08:37:28 beside ORIENTCABL at 14:08:20, seconds apart
+           * in real time. Moving `extra` to raw SQL must not quietly change
+           * what a different column means, so only `extra` moved.
+           *
+           * The IST-in-a-naive-column convention is itself wrong — see the
+           * `subscriptionAsOf` note under Subscription poller — but that is a
+           * separate fix with its own blast radius, not a side effect of this
+           * one.
+           */
+          this.prisma.ipo.update({ where: { id: ipo.id }, data: { subscriptionAsOf: now } }),
         ]);
         this.lastSnapshot.set(ipo.id, snap);
       } else {
@@ -206,33 +614,46 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
-  private async openAutoIpos(_istYmd: string, ignoreAutoFlag = false): Promise<OpenIpo[]> {
+  /**
+   * Which IPOs are OPEN for polling today.
+   *
+   * `Ipo.status` is dead per CLAUDE.md — all rows carry `upcoming` and true state
+   * is derived at read time. Filtering on `status:'open'` here was matching zero
+   * rows, so the poller silently skipped every genuinely-open IPO. Switch to the
+   * date window everyone else uses (`stageOf()`): today falls inside
+   * `[openDate, closeDate]` (IST calendar). `hidden` rows are excluded — those
+   * are bulk-imported drafts the operator hasn't published.
+   */
+  private async openAutoIpos(istYmd: string, ignoreAutoFlag = false): Promise<OpenIpo[]> {
+    // IST midnight → IST end-of-day, represented as the UTC instants that bracket
+    // the IST calendar day. IST is UTC+5:30, so IST 2026-09-17 00:00 = UTC 2026-09-16 18:30.
+    const istMidnightUtc = new Date(`${istYmd}T00:00:00+05:30`);
+    const istEndOfDayUtc = new Date(istMidnightUtc.getTime() + 86_400_000 - 1);
     return this.prisma.ipo.findMany({
-      where: { status: 'open', ...(ignoreAutoFlag ? {} : { autoPollSubscription: true }) },
+      where: {
+        openDate: { lte: istEndOfDayUtc },
+        closeDate: { gte: istMidnightUtc },
+        hidden: false,
+        ...(ignoreAutoFlag ? {} : { autoPollSubscription: true }),
+      },
       select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true },
     });
   }
 
   /** Per-IPO cadence: tighten to FAST_MS in the last FAST_WINDOW_MIN minutes of the closing day. */
-  private intervalMs(ipo: OpenIpo, ist: IstParts): number {
+  private intervalMs(
+    ipo: OpenIpo,
+    ist: IstParts,
+    t: { normalMs: number; fastMs: number; fastWindowMin: number },
+  ): number {
     if (ipo.closeDate) {
       const closeYmd = this.istYmd(ipo.closeDate);
-      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= OPEN_TO_MIN - FAST_WINDOW_MIN) return FAST_MS;
+      // Fast mode from BIDDING close − fastWindowMin (15:30 IST default)
+      // and ALL THE WAY through the poller's post-bidding grace hour —
+      // the final consolidated numbers are exactly what we want fast.
+      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= BIDDING_CLOSE_MIN - t.fastWindowMin) return t.fastMs;
     }
-    return NORMAL_MS;
-  }
-
-  /** symbol → (NSE category → offered shares), from ipomaster; cached for the IST day. */
-  private async ensureOffered(istYmd: string): Promise<Map<string, Map<string, number>>> {
-    if (this.offeredCache?.day === istYmd) return this.offeredCache.map;
-    let map = new Map<string, Map<string, number>>();
-    try {
-      map = this.buildOfferedMap(await this.rail.getIpoMaster());
-    } catch (e: any) {
-      this.log.warn(`ipomaster fetch failed (times-subscribed skipped this cycle): ${e.message}`);
-    }
-    this.offeredCache = { day: istYmd, map };
-    return map;
+    return t.normalMs;
   }
 
   /** Resolve both exchanges' active credentials for a sweep; BSE also gets a Message-API token. */
@@ -270,50 +691,182 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     return dates;
   }
 
-  private buildOfferedMap(master: IpoMasterEntry[]): Map<string, Map<string, number>> {
-    const m = new Map<string, Map<string, number>>();
-    for (const e of master) {
-      const per = new Map<string, number>();
-      for (const c of e.categories ?? []) if (c.offered != null) per.set(String(c.code).toUpperCase(), c.offered);
-      m.set(String(e.symbol).toUpperCase(), per);
+  /**
+   * Emit one row per bucket (qib / hni [HNI-Above-10L] / hni2 [HNI-Below-10L] /
+   * retail / employee / shareholder) plus a `total` roll-up. Matches ipopremium's
+   * category breakdown so the front-site can render "HNI (10L+) / HNI (2-10L)"
+   * alongside the combined NII figure. Two metrics per row:
+   *   timesSubscribed        = (nseShares + bseShares) ÷ offered[bucket]
+   *   applicationsSubscribed = (nseBids   + bseBids  ) ÷ (offered[bucket] ÷ shares-per-app)
+   *
+   * Shares-per-app varies by bucket:
+   *   - Retail / Employee / Shareholder — shares-per-app = `lotSize` (1 lot).
+   *   - HNI (10L+ AND 2-10L) — shares-per-app = min shares for a ≥ ₹2 L bid
+   *     = ceil(2_00_000 ÷ (lotSize × priceBandMax)) × lotSize. Same divisor
+   *     for BOTH HNI categories (matches ipopremium's convention and the
+   *     operator's spec on 2026-09-18: e.g. NSE lotSize=8 × price=₹1785 →
+   *     15 lots × 8 sh = 120 sh min HNI application).
+   *   - QIB — no per-application ratio meaningful (institutional).
+   *
+   * We also emit a synthetic `nii` row (Big + Small combined) — the compact home
+   * card wants one NII line, and the aggregate is cheaper to compute here than
+   * to re-derive on the client. Downstream readers pick whichever they need.
+   */
+  /**
+   * Carry forward a category the exchange said nothing about this tick.
+   *
+   * The write below is DESTRUCTIVE — deleteMany + createMany — so whatever this
+   * returns becomes the whole truth for the issue. A tick that reports no
+   * demand for one category (`computeSubs` emits `timesSubscribed: 0` and no
+   * share columns, because it only sets `nseShares` when `r.ns > 0`) therefore
+   * used to erase a real figure permanently.
+   *
+   * It happened on 2026-09-23: ELEVATE's QIB held 32,25,142 shares — the same
+   * number every other information site showed — and one empty read replaced it
+   * with 0 for the rest of the day. Subscription inside the bidding window is
+   * CUMULATIVE; a category does not go from 3.2 million shares to nothing, so
+   * an empty reading is missing data, not zero demand.
+   *
+   * Deliberately narrow: this only rescues a category that reads as completely
+   * empty (no shares on either exchange, times 0) while a real figure is on
+   * record. A smaller number still overwrites a bigger one, because exchanges
+   * do legitimately revise figures down — clamping to the maximum would freeze
+   * a correction we could then only undo by hand.
+   */
+  private async keepKnownFigures(ipo: { id: string; symbol: string }, fresh: SubRow[]): Promise<SubRow[]> {
+    if (fresh.length === 0) return fresh;
+    const isEmpty = (r?: SubRow) => !r || (!(r.nseShares ?? 0) && !(r.bseShares ?? 0) && !Number(r.timesSubscribed));
+    if (!fresh.some((r) => isEmpty(r))) return fresh;           // nothing to rescue — the common path
+
+    const prev = await this.prisma.ipoSubscription.findMany({ where: { ipoId: ipo.id } });
+    if (prev.length === 0) return fresh;
+    const prevBy = new Map(prev.map((p) => [p.category, p]));
+
+    const out = fresh.map((r) => {
+      if (!isEmpty(r)) return r;
+      const p = prevBy.get(r.category);
+      if (!p || (!(p.nseShares ?? 0) && !(p.bseShares ?? 0) && !Number(p.timesSubscribed))) return r;
+      this.log.warn(`${ipo.symbol}: ${r.category} came back empty — keeping the stored ${Number(p.timesSubscribed)}x (${Number(p.nseShares ?? 0) + Number(p.bseShares ?? 0)} shares)`);
+      return {
+        category: r.category,
+        timesSubscribed: Number(p.timesSubscribed),
+        bidCount: p.bidCount ?? undefined,
+        applicationsSubscribed: p.applicationsSubscribed == null ? undefined : Number(p.applicationsSubscribed),
+        nseShares: p.nseShares ?? undefined,
+        bseShares: p.bseShares ?? undefined,
+        nseBids: p.nseBids ?? undefined,
+        bseBids: p.bseBids ?? undefined,
+      } as SubRow;
+    });
+
+    // A category the exchange dropped from its response entirely never reaches
+    // `fresh`, so it would vanish from the table on the next write.
+    for (const p of prev) {
+      if (out.some((r) => r.category === p.category)) continue;
+      if (!(p.nseShares ?? 0) && !(p.bseShares ?? 0) && !Number(p.timesSubscribed)) continue;
+      this.log.warn(`${ipo.symbol}: ${p.category} missing from this read — keeping the stored row`);
+      out.push({
+        category: p.category,
+        timesSubscribed: Number(p.timesSubscribed),
+        bidCount: p.bidCount ?? undefined,
+        applicationsSubscribed: p.applicationsSubscribed == null ? undefined : Number(p.applicationsSubscribed),
+        nseShares: p.nseShares ?? undefined,
+        bseShares: p.bseShares ?? undefined,
+        nseBids: p.nseBids ?? undefined,
+        bseBids: p.bseBids ?? undefined,
+      } as SubRow);
     }
-    return m;
+    return out;
   }
 
-  /**
-   * Combine per-category demand (already merged NSE+BSE) into our buckets. Two metrics:
-   *   timesSubscribed        = Σ demand shares ÷ Σ offered shares
-   *   applicationsSubscribed = Σ bids ÷ max allottees (offered ÷ lotSize)  — retail allotment-odds driver
-   */
-  private computeSubs(perCat: Map<string, CatAgg>, offeredByCat: Map<string, number> | undefined, lotSize?: number): SubRow[] {
-    if (!offeredByCat || offeredByCat.size === 0 || perCat.size === 0) return [];
+  private computeSubs(
+    buckets: Map<Bucket, CatAgg>,
+    offeredByBucket: Map<Bucket, number> | null,
+    lotSize?: number,
+    priceBandMax?: number,
+  ): SubRow[] {
+    if (!offeredByBucket || offeredByBucket.size === 0 || buckets.size === 0) return [];
 
-    const agg: Record<string, { d: number; o: number; b: number }> = {};
-    let tD = 0, tO = 0, tB = 0;
-    for (const [c, e] of perCat) {
-      const o = offeredByCat.get(c);
-      if (o == null || o <= 0) continue;
-      tD += e.q; tO += o; tB += e.b;
-      const bucket = BUCKET[c];
-      if (bucket) {
-        agg[bucket] ??= { d: 0, o: 0, b: 0 };
-        agg[bucket].d += e.q; agg[bucket].o += o; agg[bucket].b += e.b;
-      }
+    // Min shares for a ≥ ₹2 L HNI application. Used as the denominator for
+    // applications-for-1× on both HNI categories per operator convention.
+    const HNI_MIN_AMOUNT = 200_000;
+    const shniMinShares = (lotSize && lotSize > 0 && priceBandMax && priceBandMax > 0)
+      ? Math.ceil(HNI_MIN_AMOUNT / (lotSize * priceBandMax)) * lotSize
+      : 0;
+    const sharesPerApp = (category: string): number => {
+      if (category === 'hni' || category === 'hni2' || category === 'nii') return shniMinShares;
+      /*
+       * QIB RETURNS 0, so `mk()` never sets `applicationsSubscribed` for it.
+       *
+       * The docblock above this function has always said "QIB — no
+       * per-application ratio meaningful (institutional)", and the code did not
+       * do it: with no QIB branch it fell through to `lotSize`, i.e. it priced
+       * institutional bids as if each one were a single retail lot. That stored
+       * a QIB application multiple on 4 records (SPECTRAA · JSIPL · ADROITIND ·
+       * RKFAL) and the day-wise table published it.
+       *
+       * `minApplicationLots('qib')` in shared-types returns 0 for the same
+       * reason, which is why `APP_WISE_ORDER` leaves QIB out of the
+       * Application-wise panel entirely. The bid COUNT is still stored and
+       * still real — the exchange reported it; it is only the multiple, which
+       * needs a minimum bid to divide by, that cannot be computed.
+       */
+      if (category === 'qib') return 0;
+      return lotSize && lotSize > 0 ? lotSize : 0;
+    };
+
+    interface Rolled { d: number; o: number; b: number; ns: number; bs: number; nb: number; bb: number }
+    const zero = (): Rolled => ({ d: 0, o: 0, b: 0, ns: 0, bs: 0, nb: 0, bb: 0 });
+    const accum = (r: Rolled, a: CatAgg, offered: number) => {
+      r.d += a.nseShares + a.bseShares;
+      r.o += offered;
+      r.b += a.nseBids + a.bseBids;
+      r.ns += a.nseShares;
+      r.bs += a.bseShares;
+      r.nb += a.nseBids;
+      r.bb += a.bseBids;
+    };
+
+    const perBucket: Partial<Record<Bucket, Rolled>> = {};
+    const totals = zero();
+    const nii = zero();  // combined hni + hni2 for compact readers
+
+    for (const [bucket, a] of buckets) {
+      const offered = offeredByBucket.get(bucket) ?? 0;
+      accum(totals, a, offered);
+      if (offered <= 0) continue;
+      const r = perBucket[bucket] ??= zero();
+      accum(r, a, offered);
+      if (bucket === 'hni' || bucket === 'hni2') accum(nii, a, offered);
     }
 
-    const mk = (category: string, d: number, o: number, b: number): SubRow => {
-      const row: SubRow = { category, timesSubscribed: round2(d / o) };
-      if (b > 0) row.bidCount = b;
-      if (lotSize && lotSize > 0 && b > 0) {
-        const maxAllottees = o / lotSize;
-        if (maxAllottees > 0) row.applicationsSubscribed = round2(b / maxAllottees);
+    const mk = (category: string, r: Rolled): SubRow => {
+      const row: SubRow = { category, timesSubscribed: round2(r.d / r.o) };
+      if (r.b > 0) row.bidCount = r.b;
+      const spa = sharesPerApp(category);
+      if (spa > 0 && r.b > 0) {
+        const maxAllottees = r.o / spa;
+        if (maxAllottees > 0) row.applicationsSubscribed = round2(r.b / maxAllottees);
       }
+      // Per-exchange columns — always emit when we saw any demand on that side,
+      // so the day-wise report can show a zero-BSE cycle differently from an
+      // unknown-BSE cycle.
+      if (r.ns > 0) row.nseShares = r.ns;
+      if (r.bs > 0) row.bseShares = r.bs;
+      if (r.nb > 0) row.nseBids = r.nb;
+      if (r.bb > 0) row.bseBids = r.bb;
       return row;
     };
 
+    // Fixed emission order — front-site reads this without re-sorting.
+    const order: Bucket[] = ['qib', 'hni', 'hni2', 'retail', 'employee', 'shareholder'];
     const out: SubRow[] = [];
-    for (const [category, v] of Object.entries(agg)) if (v.o > 0) out.push(mk(category, v.d, v.o, v.b));
-    if (tO > 0) out.push(mk('total', tD, tO, tB));
+    for (const b of order) {
+      const r = perBucket[b];
+      if (r && r.o > 0) out.push(mk(b, r));
+    }
+    if (nii.o > 0) out.push(mk('nii', nii));
+    if (totals.o > 0) out.push(mk('total', totals));
     return out;
   }
 
@@ -354,49 +907,4 @@ interface IstParts {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-// ── per-exchange demand → normalized per-category aggregate, then merged ──────
-/** NSE catwise rows → per-category {shares, applications}. */
-function fromCatwise(rows: CatwiseRow[]): Map<string, CatAgg> {
-  const m = new Map<string, CatAgg>();
-  for (const r of rows) {
-    const c = String(r.category).toUpperCase();
-    const e = m.get(c) ?? { q: 0, b: 0 };
-    e.q += r.quantity ?? 0;
-    e.b += r.bidCount ?? 0;
-    m.set(c, e);
-  }
-  return m;
-}
-/**
- * BSE demandschedule rows → per-category {shares, applications}.
- * Rows come per (category, subcategory, P/C type); sum shares across them.
- * `totalapplication` repeats across a category's rows, so take the MAX (not sum)
- * to avoid multiplying the application count by the number of price/cutoff rows.
- */
-function fromBseDemand(rows: BseDemandRow[]): Map<string, CatAgg> {
-  const q = new Map<string, number>();
-  const apps = new Map<string, number>();
-  for (const r of rows) {
-    const c = String(r.category).toUpperCase();
-    q.set(c, (q.get(c) ?? 0) + (r.quantity ?? 0));
-    if (r.applications != null) apps.set(c, Math.max(apps.get(c) ?? 0, r.applications));
-  }
-  const m = new Map<string, CatAgg>();
-  for (const [c, shares] of q) m.set(c, { q: shares, b: apps.get(c) ?? 0 });
-  return m;
-}
-/** Sum several exchanges' per-category aggregates into one combined map. */
-function mergeDemand(sources: Map<string, CatAgg>[]): Map<string, CatAgg> {
-  const out = new Map<string, CatAgg>();
-  for (const src of sources) {
-    for (const [c, e] of src) {
-      const cur = out.get(c) ?? { q: 0, b: 0 };
-      cur.q += e.q;
-      cur.b += e.b;
-      out.set(c, cur);
-    }
-  }
-  return out;
 }

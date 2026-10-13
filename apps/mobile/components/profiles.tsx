@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './auth';
 import { listProfiles, createProfile, updateProfile, deleteProfile, type CreateProfileInput } from '../lib/api';
-import type { ProfileView } from '@investoyard/shared-types';
+import type { ProfileView, DematAccountView } from '@investoyard/shared-types';
 
 /** Admin-managed via Masters → Relationships; stored/compared lowercase. */
 export type Relationship = string;
@@ -28,6 +28,9 @@ export interface ProfileRecord extends AsbaContact {
   depository: 'NSDL' | 'CDSL';
   dpId: string;
   clientId: string;
+  /** Every demat on this applicant, default first — built by the API with
+   *  dematAccountsFor(), the same list the apply picker reads. */
+  demats?: DematAccountView[];
   upiId?: string;             // display flag only ('set' when a UPI is on file)
   hasBank?: boolean;          // display flag — bank account on file
   kycStatus?: 'unverified' | 'verified' | 'failed';
@@ -65,6 +68,8 @@ function fromView(v: ProfileView): ProfileRecord {
     depository: v.depository,
     dpId: v.dpId,
     clientId: v.clientId,
+    // carried through, or the picker would never appear
+    demats: v.demats,
     upiId: v.hasUpi ? 'set' : undefined,
     hasBank: v.hasBank,
     kycStatus: v.kycStatus,

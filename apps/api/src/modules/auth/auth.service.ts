@@ -151,7 +151,10 @@ export class AuthService {
     return tenantContext.runUnscoped(async () => {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        include: { tenant: { select: { slug: true, name: true, type: true } } },
+        // homeTenant includes id so the client can key API-scoped calls
+        // (partner-key list/create, own-tenant reports) without a second
+        // fetchTenant round-trip.
+        include: { tenant: { select: { id: true, slug: true, name: true, type: true } } },
       });
       if (!user) throw new NotFoundException();
       const memberships = await this.prisma.membership.findMany({

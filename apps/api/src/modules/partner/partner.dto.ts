@@ -13,8 +13,17 @@ export class PartnerApplicantDto {
   @IsOptional() @IsString() dpId?: string;      // NSDL: IN + 6 digits · CDSL: blank
   @IsOptional() @IsString() clientId?: string;   // NSDL: 8 digits · CDSL: 16-digit demat
   @IsOptional() @IsString() bankAccount?: string;
-  @IsOptional() @IsString() ifsc?: string;
-  @IsOptional() @IsString() upiId?: string;
+  /**
+   * IFSC and upiId used to be accepted here. Both were removed on
+   * operator's decision — the printed ASBA form carries Bank Account,
+   * Bank Name, and Branch Name; the ASBA block runs on the applicant's
+   * own bank statement (no interbank routing means no IFSC) and UPI is
+   * an electronic rail that doesn't appear on the physical form at all.
+   * Requests that still include an `ifsc` or `upiId` field are silently
+   * ignored (class-validator's whitelist strips unknown properties).
+   * Backward compatible for any partner still integrated against the
+   * old shape.
+   */
   @IsOptional() @IsString() bankName?: string;
   @IsOptional() @IsString() branchName?: string;
   @IsOptional() @IsString() address?: string;
@@ -36,7 +45,15 @@ export class PartnerApplicantDto {
 
 export class PartnerPrintFormsDto {
   @IsString() ipoSymbol!: string;
-  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => PartnerApplicantDto)
+  /**
+   * ArrayMaxSize(500) is the PLATFORM hard ceiling — a defensive backstop so
+   * a mistyped admin setting can never accept a runaway batch that would
+   * exhaust memory or time out the request. The per-tenant cap
+   * (Tenant.partnerMaxApplicantsPerCall, default 25) is enforced in the
+   * service AFTER the DTO passes, where the tenant identity is known.
+   * Both checks fire — DTO first, tenant cap second.
+   */
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => PartnerApplicantDto)
   applicants!: PartnerApplicantDto[];
 }
 

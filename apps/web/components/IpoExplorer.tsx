@@ -6,8 +6,11 @@ import { IpoCompareTable } from '@/components/IpoCompareTable';
 import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { makeT, Lang } from '@investoyard/i18n';
+import { compareForList, isRecent } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
+/** Cards rendered before "View more". 84 issues in one grid is a wall, not a list. */
+const PAGE = 30;
 
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed'; // 'closed' = post-close phase (closed + listed)
@@ -53,15 +56,31 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
     { key: 'closed', label: 'Closed' },
   ];
 
-  const filtered = useMemo(() => {
+  /**
+   * The list shows what's CURRENT: everything still in play, plus issues that
+   * finished within the last six months. Older history lives on /ipos/archive,
+   * which is what keeps this page usable once the full catalog is published.
+   * Ordering is the shared stage order — closing today first, listed last.
+   */
+  const [shown, setShown] = useState(PAGE);
+  // a filter or search change starts the list again from the top
+  useEffect(() => { setShown(PAGE); }, [query, type, status]);
+
+  const { filtered, olderCount } = useMemo(() => {
     const ql = query.trim().toLowerCase();
-    return (ipos as any[]).filter((i) => {
+    const matches = (ipos as any[]).filter((i) => {
       if (type !== 'all' && i.type !== type) return false;
       if (status === 'closed' ? !(i.status === 'closed' || i.status === 'listed')
         : status !== 'all' && i.status !== status) return false;
       if (ql && !(`${i.name} ${i.symbol}`.toLowerCase().includes(ql))) return false;
       return true;
     });
+    // a search should reach the whole catalog; browsing stays in the recent window
+    const inWindow = ql ? matches : matches.filter((i) => isRecent(i));
+    return {
+      filtered: [...inWindow].sort(compareForList),
+      olderCount: matches.length - inWindow.length,
+    };
   }, [ipos, query, type, status]);
 
   return (
@@ -98,18 +117,58 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
       </div>
 
       {filtered.length === 0 ? (
-        <div className="empty">
-          <div className="emoji">🔍</div>
-          <h3>No IPOs match</h3>
-          <p className="muted">Try clearing the search or switching filters.</p>
-        </div>
+        ipos.length === 0 ? (
+          <div className="empty">
+            <div className="emoji">🗓️</div>
+            <h3>No IPOs available right now</h3>
+            <p className="muted">
+              We update the catalog as soon as new issues are announced.
+              Come back soon — or explore issues that have listed in the past.
+            </p>
+            <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a className="btn" href="/ipos/archive">Browse past IPOs</a>
+              <a className="btn btn-secondary" href="/subscription">Live subscription</a>
+            </div>
+          </div>
+        ) : (
+          <div className="empty">
+            <div className="emoji">🔍</div>
+            <h3>No IPOs match your filters</h3>
+            <p className="muted">Try clearing the search or switching the board / status tabs above.</p>
+            <div style={{ marginTop: 14 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setQuery(''); setType('all'); setStatus('all'); }}>
+                Clear all filters
+              </button>
+            </div>
+          </div>
+        )
       ) : view === 'table' ? (
-        <IpoCompareTable ipos={filtered as any} lang={lang} />
+        <IpoCompareTable ipos={filtered.slice(0, shown) as any} lang={lang} />
       ) : (
         <div className="ipo-list">
-          {filtered.map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}
+          {filtered.slice(0, shown).map((i) => <IpoCard key={i.id} ipo={i} lang={lang} />)}
         </div>
       )}
+
+      {(filtered.length > shown || olderCount > 0) && (
+        <div className="more-row">
+          {filtered.length > shown ? (
+            <button className="btn btn-secondary more-btn" onClick={() => setShown((v) => v + PAGE)}>
+              View more
+              <span className="muted">{(filtered.length - shown).toLocaleString('en-IN')} left</span>
+              <Icon name="chevron-down" size={16} />
+            </button>
+          ) : (
+            <a className="btn btn-secondary more-btn" href="/ipos/archive">
+              Browse all
+              <Icon name="arrow-right" size={16} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* the archive is offered only once there is nothing left to reveal here —
+          two competing "there is more" affordances at once just splits attention */}
     </section>
   );
 }

@@ -19,7 +19,9 @@ export function usePagination<T>(rows: T[], defaultPer = 10): { slice: T[]; node
   return { slice, node };
 }
 
-function Pager({ page, pages, from, to, total, per, onPage, onPer }: {
+/** The pager markup on its own, for screens that page on the SERVER and so
+ *  cannot use usePagination(). Same markup, same CSS, one implementation. */
+export function Pager({ page, pages, from, to, total, per, onPage, onPer }: {
   page: number; pages: number; from: number; to: number; total: number; per: number; onPage: (p: number) => void; onPer: (p: number) => void;
 }) {
   const nums: (number | '…')[] = [];

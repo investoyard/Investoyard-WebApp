@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -119,6 +119,10 @@ class UpdateTenantDto {
   @IsOptional() @IsString() customDomain?: string;
   @IsOptional() profile?: Record<string, any>;
   @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number | null;
+  // Partner API operator controls — see partner-scope.ts for the scope
+  // vocabulary and the schema for the 1..500 clamp on the applicants cap.
+  @IsOptional() @IsInt() @Min(1) @Max(500) partnerMaxApplicantsPerCall?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) partnerApiScopes?: string[];
 }
 class CreateClientDto {
   @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile!: string;
@@ -212,59 +216,59 @@ export class AdminController {
   }
 
   @Get('templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   templatesCatalog() {
     return this.admin.templatesCatalog();
   }
 
   // ── message-type catalog CRUD (platform-wide — superadmin only, enforced in service) ──
   @Post('templates/types')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   createMessageType(@Req() req: any, @Body() dto: CreateMessageTypeDto) {
     return this.admin.createMessageType(req.user.sub, dto);
   }
 
   @Patch('templates/types/:id')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   updateMessageType(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateMessageTypeDto) {
     return this.admin.updateMessageType(req.user.sub, id, dto);
   }
 
   @Delete('templates/types/:id')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('templates.manage')
   deleteMessageType(@Req() req: any, @Param('id') id: string) {
     return this.admin.deleteMessageType(req.user.sub, id);
   }
 
   /** The platform's template content for a key/locale — "Copy from platform" in partner scopes. */
   @Get('templates/resolve')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   resolvePlatformTemplate(@Query('channel') channel: string, @Query('key') key: string, @Query('locale') locale?: string) {
     return this.admin.resolvePlatformTemplate(channel, key, locale);
   }
 
   /** Platform view: which white-label partner set its own SMS/email + overrode which templates. */
   @Get('integrations/overview')
-  @RequirePermissions('tenants.manage')
+  @RequirePermissions('providers.manage')
   integrationsOverview() {
     return this.admin.integrationsOverview();
   }
 
   @Get('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   tenantTemplates(@Param('slug') slug: string) {
     return this.admin.templatesForTenant(slug);
   }
 
   @Put('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   saveTenantTemplate(@Param('slug') slug: string, @Body() dto: TemplateDto) {
     return this.admin.saveTemplateForTenant(slug, dto);
   }
 
   /** Remove a template row: tenant override → re-inherits platform; platform → drops that locale variant. */
   @Delete('tenants/:slug/templates')
-  @RequirePermissions('providers.manage')
+  @RequirePermissions('templates.manage')
   deleteTenantTemplate(
     @Param('slug') slug: string,
     @Query('channel') channel: string,
@@ -288,9 +292,16 @@ export class AdminController {
     return this.admin.listTenants(req.user.sub);
   }
 
-  /** A single partner/branch with its full empanelment profile. */
+  /**
+   * A single tenant with its full empanelment profile. Reachable by
+   * platform admins (via Tenants → click a partner) and by partner-tier
+   * admins (via My Organisation) — the service enforces "superadmin OR
+   * membership on this tenant" and strips operator-only fields from the
+   * response for non-superadmin callers. Dropping the `tenants.manage`
+   * gate here is deliberate: without it, a partner had no way to see
+   * their own tenant profile at all.
+   */
   @Get('tenants/:slug')
-  @RequirePermissions('tenants.manage')
   tenantDetail(@Req() req: any, @Param('slug') slug: string) {
     return this.admin.tenantDetail(req.user.sub, slug);
   }
@@ -305,8 +316,14 @@ export class AdminController {
     return new StreamableFile(buffer);
   }
 
+  /**
+   * Same scope pattern as tenantDetail — reachable by any authenticated
+   * operator; the service enforces "superadmin OR membership on this
+   * tenant" AND silently drops fields a non-superadmin isn't allowed to
+   * change (name/status/brand/domain/commission/partner-API controls),
+   * so the My Organisation client doesn't need to know the field list.
+   */
   @Patch('tenants/:slug')
-  @RequirePermissions('tenants.manage')
   updateTenant(@Req() req: any, @Param('slug') slug: string, @Body() dto: UpdateTenantDto) {
     return this.admin.updateTenant(req.user.sub, slug, dto as any);
   }
@@ -334,6 +351,20 @@ export class AdminController {
   @RequirePermissions('clients.manage')
   updateClient(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateClientDto) {
     return this.admin.updateClient(req.user.sub, id, dto);
+  }
+
+  /**
+   * DELETE /admin/clients/:id — hard-delete a client and everything they own
+   * (applications, profiles, bid operations, watchlist, consents, device
+   * tokens, memberships, GMP contributor row). The service enforces that
+   * only a superadmin can run this; the permission decorator gates admin-
+   * tier callers away from the endpoint itself so nobody without
+   * clients.manage even reaches the service check.
+   */
+  @Delete('clients/:id')
+  @RequirePermissions('clients.manage')
+  hardDeleteClient(@Req() req: any, @Param('id') id: string) {
+    return this.admin.hardDeleteClient(req.user.sub, id);
   }
 
   @Post('clients/:id/profiles')
@@ -416,6 +447,14 @@ export class AdminController {
     return this.admin.testRail(id);
   }
 
+  /** Hard-delete a rail credential. Superadmin-only, and the service refuses
+   *  when any application / bid operation / IPO onlineSeries references it. */
+  @Delete('rails/:id')
+  @RequirePermissions('rails.manage')
+  deleteRail(@Req() req: any, @Param('id') id: string) {
+    return this.admin.deleteRail(req.user.sub, id);
+  }
+
   /** Run a NSE Query-Server subscription sweep now over all open IPOs (the poller runs automatically in market hours). */
   @Post('rails/subscription/poll')
   @RequirePermissions('rails.manage')
@@ -430,16 +469,31 @@ export class AdminController {
     return this.subscription.pollIpo(ipoId);
   }
 
+  /**
+   * The daily check: not-yet-closed issues whose subscription the poller cannot
+   * compute, so their bidding days are being discarded right now.
+   *
+   * `ipos.view`, NOT `rails.manage`, and the difference matters — the people who
+   * fix this are the ones who enter IPO data (Staff carries the IPO permissions,
+   * not the rail ones), and an alert only the superadmin can see is an alert
+   * nobody acts on.
+   */
+  @Get('subscription/readiness')
+  @RequirePermissions('ipos.view')
+  subscriptionReadiness() {
+    return this.subscription.subscriptionReadiness();
+  }
+
   @Post('roles')
   @RequirePermissions('roles.manage')
-  createRole(@Body() dto: CreateRoleDto) {
-    return this.admin.createRole(dto);
+  createRole(@Req() req: any, @Body() dto: CreateRoleDto) {
+    return this.admin.createRole(req.user.sub, dto);
   }
 
   @Patch('roles/:id')
   @RequirePermissions('roles.manage')
-  updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
-    return this.admin.updateRole(id, dto);
+  updateRole(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateRoleDto) {
+    return this.admin.updateRole(req.user.sub, id, dto);
   }
 
   @Delete('roles/:id')
@@ -448,34 +502,46 @@ export class AdminController {
     return this.admin.deleteRole(id);
   }
 
+  // Every /:slug endpoint threads req.user.sub through so the service
+  // can refuse a partner admin who tries to query another tenant's data
+  // by URL — without the callerId these were readable across tenants.
   @Get('members/:slug')
   @RequirePermissions('users.view')
-  members(@Param('slug') slug: string) {
-    return this.admin.listMembers(slug);
+  members(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listMembers(req.user.sub, slug);
   }
 
   @Get('applications/:slug')
   @RequirePermissions('bids.view')
-  applications(@Param('slug') slug: string) {
-    return this.admin.listApplications(slug);
+  applications(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listApplications(req.user.sub, slug);
+  }
+
+  /** Print Forms Report — every ASBA PDF the operator generated for a
+   *  consumer through web / mobile. Partner-API prints are excluded (they
+   *  have their own report under Partner API → Print Report). */
+  @Get('prints/:slug')
+  @RequirePermissions('bids.view')
+  consumerPrints(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.listConsumerPrints(req.user.sub, slug);
   }
 
   @Get('dashboard/:slug')
   @RequirePermissions('dashboard.view')
-  dashboard(@Param('slug') slug: string) {
-    return this.admin.dashboard(slug);
+  dashboard(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.dashboard(req.user.sub, slug);
   }
 
   @Get('reports/:slug')
   @RequirePermissions('reports.view')
-  reports(@Param('slug') slug: string) {
-    return this.admin.reports(slug);
+  reports(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.reports(req.user.sub, slug);
   }
 
   @Get('reports/:slug/export')
   @RequirePermissions('reports.view')
-  async exportCsv(@Param('slug') slug: string, @Res({ passthrough: true }) res: any) {
-    const csv = await this.admin.applicationsCsv(slug);
+  async exportCsv(@Req() req: any, @Param('slug') slug: string, @Res({ passthrough: true }) res: any) {
+    const csv = await this.admin.applicationsCsv(req.user.sub, slug);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="investoyard-${slug}-applications.csv"`);
     return csv;

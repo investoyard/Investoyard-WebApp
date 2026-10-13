@@ -15,8 +15,9 @@ export type { BseDemandRow } from './bse-query.adapter';
 export * from './callbacks/rail-callback.dto';
 export * from './callbacks/rail-callback.auth';
 export { RailCallbackService } from './callbacks/rail-callback.service';
-export type { ApplicationRepo, Notifier } from './callbacks/rail-callback.service';
+export type { ApplicationRepo, Notifier, StatusPatch } from './callbacks/rail-callback.service';
 export * from './submission/submission-worker';
+export * from './submission/build-bid-submission';
 
 import { NseEipoAdapter } from './nse-eipo.adapter';
 import { BseIbbsAdapter } from './bse-ibbs.adapter';
@@ -27,6 +28,8 @@ import {
   Exchange,
   MemberCredential,
   RailAdapter,
+  TimeWindow,
+  TransactionRecord,
 } from './rail-adapter.types';
 
 /** Returns the adapter for an exchange. */
@@ -74,5 +77,40 @@ export class RailOrchestrator {
     const adapter = getAdapter(cred.exchange);
     const session = await this.session(cred);
     return adapter.submitBidsBulk(reqs, session, cred);
+  }
+
+  /**
+   * Revise a bid already at the exchange. Both rails carry this as an action
+   * code on the same payload — NSE's activity type and BSE's `actioncode` are
+   * both N / M / D — so the adapters differ only in how they spell it.
+   *
+   * WHO may revise downward is not decided here: that is `mayReviseTo()` in
+   * shared-types, enforced before we ever reach the rail.
+   */
+  async modify(req: BidSubmission, memberCredentialId: string): Promise<BidResult> {
+    const cred = await this.resolveCredential(memberCredentialId);
+    const adapter = getAdapter(cred.exchange);
+    const session = await this.session(cred);
+    return adapter.modifyBid(req, session, cred);
+  }
+
+  /** Withdraw a bid at the exchange. Gated by `mayCancel()` before it gets here. */
+  async cancel(req: BidSubmission, memberCredentialId: string): Promise<BidResult> {
+    const cred = await this.resolveCredential(memberCredentialId);
+    const adapter = getAdapter(cred.exchange);
+    const session = await this.session(cred);
+    return adapter.cancelBid(req, session, cred);
+  }
+
+  /**
+   * Pull the exchange's own view of our bids for a window. Carries
+   * `upiPaymentStatus` per application, which is what reconciles UPI state when
+   * a push callback was missed — the Refresh button's source.
+   */
+  async fetchTransactions(window: TimeWindow, memberCredentialId: string): Promise<TransactionRecord[]> {
+    const cred = await this.resolveCredential(memberCredentialId);
+    const adapter = getAdapter(cred.exchange);
+    const session = await this.session(cred);
+    return adapter.fetchTransactions(window, session, cred);
   }
 }

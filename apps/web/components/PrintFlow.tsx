@@ -282,7 +282,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
       {/* back = wherever the user came from (home card, detail, calendar…);
           direct/shared links (no same-origin history) fall back to the IPO page */}
       <a
-        href={`/ipos/${ipo.symbol}`}
+        href={`/ipos/${ipo.slug ?? ipo.symbol}`}
         className="back-link"
         onClick={(e) => {
           if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) {
@@ -319,7 +319,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
         <div className="emoji">🖨️</div>
         <h3>Form printing hasn&apos;t started yet</h3>
         <p className="muted">Prefilled ASBA forms for {ipo.name} will be available shortly — check back soon.</p>
-        <a className="btn" href={`/ipos/${ipo.symbol}`} style={{ marginTop: 14 }}>View IPO details</a>
+        <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}`} style={{ marginTop: 14 }}>View IPO details</a>
       </div>,
     );
   }

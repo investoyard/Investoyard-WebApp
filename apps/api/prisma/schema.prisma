@@ -45,6 +45,19 @@ enum IpoType {
   sme
 }
 
+/// What kind of offer this is, as distinct from which board it lists on.
+/// Before this existed the four FPOs we hold were identifiable only by the
+/// words "Further Public Offer" appearing inside `extra.issueType` — a free-text
+/// field that actually holds the pricing method. 48 of the 73 catalogue reports
+/// offer an FPO variant, so this one column carries more of them than anything
+/// else on the list.
+enum Instrument {
+  ipo
+  fpo
+  reit
+  invit
+}
+
 enum IpoStatus {
   upcoming
   open
@@ -82,8 +95,87 @@ enum ApplicationStatus {
   allotted
   not_allotted
   released
+  /// withdrawn by the operator or the investor. Distinct from `released`, which
+  /// is the money coming back — a bid can be cancelled before anything is blocked.
+  cancelled
   rejected
   failed
+}
+
+/// What we are asking the exchange to do. The letters are the exchanges' own:
+/// NSE activity codes and BSE `actioncode` both read N / M / D.
+enum BidAction {
+  new
+  modify
+  cancel
+}
+
+/// How the bid reaches the exchange. `file` is the bid-upload route, which BSE
+/// documents (iBBS v1.05.4) and we have not built; until an operation is posted
+/// by API it is counted under BYFILE on the summary.
+enum BidChannel {
+  api
+  file
+}
+
+/// pending → posted is the happy path. `failed` keeps the exchange's own reason
+/// so the report can show it and somebody can retry.
+enum BidOpState {
+  pending
+  posted
+  failed
+}
+
+/// One row per operation we intend to perform at an exchange.
+///
+/// The application table holds a bid's CURRENT state; this holds its history of
+/// intent. That distinction is what makes the two screens possible: a bid
+/// modified twice and then cancelled is indistinguishable from one cancelled
+/// outright if you only keep the current status.
+///
+/// It is also what makes rebid safe. The operator's rule is local-first: mark
+/// the old bid cancelled and create the new one in ONE transaction, writing a
+/// `cancel` row and a `new` row, then post both. There is no moment where the
+/// cancellation has reached the exchange and the replacement has evaporated —
+/// if a post fails the row stays `pending` and is retried.
+///
+/// The Bidding Summary is a straight grouping over this table: BID DONE is
+/// (new, posted), MODIFY PENDING is (modify, pending), and the PENDING column
+/// is every row still unposted.
+model BidOperation {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  /// denormalised so the summary can group without joining every application
+  ipoId         String
+  tenantId      String
+  /// null until a member is resolved — those rows are the summary's BYFILE bucket
+  memberCredentialId String?
+  exchange      Exchange?
+  channel       BidChannel  @default(api)
+  action        BidAction
+  state         BidOpState  @default(pending)
+
+  /// what we are asking for, captured at intent time so a later edit to the
+  /// application cannot rewrite what we actually sent
+  qty      Int
+  price    Decimal?
+  atCutoff Boolean  @default(true)
+
+  /// what came back
+  reference String? // bidReferenceNumber (NSE) / orderno (BSE)
+  errorCode String?
+  reason    String? // the exchange's rejection text — the report's Rejection column
+  attempts  Int      @default(0)
+  postedAt  DateTime? @db.Timestamptz(3)
+  raw       Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([applicationId])
+  @@index([ipoId, memberCredentialId])
+  @@index([state, action])
 }
 
 enum TenantType {
@@ -107,24 +199,38 @@ enum FeatureValueType {
 
 /// The tenant tree: platform (operator) → direct / partner → branch.
 model Tenant {
-  id           String     @id @default(uuid())
-  type         TenantType
-  parentId     String?
-  parent       Tenant?    @relation("TenantTree", fields: [parentId], references: [id])
-  children     Tenant[]   @relation("TenantTree")
-  slug         String     @unique
-  name         String
-  status       String     @default("active")
-  customDomain String?    @unique
-  brandColor   String?
-  goldColor    String?
-  logoUrl      String?
-  flags        Json?
-  profile      Json?      // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
-  code         String?    @unique  // 6-digit channel code (partners/branches), sequential from 601001
-  commissionRate Decimal? @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  type           TenantType
+  parentId       String?
+  parent         Tenant?    @relation("TenantTree", fields: [parentId], references: [id])
+  children       Tenant[]   @relation("TenantTree")
+  slug           String     @unique
+  name           String
+  status         String     @default("active")
+  customDomain   String?    @unique
+  brandColor     String?
+  goldColor      String?
+  logoUrl        String?
+  flags          Json?
+  profile        Json? // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
+  code           String?    @unique // 6-digit channel code (partners/branches), sequential from 601001
+  commissionRate Decimal?   @db.Decimal(5, 2) // % commission on this channel's bids (full tracking)
+
+  /// Partner API — per-tenant applicants-per-call cap on /partner/v1/print-forms.
+  /// Default 25 for a new partner; the operator can raise it up to a platform
+  /// hard ceiling of 500 (enforced in the DTO with @ArrayMaxSize(500)).
+  partnerMaxApplicantsPerCall Int @default(25)
+
+  /// Partner API — endpoints this tenant may call. Enforced by the RequireScope
+  /// guard on each controller method. Default for a new partner is
+  /// ["print-forms","ipos:read"] — matches what the public /partner-api doc
+  /// advertises. Additional scopes (subscription:read, gmp:read) are opt-in
+  /// per tenant. Branches without an explicit override inherit their parent
+  /// tenant's scopes at request time (see the guard).
+  partnerApiScopes String[] @default(["print-forms","ipos:read"])
+
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
 
   roles             Role[]
   memberships       Membership[]
@@ -153,10 +259,10 @@ model Banner {
   ctaLabel  String?
   active    Boolean   @default(true)
   sortOrder Int       @default(100)
-  startsAt  DateTime?
-  endsAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  startsAt  DateTime? @db.Timestamptz(3)
+  endsAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
 }
 
 /// One row per partner-API call, success OR failure — drives the API Call Report.
@@ -172,7 +278,7 @@ model PartnerApiCall {
   httpStatus Int
   error      String?
   durationMs Int?
-  at         DateTime @default(now())
+  at         DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([tenantId, at])
   @@index([at])
@@ -188,9 +294,9 @@ model PartnerApiKey {
   secretHash String // sha256(secret)
   label      String?
   active     Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
-  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  lastUsedAt DateTime? @db.Timestamptz(3)
 
   @@index([tenantId])
 }
@@ -203,12 +309,13 @@ model PartnerApiKey {
 /// so it's outside RLS and only reachable via admin RBAC.
 model ProviderConfig {
   tenantId  String   @default("t-platform") // 't-platform' = platform default; else a white-label tenant's own config
-  provider  String   // 'sms' | 'email' | 'push' | 'whatsapp' | 'ai'
+  provider  String // 'sms' | 'email' | 'push' | 'whatsapp' | 'ai'
   enabled   Boolean  @default(false)
   settings  Json     @default("{}") // non-secret config (providerName, senderId, templateId, …)
   secrets   Json     @default("{}") // field name → vault token
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
   @@id([tenantId, provider])
   @@index([tenantId])
 }
@@ -219,9 +326,12 @@ model RelationshipMaster {
   id            String   @id @default(uuid())
   name          String   @unique
   allowMultiple Boolean  @default(false)
+  /// Human explanation of when to use this relationship — appears as a hint
+  /// under the picker on the investor profile form.
+  description   String?
   sortOrder     Int      @default(100)
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// News / blog posts — admin-written IPO coverage (the SEO engine). Body is
@@ -236,10 +346,10 @@ model Post {
   ipoSymbol   String? // optional link to an IPO's coverage
   tags        String[]  @default([])
   status      String    @default("draft") // draft | published
-  publishedAt DateTime?
+  publishedAt DateTime? @db.Timestamptz(3)
   author      String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
   @@index([status, publishedAt])
 }
@@ -247,13 +357,65 @@ model Post {
 /// Anchor-investor master — institutions reusable across IPOs (picked per IPO
 /// with a ₹ amount in the IPO form; shown on the public detail page).
 model AnchorMaster {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  type            String? // Mutual Fund | FPI | Insurance | AIF | Bank | Corporate | Other
+  notes           String?
+  /// Assets under management in ₹ Cr — for the anchor participation report.
+  aumCr           Decimal? @db.Decimal(14, 2)
+  /// Country of registration — India for domestic, US / SG / etc. for FPIs.
+  country         String?
+  /// SEBI / FPI category code — helpful for regulatory classification reports.
+  sebiCode        String?
+  /// First year this institution participated as an anchor on any Indian IPO —
+  /// grounds a "how long has this anchor been active" chart in reports.
+  firstAnchorYear Int?
+  /// Optional homepage / SEBI-listing URL.
+  website         String?
+  sortOrder       Int      @default(100)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+}
+
+/// Broad sector — Finance, Pharma, IT, Bank. The operator's list, editable.
+/// Deliberately NOT the same thing as `extra.industry`, which holds the
+/// exchanges' fine-grained Basic Industry (146 values: "Ferro & Silica
+/// Manganese", "Plywood Boards/ Laminates"). Many industries roll up into one
+/// sector, and the roll-up is what makes the sector derivable for the 850
+/// records that already carry an industry.
+model SectorMaster {
   id        String   @id @default(uuid())
   name      String   @unique
-  type      String? // Mutual Fund | FPI | Insurance | AIF | Other
-  notes     String?
+  /// Basic-Industry values that roll up here, so the mapping is data the
+  /// operator can correct rather than a table buried in code.
+  industries String[] @default([])
+  /// Short prose describing the sector — used as a subtitle on sector-wise
+  /// report pages and hover tooltips.
+  description String?
+  /// Rank the sectors when the report picker sorts by "operator's preferred
+  /// order" rather than alphabetically (lower = earlier).
+  rank      Int      @default(100)
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+/// Basic-Industry values (the exchanges' fine-grained classification beneath
+/// sector — "Ferro & Silica Manganese", "Plywood Boards / Laminates", etc.).
+/// Its own master (operator ask, 2026-09-22) — was previously a plain text
+/// input on the IPO form; now a picker with inline "+ Add new". A row here
+/// can optionally name its rolling-up sector for reports.
+model IndustryMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  /// The sector this industry rolls up into (free text — matches
+  /// SectorMaster.name if the operator has that sector defined).
+  sector    String?
+  description String?
+  rank      Int      @default(100)
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 /// Allowed UPI handles (the part after '@' in a UPI ID, e.g. "okaxis", "ybl").
@@ -263,33 +425,50 @@ model UpiHandleMaster {
   name      String   @unique
   sortOrder Int      @default(100)
   active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 model IpoCategoryMaster {
-  id        String   @id @default(uuid())
-  name      String   @unique // e.g. "Main Board IPO", "SME IPO"
-  baseType  String   @default("mainboard") // engine mapping: 'mainboard' | 'sme'
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  issueTypes IssueTypeMaster[]
+  id          String            @id @default(uuid())
+  name        String            @unique // e.g. "Main Board IPO", "SME IPO"
+  baseType    String            @default("mainboard") // engine mapping: 'mainboard' | 'sme'
+  /// Human explanation of the category — surfaces as a tooltip / subtitle on
+  /// the picker and report filters.
+  description String?
+  /// Sort rank on filters and reports (lower = earlier). Alphabetical when
+  /// several rows share the same rank.
+  rank        Int               @default(100)
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+  issueTypes  IssueTypeMaster[]
 }
 
 model IssueTypeMaster {
-  id         String             @id @default(uuid())
-  name       String             @unique // e.g. "IPO", "FPO", "Rights Issue", "OFS"
-  categoryId String?
-  category   IpoCategoryMaster? @relation(fields: [categoryId], references: [id])
-  active     Boolean            @default(true)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id                       String             @id @default(uuid())
+  name                     String             @unique // e.g. "IPO", "FPO", "Rights Issue", "OFS"
+  categoryId               String?
+  category                 IpoCategoryMaster? @relation(fields: [categoryId], references: [id])
+  /// Short prose describing when this issue type applies — surfaces on the
+  /// entry form Issue Type picker as a hint.
+  description              String?
+  /// Default ICDR regulation basis — icdr_6_1 (QIB ≤ 50%) or icdr_6_2 (QIB
+  /// ≥ 75%). The form pre-fills the reservation split from this when the
+  /// operator picks the issue type; still overridable per issue.
+  defaultRegulationBasis   String?
+  active                   Boolean            @default(true)
+  createdAt                DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime           @updatedAt @db.Timestamptz(3)
 }
 
 model LeadManager {
   id            String   @id @default(uuid())
   name          String
-  shortCode     String   @unique
+  /// Optional: a lead manager is not always published with a short code, and
+  /// blocking the row on one meant real syndicate members could not be loaded.
+  /// Postgres allows many NULLs under a UNIQUE index, so codeless rows coexist.
+  /// Registrar keeps its code required — that one is always available.
+  shortCode     String?  @unique
   contactPerson String?
   mobile        String?
   email         String?
@@ -300,9 +479,20 @@ model LeadManager {
   city          String?
   state         String?
   pincode       String?
+  /// SEBI Merchant Banker registration number (INMxxxxxxxx). Useful in
+  /// syndicate-member reports and regulator-facing exports.
+  sebiRegNo     String?
+  /// Year the firm was founded — a small reporting datum.
+  foundedYear   Int?
+  /// Corporate homepage.
+  website       String?
+  /// LinkedIn company URL.
+  linkedin      String?
+  /// Free-text operator notes — never surfaced to the public site.
+  notes         String?
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Registrar {
@@ -319,39 +509,52 @@ model Registrar {
   city          String?
   state         String?
   pincode       String?
-  allotmentUrl  String?  // IPO allotment-status check URL
+  allotmentUrl  String? // IPO allotment-status check URL
+  /// SEBI Registrar & Transfer Agent registration number (INR000...). Used
+  /// in registrar-wise reports and regulator-facing exports.
+  sebiRegNo     String?
+  /// Year the firm was founded.
+  foundedYear   Int?
+  /// Corporate homepage.
+  website       String?
+  /// LinkedIn company URL.
+  linkedin      String?
+  /// Free-text operator notes.
+  notes         String?
   active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model MessageType {
   id          String   @id @default(uuid())
-  channel     String   // 'sms' | 'email' | 'whatsapp'
-  key         String   // 'otp' | 'allotment' | …
+  channel     String // 'sms' | 'email' | 'whatsapp'
+  key         String // 'otp' | 'allotment' | …
   label       String
   description String?
   vars        String[] @default([]) // variable names the caller supplies ({{var}})
   system      Boolean  @default(false) // built-in — protected from delete / key change
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
   @@unique([channel, key])
 }
 
 model MessageTemplate {
   id            String   @id @default(uuid())
   tenantId      String   @default("t-platform") // platform default; white-label tenants override
-  channel       String   // 'sms' | 'email' | 'whatsapp'
-  key           String   // 'otp' | 'whatsapp_verify' | 'empanelment' | …
+  channel       String // 'sms' | 'email' | 'whatsapp'
+  key           String // 'otp' | 'whatsapp_verify' | 'empanelment' | …
   locale        String   @default("en")
   enabled       Boolean  @default(true)
-  dltTemplateId String?  // SMS: DLT-registered template id (text lives in DLT)
-  senderId      String?  // SMS: sender/header override
-  body          String?  // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
-  subject       String?  // Email subject
-  bodyHtml      String?  // Email HTML body ({{var}} placeholders)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  dltTemplateId String? // SMS: DLT-registered template id (text lives in DLT)
+  senderId      String? // SMS: sender/header override
+  body          String? // SMS text ({{var}} placeholders) — dev preview / non-DLT providers
+  subject       String? // Email subject
+  bodyHtml      String? // Email HTML body ({{var}} placeholders)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
   @@unique([tenantId, channel, key, locale])
   @@index([tenantId])
 }
@@ -363,7 +566,7 @@ model FeatureDefinition {
   valueType    FeatureValueType
   defaultValue Json
   isPublic     Boolean          @default(false) // exposed to the client/branding API
-  createdAt    DateTime         @default(now())
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
   settings     TenantSetting[]
 }
 
@@ -378,22 +581,22 @@ model TenantSetting {
   feature    FeatureDefinition @relation(fields: [featureKey], references: [key])
   value      Json
   locked     Boolean           @default(false)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([tenantId, featureKey])
   @@index([tenantId])
 }
 
 model Role {
-  id          String    @id @default(uuid())
+  id          String       @id @default(uuid())
   tenantId    String?
-  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
   name        String
   permissions String[]
-  scope       RoleScope @default(own)
-  isSystem    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
+  scope       RoleScope    @default(own)
+  isSystem    Boolean      @default(false)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
   memberships Membership[]
 
   @@unique([tenantId, name])
@@ -409,32 +612,33 @@ model Membership {
   role      Role     @relation(fields: [roleId], references: [id])
   isPrimary Boolean  @default(true)
   status    String   @default("active")
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([userId, tenantId])
   @@index([tenantId])
 }
 
 model User {
-  id               String   @id @default(uuid())
+  id               String     @id @default(uuid())
   tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  mobile           String?  @unique  // customers: OTP login. Operators may have none.
-  username         String?  @unique  // operators (superadmin/partner/branch): password login
-  passwordHash     String?           // scrypt hash for operator accounts
+  tenant           Tenant     @relation(fields: [tenantId], references: [id])
+  mobile           String?    @unique // customers: OTP login. Operators may have none.
+  username         String?    @unique // operators (superadmin/partner/branch): password login
+  passwordHash     String? // scrypt hash for operator accounts
   email            String?
   name             String?
   status           UserStatus @default(active)
-  marketingConsent Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  marketingConsent Boolean    @default(false)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
 
-  profiles      InvestorProfile[]
-  consents      Consent[]
-  applications  Application[]
-  watchlist     WatchlistItem[]
-  devices       DeviceToken[]
-  memberships   Membership[]
+  profiles       InvestorProfile[]
+  consents       Consent[]
+  applications   Application[]
+  watchlist      WatchlistItem[]
+  devices        DeviceToken[]
+  memberships    Membership[]
+  gmpContributor GmpContributor?
 
   @@index([tenantId])
 }
@@ -447,15 +651,15 @@ model InvestorProfile {
   user         User       @relation(fields: [userId], references: [id])
   relationship String     @default("self") // validated against RelationshipMaster (lowercase)
   fullName     String
-  panTokenRef  String     // PII (vault, reversible — used at rail-call time)
-  panHash      String     // deterministic HMAC of the PAN — uniqueness + dup detection
-  dateOfBirth  DateTime?
+  panTokenRef  String // PII (vault, reversible — used at rail-call time)
+  panHash      String // deterministic HMAC of the PAN — uniqueness + dup detection
+  dateOfBirth  DateTime? @db.Timestamptz(3)
   depository   Depository
   dpId         String
   clientId     String
-  bankTokenRef String?    // PII (vault) — bank A/C number
+  bankTokenRef String? // PII (vault) — bank A/C number
   ifsc         String?
-  upiTokenRef  String?    // PII (vault)
+  upiTokenRef  String? // PII (vault)
   // optional contact/bank fields used to prefill the ASBA form (not vaulted — low sensitivity)
   bankName     String?
   branchName   String?
@@ -464,185 +668,314 @@ model InvestorProfile {
   state        String?
   pincode      String?
   email        String?
-  mobile       String?    // applicant's own contact (falls back to the account mobile on ASBA print)
+  mobile       String? // applicant's own contact (falls back to the account mobile on ASBA print)
   active       Boolean    @default(true) // false = deactivated (has applications, so never hard-deleted)
   kycStatus    KycStatus  @default(unverified)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
 
   applications Application[]
+
+  /// ADDITIONAL demat accounts beyond the one on this profile — see DematAccount.
+  dematAccounts DematAccount[]
+
   @@unique([tenantId, panHash]) // a PAN is registered once per tenant (self-PAN rule)
   @@index([userId])
   @@index([tenantId])
 }
 
+/// An ADDITIONAL demat account on a profile, so the investor can choose where an
+/// allotment lands (operator ask, 2026-10-07).
+///
+/// THE PROFILE'S OWN `depository` / `dpId` / `clientId` ARE THE DEFAULT DEMAT AND
+/// ARE NEVER COPIED IN HERE. That asymmetry is deliberate and is the whole design:
+/// 37 files across the API, both apps and the rail adapters read those columns,
+/// so moving every demat into this table would have been a very wide change to the
+/// print engine, the partner API, allotment matching and the bid builder at once.
+/// Mirroring the default into a row instead would have created two places holding
+/// one fact, which is the drift this codebase has paid for five times. So each
+/// demat lives in exactly ONE place, and `dematAccountsFor(profile)` is the single
+/// resolver that returns the whole list with the default first.
+///
+/// This does NOT let anyone apply twice. The self-PAN rule is enforced on
+/// `profile.panHash` per IPO per bucket and never looks at the demat, so choosing a
+/// different account changes only where the shares are credited.
+model DematAccount {
+  id         String     @id @default(uuid())
+  profileId  String
+  profile    InvestorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  depository Depository
+  dpId       String
+  clientId   String
+  /// the investor's own name for it — "Zerodha", "HDFC Sec". Optional.
+  label      String?
+  /// false = retired. Never hard-deleted once an application points at it, the
+  /// same reason InvestorProfile.active exists.
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  applications Application[]
+
+  /// One profile cannot hold the same demat twice. It can still duplicate the
+  /// profile's OWN default, which no cross-table constraint can express — the
+  /// service refuses that case.
+  @@unique([profileId, depository, dpId, clientId])
+  @@index([profileId])
+}
+
 model Consent {
-  id            String      @id @default(uuid())
+  id            String        @id @default(uuid())
   tenantId      String
-  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
   userId        String
-  user          User        @relation(fields: [userId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
   type          ConsentType
   noticeVersion String
-  grantedAt     DateTime    @default(now())
-  withdrawnAt   DateTime?
+  grantedAt     DateTime      @default(now()) @db.Timestamptz(3)
+  withdrawnAt   DateTime? @db.Timestamptz(3)
   channel       String?
   applications  Application[]
+
   @@index([userId, type])
   @@index([tenantId])
 }
 
 model Ipo {
-  id            String    @id @default(uuid())
-  symbol        String    @unique
-  name          String
-  logoUrl       String?
-  type          IpoType
-  exchanges     String[]
-  status        IpoStatus @default(upcoming)
-  openDate       DateTime?
-  closeDate      DateTime?
-  allotmentDate  DateTime?
-  listingDate    DateTime?
-  listingGainPct Decimal?
-  priceBandMin   Decimal?
-  priceBandMax   Decimal?
-  lotSize        Int?
-  minAmount      Decimal?
-  issueSize      Decimal?
-  isin          String?
-  registrar     String?
-  objectsOfIssue String?
-  smeFlags      Json?
-  reservations  String[]  @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
+  id                   String            @id @default(uuid())
+  symbol               String            @unique
+  /// SEO-friendly slug for the public URL (`/ipos/<slug>`). Generated
+  /// from shortName(name) + "-ipo" at write time and unique. Nullable
+  /// during backfill; the backfill script fills every row and the
+  /// server refuses a save with an empty slug once the backfill runs.
+  slug                 String?           @unique
+  name                 String
+  logoUrl              String?
+  type                 IpoType
+  /// Defaults to `ipo` so every existing row is correct without a backfill;
+  /// only the four Further Public Offers need changing.
+  instrument           Instrument        @default(ipo)
+  exchanges            String[]
+  status               IpoStatus         @default(upcoming)
+  openDate             DateTime? @db.Timestamptz(3)
+  closeDate            DateTime? @db.Timestamptz(3)
+  allotmentDate        DateTime? @db.Timestamptz(3)
+  listingDate          DateTime? @db.Timestamptz(3)
+  listingGainPct       Decimal?
+  priceBandMin         Decimal?
+  priceBandMax         Decimal?
+  lotSize              Int?
+  minAmount            Decimal?
+  issueSize            Decimal?
+  isin                 String?
+  registrar            String?
+  /// NO `sponsorBank` COLUMN, deliberately. An issue's sponsor banks have lived
+  /// in `extra.sponsorBank` since the field was added — free text, PLURAL and
+  /// comma-separated, because SEBI allows several per issue and real records
+  /// carry three. A column here would be a second home for data that already
+  /// has one, which is the `issueSize` / `extra.issueSizeCr` desync all over
+  /// again. The unblock request resolves those names against `SponsorBank`.
+  objectsOfIssue       String?
+  smeFlags             Json?
+  reservations         String[]          @default([]) // reserved quotas offered: e.g. ["shareholder","employee"]
   /// bulk-imported historical rows start hidden — they sit in the catalog for review
   /// and are excluded from every public read until an operator publishes them.
   /// A real column, not a JSON flag: `NOT (extra->'k' = true)` is NULL-not-TRUE for
   /// rows without the key, which silently hides the whole catalog.
-  hidden        Boolean   @default(false)
-  autoPollSubscription Boolean @default(true) // admin per-IPO switch for the live NSE subscription poller
-  subscriptionAsOf     DateTime?             // last time the poller refreshed this IPO's subscription
-  extra         Json?     // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
-  categories    IpoCategory[]
-  subscriptions IpoSubscription[]
-  gmps          IpoGmp[]
-  documents     IpoDocument[]
-  applications  Application[]
-  allotmentRecords AllotmentRecord[]
-  allotmentImports AllotmentImport[]
-  allotmentArchive AllotmentArchive?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  hidden               Boolean           @default(false)
+  autoPollSubscription Boolean           @default(true) // admin per-IPO switch for the live NSE subscription poller
+  subscriptionAsOf     DateTime? @db.Timestamptz(3) // last time the poller refreshed this IPO's subscription
+  extra                Json? // operator-entered extended fields: issue type, shares-size, reservation table, application series, company info (HTML), FAQs, partners, lead managers…
+  categories           IpoCategory[]
+  subscriptions        IpoSubscription[]
+  gmps                 IpoGmp[]
+  documents            IpoDocument[]
+  applications         Application[]
+  allotmentRecords     AllotmentRecord[]
+  allotmentImports     AllotmentImport[]
+  allotmentArchive     AllotmentArchive?
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
 }
 
 model IpoCategory {
-  id    String @id @default(uuid())
+  id    String  @id @default(uuid())
   ipoId String
-  ipo   Ipo    @relation(fields: [ipoId], references: [id])
+  ipo   Ipo     @relation(fields: [ipoId], references: [id])
   code  String
   label String?
+
   @@unique([ipoId, code])
 }
 
 model IpoSubscription {
-  id             String   @id @default(uuid())
-  ipoId          String
-  ipo            Ipo      @relation(fields: [ipoId], references: [id])
-  category       String
-  timesSubscribed Decimal              // subscription by SHARES (demand qty ÷ offered)
-  bidCount       Int?                  // number of applications/bids in this category (from catwise)
-  applicationsSubscribed Decimal?      // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
-  asOf           DateTime @default(now())
+  id                     String   @id @default(uuid())
+  ipoId                  String
+  ipo                    Ipo      @relation(fields: [ipoId], references: [id])
+  category               String
+  timesSubscribed        Decimal // subscription by SHARES (demand qty ÷ offered)
+  bidCount               Int? // number of applications/bids in this category (from catwise); = nseBids + bseBids
+  applicationsSubscribed Decimal? // subscription by APPLICATIONS (bidCount ÷ max allottees); drives retail allotment odds
+  // Per-exchange breakdown — additive columns for the day-wise report page and
+  // to enable computing times at display time from raw demand (matches the
+  // operator's legacy C# workflow: fetch both, save raw, derive at read).
+  // BSE per-category bid counts are back-solved from NSE's shares-per-bid
+  // ratio (see `bucketize` in subscription.service.ts) — BSE only ships
+  // `totalapplication` as a scalar for the whole issue.
+  nseShares              Decimal? // shares demanded from NSE catwise for this bucket
+  bseShares              Decimal? // shares demanded from BSE demandschedule for this bucket
+  nseBids                Int? // bid count from NSE catwise for this bucket
+  bseBids                Int? // derived BSE bid count (nse-avg-ratio for hni/hni2/shareholder; residual of totalapplication for retail)
+  asOf                   DateTime @default(now()) @db.Timestamptz(3)
+
   @@index([ipoId, asOf])
 }
 
 model IpoGmp {
-  id     String   @id @default(uuid())
-  ipoId  String
-  ipo    Ipo      @relation(fields: [ipoId], references: [id])
-  value  Decimal
-  trend  String?
-  source String?
-  asOf   DateTime @default(now())
+  id              String   @id @default(uuid())
+  ipoId           String
+  ipo             Ipo      @relation(fields: [ipoId], references: [id])
+  value           Decimal
+  trend           String?
+  source          String?
+  /// who entered it — GMP is unofficial, so every value stays traceable to a person
+  submittedBy     String?
+  submittedByName String?
+  asOf            DateTime @default(now()) @db.Timestamptz(3)
+
   @@index([ipoId, asOf])
+  @@index([submittedBy])
+}
+
+/// Allow-list of non-operator users permitted to submit GMP. Operators reach the
+/// same screen through the `gmp.submit` permission instead; this covers people
+/// who should enter GMP without any admin access at all.
+model GmpContributor {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  active    Boolean  @default(true)
+  note      String?
+  addedBy   String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
 model IpoDocument {
-  id      String @id @default(uuid())
+  id      String  @id @default(uuid())
   ipoId   String
-  ipo     Ipo    @relation(fields: [ipoId], references: [id])
+  ipo     Ipo     @relation(fields: [ipoId], references: [id])
   type    String // RHP / DRHP / prospectus
   url     String
   summary String?
 }
 
 model MemberCredential {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   tenantId        String?
-  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant          Tenant?       @relation(fields: [tenantId], references: [id])
   exchange        Exchange
   memberName      String
-  memberType      String   // broker / merchant_banker / syndicate
+  memberType      String // broker / merchant_banker / syndicate
   loginId         String
   memberCode      String
-  passwordRef     String   // vault ref
-  ibbsIdRef       String?  // vault ref (BSE)
-  checksumKeyRef  String?  // vault ref (BSE) — AES-256 key for the request Checksum header
+  passwordRef     String // vault ref
+  ibbsIdRef       String? // vault ref (BSE)
+  checksumKeyRef  String? // vault ref (BSE) — AES-256 key for the request Checksum header
   subBrokerCode   String?
   baseUrl         String
-  env             String   // live / uat
-  active          Boolean  @default(true)
-  subscriptionUse Boolean  @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
+  env             String // live / uat
+  active          Boolean       @default(true)
+  subscriptionUse Boolean       @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
   applications    Application[]
+
   @@index([tenantId])
 }
 
 model Application {
-  id                 String      @id @default(uuid())
+  id                 String            @id @default(uuid())
   tenantId           String
-  tenant             Tenant      @relation(fields: [tenantId], references: [id])
+  tenant             Tenant            @relation(fields: [tenantId], references: [id])
   userId             String
-  user               User        @relation(fields: [userId], references: [id])
-  investorProfileId  String
-  profile            InvestorProfile @relation(fields: [investorProfileId], references: [id])
+  user               User              @relation(fields: [userId], references: [id])
+  /// OPTIONAL since 2026-09-28. A partner print carries its own immutable
+  /// `partnerPayload`, so the record does not need the client profile it was
+  /// created from — and those profiles are ordinary client data that can be cleared
+  /// out. While this was NOT NULL with ON DELETE RESTRICT, deleting a test
+  /// client was impossible without deleting the print history with it.
+  investorProfileId  String?
+  profile            InvestorProfile?  @relation(fields: [investorProfileId], references: [id])
+  /// Which demat this application credits to. NULL means the profile's OWN
+  /// columns — its default — which is what every application created before
+  /// 2026-10-08 means, so no backfill is needed and none should be done.
+  /// RESTRICT, not SET NULL: a submitted bid names a demat to the exchange and
+  /// losing which one it was would rewrite history. Retire with `active: false`.
+  dematAccountId     String?
+  dematAccount       DematAccount?     @relation(fields: [dematAccountId], references: [id], onDelete: Restrict)
   ipoId              String
-  ipo                Ipo         @relation(fields: [ipoId], references: [id])
+  ipo                Ipo               @relation(fields: [ipoId], references: [id])
   memberCredentialId String?
   memberCredential   MemberCredential? @relation(fields: [memberCredentialId], references: [id])
-  consentId          String?           // DPDP: the data-sharing consent this bid was submitted under
+  consentId          String? // DPDP: the data-sharing consent this bid was submitted under
   consent            Consent?          @relation(fields: [consentId], references: [id])
 
-  category           String            // investor bucket (retail / sNII / bNII / qib)
+  category           String // investor bucket (retail / sNII / bNII / qib)
   applicantType      ApplicantCategory @default(individual)
-  batchId            String?           // set when created via family/bulk apply — groups the batch
+  batchId            String? // set when created via family/bulk apply — groups the batch
   lots               Int
   /// exact share quantity as submitted (partner API sends FINAL figures); null → lots × lotSize
   shareQty           Int?
   /// print grouping label on the ASBA form (partner-supplied, or the account holder)
   familyGroup        String?
-  atCutoff           Boolean     @default(true)
+  atCutoff           Boolean           @default(true)
   bidPrice           Decimal?
   amount             Decimal
   applyMethod        ApplyMethod
   rail               Exchange?
   applicationNumber  String?
-  asbaFormNo         String?     // ASBA print-form number, allocated from the IPO's active "PDF Printing" series
+  asbaFormNo         String? // ASBA print-form number, allocated from the IPO's active "PDF Printing" series
   bidReferenceNumber String?
   upiFlag            String?
   asbaBlockRef       String?
-  remark             String?     // our bid UID, echoed to rail
+  remark             String? // our bid UID, echoed to rail
   amountBlocked      Decimal?
-  allottedLots       Int?        // lots actually allotted (0 = not allotted)
-  allottedAmount     Decimal?    // amount debited for the allotted shares
-  refundAmount       Decimal?    // blocked amount released back
-  allottedAt         DateTime?
-  allotmentReason    String?     // registrar's rejection reason (from the imported allotment file)
+  allottedLots       Int? // lots actually allotted (0 = not allotted)
+  allottedAmount     Decimal? // amount debited for the allotted shares
+  refundAmount       Decimal? // blocked amount released back
+  allottedAt         DateTime? @db.Timestamptz(3)
+  allotmentReason    String? // registrar's rejection reason (from the imported allotment file)
+  /// The EXCHANGE's rejection reason for the bid itself. Deliberately separate
+  /// from `allotmentReason`, which is the registrar's verdict on an accepted
+  /// bid — the two answer different questions and conflating them would make
+  /// the Bidding Report's Rejection column mean two things.
+  rejectionReason    String?
+  /// The exchange's own UPI wording, kept verbatim ("Request sent to Investor
+  /// UPI App for Acceptance"). We map UPI events onto `status` for our own
+  /// logic, but that mapping loses the sentence the operator wants to read.
+  upiStatusText      String?
+  upiStatusAt        DateTime? @db.Timestamptz(3)
+  /// When this investor last emailed the sponsor bank about funds that were not
+  /// unblocked, and how many times. The timestamp drives the cooldown
+  /// (`UNBLOCK_COOLDOWN_HOURS`): this is an outward-facing email to a third
+  /// party, and a bank that receives the same request six times stops reading
+  /// any of them. The count is kept so the operator can see a bank that is
+  /// repeatedly being chased.
+  unblockRequestedAt DateTime? @db.Timestamptz(3)
+  unblockRequestCount Int      @default(0)
   status             ApplicationStatus @default(draft)
-  idempotencyKey     String      @unique
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  /// Immutable snapshot of the raw payload that produced this Application, for
+  /// records-only channels (partner API). Populated at print time from the
+  /// received applicant object so the Print report's View modal can reconstruct
+  /// exactly what was received — even when the shared InvestorProfile is later
+  /// touched by a different flow. Nullable: only set by the partner API flow;
+  /// legacy rows and non-partner flows leave it null.
+  partnerPayload     Json?
+  idempotencyKey     String            @unique
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
-  events             ApplicationStatusEvent[]
+  events     ApplicationStatusEvent[]
+  operations BidOperation[]
+
   @@index([userId])
   @@index([ipoId])
   @@index([tenantId])
@@ -655,14 +988,14 @@ model Notification {
   id        String    @id @default(uuid())
   tenantId  String?
   userId    String
-  type      String    // allotment | listing | status
+  type      String // allotment | listing | status
   title     String
   body      String
-  data      Json?     // { applicationId, ipoSymbol, status, ... }
+  data      Json? // { applicationId, ipoSymbol, status, ... }
   channel   String    @default("push")
-  sentAt    DateTime?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  sentAt    DateTime? @db.Timestamptz(3)
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([userId, createdAt])
 }
@@ -673,24 +1006,25 @@ model AuditLog {
   id          String   @id @default(uuid())
   actorId     String?
   actorMobile String?
-  action      String   // e.g. role.create, member.add, ipo.update, setting.set, allotment.record
+  action      String // e.g. role.create, member.add, ipo.update, setting.set, allotment.record
   targetType  String?
   targetId    String?
   targetLabel String?
   tenantSlug  String?
   detail      Json?
-  at          DateTime @default(now())
+  at          DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([at])
 }
 
 model ApplicationStatusEvent {
-  id            String   @id @default(uuid())
+  id            String            @id @default(uuid())
   applicationId String
-  application   Application @relation(fields: [applicationId], references: [id])
+  application   Application       @relation(fields: [applicationId], references: [id])
   status        ApplicationStatus
   detail        Json?
-  at            DateTime @default(now())
+  at            DateTime          @default(now()) @db.Timestamptz(3)
+
   @@index([applicationId])
 }
 
@@ -701,7 +1035,8 @@ model WatchlistItem {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   ipoId     String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
   @@unique([userId, ipoId])
   @@index([tenantId])
 }
@@ -715,6 +1050,7 @@ model DeviceToken {
   platform String
   token    String
   active   Boolean @default(true)
+
   @@unique([token])
   @@index([tenantId])
 }
@@ -762,8 +1098,8 @@ model AllotmentImport {
   allotted   Int       @default(0) // rows with allotted shares > 0
   matched    Int       @default(0) // OUR applications auto-updated from this file
   error      String?
-  createdAt  DateTime  @default(now())
-  finishedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
 
   @@index([ipoId, createdAt])
 }
@@ -777,5 +1113,121 @@ model AllotmentArchive {
   fileName  String // file under uploads/allotment-archive
   rows      Int
   fileSize  Int
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+/// Partner self-onboarding. Submissions live HERE, not in Tenant: a half-real
+/// tenant would leak into the tenant tree, the settings cascade, RLS scoping and
+/// every report. On approval the operator runs the normal registerTenant() path,
+/// which assigns the channel code and creates the admin user.
+model PartnerApplication {
+  id          String  @id @default(uuid())
+  /// the OTP-verified account that submitted it (lets them resume + track status)
+  userId      String?
+  mobile      String
+  email       String
+  contactName String
+  /// what the applicant is asking to become; the operator decides the real type
+  kind        String  @default("partner") // partner | whitelabel | branch
+
+  entityType  String? // individual | proprietorship | partnership | llp | pvt_ltd
+  legalName   String
+  panTokenRef String? // PII (vault) — business PAN, resolved only on the review screen
+  panMasked   String?
+  gstin       String?
+  city        String?
+  state       String?
+  sebiRegNo   String?
+  arn         String?
+  notes       String?
+  /// [{ type, url, name }] — uploaded via the applicant-scoped endpoint
+  documents   Json?
+
+  status     String    @default("submitted") // submitted | changes_requested | approved | rejected
+  reviewNote String?
+  reviewedBy String?
+  reviewedAt DateTime? @db.Timestamptz(3)
+  tenantId   String? // set once approved
+
+  /// single-use activation link emailed on approval (operator can copy it if SMTP is off)
+  inviteToken   String?   @unique
+  inviteExpires DateTime? @db.Timestamptz(3)
+  activatedAt   DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([mobile])
+}
+
+/// Every transactional message the system sends, on ANY route — OTP, partner
+/// approval, allotment alerts, WhatsApp replies, and operator test sends.
+///
+/// Written by the LEAF adapters (SmsService / EmailService / WhatsappService),
+/// not by their callers: a new feature that sends a message is logged without
+/// anyone remembering to add logging. Recording never throws — a logging fault
+/// must not lose a real send.
+///
+/// The recipient is stored MASKED (98XXXX1234 / j***@example.com) with the last
+/// four digits kept separately so support can find a delivery without the log
+/// becoming a table of contact details.
+model MessageLog {
+  id                String   @id @default(uuid())
+  tenantId          String?
+  channel           String // sms | email | whatsapp
+  templateKey       String? // otp | empanelment | … (null for ad-hoc sends)
+  recipient         String // masked
+  recipientLast4    String? // search key
+  subject           String? // email only
+  preview           String? // rendered body, truncated
+  status            String // sent | failed | dev
+  provider          String? // rmlconnect | custom | msg91 | smtp | meta
+  providerMessageId String?
+  error             String?
+  /// operator "Send test" from Message Templates rather than a real event
+  isTest            Boolean  @default(false)
+  meta              Json?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([channel, status, createdAt])
+  @@index([recipientLast4])
+  @@index([tenantId, createdAt])
+}
+
+/// Sponsor banks — the bank that carries the UPI mandate for an issue.
+///
+/// Mirrors `Registrar` field-for-field on purpose: the masters controller
+/// treats both as ORG_KINDS, so this model needs no DTO changes and inherits
+/// the full contact/address set plus the bulk upload.
+///
+/// `email` is the load-bearing column — it is where an investor's unblock
+/// request is sent when the bank has not released their funds. Deactivated,
+/// never deleted, like every other master: IPOs reference it by NAME snapshot.
+model SponsorBank {
+  id            String   @id @default(uuid())
+  name          String
+  shortCode     String   @unique
+  contactPerson String?
+  mobile        String?
+  /// Where unblock requests go. Without it the request cannot be sent, and the
+  /// API says so rather than failing silently.
+  email         String?
+  phone         String?
+  gstin         String?
+  address1      String?
+  address2      String?
+  city          String?
+  state         String?
+  pincode       String?
+  /// SEBI / RBI registration, for regulator-facing exports.
+  sebiRegNo     String?
+  foundedYear   Int?
+  website       String?
+  linkedin      String?
+  notes         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }

@@ -1,71 +1,161 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { catColor, segTextColor, shC } from '@/lib/catColor';
+import { useState } from 'react';
+import { ShareWisePanel, AppWisePanel } from '@/components/SubscriptionHub';
 import { Icon } from '@/components/Icon';
+import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
 
-type Row = { cat: string; bookSize: number; subscribed: number; times: number };
-
-/** Numbers-first subscription: toolbar (live · band toggle · refresh) → total
-    banner → per-category card-rows. Upper/Lower recomputes the ₹ amounts; live
-    figures gently auto-refresh while the IPO is open. */
-export function LiveSubscription({ rows, total, status, asOf, priceMin, priceMax, totalApps }: {
-  rows: Row[]; total: Row; status: string; asOf?: string; priceMin?: number; priceMax?: number; totalApps?: number;
+/**
+ * Live Subscription — detail-page section.
+ *
+ * Reuses the `/subscription/v2` hub's ShareWisePanel + AppWisePanel so
+ * the vocabulary, math and visual language are identical across every
+ * subscription surface.
+ *
+ * Header layout (2026-09-22 v2 — operator revision):
+ *   Row 1 (compact top-strip): status pill + Updated timestamp on the left,
+ *                              Upper/Lower band toggle on the right.
+ *   Row 2 (hero panel): big Times number + meter + tone label CENTERED,
+ *                       flanked by the three Book / Subscribed / Applications
+ *                       stat tiles across a full-width grid.
+ *
+ * The v1 attempt (2026-09-22) borrowed IpoRow's split three-column shell
+ * from the hub which relies on a fourth column (logo + IPO name + status
+ * chips) that the detail page doesn't need — so the left column looked
+ * empty and the whole row felt cramped when the operator screenshotted
+ * it. This version separates status+toggle from the hero so each row
+ * gets full width to breathe.
+ *
+ * Below the hero: Share-Wise + Application-Wise panels (unchanged).
+ */
+export function LiveSubscription({
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0, anchorBasis = null,
+}: {
+  rows: SubRowT[];
+  total: SubRowT;
+  /** Anchor shares actually taken off QIB — 0 when the record has no anchor
+   *  figure, which changes what the footnote is allowed to claim. */
+  anchorDeducted?: number;
+  anchorBasis?: AnchorBasis;
+  status: string;
+  asOf?: string;
+  priceMin?: number;
+  priceMax?: number;
+  totalApps?: number;
+  ipoType?: string;
+  symbol?: string;
 }) {
   const live = status === 'open';
-  const [drift, setDrift] = useState(0);
-  const [band, setBand] = useState<'upper' | 'lower'>('upper');
-  useEffect(() => {
-    if (!live) return;
-    const id = setInterval(() => setDrift((d) => Math.min(20, d + 1)), 7000);
-    return () => clearInterval(id);
-  }, [live]);
-  const f = live ? 1 + drift * 0.004 : 1;
-  const totalX = total.times * f;
-  const price = (band === 'lower' ? (priceMin ?? priceMax) : (priceMax ?? priceMin)) ?? 0;
   const hasBand = !!priceMin && !!priceMax && priceMin !== priceMax;
+  const [band, setBand] = useState<'upper' | 'lower'>('upper');
+  const price = (band === 'lower' ? (priceMin ?? priceMax) : (priceMax ?? priceMin)) ?? 0;
 
-  const n = (v: number) => Math.round(v).toLocaleString('en-IN');
-  const cr = (sh: number) => (price ? `₹${((sh * price) / 1e7).toFixed(2)} Cr` : '');
+  const t = total.times ?? 0;
+  const meterPct = Math.min(100, (t / 3) * 100);
+  const tc = t >= 3 ? 'hot' : t >= 1 ? 'warm' : t >= 0.5 ? 'cool' : 'cold';
+  const toneLabel = t >= 3 ? 'Heavily subscribed' : t >= 1 ? 'Fully subscribed' : t >= 0.5 ? 'Picking up' : 'In progress';
+
+  const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
+  const fmtCr = (n: number) => (n >= 1000 ? `₹${Math.round(n).toLocaleString('en-IN')} Cr` : `₹${n.toFixed(2)} Cr`);
+
+  const bookCr = total.bookSize > 0 && price > 0 ? (total.bookSize * price) / 1e7 : 0;
+  const subCr = total.subscribed > 0 && price > 0 ? (total.subscribed * price) / 1e7 : 0;
+  const apps = totalApps ?? total.bidCount ?? 0;
 
   return (
-    <div className="panel subx-panel">
-      <div className="subx-bar">
-        <div className="subx-title">
-          {live && <span className="live-dot" />}
-          <b>{live ? 'Live now' : 'Final'}</b>
-          {asOf && <span className="subx-asof">as on {asOf}</span>}
+    <div className="subv2 subv2-detail">
+      {/* Compact top strip — status + timestamp on left, band toggle and
+          detail-view icon on right. The icon-link takes the reader to
+          /subscription/v2?symbol=<sym> for the fuller day-wise + hourly
+          history (operator ask, 2026-09-22). */}
+      <div className="lsx-top">
+        <div className="lsx-status-line">
+          <span className={`ic-status ${live ? 'live' : 'closed'}`}>
+            {live && <span className="pd" />}
+            {live ? 'Live now' : 'Final'}
+          </span>
+          {asOf && <span className="lsx-asof">Updated {asOf}</span>}
         </div>
-        <div className="subx-tools">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {hasBand && (
-            <div className="seg" role="tablist" aria-label="Price band">
-              <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')}>Upper</button>
-              <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')}>Lower</button>
+            <div className="seg lsx-band" role="tablist" aria-label="Price band">
+              <button className={band === 'upper' ? 'on' : ''} onClick={() => setBand('upper')} type="button">Upper ₹{priceMax}</button>
+              <button className={band === 'lower' ? 'on' : ''} onClick={() => setBand('lower')} type="button">Lower ₹{priceMin}</button>
             </div>
           )}
-          {live && <button className="subx-ref" onClick={() => setDrift((d) => d + 1)} aria-label="Refresh figures"><Icon name="refresh" size={16} strokeWidth={2} /></button>}
+          {symbol && (
+            <a
+              href={`/subscription/v2?symbol=${encodeURIComponent(symbol)}`}
+              className="lsx-detail-btn"
+              title="Open full detail view — day-wise + hourly"
+              aria-label={`Open detail view for ${symbol}`}
+            >
+              <Icon name="arrow-right" size={14} />
+            </a>
+          )}
         </div>
       </div>
 
-      <div className="subx-total">
-        <div className="l"><div className="big mono">{totalX.toFixed(2)}<span>×</span></div><div className="cap">Total subscription</div></div>
-        <div className="r">
-          <div className="row2"><span>Applied</span><b>{shC(total.subscribed * f)} sh</b></div>
-          <div className="row2"><span>Book size</span><b>{shC(total.bookSize)} sh</b></div>
-        </div>
-      </div>
-
-      <div className="subx">
-        <div className="subx-h"><span>Category</span><span>Book size</span><span>Subscription</span><span className="r">No. of times</span></div>
-        {rows.map((r) => (
-          <div className="subx-row" key={r.cat} style={{ ['--cc' as string]: catColor(r.cat) } as React.CSSProperties}>
-            <div><span className="cat-chip">{r.cat}</span></div>
-            <div className="subx-num" data-k="Book size">{n(r.bookSize)}<small>{cr(r.bookSize)}</small></div>
-            <div className="subx-num" data-k="Subscription">{n(r.subscribed * f)}<small>{cr(r.subscribed * f)}</small></div>
-            <div className="r"><span className="x-badge" style={{ color: segTextColor(r.cat) }}>{(r.times * f).toFixed(2)}×</span></div>
+      {/* Hero — big times centered, three tiles across the row */}
+      <div className={`lsx-hero lsx-hero-${tc}`}>
+        <div className="lsx-hero-l">
+          <div className="lsx-times">
+            <span className="lsx-times-n">{t.toFixed(2)}</span><span className="lsx-times-x">×</span>
           </div>
-        ))}
+          <div className="lsx-meter">
+            <div className="lsx-meter-track"><span style={{ width: `${meterPct}%` }} /></div>
+            <div className="lsx-meter-tk"><span>0×</span><span>1×</span><span>2×</span><span>3×+</span></div>
+          </div>
+          <div className={`lsx-tone lsx-tone-${tc}`}>{toneLabel}</div>
+        </div>
+        <div className="lsx-tiles">
+          <div className="lsx-tile">
+            <span className="lsx-tile-k">Book</span>
+            <span className="lsx-tile-v">{bookCr > 0 ? fmtCr(bookCr) : '—'}</span>
+          </div>
+          <div className="lsx-tile">
+            <span className="lsx-tile-k">Subscribed</span>
+            <span className={`lsx-tile-v tone-${tc}`}>{subCr > 0 ? fmtCr(subCr) : '—'}</span>
+          </div>
+          <div className="lsx-tile">
+            <span className="lsx-tile-k">Applications</span>
+            <span className="lsx-tile-v">{apps > 0 ? fmtIn(apps) : '—'}</span>
+          </div>
+        </div>
       </div>
-      <p className="note-line">*Excluding anchor{totalApps ? ` · ~${totalApps.toLocaleString('en-IN')} total applications` : ''}.{hasBand ? ` Amounts at the ${band} band (₹${band === 'lower' ? priceMin : priceMax}).` : ''}{live ? ' Live figures are simulated for the demo.' : ''}</p>
+
+      {/* Share-wise + Application-wise — same components /subscription/v2 uses. */}
+      <div className="subv2-ln-detail" style={{ marginTop: 14 }}>
+        <div className="subv2-det-in">
+          <ShareWisePanel rows={rows} total={total} price={price} anchorDeducted={anchorDeducted} anchorBasis={anchorBasis} />
+          {/* SME shows this too (operator ask, 2026-10-09) — the Lot Ladder's
+              Reserved column is only the Req 1× figure, not the applications
+              received or the by-applications multiple. See the longer note at
+              the AppWisePanel mount in SubscriptionHub.tsx. The panel
+              self-hides when no row carries a bid count. */}
+          <AppWisePanel rows={rows} />
+        </div>
+      </div>
+
+      {/* The "Net (post anchor)" line used to print unconditionally — and was
+          FALSE on 5 of the 6 IPOs open on 2026-09-23, because only VARMORA had
+          an anchor figure on its record. Stating which of the two a reader is
+          looking at costs nothing and is the difference between a figure they
+          can check against the exchange and one they cannot.
+
+          THREE states, not two (2026-09-30). A deduction taken from a stated
+          share count is the ALLOTMENT off the anchor intimation letter; one
+          taken from a percentage is our own arithmetic against a ceiling the
+          issue may not have used — the anchor book can close under 60%, so an
+          estimate is an upper bound. Both produce a Net QIB and only one is a
+          fact, so the reader is told which. */}
+      {/* THE ANCHOR SENTENCE MOVED INTO ShareWisePanel (2026-10-10) so the two
+          dedicated subscription pages carry it too — they rendered the same
+          anchor-deducted QIB and said nothing about it. Repeating it here would
+          print it twice on this page. */}
+      <p className="lsx-note">
+        {hasBand && `Amounts at the ${band} band (₹${price}). `}
+        Times figures are computed from the shares this page shows so Book × Times = Subscribed always cross-checks.
+      </p>
     </div>
   );
 }

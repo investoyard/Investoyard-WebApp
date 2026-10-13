@@ -103,7 +103,7 @@ export function IpoCalendar() {
   };
 
   const EventRow = ({ e }: { e: Ev }) => (
-    <a className="cal-evrow" href={`/ipos/${e.ipo.symbol}`}>
+    <a className="cal-evrow" href={`/ipos/${e.ipo.slug ?? e.ipo.symbol}`}>
       <IpoLogo logo={e.ipo.logo} name={e.ipo.name} size={36} />
       <span className="grow">
         <span className="cal-ev-name" title={titleCase(e.ipo.name)}>{titleCase(e.ipo.name)}</span>

@@ -1,4 +1,5 @@
 'use client';
+import type { DematAccountView } from '@investoyard/shared-types';
 /**
  * Consumer (B2C investor) API client + session. Separate from the operator session
  * (lib/operator.ts) — a customer signs in with mobile + OTP and gets their own JWT.
@@ -25,12 +26,17 @@ export function clearConsumerSession() {
 
 async function req<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, init);
+  const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
+    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  // Nest sends an EMPTY body when a handler returns null (and for 204) — not the
+  // string "null" — so res.json() threw "Unexpected end of JSON input" on the
+  // partner apply screen for anyone without an application yet. An empty 200
+  // means "no content", so read it as null rather than an error.
+  return (body ? JSON.parse(body) : null) as T;
 }
 const post = <T>(path: string, body: any) =>
   req<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -106,6 +112,12 @@ export interface ApiProfile {
   mobile?: string;
   /** PAN is locked in the edit form once any application exists */
   hasApplications?: boolean;
+  /**
+   * EVERY demat on this applicant, default first — built server-side by
+   * dematAccountsFor(). The depository/dpId/clientId above are the same
+   * account as demats[0]; never join the two here.
+   */
+  demats?: DematAccountView[];
 }
 /** Raw input sent on create (PII encrypted server-side into the vault). */
 export interface ProfileInput {
@@ -135,6 +147,14 @@ export const createProfile = (input: ProfileInput) =>
 /** Partial edit — omitted fields keep their values; PAN/bank/UPI replaced only when non-empty. */
 export const updateProfile = (id: string, input: Partial<ProfileInput>) =>
   authedConsumer<ApiProfile>(`/profiles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+/** Add an ADDITIONAL demat. Returns the whole refreshed applicant, so the caller
+ *  never merges a partial response into its own copy. */
+export const addDemat = (profileId: string, input: { depository: Depository; dpId?: string; clientId: string; label?: string }) =>
+  authedConsumer<ApiProfile>(`/profiles/${profileId}/demat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+/** Retire one. Never a hard delete — a submitted bid names its demat to the exchange. */
+export const retireDemat = (profileId: string, dematId: string) =>
+  authedConsumer<ApiProfile>(`/profiles/${profileId}/demat/${dematId}`, { method: 'DELETE' });
+
 /** Deletes when the applicant has no applications; otherwise deactivates (history kept). */
 export const deleteProfile = (id: string) =>
   authedConsumer<{ deleted?: boolean; deactivated?: boolean }>(`/profiles/${id}`, { method: 'DELETE' });
@@ -142,6 +162,8 @@ export const deleteProfile = (id: string) =>
 // ---- applications ----
 export interface CreateApplicationInput {
   investorProfileId: string;
+  /** Which demat the allotment credits to. null/omitted = the applicant default. */
+  dematAccountId?: string | null;
   ipoId: string;
   category: string;
   lots: number;
@@ -188,8 +210,44 @@ export interface ApiApplication {
   allotmentOddsPct?: number;
   /** While 'submitted': applicant details still blocking the exchange bid. */
   missingDetails?: string[];
+  /** The exchange's own sentence about the UPI mandate, and when it was observed. */
+  upiStatusText?: string;
+  upiStatusAt?: string;
+  /** Sponsor-bank unblock request — decided server-side by `mayRequestUnblock`. */
+  unblockAvailable?: boolean;
+  unblockReason?: string;
+  unblockStuckAmount?: number;
+  unblockRequestedAt?: string;
 }
 export const listApplications = () => authedConsumer<ApiApplication[]>('/applications', { method: 'GET' });
+
+/**
+ * Change the UPI ID on a placed application (requirement 2).
+ *
+ * `restatedToExchange` is how many of that APPLICANT's live bids were queued
+ * for a modify — the UPI lives on the applicant, not the application, so a
+ * change can reach more bids than the one the investor was looking at. Show the
+ * server's `note` rather than composing your own; it is the one that knows.
+ */
+/**
+ * Ask the issue's sponsor bank(s) to release funds left blocked after allotment.
+ *
+ * `dev: true` means SMTP is not configured on the server: the request was
+ * composed and recorded but NOT delivered. Show that distinction — telling an
+ * investor it was sent would leave them waiting on a reply to a mail nobody
+ * received.
+ */
+export const requestUnblock = (id: string) =>
+  authedConsumer<{ sent: boolean; dev: boolean; to: string; stuckAmount?: number; note: string }>(
+    `/applications/${id}/unblock-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+  );
+
+export const changeApplicationUpi = (id: string, upiId: string) =>
+  authedConsumer<ApiApplication & {
+    upiChange: { saved: boolean; restatedToExchange: number; note: string };
+  }>(`/applications/${id}/change-upi`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upiId }),
+  });
 
 /** Fetch a PDF (with auth) and trigger a browser download using the server's filename. */
 async function downloadPdf(path: string, method: 'GET' | 'POST', body?: any): Promise<void> {
@@ -224,3 +282,44 @@ export const addWatchlist = (ipoId: string) =>
   authedConsumer<any>('/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId }) });
 export const removeWatchlist = (ipoId: string) =>
   authedConsumer<any>(`/watchlist/${ipoId}`, { method: 'DELETE' });
+
+/* ---- GMP entry (contributors + operators with gmp.submit) ---- */
+export interface GmpBoardRow {
+  id: string; symbol: string; name: string; type: string; status: string;
+  logoUrl?: string | null; priceBandMin?: number; priceBandMax?: number;
+  openDate?: string; closeDate?: string;
+  currentGmp: number | null; currentBy: string | null; currentAt: string | null;
+}
+export const gmpAccess = () => authedConsumer<{ allowed: boolean }>('/gmp-entry/access', { method: 'GET' });
+export const gmpBoard = () => authedConsumer<GmpBoardRow[]>('/gmp-entry/board', { method: 'GET' });
+export const gmpSubmit = (entries: { ipoId: string; value: number }[]) =>
+  authedConsumer<{ saved: number; errors: string[] }>('/gmp-entry', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }),
+  });
+
+/* ---- partner self-onboarding (applicant side) ---- */
+export interface PartnerApplyInput {
+  kind?: string; contactName: string; email: string;
+  entityType?: string; legalName: string; pan?: string; gstin?: string;
+  city?: string; state?: string; sebiRegNo?: string; arn?: string; notes?: string;
+  documents?: { type: string; url: string; name?: string }[];
+}
+export interface MyPartnerApplication {
+  id: string; status: 'submitted' | 'changes_requested' | 'approved' | 'rejected';
+  kind: string; legalName: string; contactName: string; email: string;
+  entityType?: string | null; gstin?: string | null; city?: string | null; state?: string | null;
+  sebiRegNo?: string | null; arn?: string | null; notes?: string | null; panMasked?: string | null;
+  documents: { type: string; url: string; name?: string }[];
+  reviewNote?: string | null; createdAt: string; reviewedAt?: string | null;
+}
+export const submitPartnerApplication = (body: PartnerApplyInput) =>
+  authedConsumer<{ id: string; status: string }>('/partner-apply', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+export const myPartnerApplication = () =>
+  authedConsumer<MyPartnerApplication | null>('/partner-apply/mine', { method: 'GET' });
+/** No session — the token from the approval email is the credential. */
+export const activatePartner = (token: string, password: string) =>
+  req<{ ok: boolean; username: string }>('/partner-activate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password }),
+  });

@@ -8,7 +8,8 @@ type IconName =
   | 'edit' | 'trash' | 'power' | 'plus' | 'key' | 'copy' | 'menu' | 'help' | 'dots'
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
-  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp';
+  | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp' | 'repeat'
+  | 'clock-fill' | 'check-fill' | 'trending-fill' | 'flame-fill';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
@@ -33,6 +34,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
   share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></>,
   refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v5h-5" /></>,
+  // rebid — two arrows in a loop, distinct from refresh (single circular arrow)
+  repeat: <><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></>,
   eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
   'eye-off': <><path d="M9.9 5.2A9.6 9.6 0 0 1 12 5c6.4 0 10 7 10 7a17.3 17.3 0 0 1-3.3 4M6.3 6.3A17.2 17.2 0 0 0 2 12s3.6 7 10 7a9.5 9.5 0 0 0 4-.9" /><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
@@ -70,6 +73,16 @@ const PATHS: Record<IconName, React.ReactNode> = {
   'user-plus': <><circle cx="9.5" cy="8" r="3.4" /><path d="M3.5 20a6 6 0 0 1 12 0" /><path d="M19 8v6M16 11h6" /></>,
   pie: <><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M14 3.3A9 9 0 0 1 20.7 10H14V3.3Z" /></>,
   cursor: <path d="M5 3l6 16 2.2-6.8L20 10 5 3Z" />,
+  /* The four demand marks on IPO cards, one per tier of the subscription
+     ladder. SOLID, because at 14px beside a bold figure a 1.75px outline
+     reads as a smudge rather than a symbol (operator ask, 2026-09-23). The
+     three that need interior detail carve it out with fill-rule evenodd
+     instead of overpainting in the surface colour, so the shape holds on any
+     background the card ever gets. */
+  'clock-fill': <path fillRule="evenodd" clipRule="evenodd" fill="currentColor" stroke="none" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 4.1a1.05 1.05 0 0 1 1.05 1.05v4.24l2.92 1.69a1.05 1.05 0 1 1-1.05 1.82l-3.45-1.99a1.05 1.05 0 0 1-.52-.91V7.65A1.05 1.05 0 0 1 12 6.6Z" />,
+  'check-fill': <path fillRule="evenodd" clipRule="evenodd" fill="currentColor" stroke="none" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm4.44 6.7a1.05 1.05 0 0 0-1.49-1.49l-4.63 4.63-1.77-1.77a1.05 1.05 0 1 0-1.49 1.49l2.52 2.51c.41.41 1.08.41 1.49 0l5.37-5.37Z" />,
+  'trending-fill': <path fill="currentColor" stroke="none" d="M12.79 3.55a1.05 1.05 0 0 0-1.58 0l-5.4 6.2A1.05 1.05 0 0 0 6.6 11.5h2.55v7.45c0 .58.47 1.05 1.05 1.05h3.6c.58 0 1.05-.47 1.05-1.05V11.5h2.55a1.05 1.05 0 0 0 .79-1.75l-5.4-6.2Z" />,
+  'flame-fill': <path fillRule="evenodd" clipRule="evenodd" fill="currentColor" stroke="none" d="M12.62 2.18a.8.8 0 0 0-1.3.16c-1.32 2.44-2.5 4.1-3.62 5.4-1.43 1.65-2.3 3.35-2.3 5.35a6.6 6.6 0 0 0 13.2 0c0-2.18-1.06-4.08-2.3-5.6-1.18-1.44-2.5-2.5-3.68-5.31Zm-.62 15.9a2.55 2.55 0 0 1-2.55-2.55c0-1.42.9-2.45 2.55-4.35 1.65 1.9 2.55 2.93 2.55 4.35A2.55 2.55 0 0 1 12 18.08Z" />,
 };
 
 export function Icon({ name, size = 18, style, strokeWidth = 1.75 }: {

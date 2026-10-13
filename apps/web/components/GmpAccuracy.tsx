@@ -75,7 +75,7 @@ export function GmpAccuracy({ ipos: baked }: { ipos: IpoFull[] }) {
         {rows.map((r) => {
           const v = verdict(r.delta);
           return (
-            <a className="ga-row" key={r.ipo.id} href={`/ipos/${r.ipo.symbol}`}>
+            <a className="ga-row" key={r.ipo.id} href={`/ipos/${r.ipo.slug ?? r.ipo.symbol}`}>
               <span className="ga-ipo">
                 <IpoLogo logo={(r.ipo as any).logo} name={r.ipo.name} size={30} />
                 <span className="ga-name-wrap">

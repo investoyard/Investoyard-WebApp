@@ -8,6 +8,17 @@
 export * from './bidEngine';
 export * from './glossary';
 export * from './format';
+export * from './issueRules';
+export * from './computeIssue';
+export * from './stage';
+export * from './holidays';
+export * from './carveouts';
+export * from './minApplication';
+export * from './offerTotals';
+export * from './issueInputs';
+export * from './ipoDerive';
+export * from './demat';
+import type { DematAccountView } from './demat';
 
 export type IpoType = 'mainboard' | 'sme';
 export type IpoStatus = 'upcoming' | 'open' | 'closed' | 'listed' | 'withdrawn';
@@ -17,11 +28,17 @@ export type ApplyMethod = 'native' | 'pdf';
 export type ApplicationStatus =
   | 'draft' | 'submitted' | 'dp_verified' | 'dp_failed' | 'mandate_pending'
   | 'upi_blocked' | 'confirmed' | 'allotted' | 'not_allotted' | 'released'
-  | 'rejected' | 'failed';
+  | 'rejected' | 'failed'
+  /** withdrawn by the operator or the investor — distinct from 'released' (money back) */
+  | 'cancelled';
 
 export interface IpoListItem {
   id: string;
   symbol: string;
+  /** SEO-friendly slug used in the public URL — `/ipos/<slug>`.
+   *  Undefined on legacy rows until the backfill runs; readers fall
+   *  back to `symbol` for the URL when absent. */
+  slug?: string;
   name: string;
   type: IpoType;
   status: IpoStatus;
@@ -72,6 +89,8 @@ export interface ConsentNotice {
 /** One family member's bid inside a bulk apply. */
 export interface BulkApplicant {
   investorProfileId: string;
+  /** Which demat this applicant credits to. Omit or null = the profile default. */
+  dematAccountId?: string | null;
   lots: number;
   atCutoff?: boolean;
   bidPrice?: number;
@@ -118,13 +137,28 @@ export interface IpoGmpView {
 }
 
 export interface SubscriptionRow {
-  category: 'qib' | 'nii' | 'retail' | 'employee' | 'total';
-  /** number of applications/bids in this category (from NSE catwise) */
+  // The full ipopremium-style breakdown:
+  //   qib     — QIB (institutional)
+  //   hni     — HNI (10 L+, Big / "HNIAT")
+  //   hni2    — HNI (2-10 L, Small / "HNIBT")
+  //   nii     — combined hni + hni2, for compact readers that want one NII line
+  //   retail / employee / shareholder / total
+  category: 'qib' | 'hni' | 'hni2' | 'nii' | 'retail' | 'employee' | 'shareholder' | 'total';
+  /** number of applications/bids in this category (= nseBids + bseBids) */
   bidCount?: number;
   /** subscription by APPLICATIONS (bids ÷ max allottees) — retail allotment-odds driver */
   applicationsSubscribed?: number;
   timesSubscribed: number;
   asOf: string;
+  // Per-exchange breakdown — matches the additive IpoSubscription columns
+  // populated by the poller. Useful for the day-wise report page and for a
+  // "NSE / BSE split" view under the LiveSubscription card. BSE per-category
+  // bid counts are back-solved from NSE's shares-per-bid ratio (see the
+  // `bucketize` note in apps/api subscription.service.ts).
+  nseShares?: number;
+  bseShares?: number;
+  nseBids?: number;
+  bseBids?: number;
 }
 
 export interface ProfileView {
@@ -132,9 +166,18 @@ export interface ProfileView {
   relationship: 'self' | 'spouse' | 'child' | 'mother' | 'father' | 'parent' | 'sibling' | 'other';
   fullName: string;
   pan: string;            // masked
+  /** The profile's OWN demat — its default. Unchanged, and still what every
+   *  existing reader uses; `demats[0]` is the same account. */
   depository: Depository;
   dpId: string;
   clientId: string;
+  /**
+   * EVERY demat on this profile, default first, built server-side by
+   * `dematAccountsFor()` so no client re-derives the join (2026-10-08).
+   * Always at least one. Optional on the type only so an older client that has
+   * not been rebuilt still compiles.
+   */
+  demats?: DematAccountView[];
   hasUpi: boolean;
   hasBank: boolean;
   kycStatus: 'unverified' | 'verified' | 'failed';
@@ -166,12 +209,37 @@ export interface ApplicationView {
   allotmentOddsPct?: number;
   /** While 'submitted': applicant details still blocking the exchange bid (UPI / demat). */
   missingDetails?: string[];
+  /**
+   * The exchange's own sentence about the UPI mandate, and when it was observed.
+   *
+   * Shown BESIDE our status line, never instead of it: `status` collapses eleven
+   * exchange codes onto five of ours, and the three rejections an investor can
+   * act on differently — they declined it themselves, the UPI ID was invalid,
+   * the sponsor bank refused — all land on `rejected`. Absent until the rail
+   * reports on the bid, which is every application today.
+   */
+  upiStatusText?: string;
+  upiStatusAt?: string;
+  /**
+   * The sponsor-bank unblock request (requirement 1), decided SERVER-SIDE by
+   * `mayRequestUnblock` — the UI must not re-derive "is the bank late yet".
+   * `unblockAvailable` is set only when the request would succeed;
+   * `unblockReason` explains a no that is worth explaining (money outstanding
+   * but inside the grace period or the cooldown), and is absent when there is
+   * nothing stuck at all.
+   */
+  unblockAvailable?: boolean;
+  unblockReason?: string;
+  unblockStuckAmount?: number;
+  unblockRequestedAt?: string;
 }
 
 export type ApplicantCategory = 'individual' | 'shareholder' | 'employee';
 
 export interface CreateApplicationInput {
   investorProfileId: string;
+  /** Which demat the allotment credits to. Omit or null = the profile default. */
+  dematAccountId?: string | null;
   ipoId: string;
   category: string;
   applicantType?: ApplicantCategory;
@@ -184,3 +252,10 @@ export interface CreateApplicationInput {
   dataSharingConsent: boolean;
   consentNoticeVersion?: string;
 }
+export * from './masterMatch';
+export * from './operationalContract';
+export * from './bidRules';
+export * from './unblockRules';
+export * from './sponsorBank';
+export * from './ipoDocs';
+export * from './appWise';

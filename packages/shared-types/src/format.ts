@@ -64,6 +64,60 @@ export function titleCase(name?: string | null): string {
     .join(' ');
 }
 
+/**
+ * Title Case WITHOUT the trailing corporate suffix — for dense surfaces where
+ * width is scarce: cards, banner slides, comparison tables.
+ *
+ * Nearly every registrar name ends in "LIMITED", which costs a line of card
+ * width and tells the reader nothing they didn't assume. The full legal name
+ * stays on the IPO detail page, where identity (and SEO) matter.
+ *
+ * Only a TRAILING suffix is removed, so a company whose name merely contains
+ * the word ("Limited Liability Partners Ltd" → "Limited Liability Partners")
+ * keeps it. A name that is nothing but the suffix is returned unchanged.
+ */
+export function shortName(name?: string | null): string {
+  const full = titleCase(name);
+  if (!full) return '';
+  const cut = full.replace(/[\s,]+(?:(?:Pvt|Private)\.?\s+)?(?:Ltd|Limited)\.?$/i, '').trim();
+  return cut || full;
+}
+
+/**
+ * Public URL for an IPO. Prefer the SEO-friendly slug when present; fall
+ * back to the raw SYMBOL for legacy rows the backfill hasn't reached
+ * (both routes still 200 on the site — the static export emits both).
+ * Kept as a helper so every internal-link builder speaks the same URL.
+ */
+export function ipoUrl(ipo: { symbol?: string | null; slug?: string | null }): string {
+  const h = ipo?.slug || ipo?.symbol || '';
+  return h ? `/ipos/${h}` : '/ipos';
+}
+
+/**
+ * SEO-friendly URL slug for an IPO. Derives from the shortened company name
+ * (Limited/Pvt Ltd stripped) plus an `-ipo` suffix so Google indexes the
+ * keyword. Lowercase, hyphenated, alphanumeric-only — safe as a URL segment.
+ *
+ *   "Glasswall Technologies Limited"  → "glasswall-technologies-ipo"
+ *   "ARDEE Industries Ltd"            → "ardee-industries-ipo"
+ *   "5Paisa Capital Limited"          → "5paisa-capital-ipo"
+ *
+ * Returns an empty string when the input is empty. The `-ipo` suffix is
+ * appended UNCONDITIONALLY (fine even for FPOs / REITs — the search
+ * queries the operator wants to rank on all use "IPO").
+ */
+export function ipoSlug(name?: string | null): string {
+  const short = shortName(name);
+  if (!short) return '';
+  const base = short.toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+  return base ? `${base}-ipo` : '';
+}
+
 /* ── domain vocabulary ────────────────────────────────────────────────────── */
 
 /**
@@ -88,7 +142,17 @@ export const LABEL = {
   listingPerformance: 'Listing Performance',
   listingGain: 'Listing Gain',
   openingSoon: 'Opening Soon',
-  gmp: 'GMP',
+  /**
+   * The customer-facing short label, operator's choice (2026-09-02) when the
+   * explorer layout became the home page. Read it from here on BOTH surfaces —
+   * web and mobile must never disagree on vocabulary.
+   *
+   * `gmpLong` deliberately stays "Grey Market Premium": the friendly label is
+   * what a reader scans, but the disclaimer has to name the thing for what it
+   * is — unofficial and unregulated. The `/gmp` URLs, the SEO copy and the FAQ
+   * headings keep GMP too; that is the term people actually search for.
+   */
+  gmp: 'Exp. Premium',
   gmpLong: 'Grey Market Premium',
   issueDetails: 'Issue Details',
   applyNow: 'Apply Now',
@@ -112,11 +176,98 @@ export const CATEGORY_LABEL: Record<string, string> = {
   total: 'Total',
 };
 
+/**
+ * Demand tier 0-3, calibrated per board (SME oversubscription runs an order
+ * of magnitude hotter than Mainboard — the same × means different things).
+ * Surfaces colour off the INDEX so the thresholds live in one place.
+ */
+export function demandTier(subX: number, sme: boolean): 0 | 1 | 2 | 3 {
+  const th = sme ? [1, 10, 50] : [1, 3, 10];
+  return subX < th[0] ? 0 : subX < th[1] ? 1 : subX < th[2] ? 2 : 3;
+}
+
+/**
+ * Demand in plain words, one entry per tier.
+ *
+ * Kept SHORT on purpose. The words used to be "Steady demand" / "Strong
+ * demand" / "Exceptional demand" — the noun repeated what the × figure
+ * beside it already says, and at 18 characters the longest one was wider
+ * than the room the IPO card had for it (operator report 2026-09-23).
+ * Longest entry is now 11 characters.
+ */
+export const DEMAND_WORD = ['Building up', 'Steady', 'Strong', 'Very strong'] as const;
+
 /** Demand in plain words, calibrated per board (SME runs an order hotter). */
 export function demandWord(subX: number, sme: boolean): string {
-  const th = sme ? [1, 10, 50] : [1, 3, 10];
-  if (subX < th[0]) return 'Building up';
-  if (subX < th[1]) return 'Steady demand';
-  if (subX < th[2]) return 'Strong demand';
-  return 'Exceptional demand';
+  return DEMAND_WORD[demandTier(subX, sme)];
+}
+
+/**
+ * Exchange platform names.
+ *
+ * The DATABASE stores the platform's real name; every SURFACE shows the name
+ * investors recognise. NSE's SME platform is officially **NSE Emerge**, but
+ * "NSE SME" is what the general investor reads without pausing — so the record
+ * stays accurate and the label stays familiar (operator decision, 2026-08-31).
+ * BSE's platform is genuinely called BSE SME, so it needs no translation.
+ *
+ * Before this existed the literal 'NSE SME' was retyped at six sites while the
+ * admin form labelled the same toggle 'NSE Emerge' — the form and the site
+ * disagreed about what an issue was listed on. Write through EXCHANGES, render
+ * through exchangeLabel(), and never hand-type either string again.
+ */
+export const EXCHANGES = {
+  nse: 'NSE',
+  bse: 'BSE',
+  /** stored value for NSE's SME platform — displayed as 'NSE SME' */
+  nseSme: 'NSE Emerge',
+  bseSme: 'BSE SME',
+} as const;
+
+/** The exchange list an issue is stored with, given its board. */
+export function exchangesFor(sme: boolean, nse: boolean, bse: boolean): string[] {
+  const out: string[] = [];
+  if (nse) out.push(sme ? EXCHANGES.nseSme : EXCHANGES.nse);
+  if (bse) out.push(sme ? EXCHANGES.bseSme : EXCHANGES.bse);
+  return out;
+}
+
+/** Stored exchange value → the label shown to investors. Idempotent: a legacy
+ *  row still holding 'NSE SME' passes through unchanged. */
+export function exchangeLabel(v: string): string {
+  const s = String(v ?? '').trim();
+  return s === EXCHANGES.nseSme ? 'NSE SME' : s;
+}
+
+/** A stored exchange list, joined for display. */
+export function exchangeLabels(list?: readonly string[] | null, sep = ' · '): string {
+  return (list ?? []).map(exchangeLabel).filter(Boolean).join(sep);
+}
+
+/**
+ * "28-Sep-2026 4:16 PM" — the exact datetime format the operator chose for the
+ * subscription "Updated" stamp.
+ *
+ * Shared because the IPO card's subscription tooltip needs the identical
+ * string: it used to print `As of ${fmtDate(asOf.slice(0, 10))}`, throwing the
+ * TIME away, so a card said "28 Sep 2026" beside a page saying "4:08 PM" for
+ * the same poll, four milliseconds apart. Two surfaces, one formatter.
+ *
+ * Renders in the VIEWER's zone (`getHours`), which is what an Indian reader
+ * wants for an IST market. The instant is only correct because the timestamp
+ * columns became `timestamptz` on 2026-09-28 — before that every stamp here
+ * read 5½ hours fast.
+ */
+const DT_MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+export function fmtDateTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const mo = DT_MONS[d.getMonth()];
+  let hr = d.getHours();
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  hr = hr % 12; if (hr === 0) hr = 12;
+  return `${day}-${mo}-${d.getFullYear()} ${hr}:${min} ${ampm}`;
 }

@@ -6,23 +6,25 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
 import { useTenant } from '@/components/TenantProvider';
-import { titleCase } from '@investoyard/shared-types';
+import { titleCase, LABEL } from '@investoyard/shared-types';
 
 /**
- * Live navigation — the menu is itself an instrument ("data in the nav"):
- * each item carries a tiny real-time signal (live count, top GMP, hottest ×,
- * today's events), and IPOs opens ONE command panel — quick filters on the
- * left, the live issues with instant Apply/Print on the right — instead of a
- * dropdown link list. Signals stay muted unless something is genuinely live.
- * Phone: the same items in a bottom sheet, signals preserved.
+ * Live navigation — the menu carries a little real-time data, and IPOs opens
+ * ONE command panel (quick filters left, live issues with instant Apply/Print
+ * right) instead of a dropdown link list. Phone: the same items in a bottom
+ * sheet. Signals stay muted unless something is genuinely live.
+ *
+ * The only figures here are COUNTS — live issues, events today — because a
+ * count describes the whole set behind the link. GMP and Subscription used to
+ * carry the highest premium and the hottest × , which is one company's number
+ * wearing a site-wide label; those live on the cards, beside the issue they
+ * belong to and beside the GMP disclaimer.
  */
 
 const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 interface Signals {
   liveCount: number;
-  topGmp: number | null;
-  hotX: number | null;
   todayEvents: number;
   featured: IpoFull[];
   counts: { open: number; upcoming: number; postClose: number; sme: number };
@@ -32,8 +34,6 @@ function computeSignals(ipos: IpoFull[]): Signals {
   const today = dayIso();
   const open = ipos.filter((i) => i.status === 'open');
   const upcoming = ipos.filter((i) => i.status === 'upcoming');
-  const gmps = [...open, ...upcoming].map((i) => i.gmpPct ?? i.gmp).filter((n): n is number => n != null);
-  const xs = open.map((i) => i.subscriptionTimes).filter((n): n is number => n != null);
   const todayEvents = ipos.reduce((n, i) =>
     n + [i.openDate, i.closeDate, i.allotmentDate, i.listingDate].filter((d) => d === today).length, 0);
   const featured = [
@@ -43,8 +43,6 @@ function computeSignals(ipos: IpoFull[]): Signals {
   ].slice(0, 4);
   return {
     liveCount: open.length,
-    topGmp: gmps.length ? Math.max(...gmps) : null,
-    hotX: xs.length ? Math.max(...xs) : null,
     todayEvents,
     featured,
     counts: {
@@ -81,23 +79,29 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
 
   const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const items: { href: string; label: string; sig?: React.ReactNode }[] = [
-    {
-      href: '/gmp', label: 'GMP',
-      sig: tenant.flags.gmpEnabled && sig?.topGmp != null && sig.topGmp > 0
-        ? <span className="nv-sig gp">+{sig.topGmp}%</span> : undefined,
-    },
-    {
-      href: '/subscription', label: 'Subscription',
-      sig: sig?.hotX != null ? <span className="nv-sig hot">{sig.hotX}×</span> : undefined,
-    },
-    { href: '/allotment', label: 'Allotment' },
-    {
-      href: '/calendar', label: 'Calendar',
-      sig: sig && sig.todayEvents > 0 ? <span className="nv-sig ev">{sig.todayEvents}</span> : undefined,
-    },
     { href: '/news', label: 'News' },
     { href: '/portfolio', label: 'Portfolio' },
     { href: '/account', label: 'Account' },
+  ];
+
+  /**
+   * The four research hubs. They left the top bar and live in the IPOs panel
+   * now — pinned to the BOTTOM of its right column, so their position does not
+   * drift with however many issues are live that day.
+   *
+   * No per-issue figure rides along; a count of today's events does, because a
+   * count describes the whole set behind the link.
+   */
+  /**
+   * The two MARKET pages sit beside "All IPOs" at the foot of the live column —
+   * they answer "what is the market doing", which is what that column is about.
+   * Allotment and Calendar are navigation, so they join Browse on the left.
+   */
+  const hubs: {
+    href: string; label: string; icon: 'trending' | 'chart'; sig?: React.ReactNode;
+  }[] = [
+    { href: '/gmp', label: LABEL.gmp, icon: 'trending' },
+    { href: '/subscription', label: 'Subscription', icon: 'chart' },
   ];
 
   const quick = [
@@ -105,6 +109,9 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
     { href: `/?f=upcoming${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'Upcoming', n: sig?.counts.upcoming },
     { href: `/?f=closed${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'Closed & listed', n: sig?.counts.postClose },
     { href: `/?board=sme${q ? `&${q.slice(1)}` : ''}#ipos`, label: 'SME board', n: sig?.counts.sme },
+    // navigation rather than market data, so these belong beside the filters
+    { href: `/allotment${q}`, label: 'Allotment', n: undefined },
+    { href: `/calendar${q}`, label: 'Calendar', n: sig && sig.todayEvents > 0 ? sig.todayEvents : undefined },
   ];
 
   const ipoPanel = sig && (
@@ -127,7 +134,7 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
           const canPrint = (ipo as any).extra?.startPrint === true && (ipo.status === 'open' || ipo.status === 'upcoming');
           return (
             <div className="nv-ipo" key={ipo.id}>
-              <a className="nv-ipomain" href={`/ipos/${ipo.symbol}`}>
+              <a className="nv-ipomain" href={`/ipos/${ipo.slug ?? ipo.symbol}`}>
                 <IpoLogo logo={(ipo as any).logo} name={ipo.name} size={28} />
                 <span className="nv-iponame" title={titleCase(ipo.name)}>{titleCase(ipo.name)}</span>
                 <span className={`ic-status ${c.cls}`}>{c.pulse && <span className="pd" />}{c.label}</span>
@@ -137,7 +144,18 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             </div>
           );
         })}
-        <a className="nv-all" href={`/${q}#ipos`}>All IPOs <Icon name="arrow-right" size={13} /></a>
+        {/* Pinned to the BOTTOM of this column (margin-top:auto), so the row
+            sits in the same place whether four issues are live or none. */}
+        <div className="nv-foot">
+          <a className="nv-all" href={`/${q}#ipos`}>All IPOs <Icon name="arrow-right" size={13} /></a>
+          <div className="nv-hubs">
+            {hubs.map((hb) => (
+              <a key={hb.href} className="nv-hub" href={`${hb.href}${q}`}>
+                <Icon name={hb.icon} size={14} />{hb.label}{hb.sig}
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -176,6 +194,13 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
             <a href={`/${q}`} className="nv-sheetlink">
               IPOs {sig && sig.liveCount > 0 && <span className="nv-sig live"><span className="nv-dot" />{sig.liveCount} live</span>}
             </a>
+            {/* All four left the desktop bar but STAY here: a phone has no
+                dropdown to find them in, and a sheet can afford the rows. */}
+            {[...hubs.map((hb) => ({ href: hb.href, label: hb.label })),
+              { href: '/allotment', label: 'Allotment' },
+              { href: '/calendar', label: 'Calendar' }].map((hb) => (
+              <a key={hb.href} href={`${hb.href}${q}`} className="nv-sheetlink">{hb.label}</a>
+            ))}
             {items.map((it) => (
               <a key={it.href} href={`${it.href}${q}`} className="nv-sheetlink">{it.label}{it.sig}</a>
             ))}

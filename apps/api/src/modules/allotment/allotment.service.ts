@@ -176,6 +176,9 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     );
     let matched = 0;
     for (const app of apps) {
+      // A print whose client profile has been cleared has no PAN to match on —
+      // skip it exactly as an unreadable token is skipped below.
+      if (!app.profile) continue;
       let pan = '';
       try { pan = (await this.vault.resolve(app.profile.panTokenRef)).trim().toUpperCase(); } catch { continue; }
       if (!pan) continue;

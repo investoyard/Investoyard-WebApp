@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { tenantContext } from '../../common/tenant-context';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import {
   DOC_COLUMNS, FINANCIAL_COLUMNS, FIRST_DATA_ROW, HEADER_ROW, IPO_COLUMNS, KPI_COLUMNS,
@@ -277,7 +279,7 @@ export class IpoImportService {
   }
 
   /** Write the previewed rows into the catalog. Idempotent: the preview is consumed. */
-  async commit(id: string): Promise<{ created: number; financials: number; anchors: number; peers: number }> {
+  async commit(id: string): Promise<{ created: number; subscriptions: number; financials: number; anchors: number; peers: number }> {
     const dataFile = join(PREVIEW_DIR, `${id}.json`);
     if (!existsSync(dataFile)) throw new NotFoundException('Import preview expired — upload the workbook again.');
     const { toCreate, financials, anchors, peers } = JSON.parse(readFileSync(dataFile, 'utf8')) as {
@@ -292,7 +294,7 @@ export class IpoImportService {
     for (const p of peers) peersBySymbol.set(p.symbol, [...(peersBySymbol.get(p.symbol) ?? []), p]);
 
     const today = new Date().toISOString().slice(0, 10);
-    let created = 0;
+    let created = 0, subs = 0;
     for (const p of toCreate) {
       // status derives from the dates the sheet carries
       const status = p.listingDate && p.listingDate <= today ? 'listed'
@@ -317,7 +319,7 @@ export class IpoImportService {
       if (pr?.length) extra.peers = pr.map((x) => ({ name: x.name, pe: x.pe, eps: x.eps, ronw: x.ronw }));
 
       try {
-        await this.prisma.ipo.create({
+        const row = await this.prisma.ipo.create({
           data: {
             symbol: p.symbol,
             name: p.name,
@@ -332,7 +334,10 @@ export class IpoImportService {
             priceBandMax: p.priceBandMax ?? null,
             lotSize: p.lotSize ?? null,
             minAmount: p.minAmount ?? null,
-            issueSize: p.issueSizeCr != null ? `₹${p.issueSizeCr} Cr` : null,
+            // `issueSize` is a Decimal column holding RUPEES; the sheet gives crore.
+            // Multiply through Decimal, not floating point — 135.73 * 1e7 in JS is
+            // 1357300000.0000002, and the column would take the error verbatim.
+            issueSize: p.issueSizeCr != null ? new Prisma.Decimal(p.issueSizeCr).mul(1e7) : null,
             openDate: p.openDate ? new Date(`${p.openDate}T00:00:00Z`) : null,
             closeDate: p.closeDate ? new Date(`${p.closeDate}T00:00:00Z`) : null,
             allotmentDate: p.allotmentDate ? new Date(`${p.allotmentDate}T00:00:00Z`) : null,
@@ -348,14 +353,30 @@ export class IpoImportService {
           },
         });
         created++;
+
+        // Final subscription belongs in the IpoSubscription relation, not only in
+        // `extra.finalSub`. Every consumer — the detail page, the Subscription hub,
+        // the card's Subscribed stat — reads the relation, so a figure parked in
+        // extra alone renders nowhere. `asOf` is the close date: these are final
+        // numbers for a finished issue, not a reading taken today.
+        const fs = extra.finalSub as Record<string, number> | undefined;
+        if (fs) {
+          const asOf = p.closeDate ? new Date(`${p.closeDate}T00:00:00Z`) : new Date();
+          // bNII/sNII stay out — they are not in the rendered category vocabulary
+          // and would surface as raw "BNII"/"SNII" rows. They remain in extra.
+          const data = ['qib', 'nii', 'retail', 'employee', 'shareholder', 'total']
+            .filter((k) => typeof fs[k] === 'number' && Number.isFinite(fs[k]))
+            .map((k) => ({ ipoId: row.id, category: k, timesSubscribed: new Prisma.Decimal(fs[k]), asOf }));
+          if (data.length) { await this.prisma.ipoSubscription.createMany({ data }); subs += data.length; }
+        }
       } catch (e: any) {
-        this.log.warn(`row ${p.row} (${p.symbol}): ${String(e?.message ?? e).slice(0, 120)}`);
+        this.log.warn(`row ${p.row} (${p.symbol}): ${String(e?.message ?? e).slice(0, 300)}`);
       }
     }
 
     for (const f of [dataFile, join(PREVIEW_DIR, `${id}.meta.json`)]) { try { unlinkSync(f); } catch { /* ignore */ } }
     this.log.log(`import ${id} committed: ${created} IPOs created`);
-    return { created, financials: financials.length, anchors: anchors.length, peers: peers.length };
+    return { created, subscriptions: subs, financials: financials.length, anchors: anchors.length, peers: peers.length };
   }
 
   /** Publish / hide catalog rows on the public site. */
@@ -372,5 +393,45 @@ export class IpoImportService {
   /** Count of imported-but-unpublished rows, for the admin badge. */
   async catalogOnlyCount(): Promise<number> {
     return this.prisma.ipo.count({ where: { hidden: true } });
+  }
+
+  /**
+   * Undo an import — delete every HIDDEN row that has never been published.
+   * Deliberately narrow so a mis-click can't take out live data:
+   *  · only `hidden: true` rows (a published IPO is never touched);
+   *  · only rows this importer created (`extra.importedAt` present);
+   *  · only rows with no applications, watchlist entries or allotment records
+   *    attached — anything with real activity is reported as kept, not deleted.
+   */
+  async deleteImported(): Promise<{ deleted: number; kept: number }> {
+    const rows = await this.prisma.ipo.findMany({
+      where: { hidden: true, extra: { path: ['importedAt'], not: Prisma.DbNull } },
+      select: { id: true, symbol: true },
+    });
+    let deleted = 0;
+    let kept = 0;
+    for (const r of rows) {
+      // unscoped: activity from ANY tenant must protect the row, not just this one
+      const [apps, watch, allot] = await tenantContext.runUnscoped(() => Promise.all([
+        this.prisma.application.count({ where: { ipoId: r.id } }),
+        this.prisma.watchlistItem.count({ where: { ipoId: r.id } }),
+        this.prisma.allotmentRecord.count({ where: { ipoId: r.id } }),
+      ]));
+      if (apps > 0 || watch > 0 || allot > 0) { kept++; continue; }
+      try {
+        // children first — no cascade is declared on these relations
+        await this.prisma.ipoDocument.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoSubscription.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoGmp.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipoCategory.deleteMany({ where: { ipoId: r.id } });
+        await this.prisma.ipo.delete({ where: { id: r.id } });
+        deleted++;
+      } catch (e: any) {
+        kept++;
+        this.log.warn(`could not delete ${r.symbol}: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    }
+    this.log.log(`deleteImported: ${deleted} removed, ${kept} kept`);
+    return { deleted, kept };
   }
 }

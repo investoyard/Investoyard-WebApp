@@ -34,10 +34,16 @@ import {
   TransactionRecord,
 } from './rail-adapter.types';
 
+/**
+ * Endpoint paths on the iBBS bidding service. All routes are versioned
+ * under /v1/ (confirmed against sir's working C# 2026-09-10 for /v1/login).
+ * The order and bulk-order endpoints are set to the same prefix; if BSE
+ * ever splits them off in a future doc revision we'll adjust here.
+ */
 const PATHS = {
-  login: `/login`,
-  ipoorder: `/ipoorder`,
-  ipoorderbulk: `/ipoorderbulk`,
+  login: `/v1/login`,
+  ipoorder: `/v1/ipoorder`,
+  ipoorderbulk: `/v1/ipoorderbulk`,
 };
 
 /** action codes (doc §Bid Json): n=new, m=modify, d=cancel */
@@ -68,11 +74,15 @@ export class BseIbbsAdapter implements RailAdapter {
    * per-member AES key (cred.checksumKey, base64). Output framing = base64(iv | ciphertext | tag).
    * ⚠️ CONFIRM the nonce framing + output layout against BSE's reference sample before enabling.
    */
+  /**
+   * BSE derives the AES key from a hardcoded "IBBS" password on the live
+   * service (confirmed against sir's working C# reference 2026-09-10), so
+   * `cred.checksumKey` is OPTIONAL. When it is set, bseChecksum treats it
+   * as an override — reserved for a future per-member key. Empty → the
+   * default "IBBS" recipe.
+   */
   private checksum(payload: string, cred: MemberCredential): string {
-    if (!cred.checksumKey) {
-      throw new RailError('BSE checksum key not configured on the credential', this.exchange, 'CONFIG');
-    }
-    return bseChecksum(payload, cred.checksumKey);
+    return bseChecksum(payload, cred.checksumKey ?? '');
   }
 
   private authHeaders(session: AuthSession, cred: MemberCredential, payload: string): Record<string, string> {
@@ -87,11 +97,14 @@ export class BseIbbsAdapter implements RailAdapter {
   async login(cred: MemberCredential): Promise<AuthSession> {
     if (!cred.ibbsId) throw new RailError('BSE iBBS login requires ibbsId', this.exchange, 'VALIDATION');
     const body = { membercode: cred.memberCode, loginid: cred.loginId, password: cred.password, ibbsid: cred.ibbsId };
+    // Sir's working C# (2026-09-10) sends ONLY the Checksum header on login —
+    // no Membercode/Login headers, and no Token (of course; this is the call
+    // that mints it). The earlier Membercode/Login pair here was inferred
+    // from the "authenticated call" shape below and shouldn't apply to /v1/login.
     const res = await httpJson<any>(this.url(cred, PATHS.login), {
       method: 'POST',
       exchange: this.exchange,
-      // login carries the checksum (keyed by the pre-shared AES key) but no token yet
-      headers: { Membercode: cred.memberCode, Login: cred.loginId, Checksum: this.checksum(JSON.stringify(body), cred) },
+      headers: { Checksum: this.checksum(JSON.stringify(body), cred) },
       body,
     });
     const token = res?.token;

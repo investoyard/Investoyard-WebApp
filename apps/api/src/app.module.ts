@@ -9,6 +9,7 @@ import { ProviderConfigModule } from './common/provider-config.service';
 import { TemplateModule } from './common/template.service';
 import { MessagingModule } from './common/messaging.service';
 import { EmailModule } from './common/email.service';
+import { MessageLogModule } from './common/message-log.service';
 import { HealthModule } from './modules/health/health.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -27,11 +28,16 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { MastersModule } from './modules/masters/masters.module';
+import { BiddingModule } from './modules/bidding/bidding.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { AllotmentModule } from './modules/allotment/allotment.module';
 import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
+import { GmpEntryModule } from './modules/gmp-entry/gmp-entry.module';
+import { GmpFeedModule } from './modules/gmp-feed/gmp-feed.module';
+import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
+import { MessageLogApiModule } from './modules/message-log/message-log.module';
 
 @Module({
   imports: [
@@ -41,6 +47,7 @@ import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
     TemplateModule,
     MessagingModule,
     EmailModule,
+    MessageLogModule,
     HealthModule,
     UploadModule,
     AuthModule,
@@ -59,11 +66,16 @@ import { IpoImportModule } from './modules/ipo-import/ipo-import.module';
     WhatsappModule,
     SubscriptionModule,
     MastersModule,
+    BiddingModule,
     PartnerModule,
     BannersModule,
     PostsModule,
     AllotmentModule,
     IpoImportModule,
+    GmpEntryModule,
+    GmpFeedModule,
+    PartnerOnboardingModule,
+    MessageLogApiModule,
   ],
   providers: [
     PrismaService,

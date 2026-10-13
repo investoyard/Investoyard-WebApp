@@ -12,7 +12,11 @@ import { OperatorContext } from '@/lib/operator-context';
 type Notif = { id: string; tone: 'warn' | 'brand' | 'ok'; icon: Parameters<typeof Icon>[0]['name']; text: string; sub: string };
 
 type IconName = Parameters<typeof Icon>[0]['name'];
-type NavLeaf = { href: string; label: string; perm?: string };
+/** hidePlatform hides a leaf when the caller sits on the platform tenant —
+ *  "My …" pages that key off homeTenant have nothing to show there
+ *  (My API Keys, for example: the platform tenant owns no partner keys —
+ *  superadmin manages them per-partner from Tenants → view). */
+type NavLeaf = { href: string; label: string; perm?: string; hidePlatform?: boolean };
 type NavNode = { key: string; label: string; icon: IconName; perm?: string; href?: string; children?: NavLeaf[] };
 
 // Menu taxonomy — matches the operator's IPO-console design. Real pages where we have
@@ -22,37 +26,74 @@ const NAV: NavNode[] = [
   { key: 'ipo', label: 'IPO Management', icon: 'box', perm: 'ipos.view', children: [
     { href: '/admin/catalog', label: 'IPO List' },
     { href: '/admin/catalog/new', label: 'Add New IPO', perm: 'ipos.manage' },
-    { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.manage' },
-    { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.manage' },
-    { href: '/admin/masters/ipo-category', label: 'IPO Category' },
+    { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.import' },
+    { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.operations' },
+    { href: '/admin/catalog/gmp-log', label: 'GMP Log & Contributors', perm: 'gmp.log.view' },
+    { href: '/admin/catalog/gmp-feed', label: 'GMP Feed', perm: 'gmp.feed.view' },
+    { href: '/admin/masters/ipo-category', label: 'IPO Category', perm: 'masters.ipo-category.manage' },
   ] },
-  { key: 'applications', label: 'Applications', icon: 'list', href: '/admin/applications', perm: 'bids.view' },
-  { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', perm: 'rails.manage', children: [
-    { href: '/admin/rails-live', label: 'Exchange Rails' },
-    { href: '/admin/bidding/queue', label: 'Bid Queue' },
-    { href: '/admin/bidding/failed', label: 'Failed / Retry' },
+  { key: 'applications', label: 'Applications', icon: 'list', perm: 'bids.view', children: [
+    { href: '/admin/applications', label: 'Applications', perm: 'bids.view' },
+    /* Print Forms Report — consumer prints from web / mobile. Partner-API
+       prints stay on their own report under Partner API → Print Report. */
+    { href: '/admin/prints', label: 'Print Forms Report', perm: 'bids.view' },
+  ] },
+  { key: 'bidding', label: 'Bidding & Exchange', icon: 'exchange', children: [
+    { href: '/admin/rails-live', label: 'Exchange Rails', perm: 'rails.manage' },
+    { href: '/admin/bidding/report', label: 'Bidding Report', perm: 'bidding.report.view' },
+    { href: '/admin/bidding/summary', label: 'Bidding Summary', perm: 'bidding.summary.view' },
   ] },
   { key: 'clients', label: 'Clients', icon: 'users', href: '/admin/clients', perm: 'clients.view' },
-  { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', href: '/admin/tenants', perm: 'tenants.manage' },
-  { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
-  { key: 'banners', label: 'Banners', icon: 'sparkle', href: '/admin/banners', perm: 'ipos.view' },
-  { key: 'news', label: 'News & Updates', icon: 'doc', href: '/admin/news', perm: 'ipos.view' },
-  { key: 'allotment', label: 'Allotment', icon: 'receipt', children: [
-    { href: '/admin/allotment/import', label: 'Import Allotment' },
-    { href: '/admin/allotment/list', label: 'Allotment List' },
+  { key: 'partners', label: 'Partners / Branches', icon: 'sitemap', children: [
+    { href: '/admin/tenants', label: 'Partners & Branches', perm: 'tenants.manage' },
+    { href: '/admin/tenants/applications', label: 'Applications', perm: 'tenants.applications.review' },
   ] },
+  // "My Organisation" used to live here as a sidebar entry. Moved into the
+  // top-right user dropdown (2026-09-08, operator decision) — it belongs
+  // beside Dark mode / Sign out as "the current signed-in user's context",
+  // not among the operational menus. See the drop-down block below.
+  { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
+  // Banners and News are OPERATOR-GLOBAL site content — every reader of
+  // the front site sees the same items. Gate on their own perms rather
+  // than piggy-backing on ipos.view, which used to let any operator with
+  // catalog read access modify the homepage.
+  { key: 'banners', label: 'Banners', icon: 'sparkle', href: '/admin/banners', perm: 'banners.manage' },
+  { key: 'news', label: 'News & Updates', icon: 'doc', href: '/admin/news', perm: 'news.manage' },
+  // Allotment carries raw PANs (per CLAUDE.md's operator decision) — a
+  // partner-tier user should not see the imports or lists at all.
+  { key: 'allotment', label: 'Allotment', icon: 'receipt', perm: 'allotment.view', children: [
+    { href: '/admin/allotment/import', label: 'Import Allotment', perm: 'allotment.manage' },
+    { href: '/admin/allotment/list', label: 'Allotment List', perm: 'allotment.view' },
+  ] },
+  // Partner API: Docs is a reference every operator (including partners
+  // themselves) may want; Keys / Calls / Prints are gated so an admin
+  // sees them and a plain viewer doesn't. "My API Keys" opens on the
+  // caller's own tenant so a partner admin has one direct link to manage
+  // their credentials without going through Tenants → … — but the
+  // platform tenant owns no partner keys, so superadmin never sees it
+  // (they manage keys per-partner from Tenants → view instead).
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
-    { href: '/admin/partner-api/calls', label: 'API Calls' },
-    { href: '/admin/partner-api/prints', label: 'Print Report' },
+    { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.keys.manage', hidePlatform: true },
+    { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.calls.view' },
+    { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.prints.view' },
   ] },
+  // Masters are platform reference tables (registrars, lead managers,
+  // exchanges …) shared across all tenants. Gated so only platform-tier
+  // admins can edit them.
   { key: 'masters', label: 'Masters', icon: 'layers', children: [
-    { href: '/admin/masters/registrars', label: 'Registrars' },
-    { href: '/admin/masters/lead-managers', label: 'Lead Managers' },
-    { href: '/admin/masters/relationships', label: 'Relationships' },
-    { href: '/admin/masters/upi-handles', label: 'UPI Handles' },
-    { href: '/admin/masters/anchors', label: 'Anchor Investors' },
-    { href: '/admin/masters/exchanges', label: 'Exchanges' },
+    { href: '/admin/masters/registrars', label: 'Registrars', perm: 'masters.registrars.manage' },
+    { href: '/admin/masters/sponsor-banks', label: 'Sponsor Banks', perm: 'masters.sponsor-banks.manage' },
+    { href: '/admin/masters/lead-managers', label: 'Lead Managers', perm: 'masters.lead-managers.manage' },
+    { href: '/admin/masters/relationships', label: 'Relationships', perm: 'masters.relationships.manage' },
+    { href: '/admin/masters/upi-handles', label: 'UPI Handles', perm: 'masters.upi-handles.manage' },
+    { href: '/admin/masters/anchors', label: 'Anchor Investors', perm: 'masters.anchors.manage' },
+    { href: '/admin/masters/sectors', label: 'Sectors', perm: 'masters.sectors.manage' },
+    { href: '/admin/masters/industries', label: 'Industries', perm: 'masters.industries.manage' },
+    /* Exchanges master was a scaffold page with no live data behind it
+       (operator decision 2026-09-10 — the real exchange config lives on
+       Exchange Rails). Dropped from the sidebar; the perm key stays in
+       the catalog in case a future exchange-config surface reuses it. */
   ] },
   { key: 'users', label: 'User Management', icon: 'shield', perm: 'users.view', children: [
     { href: '/admin/team', label: 'Users' },
@@ -61,8 +102,9 @@ const NAV: NavNode[] = [
   ] },
   { key: 'settings', label: 'System Settings', icon: 'settings', children: [
     { href: '/admin/integrations', label: 'Provider Keys', perm: 'providers.manage' },
-    { href: '/admin/templates', label: 'Message Templates', perm: 'providers.manage' },
-    { href: '/admin/chatbot', label: 'Chatbot Flow', perm: 'providers.manage' },
+    { href: '/admin/templates', label: 'Message Templates', perm: 'templates.manage' },
+    { href: '/admin/templates/log', label: 'Message Log', perm: 'messages.view' },
+    { href: '/admin/chatbot', label: 'Chatbot Flow', perm: 'chatbot.manage' },
     { href: '/admin/system', label: 'System Status', perm: 'dashboard.view' },
   ] },
 ];
@@ -173,8 +215,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (me === undefined) return <Loader full />;
   if (!me) return <Loader full label="Redirecting to sign in…" />;
 
+  const onPlatform = me.homeTenant?.type === 'platform';
   const nav = NAV
-    .map((n) => ({ ...n, children: n.children?.filter((c) => !c.perm || operatorCan(me, c.perm)) }))
+    .map((n) => ({
+      ...n,
+      children: n.children?.filter((c) => (!c.perm || operatorCan(me, c.perm)) && !(c.hidePlatform && onPlatform)),
+    }))
     .filter((n) => (!n.perm || operatorCan(me, n.perm)) && (n.href || (n.children && n.children.length)));
   const roleLabel = me.isSuperAdmin ? 'Super Admin' : (me.memberships[0]?.role ?? 'Operator');
   const initials = (me.name ?? 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -254,10 +300,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ))}
           </nav>
           <div style={{ flex: 1 }} />
-          <div className="conn-pills">
-            <span className="conn"><span className="conn-dot" /> NSE <b>Connected</b></span>
-            <span className="conn"><span className="conn-dot" /> BSE <b>Connected</b></span>
-          </div>
+          {/* NSE / BSE "Connected" pills removed (operator ask 2026-09-11) —
+              they were a scaffold placeholder, not a real live-check. Rail
+              health is diagnosed through Exchange Rails → Test connection. */}
           <button className="theme-toggle" aria-label="Help & docs" title="Help & docs"><Icon name="help" size={17} /></button>
           <div className="profile-menu" onClick={(e) => e.stopPropagation()}>
             <button className="theme-toggle" onClick={() => { setNotifOpen((o) => !o); setMenuOpen(false); }} aria-label="Notifications" style={{ position: 'relative' }}>
@@ -299,6 +344,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <div className="muted" style={{ fontSize: 12 }}>{me.homeTenant.name}</div>
                   </div>
                 </div>
+                {/* "My Organisation" opens the current tenant's empanelment
+                    profile. Hidden on the platform tenant — SuperAdmin manages
+                    every partner's profile per-partner under Tenants → view,
+                    and the platform tenant carries no empanelment record. */}
+                {!onPlatform && (
+                  <button className="pm-item" onClick={() => { router.push('/admin/my-organisation'); setMenuOpen(false); }}>
+                    <Icon name="user" size={16} /> My Organisation
+                  </button>
+                )}
                 <button className="pm-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
                   <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} /> {theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </button>

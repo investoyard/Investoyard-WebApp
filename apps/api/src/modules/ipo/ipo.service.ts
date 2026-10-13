@@ -4,8 +4,22 @@ import { RailService } from '../rail/rail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { CreateIpoDto, UpdateIpoDto } from './ipo.dto';
+import { EXCHANGES, ipoSlug } from '@investoyard/shared-types';
 
 const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice.';
+
+/**
+ * `extra` keys written by the SERVER, never by the admin form.
+ *
+ * The form PATCHes a whole `extra` object assembled from its own fields, so
+ * anything not on the form is dropped on save unless it is carried across.
+ * These four are append-only history the operator cannot re-enter:
+ * the subscription poller's day-wise + hourly trails, the GMP day log, and the
+ * GMP feed's source id.
+ *
+ * Add to this list whenever a background job starts writing a new `extra` key.
+ */
+const SERVER_OWNED_EXTRA = ['subLog', 'subLogHour', 'gmpLog', 'gmpSourceId'] as const;
 
 const num = (d: any): number | undefined => (d == null ? undefined : Number(d));
 const day = (d: Date | null | undefined): string | undefined => (d ? d.toISOString().slice(0, 10) : undefined);
@@ -24,7 +38,7 @@ function toDetail(ipo: any) {
   const gmp = gmpRow ? num(gmpRow.value) : undefined;
   const sme = ipo.smeFlags ?? undefined;
   return {
-    id: ipo.id, symbol: ipo.symbol, name: ipo.name, type: ipo.type, status: ipo.status,
+    id: ipo.id, symbol: ipo.symbol, slug: ipo.slug ?? undefined, name: ipo.name, type: ipo.type, status: ipo.status,
     openDate: day(ipo.openDate), closeDate: day(ipo.closeDate),
     allotmentDate: day(ipo.allotmentDate), listingDate: day(ipo.listingDate),
     priceBandMin: num(ipo.priceBandMin), priceBandMax: num(ipo.priceBandMax),
@@ -36,19 +50,40 @@ function toDetail(ipo: any) {
         ? ipo.lotSize * (ipo.type === 'sme' ? 2 : 1) * upper
         : num(ipo.minAmount),
     issueSize: crStr(ipo.issueSize),
-    issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e7) : undefined, // raw ₹cr for admin edit
+    // Raw ₹cr for admin edit. NOT rounded: an issue of ₹150.7098 Cr loaded as
+    // `151` and the next save wrote 151 back to the column, quietly undoing the
+    // operator's correction. Every reservation bucket is `pct × issueSize`, so
+    // a crore of rounding here reaches all four counts.
+    // 4 dp, which is how issue sizes are quoted (₹150.7098 Cr) and enough to
+    // keep a plain `/ 1e7` from handing the input box 805.0000000000001.
+    issueSizeCr: ipo.issueSize != null ? Math.round(Number(ipo.issueSize) / 1e3) / 1e4 : undefined,
     registrar: ipo.registrar ?? undefined,
+    // The exchanges an issue ACTUALLY lists on. This was never sent, so the web
+    // fell back to inventing both SME platforms for every SME issue — which is
+    // how a single-platform issue came to display as "NSE SME · BSE SME".
+    exchanges: Array.isArray(ipo.exchanges) && ipo.exchanges.length
+      ? ipo.exchanges
+      : (Array.isArray(ipo.extra?.exchanges) && ipo.extra.exchanges.length ? ipo.extra.exchanges : undefined),
     isin: ipo.isin ?? undefined,
     logoUrl: ipo.logoUrl ?? undefined,
     objectsOfIssue: ipo.objectsOfIssue ?? undefined,
     listingGainPct: num(ipo.listingGainPct),
     subscriptionTimes: total ? Number(total.timesSubscribed) : undefined,
     gmp, gmpPct: gmp != null && upper ? Math.round((gmp / upper) * 1000) / 10 : undefined,
-    subscription: subs.map((s) => ({
+    subscription: subs.map((s: any) => ({
       category: s.category,
       timesSubscribed: Number(s.timesSubscribed),
       bidCount: s.bidCount ?? undefined,
       applicationsSubscribed: s.applicationsSubscribed != null ? Number(s.applicationsSubscribed) : undefined,
+      // Per-exchange breakdown from the poller (populated by
+      // `subscription.service.ts` after the step-2 migration). `s.<field>` is
+      // typed `any` here because the Prisma client is regenerated at the
+      // deploy handshake, not on every schema push — the runtime values still
+      // land under the correct column, and typecheck stays happy.
+      nseShares: s.nseShares != null ? Number(s.nseShares) : undefined,
+      bseShares: s.bseShares != null ? Number(s.bseShares) : undefined,
+      nseBids: s.nseBids ?? undefined,
+      bseBids: s.bseBids ?? undefined,
       asOf: s.asOf.toISOString(),
     })),
     subscriptionAsOf: ipo.subscriptionAsOf ? ipo.subscriptionAsOf.toISOString() : undefined,
@@ -71,21 +106,123 @@ export class IpoService {
    * front-site page load and the mobile app. Admin surfaces pass includeCatalogOnly.
    * `limit` is capped so this endpoint can never return an unbounded payload.
    */
-  async list(f: { type?: string; status?: string; q?: string; limit?: number; offset?: number; includeCatalogOnly?: boolean }) {
+  async list(f: {
+    type?: string; status?: string; q?: string; limit?: number; offset?: number;
+    includeCatalogOnly?: boolean; from?: string; to?: string;
+  }) {
     const take = Math.min(Math.max(1, f.limit ?? 500), 2000);
     const rows = await this.prisma.ipo.findMany({
       where: {
         type: f.type as any,
         status: f.status as any,
         name: f.q ? { contains: f.q, mode: 'insensitive' } : undefined,
+        // A window on the CLOSE date. The catalog is about to go from twelve
+        // rows to a couple of thousand, and every caller that only wants a
+        // slice should be able to say so in the query rather than downloading
+        // the lot and filtering in the browser.
+        ...(f.from || f.to
+          ? { closeDate: { ...(f.from ? { gte: new Date(`${f.from}T00:00:00Z`) } : {}),
+                           ...(f.to ? { lte: new Date(`${f.to}T23:59:59Z`) } : {}) } }
+          : {}),
         ...(f.includeCatalogOnly ? {} : { hidden: false }),
       },
-      include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
-      orderBy: { closeDate: 'asc' },
+      // documents included so admin catalog's completeness check sees the
+      // full list (operator report 2026-09-22: DRHP saved to IpoDocument
+      // table but the ?all=1 list omitted documents from the response,
+      // stranding the completeness bar at "missing" for every row).
+      include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 }, documents: true },
+      // NEWEST first, and it has to be. `take` defaults to 500, so the sort
+      // decides which 500 of the catalog a caller gets — not merely their order.
+      // Ascending was harmless at twelve rows; at 1,207 it returned Jan-2016 to
+      // Mar-2023 and cut off every live and upcoming issue, so the site listed
+      // nothing current. Nulls last keeps undated rows from taking the top slots.
+      orderBy: [{ closeDate: { sort: 'desc', nulls: 'last' } }, { openDate: { sort: 'desc', nulls: 'last' } }],
       take,
       skip: f.offset && f.offset > 0 ? f.offset : undefined,
     });
     return rows.map(toDetail);
+  }
+
+  /**
+   * The archive: finished issues, filtered and PAGED on the server.
+   *
+   * The page used to pull the whole catalog and filter it in the browser,
+   * which was fine at twelve rows and is not at two thousand. It needs three
+   * things the plain list cannot give it — a total for "showing 50 of N", the
+   * set of years that actually have issues for the dropdown, and a page of
+   * rows — so it gets its own endpoint rather than three round trips.
+   *
+   * Issues are filed under listing date, falling back to close then open: an
+   * investor looking for "March 2026" means when it listed.
+   */
+  async archive(f: { year?: string; month?: string; type?: string; q?: string; page?: number; perPage?: number }) {
+    /*
+     * "Finished" is a question about DATES, not about the status column.
+     *
+     * Ipo.status is dead in the database — every row reads 'upcoming' and the
+     * real status is derived at read time by effectiveStatus(). Filtering on
+     * the stored value returns nothing at all, which is exactly what the first
+     * version of this did. Only 'withdrawn' is ever written meaningfully.
+     */
+    const now = new Date();
+    const finished: any = {
+      OR: [
+        { status: 'withdrawn' as any },
+        { listingDate: { lt: now } },
+        { AND: [{ listingDate: null }, { closeDate: { lt: now } }] },
+      ],
+    };
+
+    // Every clause goes in one AND list. Prisma cannot express
+    // COALESCE(listing, close) in a where, so each date test carries its own
+    // fallback, and stacking them as separate ORs at the top level would let
+    // them satisfy each other instead of all having to hold.
+    const clauses: any[] = [finished];
+    if (f.type && f.type !== 'all') clauses.push({ type: f.type as any });
+    if (f.q) {
+      clauses.push({ OR: [
+        { name: { contains: f.q, mode: 'insensitive' } },
+        { symbol: { contains: f.q, mode: 'insensitive' } },
+      ] });
+    }
+    if (f.year && f.year !== 'all') {
+      const mm = f.month && f.month !== 'all' ? f.month.padStart(2, '0') : null;
+      const start = new Date(`${f.year}-${mm ?? '01'}-01T00:00:00Z`);
+      const end = mm
+        ? new Date(Date.UTC(Number(f.year), Number(mm), 0, 23, 59, 59))
+        : new Date(`${f.year}-12-31T23:59:59Z`);
+      clauses.push({ OR: [
+        { listingDate: { gte: start, lte: end } },
+        { AND: [{ listingDate: null }, { closeDate: { gte: start, lte: end } }] },
+      ] });
+    }
+    const where: any = { hidden: false, AND: clauses };
+
+    const perPage = Math.min(Math.max(1, f.perPage ?? 50), 200);
+    const page = Math.max(1, f.page ?? 1);
+
+    const [total, rows, yearRows] = await Promise.all([
+      this.prisma.ipo.count({ where }),
+      this.prisma.ipo.findMany({
+        where,
+        include: { subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        orderBy: [{ listingDate: 'desc' }, { closeDate: 'desc' }],
+        take: perPage,
+        skip: (page - 1) * perPage,
+      }),
+      // the dropdown must only offer years that have something in them, and on
+      // the SAME definition of finished the rows use
+      this.prisma.ipo.findMany({
+        where: { hidden: false, AND: [finished] },
+        select: { listingDate: true, closeDate: true, openDate: true },
+      }),
+    ]);
+
+    const years = [...new Set(yearRows
+      .map((r) => (r.listingDate ?? r.closeDate ?? r.openDate)?.toISOString().slice(0, 4))
+      .filter(Boolean) as string[])].sort((a, b) => b.localeCompare(a));
+
+    return { rows: rows.map(toDetail), total, page, perPage, years };
   }
 
   async get(id: string) {
@@ -97,11 +234,28 @@ export class IpoService {
     return toDetail(ipo);
   }
 
-  async getBySymbol(symbol: string) {
-    const ipo = await this.prisma.ipo.findUnique({
-      where: { symbol: symbol.toUpperCase() },
-      include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
-    });
+  /**
+   * Detail lookup by URL handle — accepts either the old SEO SYMBOL
+   * (`GLASSWALL`) or the new SEO slug (`glasswall-technologies-ipo`).
+   * The `[symbol]` folder name in the web app is a legacy label — the
+   * value it carries is now a slug for new external links. Symbol reads
+   * are kept as a fallback so bookmarks + external SEO backlinks don't 404.
+   */
+  async getBySymbol(handle: string) {
+    const h = handle.trim();
+    // Slug shape is always lowercase with hyphens; symbol shape is uppercase
+    // ALL-CAPS. Try the shape that fits first for a single query most of
+    // the time.
+    const looksLikeSlug = /-/.test(h) || /[a-z]/.test(h);
+    const ipo = looksLikeSlug
+      ? await this.prisma.ipo.findFirst({
+          where: { OR: [{ slug: h }, { symbol: h.toUpperCase() }] },
+          include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        })
+      : await this.prisma.ipo.findFirst({
+          where: { OR: [{ symbol: h.toUpperCase() }, { slug: h.toLowerCase() }] },
+          include: { categories: true, documents: true, subscriptions: { orderBy: { asOf: 'desc' } }, gmps: { orderBy: { asOf: 'desc' }, take: 1 } },
+        });
     if (!ipo) throw new NotFoundException();
     return toDetail(ipo);
   }
@@ -135,9 +289,31 @@ export class IpoService {
       allotmentDate: dto.allotmentDate ?? day(existing.allotmentDate),
       listingDate: dto.listingDate ?? day(existing.listingDate),
     });
+    // Auto-false the live-subscription flag on any closed record — polling
+    // stops once the exchange window closes, so a true here would just be
+    // stale UI. Client already disables the toggle in that state; this is
+    // the belt to the client's braces (operator ask 2026-09-09).
+    if (this.isClosedRecord(existing, dto) && (dto as UpdateIpoDto).autoPollSubscription !== false) {
+      (dto as UpdateIpoDto).autoPollSubscription = false;
+    }
     try {
       // Symbol is editable (unique in DB); other writes unchanged.
-      await this.prisma.ipo.update({ where: { id }, data: this.mapWrite(dto, dto.symbol, dto.type) });
+      const data = this.mapWrite(dto, dto.symbol, dto.type);
+      // `extra` is a WHOLESALE replace — the admin form sends an object built
+      // from its own field state — so every operator save used to delete the
+      // keys the SERVER owns and the form has never heard of. Measured
+      // 2026-09-24: VARMORA ran 22-24 Sep and its `subLog` held ONE day, the
+      // one the poller had rewritten since the save; ROBOKIDZ ran 19-23 Sep
+      // and held two. The day-wise table then labelled the only row it had
+      // "Day 1 (Last)", which is what the operator reported. `gmpLog` goes the
+      // same way, and neither is recoverable.
+      if (data.extra && typeof data.extra === 'object') {
+        const prev: any = (existing.extra as any) ?? {};
+        const kept: any = {};
+        for (const k of SERVER_OWNED_EXTRA) if (prev[k] !== undefined) kept[k] = prev[k];
+        data.extra = { ...data.extra, ...kept };
+      }
+      await this.prisma.ipo.update({ where: { id }, data });
     } catch (e: any) {
       if (e?.code === 'P2002') throw new ConflictException(`An IPO with symbol '${dto.symbol}' already exists.`);
       throw e;
@@ -175,11 +351,18 @@ export class IpoService {
       // Route bids under this member: activate its Online Apply series row.
       extra.onlineSeries = extra.onlineSeries.map((s: any) => ({ ...s, active: s.member === dto.bidMember }));
     }
+    // Force autoPollSubscription off for closed issues here too — this is
+    // the OTHER write path (IPO Operations quick controls) and needs the
+    // same guard as `update()` above.
+    const closedNow = this.isClosedRecord(existing, {} as UpdateIpoDto);
+    const nextAutoPoll = closedNow ? false
+      : dto.autoPollSubscription !== undefined ? dto.autoPollSubscription
+      : undefined;
     const updated = await this.prisma.ipo.update({
       where: { id },
       data: {
         extra,
-        ...(dto.autoPollSubscription !== undefined ? { autoPollSubscription: dto.autoPollSubscription } : {}),
+        ...(nextAutoPoll !== undefined ? { autoPollSubscription: nextAutoPoll } : {}),
       },
     });
     return {
@@ -266,19 +449,46 @@ export class IpoService {
     }
   }
 
+  /** True when the merged (existing + DTO) record is past its close window —
+   *  status is closed / listed / withdrawn, or the close date has passed.
+   *  Used to strip a stale `autoPollSubscription: true` on save so the
+   *  poller never sees a "live" flag on an issue that has already closed. */
+  private isClosedRecord(existing: any, dto: UpdateIpoDto | CreateIpoDto): boolean {
+    const status = (dto as any).status ?? existing.status;
+    if (status === 'closed' || status === 'listed' || status === 'withdrawn') return true;
+    const closeIso = (dto as any).closeDate ?? (existing.closeDate ? day(existing.closeDate) : undefined);
+    if (closeIso && /^\d{4}-\d{2}-\d{2}$/.test(closeIso)) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const close = new Date(`${closeIso}T00:00:00`);
+      if (close.getTime() < today.getTime()) return true;
+    }
+    return false;
+  }
+
   /** DTO → Prisma write data (dates, ₹cr → rupees, exchanges from type). */
   private mapWrite(dto: CreateIpoDto | UpdateIpoDto, symbol?: string, type?: string): any {
     const d = (s?: string) => (s ? new Date(s + 'T00:00:00Z') : undefined);
+    // Auto-generate a slug from the name for the SEO-friendly URL. Only when
+    // a name is present in the write (create always, update when the operator
+    // changed the name). The slug column is @unique; collisions get a
+    // numeric suffix in a follow-up commit — for now they P2002 and the
+    // operator picks a slightly different name, same recovery path as the
+    // symbol column has always had.
+    const slugFromName = dto.name ? ipoSlug(dto.name) : undefined;
     const data: any = {
       ...(symbol ? { symbol } : {}),
+      ...(slugFromName ? { slug: slugFromName } : {}),
       name: dto.name,
       type: dto.type,
+      instrument: (dto as any).instrument,
       status: dto.status,
       priceBandMin: dto.priceBandMin,
       priceBandMax: dto.priceBandMax,
       lotSize: dto.lotSize,
       minAmount: dto.minAmount,
-      issueSize: dto.issueSizeCr != null ? dto.issueSizeCr * 1e7 : undefined,
+      // Rounded because the column is RUPEES — a fractional paisa here would
+      // be a new way for the column and `extra.issueSizeCr` to disagree.
+      issueSize: dto.issueSizeCr != null ? Math.round(dto.issueSizeCr * 1e7) : undefined,
       registrar: dto.registrar,
       isin: dto.isin,
       objectsOfIssue: dto.objectsOfIssue,
@@ -291,7 +501,15 @@ export class IpoService {
       listingGainPct: dto.listingGainPct,
       reservations: dto.reservations,
       autoPollSubscription: (dto as UpdateIpoDto).autoPollSubscription,
-      ...(type ? { exchanges: type === 'sme' ? ['NSE SME', 'BSE SME'] : ['NSE', 'BSE'] } : {}),
+      // Staff choose the exchanges on the form; the board-based guess below is
+      // only a fallback for callers that do not send them (the Excel importer).
+      // It used to run unconditionally, so an SME issue on one platform was
+      // recorded as listing on both.
+      ...(Array.isArray((dto as any).exchanges) && (dto as any).exchanges.length
+        ? { exchanges: (dto as any).exchanges }
+        // A conservative guess: SME issues usually list on ONE platform, so
+        // assuming both is the very fault this fallback used to introduce.
+        : type ? { exchanges: type === 'sme' ? [EXCHANGES.nseSme] : [EXCHANGES.nse, EXCHANGES.bse] } : {}),
     };
     // Drop undefined so PATCH only touches provided fields.
     Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);

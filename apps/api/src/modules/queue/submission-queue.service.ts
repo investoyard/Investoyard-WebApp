@@ -101,6 +101,13 @@ export class SubmissionQueueService implements OnModuleInit, OnModuleDestroy {
       include: { profile: true, ipo: true },
     });
     const qty = app.lots * (app.ipo.lotSize ?? 0);
+    /* A RAIL bid needs the applicant's own identity — PAN, depository, DP ID —
+       and those live on the profile, not on a print's payload. If the profile
+       is gone this cannot be submitted, and failing loudly here is right: the
+       alternative is sending a bid to the exchange with missing fields. */
+    if (!app.profile) {
+      throw new Error(`Application ${app.id} has no investor profile — cannot build a bid submission.`);
+    }
     const bid: BidSubmission = {
       clientRef: app.id,
       activity: 'new',

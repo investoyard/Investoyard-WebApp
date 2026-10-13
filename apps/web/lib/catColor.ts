@@ -10,8 +10,33 @@ export function catColor(cat: string): string {
   if (c.includes('retail') || c.includes('rii')) return 'var(--c-retail)';
   if (c.includes('b-hni') || c.includes('b_hni') || c.includes('bhni') || c.includes('hni 2') || c.includes('hni2')) return 'var(--c-hni2)';
   if (c.includes('hni') || c.includes('nii')) return 'var(--c-hni1)';
-  if (c.includes('emp')) return 'var(--brand-400)';
+  /* MARKET MAKER before the employee test, and in its own colour: an SME
+     market maker is a liquidity obligation, not an investor category, and VANS
+     carries BOTH quotas — they would have been the same swatch in one bar.
+     Slate reads as "not an investor" and collides with none of the five. */
+  if (c.includes('market')) return 'var(--c-mm)';
+  /* `--c-emp` and `--c-shareholder` have existed since the subscription rebuild
+     and this function ignored both, handing every reserved quota the generic
+     brand tint. The tokens are the palette; use them. */
+  if (c.includes('emp')) return 'var(--c-emp)';
+  if (c.includes('shareholder') || c.includes('policyholder')) return 'var(--c-shareholder)';
   return 'var(--brand-400)';
+}
+
+/**
+ * A reservation percentage as the reader should see it — at most 2 dp, with no
+ * trailing zeros, so 50 stays "50" and 35.0053 reads "35.01".
+ *
+ * The stored percentage is not always a round number, and it cannot be. Where
+ * the RHP states COUNTS rather than percentages, the percentage has to be
+ * precise enough to reproduce them and to satisfy B01, which tolerates only
+ * 0.001 on the sum — SPECTRAA's four categories are 49.9473 / 10.0316 / 5.0158
+ * / 35.0053, and the published 2-dp figures add to 100.01 and would be
+ * REJECTED. So precision belongs in the data and rounding belongs here; the
+ * count beside it is the exact figure either way.
+ */
+export function pctStr(pct: number): string {
+  return String(Math.round(pct * 100) / 100);
 }
 
 /** Label shown inside a stacked allocation-bar segment. Shows "Cat 50%" when the
@@ -20,8 +45,8 @@ export function catColor(cat: string): string {
 export function segLabel(cat: string, pct: number, compact: boolean): string {
   const nameThresh = compact ? 22 : 12;
   const pctThresh = compact ? 10 : 5;
-  if (pct >= nameThresh) return `${cat} ${pct}%`;
-  if (pct >= pctThresh) return `${pct}%`;
+  if (pct >= nameThresh) return `${cat} ${pctStr(pct)}%`;
+  if (pct >= pctThresh) return `${pctStr(pct)}%`;
   return '';
 }
 /** Readable text colour on a segment — dark on the light gold band, white elsewhere. */

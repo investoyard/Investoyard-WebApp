@@ -11,6 +11,36 @@ import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import { IpoImportService } from './ipo-import.service';
+import { CatalogUpdateService } from './catalog-update.service';
+import { parsePreanchor } from './nse-parsers/preanchor';
+import { parseAnchor } from './nse-parsers/anchor';
+import { parseIpoNote } from './nse-parsers/ipo-note';
+import { IpoNoteRewriteService } from './ipo-note-rewrite.service';
+import { CardVisionService, isCardMime } from './card-vision.service';
+import { AnchorVisionService } from './anchor-vision.service';
+import { resolveMaster } from '@investoyard/shared-types';
+
+/**
+ * Match one extracted intermediary name against a master list. Returns a
+ * shape the review modal can render — either "matched to X" or "unmatched".
+ *
+ * `resolveMaster` handles the aliases that make raw string equality
+ * insufficient: Link Intime → MUFG Intime, Karvy → KFin, so on. Without this,
+ * an extraction of "KFin Technologies Limited" that doesn't happen to match
+ * the master's exact row (say the master reads "KFin Technologies Ltd") would
+ * quietly land as free-text and break reports later.
+ */
+export interface ResolvedName {
+  /** exactly what the parser saw */
+  name: string;
+  /** the canonical master row this matched to, if any */
+  master?: { id: string; name: string };
+}
+function match(name: string | undefined, masters: { id: string; name: string }[]): ResolvedName | undefined {
+  if (!name) return undefined;
+  const m = resolveMaster(name, masters);
+  return m ? { name, master: { id: m.id, name: m.name } } : { name };
+}
 
 const TMP_DIR = join(UPLOAD_DIR, 'ipo-import-tmp');
 if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
@@ -20,11 +50,17 @@ const ALLOWED = new Set(['.xlsx', '.xlsm', '.xls']);
 @Controller('admin/ipo-import')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class IpoImportController {
-  constructor(private readonly svc: IpoImportService) {}
+  constructor(
+    private readonly svc: IpoImportService,
+    private readonly upd: CatalogUpdateService,
+    private readonly rewrite: IpoNoteRewriteService,
+    private readonly anchorVision: AnchorVisionService,
+    private readonly cardVision: CardVisionService,
+  ) {}
 
   /** POST — multipart 'file'. Parses + validates ONLY; returns the preview. */
   @Post()
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: TMP_DIR,
@@ -46,16 +82,176 @@ export class IpoImportController {
   }
 
   @Get('preview/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   preview(@Param('id') id: string) {
     return this.svc.getPreview(id);
   }
 
   /** Writes the previewed rows into the catalog (marked catalogOnly). */
   @Post('commit/:id')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   commit(@Param('id') id: string) {
     return this.svc.commit(id);
+  }
+
+  /* ── catalog UPDATE: fill gaps on rows that already exist ────────────────
+     The import above deliberately SKIPS existing symbols so it can never modify
+     live data. Filling gaps is the opposite job, so it gets its own pair of
+     endpoints with the same preview-then-confirm contract.                  */
+
+  /** Diff the reviewed workbook against the catalog. Writes nothing. */
+  @Post('update/preview')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  async updatePreview(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    return this.upd.preview(file.buffer);
+  }
+
+  /* ── NSE parsers: pull IPO fields straight from the exchange's own PDFs ─
+     Purely a READ path — the endpoint returns parsed JSON and never touches
+     the database. The operator reviews the extracted fields against what is
+     already in the form, then clicks Fill All on the client. This keeps a
+     bad extraction from ever writing to the catalog silently.               */
+
+  /** POST — multipart 'file'. Parses the NSE PREANCHOR Security Parameters
+   *  PDF, then enriches the intermediary names against the local Lead
+   *  Managers and Registrars masters so the modal can show the canonical
+   *  name rather than whatever the PDF happened to spell. Kept in memory. */
+  @Post('parse/preanchor')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async parsePreanchor(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    const raw = await parsePreanchor(file.buffer);
+
+    // Fetched once per request rather than baked in — new masters land the
+    // next time somebody uploads. Not cached beyond the request.
+    const [leads, regs] = await Promise.all([
+      this.svc['prisma'].leadManager.findMany({ where: { active: true }, select: { id: true, name: true } }),
+      this.svc['prisma'].registrar.findMany({ where: { active: true }, select: { id: true, name: true } }),
+    ]);
+
+    return {
+      ...raw,
+      // strings replaced with ResolvedName shapes so the modal can render a
+      // ✓ / "will be added as free text" indicator per row
+      leadManagers: raw.leadManagers?.map((n) => match(n, leads)).filter(Boolean),
+      registrar: match(raw.registrar, regs),
+    };
+  }
+
+  /** POST — multipart 'file'. Parses the Anchor Investor Intimation Letter
+   *  and returns the roster + allocation totals.
+   *
+   *  Each investor is enriched with a `master: { id, name }` link when its
+   *  parsed name matches (or aliases to) a row in the Anchor Investors
+   *  master. Same shape lead-managers + registrar use — the review modal
+   *  renders a ✓ / ⚠ badge per row and applies the CANONICAL master name
+   *  to form.anchors, so "Nippon India Mutual Fund" from the letter and
+   *  "Nippon India MF" in the master link cleanly instead of piling up as
+   *  two separate rows on the operator's own IPO record. */
+  @Post('parse/anchor')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
+  async parseAnchor(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    // Fast path — text-based extraction for born-digital letters.
+    let raw = await parseAnchor(file.buffer);
+    // Fallback — some issuers (notably NSE itself) file the intimation as a
+    // SCANNED PDF, which has no text layer for pdfjs to read. When the text
+    // parser yields nothing usable, hand the PDF to Claude Vision — same
+    // ParsedAnchor shape returns, review modal is none the wiser. If the
+    // 'ai' provider isn't configured we surface the friendly error rather
+    // than silently leave the operator with an empty roster.
+    /*
+     * Gate on the ROSTER, not the header. It used to require BOTH to be empty,
+     * and SHAHINVEST (2026-09-25) is exactly the case that slips through: the
+     * letter is born-digital and reads perfectly, but three parser patterns had
+     * drifted from it, so the price parsed (₹167) while every roster row failed.
+     * `noHeader` was therefore false, Vision never ran, and the operator got an
+     * empty roster with nothing to explain it. The roster is the point of the
+     * upload — if it is empty the text parser has not done its job, whatever
+     * else it managed to pick up.
+     */
+    if (raw.investors.length === 0) {
+      raw = await this.anchorVision.parse(file.buffer);
+    }
+    const anchors = await this.svc['prisma'].anchorMaster.findMany({
+      where: { active: true }, select: { id: true, name: true },
+    });
+    return {
+      ...raw,
+      investors: raw.investors.map((inv) => {
+        const m = resolveMaster(inv.name, anchors);
+        return m ? { ...inv, master: { id: m.id, name: m.name } } : inv;
+      }),
+    };
+  }
+
+/** POST — multipart 'file'. Reads an IPO SUMMARY CARD image (the one-page
+   *  cards circulated before an issue opens) and returns Add-IPO form fields.
+   *
+   *  IMAGE ONLY, which is the difference from the anchor route: a JPEG has no
+   *  text layer, so there is no cheap parser to try first — Vision is the only
+   *  route rather than a fallback. The mime is whitelisted because it is handed
+   *  straight to the Messages API as the image block's `media_type`.
+   *
+   *  The response keeps `crossCheck` SEPARATE from the writable fields. The
+   *  cards' own "Application Reserved" row reproduces the ~4.8x bHNI error this
+   *  codebase fixed on 2026-09-29, so it is shown beside our own derivation and
+   *  never applied — see `CardVisionService`.
+   */
+  @Post('parse/card')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async parseCard(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    const mime = String(file.mimetype || '').toLowerCase();
+    // `isCardMime` is the SDK's own union, so this guard and the media_type it
+    // is handed to cannot drift — a plain string here failed to compile.
+    if (!isCardMime(mime)) {
+      throw new BadRequestException(
+        `An IPO card must be an image (JPEG, PNG or WebP). Received ${mime || 'an unknown type'}.`,
+      );
+    }
+    return this.cardVision.parse(file.buffer, mime);
+  }
+
+  /** POST — multipart 'file'. Parses the merchant banker's IPO Note (Axis
+   *  format across all four samples we hold). Fills what PREANCHOR cannot:
+   *  exact allotment/refund/demat/listing dates from the Indicative
+   *  Timetable, post-issue market cap, three-year financial highlights,
+   *  and the company description / promoter overview / objects of the
+   *  issue as HTML (verbatim; the operator can rewrite before applying). */
+  @Post('parse/ipo-note')
+  @RequirePermissions('ipos.import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async parseIpoNote(@UploadedFile() file: any) {
+    if (!file?.buffer) throw new BadRequestException('No file uploaded.');
+    const parsed = await parseIpoNote(file.buffer);
+    // Tell the client whether the rewrite button should light up. Cheaper
+    // than a second admin endpoint just to check.
+    const canRewrite = await this.rewrite.isEnabled();
+    return { ...parsed, canRewrite };
+  }
+
+  /** POST — Claude-rewrites one prose field from the IPO Note into
+   *  Investoyard's voice. Called by the review modal per row, so the
+   *  operator picks per-field between raw and rewritten. */
+  @Post('rewrite-note-field')
+  @RequirePermissions('ipos.import')
+  async rewriteNoteField(@Body() body: { kind: 'description' | 'strength' | 'objects'; text: string }) {
+    if (!body?.kind || !body?.text) throw new BadRequestException('kind and text are required.');
+    const html = await this.rewrite.rewrite(body.kind, body.text);
+    return { html };
+  }
+
+  /** Apply every fill, plus the conflicts the operator ticked (by symbol|field). */
+  @Post('update/commit/:id')
+  @RequirePermissions('ipos.import')
+  applyUpdate(@Param('id') id: string, @Body() body: { approve?: string[] }) {
+    return this.upd.commit(id, body?.approve ?? []);
   }
 
   @Get('pending')
@@ -64,9 +260,19 @@ export class IpoImportController {
     return { catalogOnly: await this.svc.catalogOnlyCount() };
   }
 
+  /**
+   * Undo an import — removes hidden, never-published, importer-created rows that
+   * carry no applications / watchlist / allotment data. Published IPOs are safe.
+   */
+  @Post('delete-imported')
+  @RequirePermissions('ipos.import')
+  deleteImported() {
+    return this.svc.deleteImported();
+  }
+
   /** Publish (or re-hide) imported rows on the public site. */
   @Post('publish')
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.import')
   async publish(@Body() body: { symbols?: string[]; published?: boolean }) {
     if (!Array.isArray(body?.symbols) || body.symbols.length === 0) throw new BadRequestException('symbols[] is required.');
     const updated = await this.svc.setPublished(body.symbols, body.published !== false);
@@ -77,6 +283,6 @@ export class IpoImportController {
 @Module({
   imports: [JwtModule.register({})],
   controllers: [IpoImportController],
-  providers: [IpoImportService, PrismaService, JwtAuthGuard, PermissionsGuard],
+  providers: [IpoImportService, CatalogUpdateService, IpoNoteRewriteService, AnchorVisionService, CardVisionService, PrismaService, JwtAuthGuard, PermissionsGuard],
 })
 export class IpoImportModule {}

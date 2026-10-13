@@ -1,6 +1,7 @@
 import { getIpos, getPosts } from '@/lib/api';
 import { HomeNews } from '@/components/HomeNews';
 import { IpoExplorer } from '@/components/IpoExplorer';
+import { IpoExplorer2 } from '@/components/IpoExplorer2';
 import { HeroBanner } from '@/components/HeroBanner';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
@@ -10,7 +11,7 @@ import { Icon } from '@/components/Icon';
 import { Lang } from '@investoyard/i18n';
 
 /** Locale-parameterized home view — rendered at `/` (en) and `/[lang]/` (SEO routes). */
-export async function HomeView({ lang }: { lang: Lang }) {
+export async function HomeView({ lang, v2 = false }: { lang: Lang; v2?: boolean }) {
   const ipos = await getIpos();
   const posts = await getPosts(3);
   const q = lang === 'en' ? '' : `?lang=${lang}`; // app-page links keep the query form
@@ -20,11 +21,13 @@ export async function HomeView({ lang }: { lang: Lang }) {
       {/* ---------- compact dynamic banner (auto IPO slides + brand slide) ---------- */}
       <HeroBanner ipos={ipos as any} lang={lang} />
 
-      {/* ---------- today strip: the market's pulse in one line ---------- */}
-      <TodayStrip ipos={ipos as any} langQuery={q} />
+      {/* ---------- today strip: the market's pulse in one line ----------
+           v2 folds these counts into the explorer's market bar, so the
+           standalone strip would repeat them. */}
+      {!v2 && <TodayStrip ipos={ipos as any} langQuery={q} />}
 
       {/* ---------- IPO EXPLORER ---------- */}
-      <IpoExplorer ipos={ipos} lang={lang} />
+      {v2 ? <IpoExplorer2 ipos={ipos} lang={lang} /> : <IpoExplorer ipos={ipos} lang={lang} />}
 
       {/* ---------- allotment checker: did you get the shares? ---------- */}
       <div className="panel ac-band fade-up">

@@ -11,6 +11,7 @@ import { HeaderIcons } from '../components/ui/HeaderIcons';
 import { LanguageProvider, useT } from '../components/i18n';
 import { AuthProvider } from '../components/auth';
 import { ProfilesProvider } from '../components/profiles';
+import { LABEL } from '@investoyard/shared-types';
 
 // Hold the splash until the Inter faces are ready (no unstyled-text flash).
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -47,7 +48,7 @@ function RootStack() {
       <Stack.Screen name="calendar" options={{ title: 'IPO Calendar' }} />
       <Stack.Screen name="consents" options={{ title: t('consents.title') }} />
       {/* Insights hub screens */}
-      <Stack.Screen name="gmp" options={{ title: 'GMP Trends' }} />
+      <Stack.Screen name="gmp" options={{ title: `${LABEL.gmp} Trends` }} />
       <Stack.Screen name="subscription" options={{ title: 'Subscription' }} />
       <Stack.Screen name="performance" options={{ title: 'IPO Performance' }} />
       <Stack.Screen name="glossary" options={{ title: 'IPO Glossary' }} />

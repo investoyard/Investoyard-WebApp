@@ -1,11 +1,18 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { fonts, ui } from '../../lib/theme';
 
-export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed';
+export type ChipTone = 'neutral' | 'brand' | 'success' | 'danger' | 'warn' | 'info' | 'gold' | 'listed' | 'closing';
 
-/** Soft-tinted pill palette (fintech spec):
- *  success (open/positive) · warn (upcoming/pending) · neutral (closed/listed/mainboard)
- *  brand (SME/active) · danger (negative) · info (indigo informational). */
+/**
+ * Soft-tinted pill palette.
+ *
+ * For IPO STATUS the tone comes from STAGE_TONE in @investoyard/shared-types,
+ * which gives every status its OWN colour — no two statuses share one:
+ *   success Live/Open Today · danger Closing Today · brand Upcoming/Pre Apply
+ *   neutral Awaiting Allotment · gold Allotment Out · listed Listed
+ *   closing Closing Today / Closed / Withdrawn
+ * warn and info remain for non-status chips.
+ */
 const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   neutral: { bg: ui.slateTint, fg: ui.slate },
   brand: { bg: ui.indigoTint, fg: ui.indigo },
@@ -13,10 +20,13 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   danger: { bg: ui.redTint, fg: ui.red },
   warn: { bg: ui.amberTint, fg: ui.amber },
   info: { bg: ui.indigoTint, fg: ui.indigo },
-  /** brand-gold moment — reserved for the "Allotted" celebration state */
+  /** act TODAY — Closing Today and Allotment Out (see STAGE_TONE) */
   gold: { bg: '#FFF5D6', fg: '#8A6400' },
   /** listed issues — light purple with near-black ink (matches the web chip) */
   listed: { bg: '#E2D9F6', fg: '#241E3D' },
+  /** the CLOSE family — Closing Today, Closed, Withdrawn. Web's --neg /
+   *  --neg-soft exactly, because ui.red (#B3261E) is a different red. */
+  closing: { bg: '#FCEBE8', fg: '#D8412A' },
 };
 
 /** Status pill — 6px dot prefix, radius 999, 11/700, 4×10 padding. */

@@ -15,6 +15,7 @@ import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { FadeInUp } from '../../components/ui/motion';
 import { ChevronDownIcon, ShieldIcon, UsersIcon } from '../../components/ui/icons';
+import { DematPanel } from '../../components/DematPanel';
 
 function DetailRow({ k, v }: { k: string; v: string }) {
   return (
@@ -117,7 +118,12 @@ export default function ProfilesScreen() {
                   {verified
                     ? <Badge label="KYC verified" tone="ok" check />
                     : <Badge label="KYC pending" tone="wait" />}
-                  <Badge label={`${p.depository} · ${p.dpId ? `${p.dpId}/` : ''}${p.clientId}`} tone="neutral" />
+                  <Badge
+                    label={(p.demats?.length ?? 1) > 1
+                      ? `${p.demats!.length} demat accounts`
+                      : `${p.depository} · ${p.dpId ? `${p.dpId}/` : ''}${p.clientId}`}
+                    tone="neutral"
+                  />
                   {p.upiId ? <Badge label="UPI" tone="ok" check /> : <Badge label={t('profiles.needUpi')} tone="wait" />}
                   {p.hasBank ? <Badge label="Bank" tone="ok" check /> : null}
                 </View>
@@ -125,13 +131,15 @@ export default function ProfilesScreen() {
                 {/* expanded view — full saved details + actions */}
                 {open ? (
                   <View style={styles.detail}>
-                    <DetailRow k="Demat" v={`${p.depository} · ${p.dpId ? `${p.dpId} / ` : ''}${p.clientId}`} />
+                    {/* No "Demat" row — DematPanel below lists every account, default
+                        first, so a row here would print the default one twice. */}
                     {p.mobile ? <DetailRow k="Mobile" v={`+91 ${p.mobile}`} /> : null}
                     {p.email ? <DetailRow k="Email" v={p.email} /> : null}
                     {p.bankName ? <DetailRow k="Bank" v={`${p.bankName}${p.branchName ? ` · ${p.branchName}` : ''}`} /> : null}
                     {p.ifsc ? <DetailRow k="IFSC" v={p.ifsc} /> : null}
                     {p.address || p.city ? <DetailRow k="Address" v={[p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ')} /> : null}
                     {p.hasApplications ? <DetailRow k="Applications" v="Yes — PAN is locked" /> : null}
+                    <DematPanel p={p} />
                     <View style={styles.actions}>
                       <Button label="Edit" variant="ghost" onPress={() => router.push(`/profiles/new?id=${p.id}`)} style={{ flex: 1 }} />
                       {p.relationship !== 'self' ? (

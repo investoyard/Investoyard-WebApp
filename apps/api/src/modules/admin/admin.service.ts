@@ -238,18 +238,75 @@ export class AdminService {
         adapter.login(cred),
         new Promise((_, rej) => setTimeout(() => rej(new Error('__timeout__')), 10_000)),
       ]);
-      return { ok: true, outcome: 'connected', note: `Session token issued (${Date.now() - started}ms).`, tokenPreview: String(session?.token ?? '').slice(0, 6) + '…' };
+      const durationMs = Date.now() - started;
+      return {
+        ok: true, outcome: 'connected',
+        note: `Session token issued (${durationMs}ms).`,
+        tokenPreview: String(session?.token ?? '').slice(0, 6) + '…',
+        durationMs,
+      };
     } catch (e: any) {
+      const durationMs = Date.now() - started;
       const msg = String(e?.message ?? e);
-      if (msg === '__timeout__') return { ok: false, outcome: 'unreachable', note: 'Timed out after 10s.' };
+      if (msg === '__timeout__') return { ok: false, outcome: 'unreachable', note: 'Timed out after 10s.', durationMs };
       // The adapter's httpJson wraps everything in RailError: code NETWORK/TIMEOUT
       // means transport failure (unreachable); anything else means the endpoint
       // responded but refused (bad creds / guarded adapter / bad payload).
       if (e?.code === 'NETWORK' || e?.code === 'TIMEOUT') {
-        return { ok: false, outcome: 'unreachable', note: msg.slice(0, 160) };
+        return { ok: false, outcome: 'unreachable', note: msg.slice(0, 240), durationMs };
       }
-      return { ok: false, outcome: 'rejected', note: msg.slice(0, 160) };
+      return { ok: false, outcome: 'rejected', note: msg.slice(0, 240), durationMs };
     }
+  }
+
+  /**
+   * Hard-delete an Exchange Rails credential — superadmin only. Refuses when
+   * the credential is referenced anywhere: any submitted Application, any
+   * BidOperation, or any IPO whose `extra.onlineSeries` names this member
+   * for this exchange. The refusal names WHICH IPOs / how many rows block,
+   * so the operator can re-assign in seconds and retry.
+   */
+  async deleteRail(callerId: string, id: string) {
+    await this.assertSuperadmin(callerId);
+    const cred = await this.prisma.memberCredential.findUnique({ where: { id } });
+    if (!cred) throw new NotFoundException('Credential not found');
+
+    const [apps, ops] = await Promise.all([
+      this.prisma.application.count({ where: { memberCredentialId: id } }),
+      this.prisma.bidOperation.count({ where: { memberCredentialId: id } }),
+    ]);
+    if (apps > 0 || ops > 0) {
+      throw new ConflictException(
+        `Cannot delete — ${apps} application${apps === 1 ? '' : 's'}` +
+        ` and ${ops} bid operation${ops === 1 ? '' : 's'} reference this credential. Deactivate instead.`,
+      );
+    }
+
+    // Extra.onlineSeries stores { member, exchange, active, from, to } — the
+    // member field carries the memberCode string. IPOs are name-linked; a
+    // stale onlineSeries entry pointing at a deleted credential wouldn't
+    // crash bidding (the bidder falls through), but the operator has almost
+    // certainly forgotten it. Prisma JSON filters can't reach into an array
+    // shape cleanly, so we fetch the catalog and filter in JS — small enough
+    // for a one-shot delete pre-check.
+    const ipos = await this.prisma.ipo.findMany({ select: { id: true, symbol: true, extra: true } });
+    const blocking: string[] = [];
+    for (const ipo of ipos) {
+      const series: any[] = (ipo.extra as any)?.onlineSeries ?? [];
+      if (series.some((s) => s?.member === cred.memberCode && (!s?.exchange || s.exchange === cred.exchange))) {
+        blocking.push(ipo.symbol);
+      }
+    }
+    if (blocking.length) {
+      throw new ConflictException(
+        `Cannot delete — this credential is assigned to ${blocking.length} IPO${blocking.length === 1 ? '' : 's'}: ` +
+        `${blocking.slice(0, 6).join(', ')}${blocking.length > 6 ? ` +${blocking.length - 6} more` : ''}. ` +
+        `Re-assign the "Online Apply" series on those IPOs first.`,
+      );
+    }
+
+    await this.prisma.memberCredential.delete({ where: { id } });
+    return { deleted: true, memberName: cred.memberName };
   }
 
   /** All assignable roles (platform system templates + any custom). */
@@ -279,15 +336,38 @@ export class AdminService {
 
   private validateRole(scope: string, permissions: string[]) {
     if (!ROLE_SCOPES.includes(scope as any)) throw new BadRequestException(`scope must be one of ${ROLE_SCOPES.join(', ')}`);
-    const bad = permissions.filter((p) => !VALID_PERMISSIONS.has(p));
+    const bad = permissions.filter((p) => !VALID_PERMISSIONS.has(p) && p !== '*');
     if (bad.length) throw new BadRequestException(`Unknown permission(s): ${bad.join(', ')}`);
   }
 
+  /**
+   * Only a superadmin may create or grant a role that carries SuperAdmin
+   * capability. A role is SuperAdmin-equivalent when it holds the wildcard
+   * '*' OR scope 'all' — both let the holder read/write across every
+   * tenant. Without this guard, any operator with roles.manage could mint
+   * a role granting * / all and then assign it to themselves, effectively
+   * escalating to superadmin. Same block applies on updateRole and on
+   * createOperator / updateOperator assigning such a role.
+   */
+  private isSuperAdminRole(scope: string, permissions: string[]): boolean {
+    return permissions.includes('*') || scope === 'all';
+  }
+
+  private async assertCanGrantSuperadmin(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) {
+      throw new ForbiddenException('Only a superadmin can create or grant a role with full ("*") permissions or scope "all".');
+    }
+  }
+
   /** Create a custom (platform-level) role. */
-  async createRole(dto: { name: string; scope: string; permissions: string[] }) {
+  async createRole(callerId: string, dto: { name: string; scope: string; permissions: string[] }) {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Role name is required');
     this.validateRole(dto.scope, dto.permissions);
+    if (this.isSuperAdminRole(dto.scope, dto.permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
     try {
       const role = await this.prisma.role.create({
         data: { tenantId: 't-platform', name, scope: dto.scope as any, permissions: dto.permissions, isSystem: false },
@@ -299,14 +379,20 @@ export class AdminService {
     }
   }
 
-  /** Edit a role's scope/permissions. Only the all-powerful SuperAdmin (`*`) role is locked. */
-  async updateRole(id: string, dto: { scope?: string; permissions?: string[] }) {
+  /** Edit a role's scope/permissions. The seeded SuperAdmin (`*`) role is
+   *  fully locked (nobody can edit it); other roles can be edited, but any
+   *  edit that RESULTS in SuperAdmin capability requires the caller to be
+   *  a superadmin. */
+  async updateRole(callerId: string, id: string, dto: { scope?: string; permissions?: string[] }) {
     const role = await this.prisma.role.findUnique({ where: { id } });
     if (!role) throw new NotFoundException('Role not found');
     if (role.permissions.includes('*')) throw new BadRequestException('The SuperAdmin role cannot be edited.');
     const scope = dto.scope ?? role.scope;
     const permissions = dto.permissions ?? role.permissions;
     this.validateRole(scope, permissions);
+    if (this.isSuperAdminRole(scope, permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
     const updated = await this.prisma.role.update({ where: { id }, data: { scope: scope as any, permissions } });
     return { id: updated.id, name: updated.name, scope: updated.scope, permissions: updated.permissions, isSystem: updated.isSystem };
   }
@@ -323,7 +409,7 @@ export class AdminService {
   }
 
   private async tenantBySlug(slug: string) {
-    const t = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true, slug: true, name: true } });
+    const t = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true, slug: true, name: true, type: true } });
     if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
     return t;
   }
@@ -343,10 +429,35 @@ export class AdminService {
   /* ------------------------------------------------ partners / branches / operators */
 
   // Default permission sets for auto-created tenant admins.
-  private static PARTNER_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage'];
-  // White-label admins additionally manage their OWN SMS/email keys + message templates.
-  private static WHITELABEL_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view', 'users.manage', 'roles.view', 'audit.view', 'tenants.manage', 'settings.manage', 'providers.manage'];
-  private static BRANCH_ADMIN_PERMS = ['dashboard.view', 'ipos.view', 'bids.view', 'bids.manage', 'clients.view', 'clients.manage', 'reports.view', 'users.view'];
+  // Partner-tenant Admin — manages their own tenant, not the platform. Does
+  // NOT hold tenants.manage (that surfaces the whole platform's partner tree
+  // and belongs to platform-tier operators). Does hold
+  // partner-api.reports.view so a partner admin can see their own API usage.
+  private static PARTNER_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view', 'users.manage', 'roles.view', 'audit.view',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
+  // White-label — same as partner + the four System Settings child perms
+  // (they configure their OWN SMTP / SMS / WhatsApp + templates under their brand).
+  private static WHITELABEL_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view', 'users.manage', 'roles.view', 'audit.view',
+    'providers.manage', 'templates.manage', 'messages.view', 'chatbot.manage',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
+  // Branch — a slimmer role. No user/role management (parent partner handles it).
+  private static BRANCH_ADMIN_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bids.manage', 'bidding.report.view',
+    'clients.view', 'clients.manage', 'reports.view',
+    'users.view',
+    'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+  ];
 
   /** What tenants can the caller manage? superadmin → all; else the union of their subtree/own scopes. */
   private async callerScope(userId: string): Promise<{ superadmin: boolean; tenantIds: Set<string> }> {
@@ -509,15 +620,29 @@ export class AdminService {
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const flags = (t.flags as any) ?? {};
-      return {
+      // Trim operator-only fields (commissionRate, customDomain, Partner
+      // API operator controls) for non-superadmin callers — a partner
+      // reading their own tenant via the My Organisation page must not
+      // see the operator's private governance data.
+      const base = {
         id: t.id, slug: t.slug, name: t.name, type: t.type, status: t.status,
         parent: t.parent ?? undefined, whitelabel: !!flags.whitelabel,
-        code: t.code ?? undefined, commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+        code: t.code ?? undefined,
         brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
-        logoUrl: t.logoUrl ?? undefined, customDomain: t.customDomain ?? undefined,
+        logoUrl: t.logoUrl ?? undefined,
         profile: (t.profile as any) ?? {},
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
+      };
+      if (!scope.superadmin) return base;
+      return {
+        ...base,
+        commissionRate: t.commissionRate != null ? Number(t.commissionRate) : undefined,
+        customDomain: t.customDomain ?? undefined,
+        // Partner API operator controls — cast because generated Prisma
+        // types lag until the pool cycle re-runs `prisma generate`.
+        partnerMaxApplicantsPerCall: (t as any).partnerMaxApplicantsPerCall ?? 25,
+        partnerApiScopes: ((t as any).partnerApiScopes ?? []) as string[],
       };
     });
   }
@@ -553,6 +678,8 @@ export class AdminService {
   async updateTenant(callerId: string, slug: string, dto: {
     name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string;
     customDomain?: string; profile?: Record<string, any>; commissionRate?: number | null;
+    partnerMaxApplicantsPerCall?: number;
+    partnerApiScopes?: string[];
   }) {
     const scope = await this.callerScope(callerId);
     return tenantContext.runUnscoped(async () => {
@@ -560,16 +687,54 @@ export class AdminService {
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const data: any = {};
-      for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
-      if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
-      if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
-      if (dto.profile) data.profile = { ...((t.profile as any) ?? {}), ...dto.profile };
+      // The full field set is reserved for superadmin. A partner-tier
+      // caller editing their own tenant (via My Organisation) may only
+      // patch profile — everything else (name, status, brand, custom
+      // domain, commission, partner API operator controls) stays
+      // superadmin-only. Silently drop rather than 403 so the
+      // My Organisation client doesn't need to know the field list.
+      if (scope.superadmin) {
+        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+        if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
+        if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
+        if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
+        if (dto.partnerApiScopes !== undefined) data.partnerApiScopes = dto.partnerApiScopes;
+      }
+      if (dto.profile) {
+        const existingProfile = (t.profile as any) ?? {};
+        const nextProfile = { ...existingProfile, ...dto.profile };
+        // Legal identity fields are immutable after approval for
+        // non-superadmin callers — changing PAN / GSTIN / entityType
+        // means it's a different legal entity, not an edit. Preserve
+        // the originals from the existing profile, ignoring the patch.
+        if (!scope.superadmin) {
+          for (const k of ['pan', 'gstin', 'entityType'] as const) {
+            if (existingProfile[k] !== undefined) nextProfile[k] = existingProfile[k];
+          }
+        }
+        data.profile = nextProfile;
+      }
+      if (Object.keys(data).length === 0) return { ok: true, noop: true };
       try {
         await this.prisma.tenant.update({ where: { slug }, data });
       } catch (e: any) {
         if (e?.code === 'P2002') throw new ConflictException('That custom domain is already taken.');
         throw e;
       }
+      // Audit the write so a partner editing their own profile leaves a
+      // trace — an operator reviewing a partner's history can see who
+      // changed what and when.
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'tenant.update',
+          actorId: callerId,
+          targetType: 'tenant',
+          targetId: t.id,
+          targetLabel: `${t.name} (${t.slug})`,
+          tenantSlug: t.slug,
+          detail: { fields: Object.keys(data) } as any,
+        },
+      }).catch(() => { /* best-effort */ });
       return { ok: true };
     });
   }
@@ -581,11 +746,46 @@ export class AdminService {
     return { verified, total: statuses.length };
   }
 
-  /** Investor clients (customers) in the caller's scope; optional tenant filter + free-text search. */
+  /** Investor clients (customers) in the caller's scope; optional tenant filter + free-text search.
+   *
+   *  Two DPDP-relevant filters on the base where clause:
+   *    • username: null            — operator users are excluded (they have usernames)
+   *    • no PartnerApplication     — a partner applicant OTP-logs in exactly like an
+   *                                    investor does, so they land in the User table.
+   *                                    Without this filter, half-completed partner
+   *                                    applications pollute the investor list. Surgical:
+   *                                    only users linked to a PartnerApplication (by
+   *                                    email or mobile) are excluded — a legitimate
+   *                                    investor who hasn't yet created a profile stays
+   *                                    visible so an operator can chase them.
+   *
+   *  Full mobile is shown to superadmin and to any caller holding `clients.manage`
+   *  (the admin-tier permission), matches the operator's "who can see PII" call.
+   *  Roles with clients.view only see the masked form.
+   */
   async listClients(callerId: string, opts: { tenantSlug?: string; q?: string } = {}) {
     const scope = await this.callerScope(callerId);
+    const canSeeFullMobile = scope.superadmin || (await this.callerHasPerm(callerId, 'clients.manage'));
     return tenantContext.runUnscoped(async () => {
       const where: any = { username: null, mobile: { not: null } }; // customers, not operators
+      // Exclude anyone who came in via the partner-onboarding OTP flow —
+      // matched on email or mobile because PartnerApplication is a separate
+      // table (not FK-linked to User). See partner-onboarding.module.ts.
+      const partnerApplicants = await this.prisma.partnerApplication.findMany({
+        select: { email: true, mobile: true },
+      });
+      const partnerEmails = partnerApplicants.map((p) => p.email).filter(Boolean) as string[];
+      const partnerMobiles = partnerApplicants.map((p) => p.mobile).filter(Boolean) as string[];
+      // `email NOT IN (...)` evaluates NULL as unknown in SQL — Prisma
+      // faithfully translates that, so every consumer without an email
+      // (the vast majority — signup is mobile-OTP) got filtered out. Wrap
+      // each clause in an OR-with-null so null values are kept.
+      if (partnerEmails.length || partnerMobiles.length) {
+        where.AND = [
+          ...(partnerEmails.length ? [{ OR: [{ email: null }, { email: { notIn: partnerEmails } }] }] : []),
+          ...(partnerMobiles.length ? [{ OR: [{ mobile: null }, { mobile: { notIn: partnerMobiles } }] }] : []),
+        ];
+      }
       if (opts.tenantSlug) {
         const t = await this.tenantBySlug(opts.tenantSlug);
         const ids = await this.subtreeIds(t.id);
@@ -607,12 +807,26 @@ export class AdminService {
       });
       return users.map((u) => ({
         id: u.id, name: u.name ?? undefined,
+        // Full mobile for superadmin + admin (clients.manage); masked for view-only.
+        mobile: canSeeFullMobile ? (u.mobile ?? undefined) : undefined,
         mobileMasked: u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : undefined,
         email: u.email ?? undefined, status: u.status, tenant: u.tenant,
         profiles: u._count.profiles, applications: u._count.applications,
         kyc: this.kycSummary(u.profiles.map((p) => p.kycStatus)),
         createdAt: u.createdAt.toISOString().slice(0, 10),
       }));
+    });
+  }
+
+  /** Does this caller's role set include a given permission? Used by list
+   *  endpoints that project different fields depending on the caller. */
+  private async callerHasPerm(callerId: string, perm: string): Promise<boolean> {
+    return tenantContext.runUnscoped(async () => {
+      const memberships = await this.prisma.membership.findMany({
+        where: { userId: callerId },
+        include: { role: { select: { permissions: true } } },
+      });
+      return memberships.some((m) => (m.role.permissions ?? []).includes(perm));
     });
   }
 
@@ -731,6 +945,90 @@ export class AdminService {
     });
   }
 
+  /**
+   * Hard-delete a client — user row + every child that carries their data.
+   * SUPERADMIN ONLY. Destructive and irreversible.
+   *
+   * What we delete, in order (children first so the User delete is legal):
+   *   • BidOperation rows (via applicationId — no FK to User directly,
+   *     but every one belongs to an application the user owns)
+   *   • ApplicationStatusEvent rows (via applicationId)
+   *   • Application rows (financial history — deliberate: sir asked
+   *     "with his all data")
+   *   • WatchlistItem rows
+   *   • Consent rows
+   *   • DeviceToken rows
+   *   • GmpContributor row (if any — this table has userId @unique)
+   *   • Membership rows (should be empty for investors; kept safe)
+   *   • InvestorProfile rows (PII carrier — panTokenRef, bankTokenRef,
+   *     upiTokenRef, ifsc all live here)
+   *   • User row (last)
+   *
+   * What we PRESERVE:
+   *   • MessageLog entries — already store the recipient masked
+   *     (recipientLast4), qualifies as an audit trail and is not
+   *     personally identifying beyond the last 4 digits of the mobile.
+   *   • AuditLog — we WRITE a delete row here, both as an operator
+   *     audit trail and so the deletion itself is traceable.
+   *
+   * PII vault leftovers: panTokenRef / bankTokenRef / upiTokenRef in
+   * InvestorProfile point at ciphertext blobs in the vault store. Once
+   * the profile row is deleted the tokens become unreferenced — the
+   * ciphertext stays in the vault but is unrecoverable without the
+   * token reference. A vault sweep job would collect these later.
+   * Not a leak: no plaintext ever existed outside the vault.
+   *
+   * Wrapped in one transaction so a partial delete never leaves the
+   * catalog in a torn state.
+   */
+  async hardDeleteClient(callerId: string, id: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException('Only a platform superadmin can hard-delete a client.');
+    return tenantContext.runUnscoped(async () => {
+      const u = await this.prisma.user.findUnique({
+        where: { id },
+        include: { tenant: { select: { slug: true, name: true } }, applications: { select: { id: true } } },
+      });
+      if (!u) throw new NotFoundException('Client not found.');
+      if (u.username) throw new BadRequestException('This account is an operator, not an investor client — refuse to hard-delete from this endpoint.');
+      const appIds = u.applications.map((a) => a.id);
+      const mobileMasked = u.mobile ? u.mobile.slice(0, 2) + '****' + u.mobile.slice(-4) : '(no mobile)';
+
+      // Audit BEFORE the delete so we have the row even if the transaction
+      // succeeds — audit and delete are one atomic thing from the operator's
+      // point of view but two writes at the DB level, and the audit row is
+      // the one we most need to survive a partial failure.
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'client.hard-delete',
+          actorId: callerId,
+          targetType: 'user',
+          targetId: id,
+          targetLabel: `${u.name ?? '—'} · ${mobileMasked} · ${u.tenant.slug}`,
+          tenantSlug: u.tenant.slug,
+          detail: { applications: appIds.length, profiles: (await this.prisma.investorProfile.count({ where: { userId: id } })) } as any,
+        },
+      });
+
+      await this.prisma.$transaction(async (tx) => {
+        if (appIds.length) {
+          await tx.bidOperation.deleteMany({ where: { applicationId: { in: appIds } } });
+          await tx.applicationStatusEvent.deleteMany({ where: { applicationId: { in: appIds } } });
+          await tx.application.deleteMany({ where: { id: { in: appIds } } });
+        }
+        await tx.watchlistItem.deleteMany({ where: { userId: id } });
+        await tx.consent.deleteMany({ where: { userId: id } });
+        await tx.deviceToken.deleteMany({ where: { userId: id } });
+        await tx.gmpContributor.deleteMany({ where: { userId: id } });
+        await tx.membership.deleteMany({ where: { userId: id } });
+        await tx.investorProfile.deleteMany({ where: { userId: id } });
+        await tx.user.delete({ where: { id } });
+      });
+
+      return { ok: true, deletedId: id, appliedApplications: appIds.length };
+    });
+  }
+
   /** Operator (username) accounts the caller can see. */
   async listOperators(callerId: string) {
     const scope = await this.callerScope(callerId);
@@ -762,6 +1060,39 @@ export class AdminService {
       this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [tenant.id, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } }),
     );
     if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
+
+    // Only a superadmin may assign a role that IS SuperAdmin (grants '*'
+    // or scope='all'). Without this, any operator with users.manage could
+    // pick "SuperAdmin" from the role dropdown and mint a peer with
+    // platform-wide power. Server-side is the real gate; the UI hides
+    // SuperAdmin from the dropdown for non-superadmin callers as a
+    // courtesy.
+    if (this.isSuperAdminRole(role.scope, role.permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
+
+    // A partner / branch / white-label tenant may hold ONLY ONE Admin.
+    // Rationale: an Admin holds users.manage AND clients.manage, so a
+    // second Admin means two people can rotate credentials and reset
+    // client data on the same account — a real governance risk for a
+    // small operator. Extra hands should be Staff, which excludes
+    // user management. Platform tenants are exempt (multiple platform
+    // Admins are normal for the operator team).
+    if (dto.roleName === 'Admin' && tenant.type !== 'platform') {
+      const existingAdmin = await tenantContext.runUnscoped(() =>
+        this.prisma.membership.findFirst({
+          where: { tenantId: tenant.id, status: 'active', role: { name: 'Admin' } },
+          include: { user: { select: { username: true } } },
+        }),
+      );
+      if (existingAdmin) {
+        throw new ConflictException(
+          `${tenant.name} already has an Admin (${existingAdmin.user.username}). ` +
+          `Only one Admin per ${tenant.type} — add this user as Staff, or replace the current Admin first.`,
+        );
+      }
+    }
+
     return tenantContext.runUnscoped(async () => {
       try {
         const password = dto.password?.trim() || this.genPassword();
@@ -785,6 +1116,14 @@ export class AdminService {
       if (!scope.superadmin && !scope.tenantIds.has(user.tenantId)) throw new ForbiddenException('Outside your scope.');
       if (user.username === 'superadmin' && dto.status === 'inactive') throw new BadRequestException('The superadmin cannot be deactivated.');
 
+      // Self-role-edit lockout: a user editing their own row and changing
+      // their own role can drop themselves off admin surfaces mid-session
+      // (and if they were the sole SuperAdmin, permanently). Refuse it —
+      // the hint tells them to ask another operator to make the change.
+      if (dto.roleName && id === callerId) {
+        throw new BadRequestException('You cannot change your own role. Ask another operator to do it.');
+      }
+
       const data: any = {};
       if (dto.name !== undefined) data.name = dto.name.trim();
       if (dto.email !== undefined) data.email = dto.email.trim() || null;
@@ -799,6 +1138,32 @@ export class AdminService {
       if (dto.roleName) {
         const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
         if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found.`);
+
+        // Only a superadmin may assign a SuperAdmin-equivalent role.
+        if (this.isSuperAdminRole(role.scope, role.permissions)) {
+          await this.assertCanGrantSuperadmin(callerId);
+        }
+
+        // Same one-Admin-per-partner rule the create path enforces —
+        // catches "promote this Staff to Admin" when an Admin already
+        // exists. Skipped when the user is ALREADY the Admin (a re-save
+        // that doesn't actually change anything).
+        if (dto.roleName === 'Admin') {
+          const tenant = await this.prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, type: true } });
+          if (tenant && tenant.type !== 'platform') {
+            const existingAdmin = await this.prisma.membership.findFirst({
+              where: { tenantId: user.tenantId, status: 'active', role: { name: 'Admin' }, userId: { not: id } },
+              include: { user: { select: { username: true } } },
+            });
+            if (existingAdmin) {
+              throw new ConflictException(
+                `${tenant.name} already has an Admin (${existingAdmin.user.username}). ` +
+                `Only one Admin per ${tenant.type} — promote to Admin only after replacing the current one.`,
+              );
+            }
+          }
+        }
+
         await this.prisma.membership.upsert({
           where: { userId_tenantId: { userId: id, tenantId: user.tenantId } },
           update: { roleId: role.id, status: 'active' },
@@ -827,8 +1192,26 @@ export class AdminService {
     };
   }
 
+  /**
+   * Assert the caller is allowed to see data for the given tenant subtree.
+   * Superadmin passes; anyone else must have a membership on the tenant
+   * itself or an ancestor. Every /:slug endpoint calls this — without it,
+   * a partner admin could hit /admin/reports/some-other-partner and read
+   * that other partner's data, since the slug is a URL parameter with
+   * no ambient scoping.
+   */
+  private async assertSlugScope(callerId: string, slug: string): Promise<{ id: string }> {
+    const scope = await this.callerScope(callerId);
+    const tenant = await this.tenantBySlug(slug);
+    if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) {
+      throw new ForbiddenException('Outside your scope.');
+    }
+    return { id: tenant.id };
+  }
+
   /** Operators of a tenant and its sub-tenants. */
-  async listMembers(slug: string) {
+  async listMembers(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     const rows = await this.prisma.membership.findMany({
@@ -863,14 +1246,18 @@ export class AdminService {
   }
 
   /** Applications (bids) across a tenant subtree — back-office view. */
-  async listApplications(slug: string) {
+  async listApplications(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     // Applications are RLS-scoped; an operator views across tenants, so read unscoped
-    // and filter by the subtree explicitly.
+    // and filter by the subtree explicitly. PDF prints (both partner-API and
+    // consumer web/mobile) are excluded — those are just printed forms, not
+    // bids to the exchange, and each has its own report page (Partner API →
+    // Print Report, Admin → Print Forms Report).
     return tenantContext.runUnscoped(async () => {
       const rows = await this.prisma.application.findMany({
-        where: { tenantId: { in: ids } },
+        where: { tenantId: { in: ids }, applyMethod: { not: 'pdf' } },
         include: {
           ipo: { select: { symbol: true, name: true } },
           profile: { select: { fullName: true } },
@@ -908,9 +1295,67 @@ export class AdminService {
     });
   }
 
+  /**
+   * Print Forms Report — every ASBA PDF the operator generated for a
+   * consumer through web / mobile. Partner-API prints have their own
+   * report under Partner API → Print Report and are excluded here
+   * (idempotencyKey `partner:…`), because the two channels have
+   * different downstream flows and the operator wants them separated
+   * (operator ask 2026-09-10).
+   *
+   * These rows are NOT bids to any exchange — the form was printed for
+   * the applicant to sign and hand in at their bank. Kept as an audit
+   * trail: who printed, for whom, for which IPO, when, and what form
+   * number was allocated from the IPO's PDF series.
+   */
+  async listConsumerPrints(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
+    const tenant = await this.tenantBySlug(slug);
+    const ids = await this.subtreeIds(tenant.id);
+    return tenantContext.runUnscoped(async () => {
+      const rows = await this.prisma.application.findMany({
+        where: {
+          tenantId: { in: ids },
+          applyMethod: 'pdf',
+          // Partner-API rows carry an `idempotencyKey` prefixed `partner:` —
+          // exclude them so they only appear on the partner report. Column
+          // is non-nullable so a simple NOT-startsWith is enough.
+          NOT: { idempotencyKey: { startsWith: 'partner:' } },
+        },
+        include: {
+          ipo: { select: { symbol: true, name: true } },
+          profile: { select: { fullName: true } },
+          user: { select: { mobile: true, name: true } },
+          tenant: { select: { slug: true, name: true, code: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return rows.map((a) => ({
+        id: a.id,
+        tenantSlug: a.tenant?.slug,
+        tenantName: a.tenant?.name,
+        partnerCode: a.tenant?.code ?? undefined,
+        ipoSymbol: a.ipo?.symbol,
+        ipoName: a.ipo?.name,
+        applicantName: a.profile?.fullName,
+        accountHolder: a.user?.name ?? undefined,
+        mobileMasked: a.user?.mobile ? a.user.mobile.slice(0, 2) + '****' + a.user.mobile.slice(-4) : undefined,
+        category: a.category,
+        applicantType: a.applicantType,
+        familyGroup: a.familyGroup ?? undefined,
+        lots: a.lots,
+        shareQty: a.shareQty ?? undefined,
+        amount: Number(a.amount),
+        formNo: a.asbaFormNo ?? undefined,
+        printedAt: a.createdAt.toISOString().slice(0, 10),
+      }));
+    });
+  }
+
   /** Admin home overview — headline counts, live-IPO performance, per-partner & 7-day trends. */
-  async dashboard(slug: string) {
-    const rep = await this.reports(slug); // scope + application aggregate (runUnscoped inside)
+  async dashboard(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
+    const rep = await this.reports(callerId, slug); // scope + application aggregate (runUnscoped inside)
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
@@ -979,8 +1424,9 @@ export class AdminService {
   }
 
   /** The subtree's applications serialised as CSV (the rows behind the report). */
-  async applicationsCsv(slug: string): Promise<string> {
-    const rows = await this.listApplications(slug);
+  async applicationsCsv(callerId: string, slug: string): Promise<string> {
+    // listApplications enforces the scope check — no need to duplicate here.
+    const rows = await this.listApplications(callerId, slug);
     const headers = ['IPO', 'IPO name', 'Applicant', 'Mobile', 'Category', 'Applicant type', 'Lots', 'Amount', 'Status', 'Allotted lots', 'Refund', 'Applied', 'Tenant'];
     const esc = (v: any) => {
       const s = v == null ? '' : String(v);
@@ -997,7 +1443,8 @@ export class AdminService {
   }
 
   /** Aggregate bid analytics for a tenant subtree (computed from live applications). */
-  async reports(slug: string) {
+  async reports(callerId: string, slug: string) {
+    await this.assertSlugScope(callerId, slug);
     const tenant = await this.tenantBySlug(slug);
     const ids = await this.subtreeIds(tenant.id);
     return tenantContext.runUnscoped(async () => {

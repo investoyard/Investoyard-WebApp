@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MessageLogService } from '../../common/message-log.service';
 import * as crypto from 'crypto';
 import { ProviderConfigService, EffectiveConfig } from '../../common/provider-config.service';
 import { IpoService } from '../ipo/ipo.service';
@@ -35,6 +36,7 @@ export class WhatsappService {
     private ai: WhatsappAiService,
     private flow: WhatsappFlowService,
     private journey: WhatsappJourneyService,
+    private readonly mlog: MessageLogService,
   ) {}
 
   async isEnabled(): Promise<boolean> {
@@ -318,7 +320,20 @@ export class WhatsappService {
     });
   }
 
+  /** The single WhatsApp exit point — text, template and interactive sends
+   *  all funnel through it, so one log call covers the channel. */
   private async graphSend(cfg: EffectiveConfig, to: string, message: Record<string, any>): Promise<{ sent: boolean; error?: string }> {
+    const res = await this.graphDeliver(cfg, to, message);
+    await this.mlog.record({
+      channel: 'whatsapp', to,
+      body: message?.text?.body ?? message?.template?.name ?? JSON.stringify(message).slice(0, 300),
+      status: res.sent ? 'sent' : 'failed',
+      provider: 'meta', error: res.error, templateKey: message?.template?.name,
+    });
+    return res;
+  }
+
+  private async graphDeliver(cfg: EffectiveConfig, to: string, message: Record<string, any>): Promise<{ sent: boolean; error?: string }> {
     const token = cfg.secrets.accessToken;
     const phoneNumberId = cfg.settings.phoneNumberId;
     if (!token || !phoneNumberId) {

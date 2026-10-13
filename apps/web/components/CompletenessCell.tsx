@@ -1,0 +1,108 @@
+'use client';
+import { useState } from 'react';
+import { Modal } from '@/components/ui/Modal';
+import { Icon } from '@/components/Icon';
+import { computeIpoCompleteness, COMPLETENESS_GROUPS, type Completeness } from '@/lib/ipo-completeness';
+
+/**
+ * Admin IPO list — the "Complete" column.
+ * A horizontal bar with the % label; click opens the missing-field modal.
+ *
+ * Bar colour is a pastel indigo track with a solid-indigo fill — brand
+ * consistent, no green/red (those stay reserved for financial signals per
+ * CLAUDE.md). At 100% we show a small check chip instead of the bar so a
+ * clean row reads at a glance.
+ */
+export function CompletenessCell({ ipo, editHref }: { ipo: any; editHref: string }) {
+  const [open, setOpen] = useState(false);
+  const c = computeIpoCompleteness(ipo);
+  return (
+    <>
+      <button
+        type="button"
+        className={`cc-bar cc-pct-${c.pct === 100 ? 'full' : c.pct >= 66 ? 'high' : c.pct >= 33 ? 'mid' : 'low'}`}
+        onClick={() => setOpen(true)}
+        title={`${c.filled}/${c.total} details filled — click for the checklist`}
+        aria-label={`Detail completeness ${c.pct}%`}
+      >
+        {c.pct === 100 ? (
+          <span className="cc-done"><Icon name="check" size={11} /> Complete</span>
+        ) : (
+          <>
+            <span className="cc-track"><span className="cc-fill" style={{ width: `${c.pct}%` }} /></span>
+            <span className="cc-label">{c.pct}%</span>
+          </>
+        )}
+      </button>
+      {open && (
+        <CompletenessModal completeness={c} ipo={ipo} editHref={editHref} onClose={() => setOpen(false)} />
+      )}
+    </>
+  );
+}
+
+function CompletenessModal({ completeness: c, ipo, editHref, onClose }: {
+  completeness: Completeness; ipo: any; editHref: string; onClose: () => void;
+}) {
+  return (
+    <Modal title={`${ipo.symbol ?? ipo.name} — Detail completeness (${c.filled}/${c.total})`} wide onClose={onClose}>
+      <div className="cc-modal">
+        <div className="cc-summary">
+          <div className={`cc-bar cc-pct-${c.pct === 100 ? 'full' : c.pct >= 66 ? 'high' : c.pct >= 33 ? 'mid' : 'low'} cc-lg`}>
+            <span className="cc-track"><span className="cc-fill" style={{ width: `${c.pct}%` }} /></span>
+            <span className="cc-label">{c.pct}%</span>
+          </div>
+          <a className="btn" href={editHref}><Icon name="edit" size={14} /> Edit IPO</a>
+        </div>
+
+        {/* Two-column grid of group cards — 7 groups fit in ~4 rows and
+            the whole modal stays inside one viewport. Falls to one
+            column below 720px so the mobile view is still scannable. */}
+        <div className="cc-grid">
+          {COMPLETENESS_GROUPS.map((g) => {
+            const rows = c.checks.filter((k) => k.group === g);
+            if (!rows.length) return null;
+            const visible = rows.filter((r) => !r.skipped);
+            if (!visible.length) return null;
+            /* An `na` row is SHOWN but counts nowhere — it is not work anyone
+               can do, so it must not sit in the denominator. Without this,
+               Structure read "2/3" with a ✗ beside a fresh leg the operator had
+               declared non-existent, while the headline said complete. */
+            const counted = visible.filter((r) => !r.na);
+            const done = counted.filter((r) => r.filled).length;
+            // A group every one of whose checks is `excluded` still shows its
+            // own done/total — the operator wants the rail state at a glance —
+            // but it contributes nothing to the percentage, so say so rather
+            // than let the count read as part of the score.
+            const notCounted = counted.length > 0 && counted.every((r) => r.excluded);
+            return (
+              <div className={`cc-group${notCounted ? ' cc-group-off' : ''}`} key={g}>
+                <div className="cc-group-head">
+                  <span className="cc-group-name">{g}</span>
+                  {notCounted && <span className="cc-group-note">not counted</span>}
+                  <span className={`cc-group-count${!notCounted && counted.length > 0 && done === counted.length ? ' ok' : ''}`}>{done}/{counted.length}</span>
+                </div>
+                <ul className="cc-checklist">
+                  {visible.map((r) => (
+                    /* THREE states, not two. A ✗ means MISSING, and saying that
+                       about a leg the issue does not have is simply false — so
+                       an `na` row gets a dash and says why, instead of a cross
+                       and a silent demand. */
+                    <li key={r.key} className={r.na ? 'na' : r.filled ? 'ok' : 'miss'}>
+                      <span className="cc-mark">
+                        {r.na ? '–' : r.filled ? <Icon name="check" size={10} /> : <Icon name="x" size={10} />}
+                      </span>
+                      <span className="cc-name">{r.label}</span>
+                      {r.na && <span className="cc-na">not applicable</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+      </div>
+    </Modal>
+  );
+}

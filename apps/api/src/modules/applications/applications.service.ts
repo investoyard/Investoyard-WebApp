@@ -1,11 +1,14 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { RailService } from '../rail/rail.service';
 import { SubmissionQueueService } from '../queue/submission-queue.service';
+import { BidOperationsService } from '../rail/bid-operations.service';
+import { ProfilesService } from '../profiles/profiles.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MessagingService } from '../../common/messaging.service';
 import { CONSENT_NOTICES } from '../../common/consent-notices';
 import { buildAsbaPdf } from './asba-pdf';
 import { fillAsbaForm, mergePdfs, AsbaOverlayData } from './asba-overlay';
@@ -14,9 +17,10 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel, mayChangeUpi, mayRequestUnblock, matchSponsorBanks } from '@investoyard/shared-types';
 
 /** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
-const ASBA_RETAIL_LIMIT = 500000;
+const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
 
 /** Shared relations needed to fill an ASBA form for an application. */
 const ASBA_INCLUDE = {
@@ -28,12 +32,17 @@ const ASBA_INCLUDE = {
 
 @Injectable()
 export class ApplicationsService {
+  private readonly log = new Logger(ApplicationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private vault: PiiVaultService,
     private rail: RailService,
     private queue: SubmissionQueueService,
     private notifications: NotificationsService,
+    private bidOps: BidOperationsService,
+    private profiles: ProfilesService,
+    private messaging: MessagingService,
   ) {}
 
   async list(userId: string) {
@@ -43,7 +52,7 @@ export class ApplicationsService {
       include: {
         ipo: {
           select: {
-            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true,
+            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true, allotmentDate: true,
             subscriptions: { select: { category: true, timesSubscribed: true, applicationsSubscribed: true } },
           },
         },
@@ -56,7 +65,7 @@ export class ApplicationsService {
   async getOne(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({
       where: { id, userId },
-      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true } }, events: { orderBy: { at: 'asc' } } },
+      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true, allotmentDate: true } }, events: { orderBy: { at: 'asc' } } },
     });
     if (!app) throw new NotFoundException();
     return { ...toView(app), events: app.events };
@@ -104,11 +113,31 @@ export class ApplicationsService {
     });
   }
 
+  /**
+   * The chosen demat must belong to THIS profile and still be active.
+   *
+   * It is checked rather than trusted because `dematAccountId` arrives from the
+   * client: without this, a crafted request could name another applicant's demat
+   * and the exchange would be told to credit someone else's account. Ownership
+   * questions are never answered by the caller.
+   *
+   * Returns the id to store — `null` for the default, which is what every
+   * application written before 2026-10-08 holds and what the resolver reads.
+   */
+  private assertDematOwned(profile: any, dematAccountId?: string | null): string | null {
+    if (!dematAccountId) return null;
+    const ok = (profile.dematAccounts ?? []).some((d: any) => d.id === dematAccountId && d.active !== false);
+    if (!ok) throw new BadRequestException('That demat account is not on this applicant, or has been retired.');
+    return dematAccountId;
+  }
+
   async create(userId: string, dto: CreateApplicationDto) {
     const profile = await this.prisma.investorProfile.findFirst({
       where: { id: dto.investorProfileId, userId },
+      include: { dematAccounts: { where: { active: true } } },
     });
     if (!profile) throw new ForbiddenException('Profile not owned by user');
+    const dematAccountId = this.assertDematOwned(profile, dto.dematAccountId);
 
     const ipo = await this.prisma.ipo.findUnique({ where: { id: dto.ipoId } });
     if (!ipo || !ipo.lotSize) throw new NotFoundException('IPO not found');
@@ -149,15 +178,15 @@ export class ApplicationsService {
 
     if (!isPrint) {
       // SEBI: cut-off price is Retail-only (value at the ceiling must be ≤ ₹2,00,000).
-      if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+      if (dto.atCutoff && qty * Number(ipo.priceBandMax ?? 0) > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException('Cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.');
       }
       // Shareholder reserved category is capped at ₹2,00,000.
-      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+      if (applicantType === ApplicantCategory.shareholder && amount > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException('Shareholder category applications are capped at ₹2,00,000.');
       }
       // UPI mandate is capped at ₹5,00,000; above that the bid must go via bank ASBA (pdf).
-      if (amount > 500000) {
+      if (amount > UPI_MANDATE_MAX) {
         throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
       }
     }
@@ -173,6 +202,8 @@ export class ApplicationsService {
         tenantId: tenantContext.requireTenantId(),
         userId,
         investorProfileId: profile.id,
+        // null = the profile default; see dematForApplication()
+        dematAccountId,
         ipoId: ipo.id,
         category: dto.category,
         applicantType,
@@ -247,6 +278,116 @@ export class ApplicationsService {
     return { buffer: await mergePdfs(built.map((b) => b.buffer)), filename: `${sym}_family_${built.length}.pdf` };
   }
 
+  /**
+   * Build one ASBA PDF straight from a payload object — no Application row, no
+   * InvestorProfile, no vault. Extracted so both the Test button (formNo="TEST",
+   * nothing persisted) and the real partner-API print (allocated formNo, no
+   * profile mutation) share the exact same template-picking + fill ladder.
+   */
+  async buildAsbaFromPayload(ipo: any, a: any, formNo: string): Promise<Buffer> {
+    const amount = Number(a.amount ?? 0);
+    const applicantType =
+      a.category === 'Shareholder' ? 'shareholder'
+      : a.category === 'Employee' ? 'employee' : 'individual';
+    const address = [a.address, a.city, a.state].filter(Boolean).join(', ') || null;
+    const shares = a.shareQty ?? ((a.lots ?? 0) * (ipo.lotSize ?? 0));
+    const template = this.pickAsbaTemplate(ipo, amount, applicantType);
+    if (template) {
+      const bytes = readFileSync(template);
+      const acro = await fillAsbaAcroForm(bytes, {
+        formNo,
+        fullName: a.fullName ?? null,
+        address, pincode: a.pincode ?? null,
+        email: a.email ?? null, mobile: a.mobile ?? null,
+        pan: a.pan ?? null,
+        depository: a.depository ?? 'CDSL',
+        dpId: a.dpId ?? null, clientId: a.clientId ?? null,
+        shares, bidPrice: a.sharePrice ?? (ipo.priceBandMax != null ? Number(ipo.priceBandMax) : null),
+        amount,
+        bankAccount: a.bankAccount ?? null,
+        bankName: a.bankName ?? null,
+        branchName: a.branchName ?? null,
+        familyGroup: a.familyGroup ?? null,
+        subBrokerCode: null,
+        ipoSymbol: ipo.symbol ?? null,
+      });
+      if (acro) return acro;
+      return fillAsbaForm(bytes, {
+        formNo,
+        applicant: {
+          fullName: a.fullName ?? null, pan: a.pan ?? null,
+          depository: a.depository ?? 'CDSL', dpId: a.dpId ?? null, clientId: a.clientId ?? null,
+          address: a.address ?? null, city: a.city ?? null, state: a.state ?? null, pincode: a.pincode ?? null,
+          email: a.email ?? null, mobile: a.mobile ?? null,
+        },
+        bid: { shares, atCutoff: false, bidPrice: a.sharePrice != null ? Number(a.sharePrice) : null, amount },
+        bank: {
+          account: a.bankAccount ?? null, ifsc: null,
+          bankName: a.bankName ?? null, branchName: a.branchName ?? null, upi: null,
+        },
+      });
+    }
+    return buildAsbaPdf({
+      applicationId: formNo,
+      channelName: 'Investoyard',
+      ipo: {
+        symbol: ipo.symbol, name: ipo.name,
+        priceBandMin: ipo.priceBandMin as any, priceBandMax: ipo.priceBandMax as any,
+        lotSize: ipo.lotSize,
+        closeDate: ipo.closeDate ? ipo.closeDate.toISOString().slice(0, 10) : null,
+      },
+      applicant: {
+        fullName: a.fullName ?? '', pan: a.pan ?? '', relationship: '',
+        depository: a.depository ?? 'CDSL', dpId: a.dpId ?? '', clientId: a.clientId ?? '',
+      },
+      bid: {
+        lots: a.lots ?? 0, shares, atCutoff: false,
+        bidPrice: a.sharePrice != null ? Number(a.sharePrice) : null,
+        amount, category: a.category ?? '', applicantType,
+      },
+      bank: { account: a.bankAccount ?? '', ifsc: '' },
+    });
+  }
+
+  /**
+   * Preview forms — dry-run for the Test button. No form-number allocation,
+   * no persistence, every form prints with formNo="TEST".
+   */
+  async previewFormsPdf(ipo: any, applicants: any[]): Promise<{ buffer: Buffer; filename: string }> {
+    if (!applicants.length) throw new NotFoundException('At least one applicant is required to preview.');
+    const bufs: Buffer[] = [];
+    for (const a of applicants) bufs.push(await this.buildAsbaFromPayload(ipo, a, 'TEST'));
+    const buffer = bufs.length === 1 ? bufs[0] : await mergePdfs(bufs);
+    return { buffer, filename: `${ipo.symbol}_TEST.pdf` };
+  }
+
+  /**
+   * Real partner-API print — one PDF per applicant, form numbers allocated
+   * from the IPO's active print series and stamped back onto each Application.
+   * Uses the payload data DIRECTLY (not the InvestorProfile), so a repeat
+   * print for the same PAN with corrected details produces a correct PDF
+   * without overwriting the shared profile row.
+   */
+  async generatePartnerFormsPdf(
+    ipo: any,
+    apps: Array<{ id: string; payload: any }>,
+  ): Promise<{ buffer: Buffer; filename: string; formNos: Map<string, string | null> }> {
+    if (!apps.length) throw new NotFoundException('No applications to print.');
+    const bufs: Buffer[] = [];
+    const formNos = new Map<string, string | null>();
+    for (const { id, payload } of apps) {
+      const formNo = await this.allocateAsbaFormNo(ipo, id, null);
+      formNos.set(id, formNo);
+      bufs.push(await this.buildAsbaFromPayload(ipo, payload, formNo ?? id.slice(0, 8)));
+    }
+    const buffer = bufs.length === 1 ? bufs[0] : await mergePdfs(bufs);
+    const sym = ipo.symbol ?? 'IPO';
+    const filename = apps.length === 1
+      ? `${sym}_${formNos.get(apps[0].id) ?? apps[0].id.slice(0, 8)}.pdf`
+      : `${sym}_family_${apps.length}.pdf`;
+    return { buffer, filename, formNos };
+  }
+
   /** Fill one application onto its ASBA form (AcroForm fill → overlay → placeholder). */
   private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
     const template = this.pickAsbaTemplate(app.ipo, Number(app.amount), app.applicantType);
@@ -276,6 +417,7 @@ export class ApplicationsService {
         branchName: app.profile.branchName,
         familyGroup: app.familyGroup ?? app.user?.name ?? app.user?.mobile ?? null,
         subBrokerCode: tenantIsChannel ? (app.tenant?.code ?? null) : null,
+        ipoSymbol: app.ipo.symbol ?? null,
       });
       if (acro) return { buffer: acro, formNo };
 
@@ -381,7 +523,11 @@ export class ApplicationsService {
     };
 
     let results = apps.map((a) => ({
-      applicant: firstName(a.profile.fullName),
+      // The profile is optional since 2026-09-28 (a partner print outlives the
+      // client it was created from). Not worth pulling the whole payload JSON
+      // into a list query for a name — this view is the consumer's own
+      // applications, which always have a profile.
+      applicant: firstName(a.profile?.fullName ?? ''),
       category: a.category,
       applicantType: a.applicantType,
       lots: a.lots,
@@ -447,7 +593,13 @@ export class ApplicationsService {
    * Mainboard: ≤₹5L → Resident, above → Syndicate. SME/NCD → single form for any amount.
    * Returns the absolute file path, or null to fall back to the generated placeholder.
    */
-  private pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
+  /**
+   * Public so PartnerService's preview flow can use it: preview() bypasses
+   * the Application row entirely (no DB write, no vault, no form-number
+   * consumption) but still needs the same blank-picking logic to generate
+   * a real-looking PDF.
+   */
+  pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
     const docs: Array<{ type: string; url: string }> = ipo.documents ?? [];
     const toPath = (doc?: { type: string; url: string }): string | null => {
       if (!doc?.url) return null;
@@ -476,7 +628,7 @@ export class ApplicationsService {
    * Allocate the ASBA print-form number from the IPO's active "PDF Printing" series.
    * Reuses the already-assigned number on reprint; returns null if no series is configured.
    */
-  private async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
+  async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
     if (existing) return existing;
     const series: Array<{ member: string; from: string; to: string; active: boolean }> =
       Array.isArray(ipo.extra?.pdfSeries) ? ipo.extra.pdfSeries : [];
@@ -506,6 +658,225 @@ export class ApplicationsService {
    * notifies the investor. TODO(rail): once live, also send the rail's cancel
    * activity when an applicationNumber exists.
    */
+  /**
+   * On-the-spot UPI ID change for one application (sir's requirement 2).
+   *
+   * Offered from the application itself rather than only the profile screen,
+   * because that is where an investor lands when the exchange says *"Rejected
+   * due to invalid UPI"* — the sentence the UPI status line now shows.
+   *
+   * THE UPI ID LIVES ON THE APPLICANT, NOT THE APPLICATION, and that is the
+   * whole subtlety here. Changing it changes it for every bid that applicant
+   * has, so restating only the one the investor clicked would leave a SIBLING
+   * application at the exchange carrying a payment instruction we have silently
+   * replaced. Every live bid of that applicant is restated, and the reply says
+   * how many — so the investor is told it reached more than the one in front of
+   * them rather than discovering it later.
+   *
+   * ORDER MATTERS: the rule is checked BEFORE the vault is touched. Refusing
+   * after writing would leave the profile holding a new UPI ID while the bid at
+   * the exchange still names the old one, which is worse than refusing.
+   */
+  async changeUpi(userId: string, id: string, upiId: string) {
+    const app = await this.prisma.application.findFirst({
+      where: { id, userId },
+      select: { id: true, status: true, applicationNumber: true, rail: true, investorProfileId: true },
+    });
+    if (!app) throw new NotFoundException();
+    if (!app.investorProfileId) {
+      // A records-only partner print carries no applicant of ours to change.
+      throw new BadRequestException('This application has no applicant profile, so its UPI ID cannot be changed here.');
+    }
+
+    const atExchange = !!app.applicationNumber && !!app.rail;
+    const check = mayChangeUpi(app.status, atExchange);
+    if (!check.ok) throw new BadRequestException(check.reason);
+
+    await this.profiles.setUpi(userId, app.investorProfileId, upiId);
+
+    /* Every bid of this applicant that the exchange is holding and has not yet
+       blocked. `queueUpiChange` re-checks each one, so a sibling that IS
+       blocked is skipped rather than refused — the investor asked about this
+       application, and one blocked sibling must not fail the whole action. */
+    const siblings = await this.prisma.application.findMany({
+      where: {
+        userId,
+        investorProfileId: app.investorProfileId,
+        applicationNumber: { not: null },
+        rail: { not: null },
+        status: { in: ['submitted', 'dp_verified', 'mandate_pending', 'rejected'] },
+      },
+      select: { id: true },
+    });
+
+    let restated = 0;
+    for (const s of siblings) {
+      try {
+        const r = await this.bidOps.queueUpiChange(s.id);
+        if (r.queued) restated++;
+      } catch (e: any) {
+        // Already-decided or blocked siblings land here; the UPI is still saved.
+        this.log.warn(`UPI change: skipped ${s.id} — ${e?.message ?? e}`);
+      }
+    }
+
+    return {
+      ...(await this.getOne(userId, app.id)),
+      upiChange: {
+        saved: true,
+        restatedToExchange: restated,
+        note: restated > 0
+          ? `Saved. ${restated} bid${restated === 1 ? '' : 's'} at the exchange ${restated === 1 ? 'is' : 'are'} being restated with the new UPI ID.`
+          : 'Saved. This bid has not reached an exchange yet, so there is nothing to restate.',
+      },
+    };
+  }
+
+  /**
+   * Investor → sponsor bank: "my funds were not unblocked" (requirement 1).
+   *
+   * Sent on the investor's instruction, to the bank that holds their mandate,
+   * about their own money. We are the carrier, not the complainant — the email
+   * says so and asks the bank to reply to the INVESTOR, because the mandate is
+   * between those two and a reply to us would just need forwarding.
+   *
+   * `mayRequestUnblock` decides, and the guard that matters most is the one an
+   * anxious investor will hit first: before allotment the block is correct, and
+   * mailing a bank about it teaches them to ignore us. There is a 24-hour
+   * cooldown for the same reason — this is outward-facing mail to a third
+   * party, and six copies of one request is six that get closed unread.
+   *
+   * PAN IS SENT MASKED. The bank can locate the mandate from the application
+   * number and the UPI ID, both of which go in full; a full PAN adds little and
+   * would then also sit in our own message log in clear. **Operator decision if
+   * a bank comes back saying they need it in full** — see `vault.mask`.
+   */
+  async requestUnblock(userId: string, id: string) {
+    const app = await this.prisma.application.findFirst({
+      where: { id, userId },
+      include: {
+        ipo: { select: { name: true, symbol: true, extra: true, allotmentDate: true } },
+        profile: { select: { fullName: true, email: true, mobile: true, panTokenRef: true, upiTokenRef: true } },
+      },
+    });
+    if (!app) throw new NotFoundException();
+    if (!app.profile) throw new BadRequestException('This application has no applicant profile.');
+
+    const verdict = mayRequestUnblock({
+      status: app.status,
+      amountBlocked: app.amountBlocked != null ? Number(app.amountBlocked) : 0,
+      refundAmount: app.refundAmount != null ? Number(app.refundAmount) : 0,
+      allottedAmount: app.allottedAmount != null ? Number(app.allottedAmount) : 0,
+      allotmentDate: app.ipo?.allotmentDate ?? null,
+      lastRequestedAt: app.unblockRequestedAt,
+    });
+    if (!verdict.ok) throw new BadRequestException(verdict.reason);
+
+    /*
+     * An issue can have SEVERAL sponsor banks, and plenty do — the names live
+     * in `extra.sponsorBank` as one comma/"and"-separated string, so
+     * `matchSponsorBanks` is what turns that into master rows with addresses.
+     *
+     * ALL of them are emailed, not one, and that is deliberate: a UPI mandate
+     * is raised on exactly one of an issue's sponsor banks and WE DO NOT
+     * RECORD WHICH. Guessing would send the request to a bank that never held
+     * the money. The application number identifies the mandate, so the bank
+     * that does hold it can act and the others can see in seconds that it is
+     * not theirs — which is what a human would do with the same information.
+     *
+     * The two failure modes are reported apart because they have different
+     * owners: nothing recorded on the issue is the operator's to fix, a master
+     * row with no email is the master's. Neither is the investor's, so neither
+     * pretends to be.
+     */
+    const raw = String((app.ipo as any)?.extra?.sponsorBank ?? '').trim();
+    const master = await this.prisma.sponsorBank.findMany({
+      where: { active: true },
+      select: { name: true, email: true, active: true },
+    });
+    const banks = matchSponsorBanks(raw, master);
+    if (!banks.matched.length) {
+      const why = !raw
+        ? 'No sponsor bank is recorded for this IPO yet'
+        : banks.noEmail.length
+          ? `We have no email address on file for ${banks.noEmail.join(', ')}`
+          : `${banks.unknown.join(', ')} ${banks.unknown.length === 1 ? 'is' : 'are'} not in our sponsor-bank records`;
+      this.log.warn(`unblock request blocked for ${app.id}: ${why} (ipo ${app.ipo?.symbol}, raw "${raw}")`);
+      throw new BadRequestException(`${why}, so we cannot route your request. Our team has been notified — please contact support.`);
+    }
+    /* A partial match still sends. The bank that holds the mandate may well be
+       among the ones we DID resolve, and withholding the request over a sibling
+       we cannot address would help nobody. The gap is logged for the operator. */
+    if (banks.unknown.length || banks.noEmail.length) {
+      this.log.warn(
+        `unblock request for ${app.id} (${app.ipo?.symbol}) could not reach: `
+        + [...banks.unknown, ...banks.noEmail].join(', '),
+      );
+    }
+    const bank = { name: banks.matched.map((b) => b.name).join(', '), email: banks.matched.map((b) => b.email).join(', ') };
+
+    const inr = (n: number) => `₹${Number(n).toLocaleString('en-IN')}`;
+    const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : '—');
+    let pan = '';
+    try { pan = this.vault.mask(await this.vault.resolve(app.profile.panTokenRef)); } catch { pan = '—'; }
+    let upiId = '—';
+    try { if (app.profile.upiTokenRef) upiId = await this.vault.resolve(app.profile.upiTokenRef); } catch {}
+
+    const res = await this.messaging.sendEmail('unblock_request', bank.email, {
+      vars: {
+        bankName: bank.name,
+        investorName: app.profile.fullName,
+        investorEmail: app.profile.email ?? '—',
+        // Pre-composed phrase, not a bare number: the template appends it to the
+        // "reply to …" sentence and an unlabelled number would read as noise.
+        investorMobile: app.profile.mobile ? ` or on +91 ${app.profile.mobile}` : '',
+        pan,
+        upiId,
+        ipoName: app.ipo?.name ?? app.ipo?.symbol ?? '',
+        ipoSymbol: app.ipo?.symbol ?? '',
+        applicationNumber: app.applicationNumber ?? '—',
+        blockedAmount: inr(Number(app.amountBlocked ?? 0)),
+        allottedAmount: inr(Number(app.allottedAmount ?? 0)),
+        stuckAmount: inr(verdict.stuckAmount ?? 0),
+        allotmentDate: day(app.ipo?.allotmentDate),
+        bidDate: day(app.createdAt),
+      },
+    });
+
+    /* A failed send must NOT consume the cooldown — otherwise a misconfigured
+       SMTP locks the investor out for a day over something they did not do. */
+    if (!res.sent && !res.dev) {
+      throw new ServiceUnavailableException(
+        'We could not send the request just now. Please try again in a few minutes.',
+      );
+    }
+
+    await this.prisma.application.update({
+      where: { id: app.id },
+      data: { unblockRequestedAt: new Date(), unblockRequestCount: { increment: 1 } },
+    });
+    await this.prisma.applicationStatusEvent.create({
+      data: {
+        applicationId: app.id,
+        status: app.status,
+        detail: { unblockRequest: { to: bank.email, bank: bank.name, stuckAmount: verdict.stuckAmount, dev: !!res.dev } } as any,
+      },
+    });
+
+    return {
+      sent: !!res.sent,
+      /* `dev` is the honest answer when SMTP is not configured: the email was
+         composed and logged, not delivered. Saying "sent" would leave an
+         investor waiting on a reply to a mail nobody received. */
+      dev: !!res.dev,
+      to: bank.name,
+      stuckAmount: verdict.stuckAmount,
+      note: res.sent
+        ? `Sent to ${bank.name}. They have been asked to reply to you directly.`
+        : `Email is not configured on this server yet, so your request was recorded but not delivered. Please contact support.`,
+    };
+  }
+
   async withdraw(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({ where: { id, userId }, include: { ipo: true } });
     if (!app) throw new NotFoundException();
@@ -516,6 +887,19 @@ export class ApplicationsService {
     if (!WITHDRAWABLE.includes(app.status)) {
       throw new BadRequestException(`A ${app.status.replace(/_/g, ' ')} application cannot be withdrawn.`);
     }
+
+    /*
+     * The rule this method's own comment cites, now actually enforced. Only a
+     * retail bidder may withdraw; ICDR forbids an HNI or QIB from withdrawing
+     * or lowering a bid once it is with the exchange. Until now any category
+     * could withdraw here, and the exchange would have been the one to say no.
+     *
+     * A bid we never posted is a different matter — it exists only in our
+     * database, so cancelling it breaks no rule. `mayCancel` draws that line.
+     */
+    const atExchange = !!app.applicationNumber && !!app.rail;
+    const allowed = mayCancel(app.category, atExchange);
+    if (!allowed.ok) throw new BadRequestException(allowed.reason);
 
     const updated = await this.prisma.application.update({
       where: { id: app.id },
@@ -556,8 +940,15 @@ export class ApplicationsService {
       const who = `applicant ${i + 1}`;
       const atCutoff = a.atCutoff ?? true;
 
-      const profile = await this.prisma.investorProfile.findFirst({ where: { id: a.investorProfileId, userId } });
+      const profile = await this.prisma.investorProfile.findFirst({
+        where: { id: a.investorProfileId, userId },
+        include: { dematAccounts: { where: { active: true } } },
+      });
       if (!profile) throw new ForbiddenException(`${who}: profile not owned by user`);
+      /* Per applicant, not per batch — a family can credit each member's shares
+         to a different demat, and each choice is checked against that member's
+         own accounts. */
+      const dematAccountId = this.assertDematOwned(profile, a.dematAccountId);
       if (!atCutoff && !a.bidPrice) throw new BadRequestException(`${who}: bidPrice required when not at cut-off`);
 
       const applicantType = a.applicantType ?? ApplicantCategory.individual;
@@ -583,14 +974,14 @@ export class ApplicationsService {
       const qty = a.lots * ipo.lotSize;
       const unit = atCutoff ? Number(ipo.priceBandMax ?? 0) : (a.bidPrice as number);
       const amount = qty * unit;
-      if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > 200000) {
+      if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException(`${who}: cut-off is allowed only for Retail (≤ ₹2,00,000) — bid a specific price.`);
       }
-      if (amount > 500000) {
+      if (amount > UPI_MANDATE_MAX) {
         throw new BadRequestException(`${who}: amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).`);
       }
       // Shareholder reserved category is capped at ₹2,00,000.
-      if (applicantType === ApplicantCategory.shareholder && amount > 200000) {
+      if (applicantType === ApplicantCategory.shareholder && amount > RETAIL_MAX_AMOUNT) {
         throw new BadRequestException(`${who}: shareholder category applications are capped at ₹2,00,000.`);
       }
 
@@ -598,6 +989,7 @@ export class ApplicationsService {
         tenantId: tenantContext.requireTenantId(),
         userId,
         investorProfileId: profile.id,
+        dematAccountId,
         ipoId: ipo.id,
         category: dto.category,
         applicantType,
@@ -684,7 +1076,11 @@ function toView(a: any) {
   // query included the profile's demat/UPI fields.
   const missingDetails: string[] = [];
   if (a.status === 'submitted' && a.profile && 'upiTokenRef' in a.profile) {
-    if (a.applyMethod === 'upi' && !a.profile.upiTokenRef) missingDetails.push('UPI ID missing — add it on the account page to receive the mandate');
+    // `ApplyMethod` is `native | pdf` — this read `'upi'`, a value the enum has
+    // never held, so the one piece of advice an investor can act on could never
+    // appear. `native` IS the UPI-ASBA path; `pdf` is the print flow, which
+    // needs no UPI ID at all.
+    if (a.applyMethod === 'native' && !a.profile.upiTokenRef) missingDetails.push('UPI ID missing — add it on the account page to receive the mandate');
     const dematOk = a.profile.depository === 'CDSL' ? !!a.profile.clientId : !!(a.profile.dpId && a.profile.clientId);
     if (!dematOk) missingDetails.push('Demat details incomplete');
   }
@@ -706,6 +1102,33 @@ function toView(a: any) {
     amount: Number(a.amount),
     applicationNumber: a.applicationNumber ?? undefined,
     amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : undefined,
+    // The exchange's own UPI sentence. `list()` uses `include`, so both columns
+    // ride along already — a `select` here would have to name them.
+    upiStatusText: a.upiStatusText ?? undefined,
+    upiStatusAt: a.upiStatusAt ? a.upiStatusAt.toISOString() : undefined,
+    /* Whether the unblock request is available, decided by the SAME rule the
+       endpoint enforces — the UI must not re-derive "is the bank late yet",
+       because a second opinion on a 24-hour grace period is how a button that
+       can only fail appears. The reason rides along so the card can explain a
+       no instead of just hiding. */
+    ...(() => {
+      const v = mayRequestUnblock({
+        status: a.status,
+        amountBlocked: a.amountBlocked != null ? Number(a.amountBlocked) : 0,
+        refundAmount: a.refundAmount != null ? Number(a.refundAmount) : 0,
+        allottedAmount: a.allottedAmount != null ? Number(a.allottedAmount) : 0,
+        allotmentDate: a.ipo?.allotmentDate ?? null,
+        lastRequestedAt: a.unblockRequestedAt,
+      });
+      // Offered only when it would succeed; the figure shows either way so a
+      // cooled-down card can still say what is outstanding.
+      return {
+        unblockAvailable: v.ok || undefined,
+        unblockReason: !v.ok && (v.stuckAmount ?? 0) > 0 ? v.reason : undefined,
+        unblockStuckAmount: v.stuckAmount && v.stuckAmount > 0 ? v.stuckAmount : undefined,
+        unblockRequestedAt: a.unblockRequestedAt ? a.unblockRequestedAt.toISOString() : undefined,
+      };
+    })(),
     allottedLots: a.allottedLots ?? undefined,
     allottedShares: a.allottedLots != null ? a.allottedLots * lotSize : undefined,
     allottedAmount,

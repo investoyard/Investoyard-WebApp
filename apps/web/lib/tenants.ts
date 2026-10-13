@@ -1,3 +1,4 @@
+import { UPI_MANDATE_MAX } from '@investoyard/shared-types';
 /**
  * Multi-tenant foundation (web) — mock registry + host-based resolution + branding.
  *
@@ -28,9 +29,9 @@ export interface Tenant {
 }
 
 export const TENANTS: Tenant[] = [
-  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, flags: { gmpEnabled: true, upiCap: 500000, whatsappChannel: '' } },
-  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', flags: { gmpEnabled: true, upiCap: 500000, whatsappChannel: '' } },
-  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', flags: { gmpEnabled: false, upiCap: 500000, whatsappChannel: '' } },
+  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
+  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
+  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', flags: { gmpEnabled: false, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
 ];
 
 export const DEFAULT_TENANT: Tenant = TENANTS.find((t) => t.isDefault)!;
@@ -61,7 +62,7 @@ function mapApi(a: any): Tenant {
     isDefault: a.type === 'direct',
     flags: {
       gmpEnabled: a.flags?.gmpEnabled ?? true,
-      upiCap: Number(a.flags?.upiCap) || 500000,
+      upiCap: Number(a.flags?.upiCap) || UPI_MANDATE_MAX,
       whatsappChannel: typeof a.flags?.whatsappChannel === 'string' ? a.flags.whatsappChannel : '',
     },
   };

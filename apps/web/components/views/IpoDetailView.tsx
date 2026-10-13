@@ -10,9 +10,9 @@ import { GmpTrend } from '@/components/GmpTrend';
 import { Icon } from '@/components/Icon';
 import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
-import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor } from '@/lib/catColor';
+import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase } from '@investoyard/shared-types';
+import { LABEL, titleCase, exchangeLabels, toneOf, docLabel, isPublicDoc } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -67,27 +67,38 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
   }
   const finMax = ipo.financialRows ? Math.max(1, ...ipo.financialRows[0].values) : 1;
 
+  /* Public documents: everything except the internal ASBA print blanks
+     (`asba_form_*`), which are operator assets and never shown publicly.
+     Resolved once — it gates the section, the nav entry and the list, and three
+     copies of the same filter is how those three drift apart. */
+  const publicDocs = (ipo.documents ?? []).filter(isPublicDoc);
+
   // "How to apply" & "FAQs" intentionally omitted from the tab nav — their sections still render on scroll.
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(ipo.subscription ? [{ id: 'subscription', label: 'Subscription' }] : []),
-    { id: 'gmp', label: 'GMP' },
+    { id: 'gmp', label: LABEL.gmp },
     ...(ipo.financialRows ? [{ id: 'financials', label: 'Financials' }] : []),
     ...(ipo.about ? [{ id: 'about', label: 'About' }] : []),
+    /* Documents gets its own tab now that it is its own section. It is the one
+       an investor goes looking for by name ("where's the RHP?"), and until
+       today it was unreachable on 469 records. */
+    ...(publicDocs.length > 0 ? [{ id: 'documents', label: 'Documents' }] : []),
   ];
 
   return (
     <article className="fade-up">
       <a href={home} className="back-link">← All IPOs</a>
 
-      <div className={`detail-hero st-${ipo.status}`}>
+      {/* the tone class carries --tone for the hero's left rail */}
+      <div className={`detail-hero st-${ipo.status} t-${toneOf(ipo as any)}`}>
         <IpoLogo logo={ipo.logo} name={ipo.name} size={60} />
         <div className="grow">
           <h1 style={{ margin: 0 }}>{titleCase(ipo.name)}</h1>
           <div className="ic-meta" style={{ marginTop: 8 }}>
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             <span className={`ic-dot ${ipo.status}`}>{tr(`status.${ipo.status}`)}</span>
-            {ipo.exchanges && <span className="hero-ex">{ipo.exchanges.join(' · ')}</span>}
+            {ipo.exchanges && <span className="hero-ex">{exchangeLabels(ipo.exchanges)}</span>}
           </div>
           <div className="ic-dates" style={{ marginTop: 9 }}><Icon name="calendar" size={13} />{fmtDate(ipo.openDate)} – {fmtDate(ipo.closeDate)}</div>
         </div>
@@ -150,17 +161,17 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 <div className="between"><h3>Issue reservation</h3>{ipo.issueSize && <span className="muted mono" style={{ fontSize: 13 }}>{ipo.issueSize}</span>}</div>
                 <div className="alloc" style={{ marginTop: 14 }}>
                   {resRows.map((r) => (
-                    <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
+                    <span key={r.key} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${pctStr(r.pct)}%`}>
                       {segLabel(r.cat, r.pct, false)}
                     </span>
                   ))}
                 </div>
                 <div className="alloc-legend" style={{ marginTop: 12 }}>
                   {resRows.map((r) => (
-                    <div className="al" key={r.cat}>
+                    <div className="al" key={r.key}>
                       <span className="swatch" style={{ background: catColor(r.cat) }} />
                       <div className="al-txt"><div className="who">{r.cat}</div><div className="num">{shC(r.shares)} sh · {calc.crOrInr(r.amount)}</div></div>
-                      <span className="pct">{r.pct}%</span>
+                      <span className="pct">{pctStr(r.pct)}%</span>
                     </div>
                   ))}
                 </div>
@@ -168,9 +179,18 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                   <div className="f1x-box">
                     <div className="mini-h"><Icon name="users" size={14} /> Applications required for 1× subscription</div>
                     <div className="f1x">
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-retail)' } as React.CSSProperties}><div className="k">Retail (≤₹2L)</div><div className="v">{ipo.formsFor1x.retail.toLocaleString('en-IN')} <small>forms</small></div></div>
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-hni1)' } as React.CSSProperties}><div className="k">S-HNI (₹2–10L)</div><div className="v">{ipo.formsFor1x.sHni.toLocaleString('en-IN')} <small>forms</small></div></div>
-                      <div className="c" style={{ ['--cc' as string]: 'var(--c-hni2)' } as React.CSSProperties}><div className="k">B-HNI (&gt;₹10L)</div><div className="v">{ipo.formsFor1x.bHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      {ipo.formsFor1x.retail != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-retail)' } as React.CSSProperties}><div className="k">Retail (≤₹2L)</div><div className="v">{ipo.formsFor1x.retail.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                      {ipo.formsFor1x.sHni != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-hni1)' } as React.CSSProperties}><div className="k">S-HNI (₹2–10L)</div><div className="v">{ipo.formsFor1x.sHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                      {ipo.formsFor1x.bHni != null && (
+                        <div className="c" style={{ ['--cc' as string]: 'var(--c-hni2)' } as React.CSSProperties}><div className="k">B-HNI (&gt;₹10L)</div><div className="v">{ipo.formsFor1x.bHni.toLocaleString('en-IN')} <small>forms</small></div></div>
+                      )}
+                    </div>
+                    <div className="hint" style={{ marginTop: 8 }}>
+                      From this issue&apos;s reservation split and lot size — the minimum bid each category can place.
                     </div>
                   </div>
                 )}
@@ -205,70 +225,44 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 <h3>Issue details</h3>
                 <div style={{ marginTop: 8 }}>
                   <div className="kv"><span className="k">Lead managers</span><span className="v" style={{ fontSize: 14 }}>{ipo.leadManagers?.join(', ') ?? '—'}</span></div>
-                  {ipo.freshIssue && <div className="kv"><span className="k">Fresh issue</span><span className="v mono">{ipo.freshIssue}</span></div>}
-                  {ipo.offerForSale && <div className="kv"><span className="k">Offer for sale</span><span className="v mono">{ipo.offerForSale}</span></div>}
+                  {ipo.freshIssue && (
+                    <div className="kv"><span className="k">Fresh issue</span><span className="v mono">
+                      {ipo.freshIssueShares ? `${ipo.freshIssueShares.toLocaleString('en-IN')} sh · ` : ''}{ipo.freshIssue}
+                    </span></div>
+                  )}
+                  {ipo.offerForSale && (
+                    <div className="kv"><span className="k">Offer for sale</span><span className="v mono">
+                      {ipo.offerForSaleShares ? `${ipo.offerForSaleShares.toLocaleString('en-IN')} sh · ` : ''}{ipo.offerForSale}
+                    </span></div>
+                  )}
                   <div className="kv"><span className="k">Face value</span><span className="v mono">₹{ipo.faceValue ?? 10}</span></div>
                   <div className="kv"><span className="k">Listing on</span><span className="v">{ipo.exchanges?.join(' · ') ?? '—'}</span></div>
                   <div className="kv"><span className="k">Registrar</span><span className="v" style={{ fontSize: 14 }}>{ipo.registrar ?? '—'}</span></div>
                 </div>
               </div>
-              {ipo.anchors && ipo.anchors.length > 0 && (
-                <div className="panel">
-                  <h3>Anchor investors</h3>
-                  <div style={{ marginTop: 8 }}>
-                    {ipo.anchors.map((an) => (
-                      <div className="kv" key={an.name}><span className="k">{an.name}</span><span className="v mono">{an.amount}</span></div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Anchor investor identities are kept for the operator's own
+                  report surface only (admin → IPO detail). Hidden from the
+                  public detail page (operator decision 2026-09-09) — a listed
+                  anchor list served no reader here and duplicated data
+                  presented more usefully in the operator's report. */}
             </div>
           </section>
 
           {ipo.subscription && subT && (
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
-              <LiveSubscription rows={subT.rows} total={subT.total} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} />
-              {/* day-wise evolution — from the poller's per-day log (real data only) */}
-              {Array.isArray(ex.subLog) && ex.subLog.length > 1 && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <h3>Day-wise subscription</h3>
-                  <div className="fin-scroll" style={{ marginTop: 10 }}>
-                    <table className="fin-tab">
-                      <thead><tr><th>Date</th><th>QIB</th><th>NII</th><th>Retail</th><th>Total</th></tr></thead>
-                      <tbody>
-                        {[...ex.subLog].reverse().map((e: any) => (
-                          <tr key={e.d}>
-                            <td>{/^\d{4}-\d{2}-\d{2}$/.test(String(e.d)) ? new Date(`${e.d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : e.d}</td>
-                            <td className="mono">{e.qib != null ? `${e.qib}×` : '—'}</td>
-                            <td className="mono">{e.nii != null ? `${e.nii}×` : '—'}</td>
-                            <td className="mono">{e.retail != null ? `${e.retail}×` : '—'}</td>
-                            <td className="mono" style={{ fontWeight: 700 }}>{e.total != null ? `${e.total}×` : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              {/* section eyebrow kept for scroll-nav consistency */}
-              {ipo.appWise && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="between"><h3>App-wise subscription</h3>{ipo.totalApps && <span className="muted mono" style={{ fontSize: 13 }}>~{ipo.totalApps.toLocaleString('en-IN')} apps</span>}</div>
-                  <div className="subx">
-                    <div className="subx-h"><span>Category</span><span>Total apps</span><span>Forms / 1×</span><span className="r">App-wise ×</span></div>
-                    {ipo.appWise.map((a) => (
-                      <div className="subx-row" key={a.key} style={{ ['--cc' as string]: catColor(a.label) } as React.CSSProperties}>
-                        <div><span className="cat-chip">{a.label}</span></div>
-                        <div className="subx-num" data-k="Total apps">{a.apps.toLocaleString('en-IN')}</div>
-                        <div className="subx-num" data-k="Forms / 1×">{a.formsFor1x.toLocaleString('en-IN')}<small>for 1×</small></div>
-                        <div className="r"><span className="x-badge" style={{ color: segTextColor(a.label) }}>{a.times}×</span></div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="note-line">App-wise figures estimate applicants per category from the forms required for 1× subscription.</p>
-                </div>
-              )}
+              <LiveSubscription rows={subT.rows} total={subT.total} anchorDeducted={subT.anchorDeducted} anchorBasis={subT.anchorBasis} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} />
+              {/* Day-wise + hourly drill-down moved to /subscription/v2 (2026-09-22).
+                  Operator ask: keep the detail page slim; a "View detail" link on
+                  the Live Subscription card sends the reader over to
+                  /subscription/v2?symbol=<sym> for the fuller history. */}
+              {/* The old app-wise panel here was a legacy renderer of
+                  `ipo.appWise` that duplicated the ApplicationWise panel now
+                  rendered INSIDE LiveSubscription. Removed 2026-09-22
+                  (operator report: "extra application wise card panel
+                  shown"). ipo.appWise is still populated on the API side —
+                  harmless — but the detail page reads Application-wise only
+                  through LiveSubscription's AppWisePanel. */}
             </section>
           )}
 
@@ -360,12 +354,27 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                     </div>
                   ))}
 
-                {(ex.companyPromoter || ipo.promoters) && (
-                  <div style={{ marginTop: 18 }}>
-                    <h3 style={{ fontSize: 14 }}>Promoters</h3>
-                    <div className="row" style={{ marginTop: 8, gap: 8 }}>{(ex.companyPromoter ? [String(ex.companyPromoter)] : ipo.promoters!).map((p: string) => <span className="chip" key={p}>{p}</span>)}</div>
-                  </div>
-                )}
+                {(() => {
+                  // Operators enter promoter names as a free-text string on the
+                  // IPO form ("Alice, Bob, and Carol") — the whole string used
+                  // to land in ONE chip, which then blew past the container
+                  // width on issues with 5+ promoters (Prasol's ten was the
+                  // trigger). Split on commas + trailing "and" so each name
+                  // gets its own chip and the row wraps naturally.
+                  const raw = ex.companyPromoter ? String(ex.companyPromoter) : null;
+                  const names = raw
+                    ? raw.split(/,\s*(?:and\s+)?|\s+and\s+/i).map((s) => s.trim()).filter(Boolean)
+                    : (ipo.promoters ?? []);
+                  if (!names.length) return null;
+                  return (
+                    <div style={{ marginTop: 18 }}>
+                      <h3 style={{ fontSize: 14 }}>Promoters</h3>
+                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                        {names.map((p) => <span className="chip" key={p}>{p}</span>)}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {rich(ex.contactInfo) && (
                   <div style={{ marginTop: 18 }}>
@@ -375,28 +384,54 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
                 )}
               </div>
 
-              {ipo.type === 'sme' && ipo.smeCompliance && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <div className="between"><h3>{tr('detail.smeNorms')}</h3>{ipo.smeCompliance.meetsNorms && <span className="badge-ok">{tr('detail.meetsNorms')}</span>}</div>
-                  <div style={{ marginTop: 8 }}>
-                    <div className="kv"><span className="k">₹1cr EBITDA test</span><span className="v">{ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'}</span></div>
-                    <div className="kv"><span className="k">OFS %</span><span className="v mono">{ipo.smeCompliance.ofsPct ?? '—'}%</span></div>
-                    <div className="kv"><span className="k">GCP %</span><span className="v mono">{ipo.smeCompliance.gcpPct ?? '—'}%</span></div>
-                  </div>
-                </div>
-              )}
+            </section>
+          )}
 
-              {(ipo.documents ?? []).filter((d) => !d.type?.startsWith('asba_form')).length > 0 && (
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <h3>Documents</h3>
-                  <div style={{ marginTop: 8 }}>
-                    {/* internal ASBA print blanks (asba_form_*) are operator assets — never shown publicly */}
-                    {ipo.documents!.filter((d) => !d.type?.startsWith('asba_form')).map((d) => (
-                      <div className="kv" key={d.type}><span className="k">{d.type}</span><a href={d.url} className="linklike" target="_blank" rel="noreferrer">Open ↗</a></div>
-                    ))}
-                  </div>
+          {/*
+            * SME norms and Documents used to sit INSIDE `section#about`, whose
+            * gate is the company description / strengths / contact info. So on
+            * any record where the operator had not written that prose, both
+            * panels were invisible even though the data was there — measured at
+            * 469 records with public documents nobody could see (298 mainboard,
+            * 171 SME) against 40 that rendered. It read as an SME fault only
+            * because SME records rarely carry the rich About content.
+            *
+            * Each is now gated on ITS OWN data. A panel must never depend on
+            * another panel's content being present.
+            */}
+          {ipo.type === 'sme' && ipo.smeCompliance && (
+            <section id="sme-norms">
+              <div className="section-title">SME norms</div>
+              <div className="panel">
+                <div className="between"><h3>{tr('detail.smeNorms')}</h3>{ipo.smeCompliance.meetsNorms && <span className="badge-ok">{tr('detail.meetsNorms')}</span>}</div>
+                <div style={{ marginTop: 8 }}>
+                  <div className="kv"><span className="k">₹1cr EBITDA test</span><span className="v">{ipo.smeCompliance.ebitdaTest ? 'Pass' : '—'}</span></div>
+                  <div className="kv"><span className="k">OFS %</span><span className="v mono">{ipo.smeCompliance.ofsPct ?? '—'}%</span></div>
+                  <div className="kv"><span className="k">GCP %</span><span className="v mono">{ipo.smeCompliance.gcpPct ?? '—'}%</span></div>
                 </div>
-              )}
+              </div>
+            </section>
+          )}
+
+          {publicDocs.length > 0 && (
+            <section id="documents">
+              <div className="section-title">Documents</div>
+              <div className="panel">
+                <div className="doc-list">
+                  {publicDocs.map((d, i) => (
+                    /* Key on url+index, not `type`: a record may carry two
+                       documents of the same type (two RHP parts, say), and a
+                       duplicate React key drops one of them from the list. */
+                    <div className="kv" key={`${d.url}-${i}`}>
+                      <span className="k">{docLabel(d.type)}</span>
+                      <a href={d.url} className="linklike" target="_blank" rel="noreferrer">Open ↗</a>
+                    </div>
+                  ))}
+                </div>
+                <p className="faint" style={{ fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+                  Filed with SEBI / the exchange by the issuer. Opens on the issuer&apos;s or the regulator&apos;s site.
+                </p>
+              </div>
             </section>
           )}
 

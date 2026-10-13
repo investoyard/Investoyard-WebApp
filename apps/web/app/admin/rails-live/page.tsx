@@ -6,6 +6,7 @@ import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
@@ -14,9 +15,11 @@ const EX_LABEL: Record<string, string> = { NSE_EIPO: 'NSE e-IPO', BSE_IBBS: 'BSE
 
 // Exact base URLs from the NSE WEB API doc (v1.20.6, Appendix B). The adapter
 // appends /v1/login, /v1/ipomaster, /v1/transactions/add … to this base.
-// BSE iBBS base comes from the member's iBBS onboarding, so it's left blank.
+// BSE iBBS live URL confirmed against sir's working reference on 2026-09-10 —
+// the earlier "ibbsapi.bseindia.com/IBBSAPI/..." variant was wrong (different
+// subdomain + upper-cased path); iBBS actually serves on ibbs.bseindia.com.
 const NSE_BASE: Record<string, string> = { uat: 'https://uat-ipo.nseindia.com/eipo', live: 'https://eipo.nseindia.com/eipo' };
-const BSE_BASE: Record<string, string> = { uat: 'https://uat.bseindia.in/ibbsapi/ibbsapiservice.svc', live: 'https://ibbsapi.bseindia.com/IBBSAPI/IBBSAPISERVICE.SVC' };
+const BSE_BASE: Record<string, string> = { uat: 'https://uat.bseindia.in/ibbsapi/ibbsapiservice.svc', live: 'https://ibbs.bseindia.com/ibbsapi/ibbsapiservice.svc' };
 const KNOWN_BASES = [...Object.values(NSE_BASE), ...Object.values(BSE_BASE)];
 const suggestBase = (exchange: string, env: string) => (exchange === 'BSE_IBBS' ? BSE_BASE[env] ?? '' : NSE_BASE[env] ?? '');
 
@@ -26,7 +29,9 @@ export default function AdminRailsLive() {
   const me = useOperator();
   const [rails, setRails] = useState<api.RailCred[]>([]);
   const [form, setForm] = useState<any>({ ...blank });
-  const [test, setTest] = useState<Record<string, string>>({});
+  /** Currently-running test id (button spinner) + last result (modal payload). */
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<null | (api.RailTestResult & { rail: api.RailCred })>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,13 +109,27 @@ export default function AdminRailsLive() {
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
-  const doTest = async (id: string) => {
-    setBusy(true);
-    setTest({ ...test, [id]: 'testing…' });
-    try { const r = await api.testRail(id); setTest((t) => ({ ...t, [id]: `${r.outcome}${r.note ? ` — ${r.note}` : ''}` })); }
-    catch (e: any) { setErr(String(e?.message ?? e)); setTest((t) => ({ ...t, [id]: '' })); }
-    finally { setBusy(false); }
+  const doTest = async (rail: api.RailCred) => {
+    setBusy(true); setTesting(rail.id); setErr(null);
+    try { const r = await api.testRail(rail.id); setTestResult({ ...r, rail }); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); setTesting(null); }
   };
+
+  /** Hard-delete a rail credential. Superadmin-only + server-side validated
+   *  (refuses when references exist). Confirm dialog names the credential
+   *  and quotes the 409 reason if the delete is blocked. */
+  const askDelete = (c: api.RailCred) => setConfirm({
+    title: `Delete ${c.memberName} permanently?`,
+    danger: true, confirmLabel: 'Delete',
+    message: <>This removes the credential. If it's referenced by any submitted application, bid operation, or IPO's Online Apply series, the server will refuse and tell you which.</>,
+    onConfirm: async () => {
+      setBusy(true); setErr(null); setMsg(null);
+      try { await api.deleteRail(c.id); await load(); setMsg(`${c.memberName} deleted.`); }
+      catch (e: any) { setErr(String(e?.message ?? e)); }
+      finally { setBusy(false); }
+    },
+  });
 
   if (!operatorCan(me, 'rails.manage')) return <NoAccess />;
 
@@ -130,36 +149,68 @@ export default function AdminRailsLive() {
         <div className="card">
           <div className="card-head"><span className="t">Member credentials <span className="count-badge">{rails.length}</span></span></div>
           <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%' }}>
-                <thead><tr><th>Exchange</th><th>Member</th><th>Login</th><th>Code</th><th>Env</th><th>Secret</th><th>Active</th><th></th></tr></thead>
+              <table className="table rl-tbl" style={{ width: '100%' }}>
+                <thead><tr>
+                  <th>Exchange</th><th>Member</th><th>Login</th><th>Code</th>
+                  <th style={{ textAlign: 'center' }}>Env</th>
+                  <th style={{ textAlign: 'center' }}>Secret</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
+                  <th></th>
+                </tr></thead>
                 <tbody>
                   {rails.length === 0 ? <tr><td colSpan={8} className="muted" style={{ padding: 14 }}>No credentials yet.</td></tr> :
                     rails.map((c) => (
                       <tr key={c.id}>
-                        <td><span className="pill">{EX_LABEL[c.exchange] ?? c.exchange}</span></td>
-                        <td>
-                          {c.memberName}
-                          {c.subscriptionUse && <span className="pill" style={{ marginLeft: 6, background: '#eaf5ee', fontSize: 11 }} title="Our own membership — subscription auto-fetch, IPO master & holidays always use this credential">★ subscription</span>}
-                          <div className="muted" style={{ fontSize: 11 }}>{c.memberType}</div>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span className={`rl-ex ${c.exchange === 'NSE_EIPO' ? 'nse' : 'bse'}`}>{EX_LABEL[c.exchange] ?? c.exchange}</span>
                         </td>
-                        <td className="mono">{c.loginId}</td>
-                        <td className="mono">{c.memberCode}</td>
-                        <td><span className="pill" style={{ background: c.env === 'live' ? '#eaf5ee' : 'var(--bg-subtle)' }}>{c.env}</span></td>
-                        <td>{c.passwordSet ? <span className="mono muted">•••••• set</span> : <span className="muted">—</span>}</td>
-                        <td><span className={`st ${c.active ? 'ok' : 'mut'}`}>{c.active ? 'On' : 'Off'}</span></td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {test[c.id] && <span className="muted" style={{ fontSize: 12, marginRight: 8 }}>{test[c.id]}</span>}
-                          <span className="row-actions">
-                            <button className="icon-btn" disabled={busy} onClick={() => setViewing(c)} title="View details"><Icon name="eye" size={15} /></button>
-                            <button className="icon-btn" disabled={busy} onClick={() => openEdit(c)} title="Edit"><Icon name="edit" size={15} /></button>
-                            {!c.subscriptionUse && (
-                              <button className="icon-btn" disabled={busy} title="Mark as OUR member — use for subscription auto-fetch"
-                                onClick={() => run(() => api.updateRail(c.id, { subscriptionUse: true }), `${c.memberName} is now used for subscription fetch on ${EX_LABEL[c.exchange] ?? c.exchange}.`)}>
-                                <Icon name="star" size={15} />
-                              </button>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="rl-name">{c.memberName}</span>
+                            {c.subscriptionUse && (
+                              <span className="rl-sub" title="OUR own membership — subscription auto-fetch, IPO master & holidays always use this credential">
+                                <Icon name="star" size={11} />
+                              </span>
                             )}
-                            <button className="icon-btn" disabled={busy} onClick={() => doTest(c.id)} title="Test connection"><Icon name="refresh" size={15} /></button>
-                            <button className={`icon-btn ${c.active ? 'danger' : 'pos'}`} disabled={busy} onClick={() => toggleRail(c)} title={c.active ? 'Deactivate' : 'Activate'}><Icon name="power" size={15} /></button>
+                          </div>
+                          <div className="rl-sub-line">{c.memberType}</div>
+                        </td>
+                        <td className="mono" style={{ whiteSpace: 'nowrap' }}>{c.loginId}</td>
+                        <td className="mono" style={{ whiteSpace: 'nowrap' }}>{c.memberCode}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className={`rl-env ${c.env}`}>{c.env}</span>
+                        </td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {c.passwordSet
+                            ? <span className="rl-secret set"><Icon name="check" size={11} /> set</span>
+                            : <span className="rl-secret unset">not set</span>}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className={`rl-st ${c.active ? 'on' : 'off'}`}>
+                            <span className="rl-dot" />{c.active ? 'Active' : 'Off'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>
+                          <span className="row-actions">
+                            <button className="icon-btn" disabled={busy} onClick={() => setViewing(c)} title="View details"><Icon name="eye" size={14} /></button>
+                            <button className="icon-btn" disabled={busy} onClick={() => openEdit(c)} title="Edit"><Icon name="edit" size={14} /></button>
+                            <button className={`icon-btn ${c.active ? 'danger' : 'pos'}`} disabled={busy} onClick={() => toggleRail(c)} title={c.active ? 'Deactivate' : 'Activate'}><Icon name="power" size={14} /></button>
+                            <RowMenu>
+                              <button disabled={busy} onClick={() => doTest(c)}>
+                                <Icon name={testing === c.id ? 'clock' : 'refresh'} size={14} /> Test connection
+                              </button>
+                              {!c.subscriptionUse && (
+                                <button disabled={busy}
+                                  onClick={() => run(() => api.updateRail(c.id, { subscriptionUse: true }), `${c.memberName} is now used for subscription fetch on ${EX_LABEL[c.exchange] ?? c.exchange}.`)}>
+                                  <Icon name="star" size={14} /> Mark as subscription source
+                                </button>
+                              )}
+                              {me?.isSuperAdmin && (
+                                <button className="danger" disabled={busy} onClick={() => askDelete(c)}>
+                                  <Icon name="trash" size={14} /> Delete permanently
+                                </button>
+                              )}
+                            </RowMenu>
                           </span>
                         </td>
                       </tr>
@@ -240,7 +291,54 @@ export default function AdminRailsLive() {
           </FormActions>
         </Modal>
       )}
+      {testResult && (
+        <RailTestModal result={testResult} onRetry={() => doTest(testResult.rail)} onClose={() => setTestResult(null)} />
+      )}
       {confirm && <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />}
     </>
+  );
+}
+
+/**
+ * Rail test result — shown after every "Test connection" (operator ask
+ * 2026-09-10; used to be a truncated inline `<span>` that hid the useful
+ * detail on `rejected` outcomes). Coloured banner picks the tone; a
+ * "Raw response" panel opens the exchange's own reason string so an
+ * operator can tell "Invalid Id/Password" from "session already active".
+ */
+function RailTestModal({ result, onRetry, onClose }: {
+  result: api.RailTestResult & { rail: api.RailCred };
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const { outcome, note, tokenPreview, durationMs, rail } = result;
+  const tone = outcome === 'connected' ? 'ok'
+    : outcome === 'unreachable' ? 'warn'
+    : 'err';
+  const bannerBg = tone === 'ok' ? '#eaf5ee' : tone === 'warn' ? '#fff4d0' : '#fdebea';
+  const bannerFg = tone === 'ok' ? '#12925a' : tone === 'warn' ? '#7a5b00' : '#b3372e';
+  const hint = outcome === 'connected' ? `Ready to receive bids. Session token issued — first six chars: ${tokenPreview ?? '—'}.`
+    : outcome === 'unreachable' ? 'The exchange host did not answer. Check the Base URL, network, and firewall rules (some exchanges whitelist source IPs).'
+    : outcome === 'rejected' ? 'The exchange responded but refused the login. Common causes: (i) NSE / BSE issue a SEPARATE API user distinct from the web-portal login — check the onboarding letter; (ii) Login ID and Member Code swapped; (iii) Env is set to UAT but the credential is LIVE (or vice-versa); (iv) API password differs from the web-portal password.'
+    : outcome === 'incomplete' ? 'Fill Base URL, Login ID, Member Code and Password before testing.'
+    : 'The stored password could not be decrypted from the vault — re-enter it via Edit and try again.';
+  return (
+    <Modal title={`Test connection — ${rail.memberName}`} sub={`${EX_LABEL[rail.exchange] ?? rail.exchange} · env ${rail.env} · ${rail.loginId}`} onClose={onClose} wide>
+      <div className="banner" style={{ background: bannerBg, color: bannerFg, padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontWeight: 600 }}>
+        {outcome === 'connected' ? '✓ Connected' : outcome === 'unreachable' ? '⚠ Unreachable' : outcome === 'incomplete' ? '⚠ Incomplete configuration' : outcome === 'invalid_secret' ? '⚠ Stored secret unusable' : '✕ Rejected by exchange'}
+        {typeof durationMs === 'number' && <span style={{ fontWeight: 400, marginLeft: 10, opacity: 0.8 }}>({durationMs} ms)</span>}
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Exchange reason</div>
+        <div className="mono" style={{ background: 'var(--bg-2)', padding: 10, borderRadius: 6, fontSize: 12.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+          {note || <span className="muted">no reason returned</span>}
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>{hint}</p>
+      <FormActions>
+        <button className="btn" onClick={onRetry}><Icon name="refresh" size={14} /> Retry</button>
+        <button className="btn btn-secondary" onClick={onClose}>Close</button>
+      </FormActions>
+    </Modal>
   );
 }

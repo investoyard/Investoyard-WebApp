@@ -16,5 +16,6 @@ import { EmpanelmentPdfService } from './empanelment-pdf.service';
   imports: [JwtModule.register({}), HealthModule, RailModule, ApplicationsModule, SubscriptionModule],
   controllers: [AdminController],
   providers: [AdminService, EmpanelmentPdfService, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  exports: [AdminService], // partner self-onboarding approves through registerTenant()
 })
 export class AdminModule {}

@@ -9,13 +9,20 @@ export interface SearchOption { value: string; label: string; sub?: string }
  * Esc / click-outside to close. The option list renders through a portal on
  * document.body (fixed, positioned off the input rect) so it can never be
  * clipped by a card's `overflow: hidden` or trapped in a stacking context.
+ *
+ * Pass `onCreate` to allow adding a value that is not in the list yet: typing a
+ * name with no exact match offers "+ Add «name»" as the last row. Without it the
+ * control behaves exactly as before, so every existing caller is unaffected.
  */
-export function SearchSelect({ options, value, onChange, placeholder, disabled }: {
+export function SearchSelect({ options, value, onChange, placeholder, disabled, onCreate, createLabel }: {
   options: SearchOption[];
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** called with the typed text; resolve to the new option's value, or null to abort */
+  onCreate?: (name: string) => Promise<string | null>;
+  createLabel?: (name: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -64,12 +71,38 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled }
 
   const pick = (v: string) => { onChange(v); setOpen(false); setQuery(''); };
 
+  /**
+   * Offer creation only for a name that is not already there — an exact match
+   * (ignoring case) means the operator meant the existing row, and offering to
+   * add a duplicate beside it is how near-identical masters get created.
+   */
+  const typed = query.trim();
+  const canCreate = !!onCreate && typed.length > 1
+    && !options.some((o) => o.label.trim().toLowerCase() === typed.toLowerCase());
+  const [creating, setCreating] = useState(false);
+
+  const create = async () => {
+    if (!onCreate || creating) return;
+    setCreating(true);
+    try {
+      const v = await onCreate(typed);
+      if (v) pick(v);
+    } finally { setCreating(false); }
+  };
+
+  // the create row sits after the filtered options, so it is the last index
+  const rows = filtered.length + (canCreate ? 1 : 0);
+
   const onKey = (e: React.KeyboardEvent) => {
     if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) { setOpen(true); setHl(0); return; }
     if (!open) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHl((h) => Math.min(h + 1, filtered.length - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHl((h) => Math.min(h + 1, rows - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHl((h) => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[hl]) pick(filtered[hl].value); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (canCreate && hl === filtered.length) void create();
+      else if (filtered[hl]) pick(filtered[hl].value);
+    }
     else if (e.key === 'Escape') { setOpen(false); setQuery(''); }
   };
 
@@ -87,9 +120,8 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled }
       />
       {open && rect && createPortal(
         <div className="sselect-list" ref={listRef} style={{ top: rect.top, left: rect.left, width: rect.width }}>
-          {filtered.length === 0 ? (
-            <div className="sselect-empty">No match.</div>
-          ) : filtered.map((o, i) => (
+          {filtered.length === 0 && !canCreate && <div className="sselect-empty">No match.</div>}
+          {filtered.map((o, i) => (
             <button
               key={o.value}
               type="button"
@@ -102,6 +134,17 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled }
               {o.sub && <span className="sub">{o.sub}</span>}
             </button>
           ))}
+          {canCreate && (
+            <button
+              type="button"
+              className={`sselect-opt sselect-new${hl === filtered.length ? ' hl' : ''}`}
+              onMouseEnter={() => setHl(filtered.length)}
+              onMouseDown={(e) => { e.preventDefault(); void create(); }}
+              disabled={creating}
+            >
+              {creating ? 'Adding…' : (createLabel ? createLabel(typed) : `+ Add “${typed}”`)}
+            </button>
+          )}
         </div>,
         document.body,
       )}

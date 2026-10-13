@@ -6,6 +6,7 @@ import { RemindButton } from '@/components/RemindButton';
 import { inr } from '@/lib/format';
 import { makeT, Lang } from '@investoyard/i18n';
 import { LABEL } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT, UPI_MANDATE_MAX } from '@investoyard/shared-types';
 
 function WatchButton({ symbol }: { symbol: string }) {
   const watched = useStore((s) => s.watchlist.includes(symbol));
@@ -23,7 +24,10 @@ function WatchButton({ symbol }: { symbol: string }) {
   );
 }
 
-const RETAIL_MAX = 200000, SNII_MAX = 1000000, UPI_MAX = 500000, DEMO_MAX = 5000000;
+// Regulatory thresholds come from the shared rule pack — never retyped here.
+// DEMO_MAX is ours, not SEBI's: a sanity ceiling on the calculator slider.
+const RETAIL_MAX = RETAIL_MAX_AMOUNT, SNII_MAX = SNII_MAX_AMOUNT, UPI_MAX = UPI_MANDATE_MAX;
+const DEMO_MAX = 5_000_000;
 const catShort = (amt: number) => (amt <= RETAIL_MAX ? 'Retail' : amt <= SNII_MAX ? 'Small-NII' : 'Big-NII');
 
 /** Sticky sidebar apply card with a live lot/amount calculator (desktop). */

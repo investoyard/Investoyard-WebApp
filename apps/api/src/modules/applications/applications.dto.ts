@@ -6,6 +6,9 @@ export enum ApplicantCategory { individual = 'individual', shareholder = 'shareh
 
 export class CreateApplicationDto {
   @IsString() investorProfileId!: string;
+  /** Which demat the allotment credits to. Omit = the profile default. Checked
+   *  against the applicant own accounts in the service, never trusted. */
+  @IsOptional() @IsString() dematAccountId?: string;
   @IsString() ipoId!: string;
   @IsString() category!: string;
   @IsOptional() @IsEnum(ApplicantCategory) applicantType?: ApplicantCategory;
@@ -35,6 +38,9 @@ export class FormsPdfDto {
 
 export class BulkApplicantDto {
   @IsString() investorProfileId!: string;
+  /** Which demat the allotment credits to. Omit = the profile default. Checked
+   *  against the applicant own accounts in the service, never trusted. */
+  @IsOptional() @IsString() dematAccountId?: string;
   @IsInt() @Min(1) lots!: number;
   @IsOptional() @IsBoolean() atCutoff?: boolean;
   @IsOptional() bidPrice?: number;
@@ -50,4 +56,15 @@ export class CreateBulkApplicationDto {
   @IsIn(['native']) applyMethod!: 'native'; // bulk is a native-rail feature (pdf stays per-applicant)
   @IsOptional() @IsBoolean() dataSharingConsent?: boolean;
   @IsOptional() @IsString() consentNoticeVersion?: string;
+}
+
+/**
+ * On-the-spot UPI ID change for a placed application.
+ *
+ * Shape only here — the handle allow-list is admin-managed and lives in the
+ * database, so `ProfilesService.assertUpiAllowed` is the one place that decides
+ * whether `@okaxis` is real. A second regex in a DTO would be a second opinion.
+ */
+export class ChangeUpiDto {
+  @IsString() upiId!: string;
 }

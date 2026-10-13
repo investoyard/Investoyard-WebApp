@@ -35,7 +35,7 @@ export default function GmpListingPage() {
   }, [id]);
 
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'ipos.manage')) return <NoAccess />;
+  if (!operatorCan(me, 'gmp.log.view')) return <NoAccess />;
 
   const save = async () => {
     if (!id || !ipo) return;

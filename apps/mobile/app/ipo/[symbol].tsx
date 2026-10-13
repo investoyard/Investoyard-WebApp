@@ -23,15 +23,20 @@ import { Chip, ChipTone } from '../../components/ui/Chip';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
+import { BulletIY } from '../../components/BulletIY';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
+import { exchangeLabels, LABEL, docLabel, isPublicDoc } from '@investoyard/shared-types';
 
+/* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
+   listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
+   plain grey, which put this screen out of step with the cards and with web. */
 const STATUS_TONE: Record<string, ChipTone> = {
-  open: 'success', upcoming: 'warn', closed: 'neutral', listed: 'neutral', withdrawn: 'danger',
+  open: 'success', upcoming: 'brand', closed: 'closing', listed: 'listed', withdrawn: 'closing',
 };
 
 export default function IpoDetailScreen() {
@@ -96,7 +101,11 @@ export default function IpoDetailScreen() {
   const leadManagers: string[] = Array.isArray(ex.leads) && ex.leads.length
     ? ex.leads
     : ipo.type === 'sme' ? ['Nuvama', 'JM Financial'] : ['Axis Capital', 'Nuvama', 'JM Financial'];
-  const exchanges = ipo.type === 'sme' ? 'NSE SME · BSE SME' : 'NSE · BSE';
+  // What the issue ACTUALLY lists on, shown in the investor's vocabulary
+  // ('NSE Emerge' is stored, 'NSE SME' is displayed). Falls back to ONE SME
+  // platform rather than claiming both, which is what this line used to do.
+  const exchanges = exchangeLabels((ipo as any).exchanges)
+    || (ipo.type === 'sme' ? 'NSE SME' : 'NSE · BSE');
   const aboutParas = stripHtml(typeof ex.companyDescription === 'string' && ex.companyDescription.trim() ? ex.companyDescription : ipo.about);
   const objectParas = stripHtml(ipo.objectsOfIssue);
   const finParas = stripHtml(typeof ex.companyFinancials === 'string' ? ex.companyFinancials : undefined);
@@ -108,10 +117,14 @@ export default function IpoDetailScreen() {
   const subLog: { d: string; total: number }[] = Array.isArray(ex.subLog)
     ? ex.subLog.map((e: any) => ({ d: String(e?.d ?? ''), total: Number(e?.total) || 0 })) : [];
   const hasTrends = gmpLog.length >= 2 || subLog.length >= 2;
-  const anchors: { name: string; amount: string }[] = Array.isArray(ex.anchors)
-    ? ex.anchors.map((a: any) => ({ name: String(a?.name ?? a), amount: String(a?.amount ?? '') })).filter((a: any) => a.name) : [];
-  const DOC_LABEL: Record<string, string> = { drhp: 'DRHP', rhp: 'RHP', anchor: 'Anchor allocation', prospectus: 'Prospectus' };
-  const docs = (ipo.documents ?? []).filter((d) => d.url && DOC_LABEL[d.type?.toLowerCase?.() ?? '']);
+  // ex.anchors was rendered on this screen; hidden 2026-09-09 (identities
+  // are for the operator report only). Kept parsed out here as a marker
+  // in case the operator ever asks for an aggregate summary — see web parity.
+  /* The label map that used to live here was FOUR entries and was used as the
+     FILTER, so a document typed Financials or Other was dropped from the page
+     rather than shown with a plain label. `isPublicDoc` / `docLabel` are the
+     shared resolvers (shared-types/ipoDocs) — web renders the same list. */
+  const docs = (ipo.documents ?? []).filter(isPublicDoc);
 
   /* ---- pinned section-nav plumbing (identity + chips never scroll away) ---- */
   // Section order follows the stage: what matters NOW comes first (before the
@@ -119,7 +132,7 @@ export default function IpoDetailScreen() {
   // subscription & key dates).
   const hasSubs = !!(ipo.subscription && ipo.subscription.length > 0);
   const ALL: Record<string, string> = {
-    overview: 'Overview', gmp: 'GMP', subs: 'Subscription', lots: 'Lot Details',
+    overview: 'Overview', gmp: LABEL.gmp, subs: 'Subscription', lots: 'Lot Details',
     reserve: 'Reservation', dates: 'Key Dates', trends: 'Trends', company: 'Company', details: 'Issue Details',
   };
   const order = postClose
@@ -330,7 +343,7 @@ export default function IpoDetailScreen() {
             <Card style={{ gap: 16 }}>
               {gmpLog.length >= 2 ? (
                 <TrendBlock
-                  label="GMP (₹)"
+                  label={`${LABEL.gmp} (₹)`}
                   points={gmpLog.map((e) => e.gmp)}
                   first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
                   lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}
@@ -372,18 +385,18 @@ export default function IpoDetailScreen() {
             <Card style={{ paddingVertical: 2 }}>
               {aboutParas.length > 0 ? (
                 <ExpandTile title="About the company" initiallyOpen>
-                  {aboutParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                  {aboutParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)}
                 </ExpandTile>
               ) : null}
               {objectParas.length > 0 ? (
                 <ExpandTile title="Objects of the issue">
-                  {objectParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)}
+                  {objectParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)}
                 </ExpandTile>
               ) : null}
               {finParas.length > 0 || (ipo.financials && ipo.financials.length > 0) ? (
                 <ExpandTile title="Financials">
                   {finParas.length > 0
-                    ? finParas.map((p, i) => <Text key={i} style={[styles.para, i > 0 && { marginTop: 8 }]}>{p}</Text>)
+                    ? finParas.map((p, i) => <ProseLine key={i} p={p} first={i === 0} />)
                     : ipo.financials!.map((f, i) => <KV key={f.label} k={f.label} v={f.value} last={i === ipo.financials!.length - 1} />)}
                 </ExpandTile>
               ) : null}
@@ -391,17 +404,9 @@ export default function IpoDetailScreen() {
           </View>
         ) : null}
 
-        {/* anchor investors (per-IPO allocations from the admin master) */}
-        {anchors.length > 0 ? (
-          <>
-            <SectionTitle label="Anchor investors" meta={`${anchors.length} institutions`} style={{ marginTop: 24 }} />
-            <Card>
-              {anchors.map((a, i) => (
-                <KV key={`${a.name}-${i}`} k={a.name} v={a.amount ? `₹${a.amount} Cr` : '—'} last={i === anchors.length - 1} />
-              ))}
-            </Card>
-          </>
-        ) : null}
+        {/* Anchor investor identities are kept for the operator's own
+            report surface only. Hidden from the public IPO detail
+            (operator decision 2026-09-09) — parity with web. */}
 
         {/* issue details + offer documents */}
         <View onLayout={reg('details')}>
@@ -412,12 +417,16 @@ export default function IpoDetailScreen() {
             <KV k="Listing on" v={exchanges} last={docs.length === 0} />
             {docs.map((d, i) => (
               <Pressable
-                key={d.url}
+                key={`${d.url}-${i}`}
                 onPress={() => Linking.openURL(d.url).catch(() => {})}
                 style={({ pressed }) => [styles.kv, i === docs.length - 1 && { borderBottomWidth: 0 }, pressed && { opacity: 0.6 }]}
               >
-                <Text style={styles.kvK}>{DOC_LABEL[d.type.toLowerCase()]}</Text>
-                <Text style={[styles.kvV, { color: ui.indigo }]}>Open PDF ›</Text>
+                <Text style={styles.kvK}>{docLabel(d.type)}</Text>
+                {/* "Open ↗", not "Open PDF": of the 543 public documents on the
+                    catalogue, 468 are .zip (NSE archives serve RHPs zipped) and
+                    69 are .html — only 6 are actually PDFs, so the old label was
+                    wrong 537 times out of 543. Same wording as web. */}
+                <Text style={[styles.kvV, { color: ui.indigo }]}>Open ↗</Text>
               </Pressable>
             ))}
           </Card>
@@ -474,6 +483,24 @@ export default function IpoDetailScreen() {
       ) : null}
     </View>
   );
+}
+
+/** One paragraph or list-item from the operator's rich text. stripHtml
+ *  already prefixes bullet lines with '• '; we detect that prefix and
+ *  swap the character for the Investoyard IY mark. Parity with web's
+ *  `.prose ul li::before` in globals.css. */
+function ProseLine({ p, first }: { p: string; first: boolean }) {
+  const isBullet = p.startsWith('• ');
+  const marginTop = first ? 0 : isBullet ? 6 : 8;
+  if (isBullet) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop }}>
+        <View style={{ paddingTop: 5 }}><BulletIY size={12} /></View>
+        <Text style={[styles.para, { flex: 1 }]}>{p.slice(2)}</Text>
+      </View>
+    );
+  }
+  return <Text style={[styles.para, { marginTop }]}>{p}</Text>;
 }
 
 function Metric({ k, v, hi }: { k: string; v: string; hi?: boolean }) {

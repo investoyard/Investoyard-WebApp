@@ -20,12 +20,15 @@ export interface ResolvedSetting { value: any; locked: boolean; source: string }
 export type Resolved = Record<string, ResolvedSetting>;
 
 async function j<T>(res: Response): Promise<T> {
+  const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
+    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
     throw new Error(msg);
   }
-  return res.json() as Promise<T>;
+  // an empty 200 (Nest returns one for a null handler result, and for 204) is
+  // "no content", not a parse error — see the note in consumer-api.ts
+  return (body ? JSON.parse(body) : null) as T;
 }
 
 /**
@@ -112,6 +115,12 @@ export interface PartnerDetail {
   code?: string; commissionRate?: number;
   brandColor?: string; goldColor?: string; logoUrl?: string; customDomain?: string;
   profile: Record<string, any>;
+  /** Partner API operator controls (Phase D). Default 25 for a new partner,
+   *  clamped to 1..500 by the server. */
+  partnerMaxApplicantsPerCall?: number;
+  /** Scope keys this tenant may call on /partner/v1. Empty = inherit from
+   *  parent (branches). Defaults for a new partner: print-forms + ipos:read. */
+  partnerApiScopes?: string[];
   counts: { branches: number; users: number; operators: number };
   createdAt: string;
 }
@@ -191,7 +200,91 @@ export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: n
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
-export const updateTenant = (slug: string, body: Partial<{ name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; customDomain: string; profile: Record<string, any>; commissionRate: number | null }>) =>
+
+/** API-call summary, grouped. `label` is null on an IPO we do not carry. */
+export type CallsSummaryBy = 'partner' | 'day' | 'month' | 'ipo';
+export interface PartnerCallsSummaryRow {
+  key: string; label: string | null;
+  calls: number; failed: number; applicants: number; avgMs: number; lastAt: string | null;
+  /** `by: 'ipo'` only — both null for a symbol we do not carry. */
+  board?: 'mainboard' | 'sme' | null;
+  openDate?: string | null;
+}
+export interface PartnerCallsSummary {
+  by: CallsSummaryBy; days: number; scoped: boolean; rows: PartnerCallsSummaryRow[];
+}
+export const fetchPartnerApiCallsSummary = (q: { tenantId?: string; days?: number; by: CallsSummaryBy }) =>
+  authed<PartnerCallsSummary>(`${API}/admin/partner-api/calls-summary?${qstr(q)}`, { method: 'GET' });
+
+export async function exportPartnerApiCallsSummaryCsv(q: { tenantId?: string; days?: number; by: CallsSummaryBy }) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/partner-api/calls-summary/export?${qstr(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `partner-calls-${q.by}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Dry-run of the Partner API print-forms endpoint — no key needed, no rows persisted. */
+export interface PartnerTestPrintResult {
+  ipoSymbol: string;
+  batchId: string;
+  dryRun: true;
+  applications: Array<{ applicationRef: string; formNo: string; fullName?: string; category?: string; lots?: number; amount?: number }>;
+  filename: string;
+  pdfBase64: string;
+}
+export const testPartnerPrint = (body: unknown) =>
+  authed<PartnerTestPrintResult>(`${API}/admin/partner-api/test-print`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+
+/** Full detail for one API-printed application — powers the View modal on the Print report. */
+export interface PartnerPrintDetail {
+  applicationRef: string;
+  at: string;
+  partner: string;
+  partnerSlug: string;
+  ipoSymbol: string;
+  ipoName: string;
+  batchId: string | null;
+  formNo: string | null;
+  /** true when the row carries an immutable snapshot of the received payload
+   *  (all API prints from this fix onwards); false for legacy rows where the
+   *  modal falls back to the current InvestorProfile. */
+  snapshot: boolean;
+  fullName: string;
+  pan: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  depository: string | null;
+  dpId: string | null;
+  clientId: string | null;
+  bankAccount: string | null;
+  bankName: string | null;
+  branchName: string | null;
+  category: string;
+  lots: number;
+  shareQty: number | null;
+  bidPrice: number | null;
+  amount: number;
+  familyGroup: string | null;
+}
+export const fetchPartnerPrintDetail = (id: string) =>
+  authed<PartnerPrintDetail>(`${API}/admin/partner-api/print-detail?id=${encodeURIComponent(id)}`, { method: 'GET' });
+export const updateTenant = (slug: string, body: Partial<{
+  name: string; status: string; brandColor: string; goldColor: string; logoUrl: string;
+  customDomain: string; profile: Record<string, any>; commissionRate: number | null;
+  partnerMaxApplicantsPerCall: number;
+  partnerApiScopes: string[];
+}>) =>
   authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 /* -------------------------------------------------- admin: WhatsApp chatbot flow (Level 1) */
@@ -223,7 +316,12 @@ export async function downloadEmpanelmentPdf(slug: string): Promise<void> {
 
 /* -------------------------------------------------- admin: clients (investors) */
 export interface ClientRow {
-  id: string; name?: string; mobileMasked?: string; email?: string; status: string;
+  id: string; name?: string;
+  /** Full 10-digit mobile — only present for superadmin + admin (clients.manage) callers */
+  mobile?: string;
+  /** Masked form ("98****1234") — always present when the user has a mobile */
+  mobileMasked?: string;
+  email?: string; status: string;
   tenant: { slug: string; name: string; type: string };
   profiles: number; applications: number; kyc: { verified: number; total: number }; createdAt: string;
 }
@@ -249,6 +347,13 @@ export const createClient = (body: { mobile: string; name?: string; email?: stri
   authed<{ id: string }>(`${API}/admin/clients`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateClient = (id: string, body: { name?: string; email?: string; status?: 'active' | 'suspended' }) =>
   authed<{ ok: boolean }>(`${API}/admin/clients/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+/** Hard delete — superadmin only. Removes the client and every child that
+ *  carries their data (applications, profiles, bid ops, watchlist,
+ *  consents, device tokens, memberships, GMP contributor row).
+ *  Irreversible. An audit-log row is written before the delete. */
+export const hardDeleteClient = (id: string) =>
+  authed<{ ok: boolean; deletedId: string; appliedApplications: number }>(
+    `${API}/admin/clients/${id}`, { method: 'DELETE' });
 export interface AddProfileBody {
   fullName: string; relationship?: string; pan: string; dateOfBirth?: string;
   depository: 'NSDL' | 'CDSL'; dpId: string; clientId: string; bankAccount?: string; ifsc?: string; upi?: string;
@@ -309,11 +414,15 @@ export interface AdminIpo {
 export interface IpoDoc { type: string; url: string; summary?: string }
 export interface IpoWrite {
   symbol?: string; name?: string; type?: string; status?: string;
+  /** ipo | fpo | reit | invit — the offer kind, not the board */
+  instrument?: string;
   priceBandMin?: number; priceBandMax?: number; lotSize?: number; minAmount?: number;
   issueSizeCr?: number; registrar?: string; isin?: string; objectsOfIssue?: string; logoUrl?: string;
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
   autoPollSubscription?: boolean;
+  /** which exchanges the issue lists on — chosen by staff, not inferred from the board */
+  exchanges?: string[];
   extra?: Record<string, any>;
 }
 /** Full record for the edit form (from GET /ipos/:id). */
@@ -324,6 +433,7 @@ export interface AdminIpoDetail {
   openDate?: string; closeDate?: string; allotmentDate?: string; listingDate?: string;
   reservations?: string[]; documents?: IpoDoc[]; gmp?: number; listingGainPct?: number;
   autoPollSubscription?: boolean; subscriptionAsOf?: string;
+  exchanges?: string[];
   extra?: Record<string, any>;
 }
 export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminIpoDetail>);
@@ -350,6 +460,22 @@ export interface AdminApplication {
 }
 export const fetchApplications = (slug: string) => authed<AdminApplication[]>(`${API}/admin/applications/${slug}`, { method: 'GET' });
 
+/** One row on the consumer-print report. NOT a bid — the operator
+ *  generated a PDF form for the applicant to hand in at their bank.
+ *  Partner-API prints have their own report under Partner API. */
+export interface ConsumerPrintRow {
+  id: string;
+  tenantSlug?: string; tenantName?: string; partnerCode?: string;
+  ipoSymbol: string; ipoName: string;
+  applicantName?: string; accountHolder?: string; mobileMasked?: string;
+  category: string; applicantType: string;
+  familyGroup?: string;
+  lots: number; shareQty?: number; amount: number;
+  formNo?: string; printedAt: string;
+}
+export const fetchConsumerPrints = (slug: string) =>
+  authed<ConsumerPrintRow[]>(`${API}/admin/prints/${slug}`, { method: 'GET' });
+
 export interface AdminReport {
   scope: { slug: string; name: string };
   totals: { applications: number; amount: number; byStatus: Record<string, number> };
@@ -373,6 +499,29 @@ export interface AdminDashboard {
   livePerformance: { symbol: string; name: string; status: string; type: string; band: string | null; gmp: number | null; subscription: number | null }[];
 }
 export const fetchDashboard = (slug: string) => authed<AdminDashboard>(`${API}/admin/dashboard/${slug}`, { method: 'GET' });
+
+/**
+ * Not-yet-closed issues whose subscription the poller CANNOT compute — so their
+ * bidding days are being discarded right now, permanently.
+ *
+ * The API decides membership by calling the poller's own `offeredFromIpo()`, so
+ * this list and the poller's behaviour cannot disagree. Never re-derive the
+ * condition on this side.
+ */
+export interface SubscriptionReadiness {
+  checkedAt: string;
+  atRisk: {
+    id: string; symbol: string; name: string;
+    board: 'mainboard' | 'sme';
+    openDate: string | null; closeDate: string | null;
+    state: 'open' | 'upcoming';
+    /** TRADING days, off the real NSE calendar — a weekend is not a lost day. */
+    lostDays: number; daysLeft: number;
+    reason: string;
+  }[];
+}
+export const fetchSubscriptionReadiness = () =>
+  authed<SubscriptionReadiness>(`${API}/admin/subscription/readiness`, { method: 'GET' });
 
 /** Fetch the report CSV (authenticated) and trigger a browser download. */
 export async function downloadReportCsv(slug: string): Promise<void> {
@@ -441,20 +590,38 @@ export interface MasterRow {
   gstin?: string | null; address1?: string | null; address2?: string | null;
   city?: string | null; state?: string | null; pincode?: string | null;
   allotmentUrl?: string | null; // registrars only
+  /** how many IPOs resolve to this row — registrars and lead managers only */
+  ipoCount?: number;
   baseType?: string;            // ipo-categories: 'mainboard' | 'sme'
   categoryId?: string | null;   // issue-types → IpoCategoryMaster
   category?: MasterRow | null;  // issue-types (joined)
   allowMultiple?: boolean;      // relationships: repeatable per account
   type?: string | null;         // anchors: Mutual Fund | FPI | Insurance | AIF | Other
-  notes?: string | null;        // anchors
+  notes?: string | null;        // orgs + anchors
+  industries?: string[];        // sectors
+  sector?: string | null;       // industries: rolling-up sector name
+  // Reporting extras added 2026-09-11.
+  sebiRegNo?: string | null;               // orgs
+  foundedYear?: number | null;             // orgs
+  website?: string | null;                 // orgs + anchors
+  linkedin?: string | null;                // orgs
+  aumCr?: number | null;                   // anchors
+  country?: string | null;                 // anchors
+  sebiCode?: string | null;                // anchors
+  firstAnchorYear?: number | null;         // anchors
+  description?: string | null;             // sectors + ipo-categories + issue-types + relationships
+  rank?: number | null;                    // sectors + ipo-categories
+  defaultRegulationBasis?: string | null;  // issue-types
   active: boolean;
 }
-export type MasterKind = 'lead-managers' | 'registrars' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors';
+export type MasterKind = 'lead-managers' | 'registrars' | 'sponsor-banks' | 'ipo-categories' | 'issue-types' | 'relationships' | 'upi-handles' | 'anchors' | 'sectors' | 'industries';
 export const fetchMaster = (kind: MasterKind) => authed<MasterRow[]>(`${API}/admin/masters/${kind}`, { method: 'GET' });
 export const createMaster = (kind: MasterKind, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateMaster = (kind: MasterKind, id: string, body: Partial<MasterRow>) =>
   authed<MasterRow>(`${API}/admin/masters/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteMaster = (kind: MasterKind, id: string) =>
+  authed<{ deleted: boolean; name: string }>(`${API}/admin/masters/${kind}/${id}`, { method: 'DELETE' });
 
 /** Platform oversight: per-white-label-partner integration status. */
 export interface IntegrationStatus { slug: string; name: string; code?: string; providers: string[]; templates: string[] }
@@ -499,9 +666,20 @@ export const createRail = (body: any) =>
   authed<{ id: string }>(`${API}/admin/rails`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateRail = (id: string, body: any) =>
   authed<{ updated: boolean }>(`${API}/admin/rails/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const deleteRail = (id: string) =>
+  authed<{ deleted: boolean; memberName: string }>(`${API}/admin/rails/${id}`, { method: 'DELETE' });
+export type RailTestOutcome = 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret';
+export interface RailTestResult {
+  ok: boolean;
+  outcome: RailTestOutcome;
+  note: string;
+  /** First few chars of the session token when `outcome === 'connected'`. */
+  tokenPreview?: string;
+  /** Human-readable ms round-trip when the adapter returned a timing. */
+  durationMs?: number;
+}
 export const testRail = (id: string) =>
-  authed<{ ok: boolean; outcome: 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret'; note: string }>(
-    `${API}/admin/rails/${id}/test`, { method: 'POST' });
+  authed<RailTestResult>(`${API}/admin/rails/${id}/test`, { method: 'POST' });
 /** Run a live NSE subscription sweep now (all open IPOs). */
 export const pollSubscription = () =>
   authed<{ open: number; updated: number; reason?: string }>(`${API}/admin/rails/subscription/poll`, { method: 'POST' });
@@ -618,9 +796,585 @@ export const commitIpoImport = (id: string) =>
     `${API}/admin/ipo-import/commit/${id}`, { method: 'POST' });
 export const fetchIpoImportPending = () =>
   authed<{ catalogOnly: number }>(`${API}/admin/ipo-import/pending`, { method: 'GET' });
+/** Undo an import: removes hidden, never-published rows that carry no activity. */
+export const deleteImportedIpos = () =>
+  authed<{ deleted: number; kept: number }>(`${API}/admin/ipo-import/delete-imported`, { method: 'POST' });
 export const publishImportedIpos = (symbols: string[], published = true) =>
   authed<{ updated: number }>(`${API}/admin/ipo-import/publish`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols, published }),
   });
 /** Admin catalog view includes bulk-imported rows; the public site never does. */
 export const fetchAllIpos = () => fetch(`${API}/ipos?all=1&limit=2000`).then(j<AdminIpo[]>);
+
+/* -------------------------------------------------- admin: GMP log + contributors */
+export interface GmpLogRow {
+  id: string; symbol?: string; name?: string; value: number;
+  source?: string | null; by?: string | null; byId?: string | null; at: string;
+}
+export interface GmpContributorRow {
+  id: string; userId: string; active: boolean; note?: string | null;
+  createdAt: string; name?: string | null; mobile?: string | null;
+}
+export const fetchGmpLog = (limit = 100) =>
+  authed<GmpLogRow[]>(`${API}/admin/gmp/log?limit=${limit}`, { method: 'GET' });
+export const fetchGmpContributors = () =>
+  authed<GmpContributorRow[]>(`${API}/admin/gmp/contributors`, { method: 'GET' });
+export const addGmpContributor = (mobile: string, note?: string) =>
+  authed<{ added: boolean }>(`${API}/admin/gmp/contributors`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile, note }),
+  });
+export const removeGmpContributor = (id: string) =>
+  authed<{ removed: boolean }>(`${API}/admin/gmp/contributors/${id}`, { method: 'DELETE' });
+
+/* -------------------------------------------------- admin: partner applications */
+export interface PartnerApplicationRow {
+  id: string; status: 'submitted' | 'changes_requested' | 'approved' | 'rejected';
+  kind: string; legalName: string; contactName: string; mobile: string; email: string;
+  city?: string | null; state?: string | null; entityType?: string | null;
+  createdAt: string; reviewedAt?: string | null; tenantId?: string | null;
+}
+export interface PartnerApplicationDetail extends PartnerApplicationRow {
+  pan?: string | null; gstin?: string | null; sebiRegNo?: string | null; arn?: string | null;
+  notes?: string | null; documents: { type: string; url: string; name?: string }[];
+  reviewNote?: string | null; inviteToken?: string | null; activatedAt?: string | null;
+}
+export const fetchPartnerApplications = (status = 'submitted') =>
+  authed<PartnerApplicationRow[]>(`${API}/admin/partner-applications?status=${status}`, { method: 'GET' });
+export const fetchPartnerApplication = (id: string) =>
+  authed<PartnerApplicationDetail>(`${API}/admin/partner-applications/${id}`, { method: 'GET' });
+export const approvePartnerApplication = (id: string, body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) =>
+  authed<{ ok: boolean; slug: string; code: string | null; username: string; activationLink: string; emailSent: boolean; emailDev: boolean }>(
+    `${API}/admin/partner-applications/${id}/approve`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export const requestPartnerChanges = (id: string, note: string) =>
+  authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/changes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+export const rejectPartnerApplication = (id: string, note: string) =>
+  authed<{ ok: boolean }>(`${API}/admin/partner-applications/${id}/reject`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+/** Re-send the welcome/activation email for an approved application whose
+ *  link the applicant lost. Regenerates the token, so any previous link dies. */
+export const resendPartnerActivation = (id: string, baseUrl?: string) =>
+  authed<{ ok: boolean; activationLink: string; emailSent: boolean; emailDev: boolean }>(
+    `${API}/admin/partner-applications/${id}/resend-activation`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseUrl }) });
+
+/* -------------------------------------------------- message delivery log */
+export interface MessageLogRow {
+  id: string; channel: string; templateKey?: string | null;
+  recipient: string; recipientLast4?: string | null;
+  subject?: string | null; preview?: string | null;
+  status: 'sent' | 'failed' | 'dev'; provider?: string | null;
+  error?: string | null; isTest: boolean; createdAt: string;
+}
+export const fetchMessageLog = (f: { channel?: string; status?: string; q?: string; limit?: number; offset?: number } = {}) => {
+  const p = new URLSearchParams();
+  if (f.channel && f.channel !== 'all') p.set('channel', f.channel);
+  if (f.status && f.status !== 'all') p.set('status', f.status);
+  if (f.q) p.set('q', f.q);
+  p.set('limit', String(f.limit ?? 150));
+  if (f.offset) p.set('offset', String(f.offset));
+  return authed<{ total: number; rows: MessageLogRow[] }>(`${API}/admin/message-log?${p}`, { method: 'GET' });
+};
+/** Send one template to a named recipient; returns the provider's answer AND the rendered body. */
+export const sendTemplateTest = (body: { channel: string; key: string; to: string; tenantId?: string }) =>
+  authed<{ sent: boolean; dev?: boolean; error?: string; rendered?: string; subject?: string; dltTemplateId?: string | null; senderId?: string | null }>(
+    `${API}/admin/templates/test`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  );
+
+/* ── GMP feed: link an IPO to its upstream row, then preview / run a sync ──
+   `preview` writes NOTHING — it reports what a sync would change and which
+   suggestions are still waiting on a human. Suggestions are never applied on
+   their own: the wrong company's GMP on an IPO is worse than none. */
+export interface GmpFeedChange {
+  symbol: string; from: string; filled: string[];
+  gmp?: number; skippedManual?: boolean;
+}
+export interface GmpFeedSuggestion {
+  status?: string; gmpPct?: number | null;
+  symbol: string; ourName: string; theirName: string;
+  sourceId: string; gmp: number | null; datesAgree: boolean;
+}
+export interface GmpFeedLink {
+  /** the feed's own lifecycle stage: Upcoming | Open | Closing today | Closed | Listing pending | Listed */
+  status?: string; gmpPct?: number | null;
+  symbol: string; ourName: string; theirName: string;
+  sourceId: string; gmp: number | null; autoGmp: boolean;
+}
+export interface GmpFeedReport {
+  dryRun: boolean; fetched: number;
+  changes: GmpFeedChange[]; linked: GmpFeedLink[];
+  suggestions: GmpFeedSuggestion[]; unmatched: string[];
+}
+export const fetchGmpFeedPreview = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/preview`, { method: 'GET' });
+export const runGmpFeedSync = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/sync`, { method: 'POST' });
+export const linkGmpFeed = (symbol: string, sourceId: string | null) =>
+  authed<{ ok: boolean; symbol?: string; sourceId?: string | null; error?: string }>(
+    `${API}/admin/gmp-feed/link?symbol=${encodeURIComponent(symbol)}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`,
+    { method: 'POST' },
+  );
+
+/** The GMP feed's source URL — operator-editable so a changed upstream report
+ *  is a settings edit rather than a deploy. */
+export const fetchGmpFeedConfig = () =>
+  authed<{ url: string | null; usingDefault: boolean }>(`${API}/admin/gmp-feed/config`, { method: 'GET' });
+export const saveGmpFeedConfig = (url: string) =>
+  authed<{ url: string | null }>(`${API}/admin/gmp-feed/config`, {
+    // authed() does not set a content type; without this Nest never parses the
+    // body and the save would silently clear the URL instead of storing it
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+
+/* ── masters: bulk upload ────────────────────────────────────────────────── */
+
+export interface MasterBulkRow { row: number; data: Record<string, any> }
+export interface MasterBulkPreview {
+  columns: string[];
+  counts: { parsed: number; toCreate: number; skipped: number; invalid: number };
+  toCreate: MasterBulkRow[];
+  skipped: { row: number; key: string; reason: string }[];
+  invalid: { row: number; errors: string[] }[];
+}
+
+/** Step 1 — upload and validate. Writes nothing. */
+export async function parseMasterBulk(kind: MasterKind, file: File): Promise<MasterBulkPreview> {
+  const fd = new FormData();
+  fd.append('file', file);
+  // no Content-Type header: the browser must set the multipart boundary itself
+  const res = await fetch(`${API}/admin/masters/${kind}/bulk/parse`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await adminToken()}` }, body: fd,
+  });
+  return j<MasterBulkPreview>(res);
+}
+
+/** Step 2 — write the rows the operator just approved. */
+export const commitMasterBulk = (kind: MasterKind, rows: MasterBulkRow[]) =>
+  authed<{ created: number; skipped: number; failed: { key: string; error: string }[] }>(
+    `${API}/admin/masters/${kind}/bulk`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) },
+  );
+
+/** The blank template. Auth-guarded, so it is fetched and saved rather than linked. */
+export async function downloadMasterTemplate(kind: MasterKind): Promise<void> {
+  const res = await fetch(`${API}/admin/masters/${kind}/bulk/template`, {
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = `${kind}-template.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Pull live GMP now — appends a timestamped reading per linked IPO. */
+export const refreshGmpFeed = () =>
+  authed<GmpFeedReport>(`${API}/admin/gmp-feed/refresh-gmp`, { method: 'POST' });
+
+/* ── catalog UPDATE: fill gaps on IPOs that already exist ─────────────────── */
+
+export interface CatalogCellChange { symbol: string; field: string; from: string; to: string }
+export interface CatalogUpdatePreview {
+  id: string;
+  counts: { rows: number; matched: number; unknown: number; fills: number; conflicts: number; ipos: number };
+  fillsByField: { field: string; count: number }[];
+  fillSample: CatalogCellChange[];
+  conflicts: CatalogCellChange[];
+  unknown: string[];
+}
+
+/** Step 1 — diff the reviewed workbook against the catalog. Writes nothing. */
+export async function previewCatalogUpdate(file: File): Promise<CatalogUpdatePreview> {
+  const fd = new FormData();
+  fd.append('file', file);
+  // no Content-Type: the browser must set the multipart boundary itself
+  const res = await fetch(`${API}/admin/ipo-import/update/preview`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await adminToken()}` }, body: fd,
+  });
+  return j<CatalogUpdatePreview>(res);
+}
+
+/** Step 2 — apply every fill plus the approved conflicts, keyed "SYMBOL|Field". */
+export const commitCatalogUpdate = (id: string, approve: string[]) =>
+  authed<{ ipos: number; cells: number; skippedConflicts: number; failed: { symbol: string; error: string }[] }>(
+    `${API}/admin/ipo-import/update/commit/${id}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approve }) },
+  );
+
+/* ── Bidding Report ─────────────────────────────────────────────────────── */
+
+export interface BidRow {
+  id: string;
+  appNo: string | null;
+  name: string;
+  pan: string;
+  demat: string | null;
+  depository: string | null;
+  qty: number;
+  price: number | null;
+  atCutoff: boolean;
+  rejection: string | null;
+  upiStatus: string | null;
+  upiStatusAt: string | null;
+  bidNumber: string | null;
+  status: string;
+  category: string;
+  rail: string | null;
+  ipoSymbol: string | null;
+  ipoName: string | null;
+  member: string | null;
+  memberCode: string | null;
+  /** the newest ledger operation — what the action buttons may do next */
+  lastOp: { action: string; state: string; reason: string | null; at: string } | null;
+  createdAt: string;
+}
+
+export interface BidReportFilters {
+  ipoId?: string; memberCredentialId?: string; status?: string; category?: string;
+  rail?: string; from?: string; to?: string; q?: string;
+  sort?: string; dir?: 'asc' | 'desc'; page?: number; per?: number;
+}
+
+export const fetchBidReport = (f: BidReportFilters = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') p.set(k, String(v));
+  const qs = p.toString();
+  return authed<{ total: number; page: number; per: number; pages: number; rows: BidRow[] }>(
+    `${API}/admin/bidding/report${qs ? `?${qs}` : ''}`, { method: 'GET' });
+};
+
+export const fetchBidFacets = () =>
+  authed<{
+    ipos: { id: string; symbol: string; name: string }[];
+    members: { id: string; label: string; exchange: string }[];
+    statuses: { value: string; count: number }[];
+    categories: { value: string; count: number }[];
+  }>(`${API}/admin/bidding/facets`, { method: 'GET' });
+
+/** Revise a bid's quantity. The server enforces the ICDR direction rule. */
+export const editBid = (id: string, qty: number, price?: number) =>
+  authed<{ ok: boolean; operationId: string; state: string; qty: number }>(
+    `${API}/admin/bidding/${id}/edit`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qty, price }) },
+  );
+
+/**
+ * Withdraw a bid. Refused for HNI/QIB once the bid is at the exchange.
+ *
+ * Sends an explicit `{}` rather than no body at all: IIS answers a POST with no
+ * Content-Length with a 411 before the request ever reaches Nest, which would
+ * surface as a mystery failure that only happens in production. Verified
+ * against the live server — no body 411, `{}` 401.
+ */
+export const cancelBid = (id: string) =>
+  authed<{ ok: boolean; operationId: string; state: string }>(
+    `${API}/admin/bidding/${id}/cancel`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+  );
+
+/**
+ * Pull the exchange's latest status for ONE bid, immediately. Returns the
+ * refreshed values so the row can update without reloading the whole
+ * page. A refresh with no exchange record yet is not an error — the
+ * server returns the current stored values with `refreshedAt` stamped.
+ */
+export const refreshBid = (id: string) =>
+  authed<{
+    applicationId: string;
+    status: string;
+    reason: string | null;
+    amountBlocked: number | null;
+    upiStatusText: string | null;
+    refreshedAt: string;
+  }>(`${API}/admin/bidding/${id}/refresh`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+
+/**
+ * Rebid — cancel this bid and create a replacement, in one transaction.
+ * `qty` and `price` are optional; omit either to keep the current value.
+ * Refused for HNI/QIB once the bid is at the exchange (same rule as cancel).
+ * Returns both new IDs — the cancelled application (old) and the fresh one.
+ */
+export const rebidBid = (id: string, qty?: number, price?: number) =>
+  authed<{ ok: boolean; cancelledId: string; createdId: string; operationIds: string[] }>(
+    `${API}/admin/bidding/${id}/rebid`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qty, price }) },
+  );
+
+/* ── Bidding Summary — the operations matrix (IPO × member × exchange). */
+
+export interface BidSummaryCounts {
+  bidDone: number; bidPending: number; bidFailed: number;
+  modifyDone: number; modifyPending: number; modifyFailed: number;
+  cancelDone: number; cancelPending: number; cancelFailed: number;
+  total: number;
+}
+export interface BidSummaryRow {
+  ipoId: string; ipoSymbol: string; ipoName: string;
+  memberCredentialId: string | null;
+  memberCode: string;      // "BYFILE" for unposted (no member resolved yet)
+  memberName: string;
+  exchange: string | null; // "NSE_EIPO" | "BSE_IBBS" | null
+  counts: BidSummaryCounts;
+}
+export interface BidSummaryFilters {
+  ipoId?: string; memberCredentialId?: string; exchange?: string;
+  from?: string; to?: string;
+}
+export const fetchBidSummary = (f: BidSummaryFilters = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') p.set(k, String(v));
+  const qs = p.toString();
+  return authed<{ rows: BidSummaryRow[]; totals: BidSummaryCounts }>(
+    `${API}/admin/bidding/summary${qs ? `?${qs}` : ''}`, { method: 'GET' });
+};
+export const fetchBidSummaryFacets = () =>
+  authed<{
+    ipos: { id: string; symbol: string; name: string }[];
+    members: { id: string; label: string; exchange: string }[];
+    exchanges: { value: string; label: string }[];
+  }>(`${API}/admin/bidding/summary/facets`, { method: 'GET' });
+
+/* ── NSE PREANCHOR parser ────────────────────────────────────────────────
+   Uploads the exchange's Security Parameters PDF, returns the extracted
+   fields for the IPO form to review before writing. The endpoint is read-
+   only — nothing is persisted here. Written to the catalog only when the
+   operator hits Save on the entry form. */
+
+/** One extracted name that may or may not resolve to a master row. */
+export interface ResolvedName {
+  name: string;
+  master?: { id: string; name: string };
+}
+
+export interface ParsedPreanchor {
+  symbol?: string;
+  name?: string;
+  faceValue?: number;
+  /** Mainboard / SME — read from the doc title's "(Mainboard)" or "(SME)". */
+  type?: 'mainboard' | 'sme';
+  /** Dual-listing for Mainboard; NSE-only for NSE-Emerge SME. */
+  exNse?: boolean;
+  exBse?: boolean;
+  issueSizeCr?: number;
+  freshIssueCr?: number;
+  ofsCr?: number;
+  priceBandMin?: number;
+  priceBandMax?: number;
+  lotSize?: number;
+  tickSize?: number;
+  /** enriched by the endpoint into a ResolvedName — see match() in the API */
+  registrar?: ResolvedName;
+  leadManagers?: ResolvedName[];
+  sponsorBank?: string;
+  openDate?: string;
+  closeDate?: string;
+  qibCloseDate?: string;
+  upiMandateCutoff?: string;
+  /** computed T+3 estimates — the IPO Note parser overwrites with exact dates */
+  allotmentDate?: string;
+  refundDate?: string;
+  dematDate?: string;
+  listingDate?: string;
+  /** reservation share counts at the LOWER band (as PREANCHOR itself notes) */
+  reservation?: { qib?: number; hni?: number; hni2?: number; retail?: number; total?: number };
+  subCategories?: string;
+  upiSubCategories?: string;
+  _raw?: { warnings: string[] };
+}
+
+export const parsePreanchor = async (file: File): Promise<ParsedPreanchor> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/preanchor`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : {};
+};
+
+export interface ParsedAnchorInvestor {
+  name: string; shares: number; pct: number; price: number; amount: number;
+  /** Master-matched canonical when the parsed name resolves to a row in
+   *  the Anchor Investors master (aliases + normalisation handled by
+   *  the shared `resolveMaster`). Undefined for free-text passes-through. */
+  master?: { id: string; name: string };
+}
+export interface ParsedAnchor {
+  totalShares?: number;
+  allocationPrice?: number;
+  /** ISO date the anchor investors bid — usually the trading day BEFORE
+   *  the issue opens. Set when the intimation letter's header states it;
+   *  the form falls back to openDate − 1 business day otherwise. */
+  anchorDate?: string;
+  investors: ParsedAnchorInvestor[];
+  _raw?: { warnings: string[] };
+}
+
+export const parseAnchor = async (file: File): Promise<ParsedAnchor> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/anchor`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : { investors: [] };
+};
+
+/**
+ * An IPO SUMMARY CARD image. Mirrors `ParsedCard` in the API — kept in sync by
+ * hand, like the other parser types, because both ends are strictly typed.
+ *
+ * `crossCheck` is deliberately NOT part of the writable fields: the cards'
+ * "Application Reserved" row carries the ~4.8× bHNI error this codebase fixed
+ * on 2026-09-29, and `req1x` is not a storable field anyway. The modal shows it
+ * beside our own derivation so the operator can see the disagreement.
+ */
+export interface ParsedCard {
+  name?: string | null;
+  issueSizeCr?: number | null;
+  fresh?: { basis: 'amount' | 'shares'; value: number } | null;
+  ofs?: { basis: 'amount' | 'shares'; value: number } | null;
+  priceBandMin?: number | null;
+  priceBandMax?: number | null;
+  faceValue?: number | null;
+  lotSize?: number | null;
+  employeeDiscount?: number | null;
+  retailDiscount?: number | null;
+  shareholderDiscount?: number | null;
+  reservation?: Record<string, number> | null;
+  shares?: Record<string, number> | null;
+  carveout?: { key: string; shares: number | null; amountCr: number | null } | null;
+  anchorDate?: string | null;
+  openDate?: string | null;
+  closeDate?: string | null;
+  allotmentDate?: string | null;
+  refundDate?: string | null;
+  dematDate?: string | null;
+  listingDate?: string | null;
+  leadManagers: string[];
+  registrar?: string | null;
+  exchanges: string[];
+  crossCheck: { minBid: Record<string, number> | null; applications: Record<string, number> | null };
+  warnings: string[];
+}
+
+export const parseCard = async (file: File): Promise<ParsedCard> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/card`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return JSON.parse(body) as ParsedCard;
+};
+
+/**
+ * Merchant banker's IPO Note (Axis format). See the parser for scope; this
+ * type mirrors ParsedIpoNote in the API — kept in sync by hand because both
+ * ends are strictly typed. Fields deliberately omitted (name/symbol/price
+ * band/lot/leads/registrar) because PREANCHOR is authoritative for those.
+ */
+export interface ParsedIpoNoteFinancial {
+  label: string;
+  values: (string | null)[];
+}
+export interface ParsedIpoNote {
+  /** exact dates — OVERWRITE the T+3 estimates PREANCHOR produced */
+  allotmentDate?: string;
+  refundDate?: string;
+  dematDate?: string;
+  listingDate?: string;
+  /** Anchor investor bidding date when the Note's Indicative Timetable
+   *  states it — usually the trading day BEFORE openDate. */
+  anchorDate?: string;
+  /** Fresh Issue / OFS in ₹ Cr from the Note's OFFER DETAILS block.
+   *  A fallback for PREANCHOR — extracted for the 2 of 4 Notes whose
+   *  format prints an OFFER DETAILS header (PSL, Deepa); the other two
+   *  put the same data in an unlabelled page-1 wrap and are left blank. */
+  freshIssueCr?: number;
+  ofsCr?: number;
+  /** post-issue implied market cap range (Cr) — display-only for now */
+  marketCap?: { min?: number; max?: number };
+  /** year labels in the order the table lists them ("2026", "2025", "2024") */
+  financialPeriods?: string[];
+  /** brief financial highlights — one label + up to 3 period values per row */
+  financials?: ParsedIpoNoteFinancial[];
+  /** pre-rendered HTML table that goes straight into form.companyFinancials */
+  financialsHtml?: string;
+  /** company prose extracted VERBATIM from the Note — the modal offers a
+   *  Rewrite button per row that swaps the verbatim text for a Claude
+   *  redraft in Investoyard's voice */
+  companyDescriptionHtml?: string;
+  companyStrengthHtml?: string;
+  objectsOfIssueHtml?: string;
+  /** true if admin → Integrations → Claude AI is configured — server has
+   *  the API key it needs to serve /rewrite-note-field */
+  canRewrite?: boolean;
+  _raw?: { warnings: string[] };
+}
+
+export const parseIpoNote = async (file: File): Promise<ParsedIpoNote> => {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/ipo-import/parse/ipo-note`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await adminToken()}` },
+    body: fd,
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return body ? JSON.parse(body) : {};
+};
+
+/** Rewrites one prose field (description / strength / objects) via Claude,
+ *  called by the IPO Note review modal per row. Returns the rewritten
+ *  HTML. Requires admin → Integrations → Claude AI to be configured. */
+export const rewriteNoteField = async (kind: 'description' | 'strength' | 'objects', text: string): Promise<string> => {
+  const res = await fetch(`${API}/admin/ipo-import/rewrite-note-field`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await adminToken()}`,
+    },
+    body: JSON.stringify({ kind, text }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { const j = JSON.parse(body); msg = Array.isArray(j.message) ? j.message.join(', ') : j.message ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  const parsed = body ? JSON.parse(body) : {};
+  return String(parsed.html ?? '');
+};

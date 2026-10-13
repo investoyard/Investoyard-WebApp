@@ -4,9 +4,11 @@ import { useSearchParams } from 'next/navigation';
 import { useStore, store } from '@/lib/store';
 import { Icon } from '@/components/Icon';
 import { Modal } from '@/components/ui/Modal';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { makeT, Lang } from '@investoyard/i18n';
+import { dematLabel } from '@investoyard/shared-types';
 import {
-  listProfiles, createProfile, updateProfile, deleteProfile, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles,
+  listProfiles, createProfile, updateProfile, deleteProfile, addDemat, retireDemat, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
   type ApiProfile, type ProfileInput, type Relationship, type Depository, type RelationshipOption,
 } from '@/lib/consumer-api';
 
@@ -62,6 +64,13 @@ export function Account() {
   };
   useEffect(() => { if (signedIn) load(); }, [signedIn]);
 
+  // GMP contributors reach the entry board from here — it is their only way in.
+  const [gmpOk, setGmpOk] = useState(false);
+  useEffect(() => {
+    if (!signedIn) return;
+    gmpAccess().then((r) => setGmpOk(!!r?.allowed)).catch(() => setGmpOk(false));
+  }, [signedIn]);
+
   if (!mobile) {
     return (
       <div className="empty fade-up">
@@ -96,6 +105,17 @@ export function Account() {
       {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
       {msg && <div className="banner ok" style={{ marginTop: 12 }}>{msg}</div>}
 
+      {gmpOk && (
+        <a className="panel" href="/gmp/entry" style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+          <span className="pk-ic"><Icon name="trending" size={17} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <b style={{ display: 'block', fontSize: 14.5 }}>Enter GMP</b>
+            <span className="muted" style={{ fontSize: 13 }}>You are a GMP contributor — update premiums for open and upcoming IPOs.</span>
+          </span>
+          <Icon name="chevron-right" size={16} />
+        </a>
+      )}
+
       {(profiles?.length ?? 0) > 5 && (
         <input
           className="input" style={{ marginTop: 16, maxWidth: 360 }}
@@ -119,6 +139,11 @@ export function Account() {
               {shown.map((p) => (
                 <ProfileCard
                   key={p.id} p={p} tr={tr}
+                  /* The add/retire routes return the whole refreshed applicant,
+                     so this swaps the one row rather than refetching the list —
+                     no flicker, and no chance of showing a stale copy beside a
+                     fresh one. */
+                  onChanged={(next) => setProfiles((xs) => (xs ?? []).map((x) => (x.id === next.id ? next : x)))}
                   onEdit={() => { setEditing(p); setAdding(false); setMsg(null); setErr(null); }}
                   onDelete={async () => {
                     try {
@@ -173,7 +198,122 @@ export function Account() {
   );
 }
 
-function ProfileCard({ p, tr, onEdit, onDelete }: { p: ApiProfile; tr: (k: string) => string; onEdit: () => void; onDelete: () => void }) {
+/**
+ * The applicant's demat accounts — the one on the profile plus any others, and
+ * where another is added or retired (operator ask, 2026-10-07).
+ *
+ * `p.demats` arrives built by the server (`dematAccountsFor`), default first, so
+ * nothing here joins the profile's own columns to its extra rows. It is the same
+ * list the apply picker shows, which is the point: an applicant managing their
+ * accounts and an applicant choosing one at apply time must not see two
+ * different sets.
+ *
+ * THERE IS NO EDIT, deliberately. A submitted bid names its demat to the
+ * exchange, so changing the identifiers under it would rewrite what a real
+ * application did. A typo is retired and re-added, which leaves the history
+ * honest — and retiring never deletes, for the same reason.
+ *
+ * KEEP THIS IN STEP WITH `apps/mobile/app/(tabs)/profiles.tsx` by hand. Different
+ * frameworks, no shared component — the same standing rule as the UPI input.
+ */
+function DematPanel({ p, onChanged }: { p: ApiProfile; onChanged: (next: ApiProfile) => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [f, setF] = useState<{ depository: Depository; dpId: string; clientId: string; label: string }>(
+    { depository: 'NSDL', dpId: '', clientId: '', label: '' },
+  );
+  const list = p.demats ?? [];
+  const isCdsl = f.depository === 'CDSL';
+
+  const add = async () => {
+    setBusy('add'); setErr(null);
+    try {
+      onChanged(await addDemat(p.id, {
+        depository: f.depository,
+        // CDSL carries no DP ID — the 16-digit number is the whole identifier
+        dpId: isCdsl ? undefined : f.dpId,
+        clientId: f.clientId,
+        label: f.label.trim() || undefined,
+      }));
+      setF({ depository: 'NSDL', dpId: '', clientId: '', label: '' });
+      setOpen(false);
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(null); }
+  };
+
+  const retire = async (id: string) => {
+    setBusy(id); setErr(null);
+    try { onChanged(await retireDemat(p.id, id)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(null); }
+  };
+
+  const ready = isCdsl ? /^\d{16}$/.test(f.clientId) : /^IN\d{6}$/.test(f.dpId) && /^\d{8}$/.test(f.clientId);
+
+  return (
+    <div className="demat-panel">
+      <div className="between" style={{ alignItems: 'center' }}>
+        <span className="demat-panel-t">Demat accounts <span className="muted" style={{ fontWeight: 400 }}>({list.length})</span></span>
+        {!open && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setOpen(true); setErr(null); }}>+ Add another</button>}
+      </div>
+      {err && <div className="banner warn" style={{ margin: '8px 0 0', fontSize: 13 }}>{err}</div>}
+      <ul className="demat-list">
+        {list.map((d) => (
+          <li key={d.id ?? 'default'}>
+            <span className="mono">{dematLabel(d)}</span>
+            {d.isDefault
+              ? <span className="appstatus info" title="The account on this applicant's profile. Edit it with the applicant.">Default</span>
+              : (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--neg)' }}
+                  disabled={busy === d.id} onClick={() => retire(d.id!)}>
+                  {busy === d.id ? 'Retiring…' : 'Retire'}
+                </button>
+              )}
+          </li>
+        ))}
+      </ul>
+      {open && (
+        <div className="demat-add">
+          <div className="seg" style={{ marginBottom: 8 }}>
+            {(['NSDL', 'CDSL'] as Depository[]).map((d) => (
+              <button key={d} type="button" className={f.depository === d ? 'on' : ''} style={{ flex: 1 }}
+                onClick={() => setF({ ...f, depository: d, dpId: '', clientId: '' })}>{d}</button>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {!isCdsl && (
+              <span className="row" style={{ gap: 0, flexWrap: 'nowrap' }}>
+                <span className="input mono" style={{ width: 38, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-2)' }}>IN</span>
+                <input className="input mono" style={{ width: 104, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                  value={f.dpId.replace(/^IN/, '')} maxLength={6} placeholder="301234"
+                  onChange={(e) => setF({ ...f, dpId: 'IN' + e.target.value.replace(/\D/g, '').slice(0, 6) })} />
+              </span>
+            )}
+            <input className="input mono" style={{ width: isCdsl ? 190 : 140 }} inputMode="numeric"
+              value={f.clientId} maxLength={isCdsl ? 16 : 8}
+              placeholder={isCdsl ? '16-digit demat number' : '8-digit client ID'}
+              onChange={(e) => setF({ ...f, clientId: e.target.value.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8) })} />
+            <input className="input" style={{ width: 130 }} value={f.label} maxLength={40}
+              placeholder="Name it (optional)" onChange={(e) => setF({ ...f, label: e.target.value })} />
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            <button type="button" className="btn btn-sm" disabled={!ready || busy === 'add'} onClick={add}>
+              {busy === 'add' ? 'Adding…' : 'Add demat'}
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setOpen(false); setErr(null); }}>Cancel</button>
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+            Adding an account does not let this applicant apply twice — one application per PAN per IPO still holds.
+            It only chooses where an allotment is credited.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileCard({ p, tr, onEdit, onDelete, onChanged }: { p: ApiProfile; tr: (k: string) => string; onEdit: () => void; onDelete: () => void; onChanged: (next: ApiProfile) => void }) {
   const verified = p.kycStatus === 'verified';
   const [confirming, setConfirming] = useState(false);
   return (
@@ -188,7 +328,7 @@ function ProfileCard({ p, tr, onEdit, onDelete }: { p: ApiProfile; tr: (k: strin
               {verified
                 ? <span className="badge-ok"><Icon name="check" size={13} /> PAN &amp; KYC verified</span>
                 : <span className="appstatus wait">PAN verification pending</span>}
-              <span className="appstatus info">{p.depository} · {p.dpId ? `${p.dpId}/` : ''}{p.clientId}</span>
+              <span className="appstatus info">{(p.demats?.length ?? 1) > 1 ? ((p.demats?.length ?? 1) + ' demat accounts') : (p.depository + ' · ' + (p.dpId ? p.dpId + '/' : '') + p.clientId)}</span>
               {p.hasUpi && <span className="appstatus good">UPI ✓</span>}
               {p.hasBank && <span className="appstatus good">Bank ✓</span>}
             </div>
@@ -214,6 +354,7 @@ function ProfileCard({ p, tr, onEdit, onDelete }: { p: ApiProfile; tr: (k: strin
           This applicant has IPO applications, so they will be <b>deactivated</b> (hidden from apply &amp; lists) — history stays intact.
         </div>
       )}
+      <DematPanel p={p} onChanged={onChanged} />
     </div>
   );
 }
@@ -231,6 +372,15 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [relInfo, setRelInfo] = useState(false); // ⓘ tap-toggle (hover uses the title tooltip)
+  // Optional bank/contact block — open by default when the profile already has any
+  // of it, so nothing the user saved earlier looks lost behind a collapsed section.
+  const [bankOpen, setBankOpen] = useState(() => !!(editing && (
+    editing.bankName || editing.ifsc || editing.address || editing.email || editing.mobile || editing.hasBank
+  )));
+  // UPI is edited as two parts; f.upiId stays the single source of truth.
+  const upiName = (f.upiId ?? '').split('@')[0] ?? '';
+  const upiHandle = (f.upiId ?? '').split('@')[1] ?? '';
+  const setUpi = (name: string, handle: string) => upd({ upiId: name && handle ? `${name}@${handle}` : name });
   const panLocked = !!editing?.hasApplications; // self-PAN integrity once applications exist
   // Functional update: browser autofill fires many onChange events in one tick;
   // a plain {...f, ...patch} merge would clobber all but the last field.
@@ -348,26 +498,45 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
             placeholder={isCdsl ? '16-digit demat number' : '8-digit client ID'} />
         </div>
       </div>
+      {/* Plain-language explainer — most applicants don't know which one they hold. */}
+      <p className="demat-note">
+        {isCdsl
+          ? <><b>CDSL</b> — one 16-digit number, no separate DP ID.</>
+          : <><b>NSDL</b> — two parts: DP ID (<span className="mono">IN</span>+6 digits) and 8-digit Client ID.</>}
+        {' '}Find it in your broker&apos;s app under Demat. Starts <span className="mono">12…</span> → CDSL,
+        starts <span className="mono">IN</span> → NSDL.
+      </p>
+      {/* UPI is split: type the name, PICK the handle from the admin master, so an
+          unsupported handle can't be entered in the first place. */}
       <div className="field">
         <label>{tr('profile.upi')}</label>
-        <input className="input mono" value={f.upiId ?? ''} onChange={(e) => upd({ upiId: e.target.value })}
-          list="upi-handle-suggestions"
-          placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'name@bank'} />
-        {/* suggest name@<allowed handle> once the local part is typed */}
-        <datalist id="upi-handle-suggestions">
-          {(f.upiId ?? '').replace(/@.*$/, '') &&
-            upiHandles.map((h) => <option key={h} value={`${(f.upiId ?? '').replace(/@.*$/, '')}@${h}`} />)}
-        </datalist>
-        <span className="hint">{tr('apply.selfPan')}</span>
+        <div className="upi-split">
+          <input className="input mono upi-name" value={upiName}
+            onChange={(e) => setUpi(e.target.value.replace(/[^\w.\-]/g, ''), upiHandle)}
+            placeholder={editing?.hasUpi ? 'saved ✓ — type to replace' : 'yourname'} />
+          <span className="upi-at">@</span>
+          <div className="upi-handle">
+            <SearchSelect
+              options={upiHandles.map((h) => ({ value: h, label: h }))}
+              value={upiHandle}
+              onChange={(v) => setUpi(upiName, v)}
+              placeholder="handle"
+            />
+          </div>
+        </div>
+        <span className="hint">
+          {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : tr('apply.selfPan')}
+        </span>
+        {upiName && !upiHandle && <span className="hint" style={{ color: 'var(--neg)' }}>Pick the handle that follows @</span>}
         {f.upiId && !upiFormatOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid UPI id</span>}
-        {f.upiId && upiFormatOk && !upiHandleOk && (
-          <span className="hint" style={{ color: 'var(--neg)' }}>
-            @{f.upiId.split('@')[1]} is not a supported UPI handle
-          </span>
-        )}
       </div>
 
-      <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact <span className="hint">(optional — used to pre-fill the printed ASBA form)</span></div>
+      <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact</div>
+      <label className="opt-toggle">
+        <input type="checkbox" checked={bankOpen} onChange={(e) => setBankOpen(e.target.checked)} />
+        <span>Add bank &amp; contact details — pre-fills the printed ASBA form</span>
+      </label>
+      {bankOpen && (<>
       <div className="cols-2">
         <div className="field">
           <label>Mobile</label>
@@ -398,6 +567,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
         <div className="field"><label>State</label><input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" /></div>
       </div>
       <div className="field" style={{ maxWidth: 220 }}><label>Pincode</label><input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" /></div>
+      </>)}
 
       {err && <div className="banner warn" style={{ marginTop: 10 }}>{err}</div>}
       <div className="row" style={{ marginTop: 18, justifyContent: 'flex-end' }}>

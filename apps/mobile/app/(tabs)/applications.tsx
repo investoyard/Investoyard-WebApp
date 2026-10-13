@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import type { ApplicationView } from '@investoyard/shared-types';
+import { fmtDateTime, type ApplicationView } from '@investoyard/shared-types';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
-import { listApplications, withdrawApplication } from '../../lib/api';
+import { changeApplicationUpi, listApplications, requestUnblock, withdrawApplication } from '../../lib/api';
 import { inr } from '../../lib/format';
 import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
@@ -63,6 +63,25 @@ function resultLine(a: ApplicationView): string {
   }
 }
 
+/** Tone for the exchange's UPI line — read off OUR status, never off the sentence. */
+function upiDotColor(status: string): string {
+  if (status === 'rejected' || status === 'dp_failed' || status === 'failed') return ui.red;
+  if (status === 'upi_blocked' || status === 'confirmed' || status === 'allotted') return ui.green;
+  if (status === 'released' || status === 'not_allotted') return ui.slate;
+  return ui.amber; // mandate_pending / submitted — the investor still has something to do
+}
+
+/**
+ * Statuses where offering a UPI change makes sense.
+ *
+ * Deliberately NOT `upi_blocked` / `confirmed`: the block sits in the account
+ * behind the OLD UPI ID and the exchange cannot move it, so the server refuses
+ * those (`mayChangeUpi`). Offering a button that can only fail would be worse
+ * than not offering one. `rejected` IS here — a rejected mandate is the main
+ * reason an investor needs this.
+ */
+const UPI_CHANGEABLE = ['draft', 'submitted', 'dp_verified', 'mandate_pending', 'rejected'];
+
 // SEBI: a bid may be withdrawn while the issue is still open and isn't decided yet.
 const WITHDRAWABLE = ['submitted', 'mandate_pending', 'upi_blocked', 'dp_verified', 'confirmed'];
 const IN_PROGRESS = ['submitted', 'dp_verified', 'mandate_pending', 'upi_blocked', 'confirmed'];
@@ -74,6 +93,13 @@ export default function ApplicationsScreen() {
   const [apps, setApps] = useState<ApplicationView[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Which application's UPI ID is being edited inline, and the typed value. */
+  const [upiEdit, setUpiEdit] = useState<string | null>(null);
+  const [upiVal, setUpiVal] = useState('');
+  const [upiErr, setUpiErr] = useState<string | null>(null);
+  const [upiNote, setUpiNote] = useState<Record<string, string>>({});
+  const [unblockNote, setUnblockNote] = useState<Record<string, string>>({});
+  const [unblockErr, setUnblockErr] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (token) setApps(await listApplications(token));
@@ -90,6 +116,34 @@ export default function ApplicationsScreen() {
     setRefreshing(true);
     try { await load(); } finally { setRefreshing(false); }
   }, [load]);
+
+  const onSaveUpi = async (id: string) => {
+    if (!token || !upiVal.trim()) return;
+    setBusyId(id); setUpiErr(null);
+    try {
+      // The server's own note says how many bids were restated — the UPI lives
+      // on the applicant, so a change can reach more than this one.
+      const r = await changeApplicationUpi(token, id, upiVal.trim());
+      setUpiNote((n) => ({ ...n, [id]: r.note }));
+      setUpiEdit(null); setUpiVal('');
+      await load();
+    } catch (e: any) {
+      setUpiErr(String(e?.message ?? e));
+    } finally { setBusyId(null); }
+  };
+
+  const onUnblock = async (id: string) => {
+    if (!token) return;
+    setBusyId(`ub-${id}`);
+    setUnblockErr((e) => ({ ...e, [id]: '' }));
+    try {
+      const r = await requestUnblock(token, id);
+      setUnblockNote((n) => ({ ...n, [id]: r.note }));
+      await load();
+    } catch (e: any) {
+      setUnblockErr((x) => ({ ...x, [id]: String(e?.message ?? e) }));
+    } finally { setBusyId(null); }
+  };
 
   const onWithdraw = async (id: string) => {
     if (!token) return;
@@ -183,11 +237,105 @@ export default function ApplicationsScreen() {
 
                 {line ? <Text style={styles.result}>{line}</Text> : null}
 
+                {/* The exchange's own UPI sentence, BESIDE our line and never
+                    instead of it: our status collapses eleven exchange codes
+                    onto five, and the three rejections an investor can act on
+                    differently all land on `rejected`. Tone comes from the
+                    STATUS, not from reading the sentence. */}
+                {a.upiStatusText ? (
+                  <View style={styles.upiRow}>
+                    <View style={[styles.upiDot, { backgroundColor: upiDotColor(a.status) }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.upiTxt}>{a.upiStatusText}</Text>
+                      {a.upiStatusAt ? (
+                        <Text style={styles.upiAsOf}>As of {fmtDateTime(a.upiStatusAt)} · from the exchange</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+
                 {missing.length > 0 ? (
                   <View style={styles.missingBanner}>
                     {missing.map((m) => (
                       <Text key={m} style={styles.missingTxt}>{m} — add it on the Profiles tab.</Text>
                     ))}
+                  </View>
+                ) : null}
+
+                {/* On-the-spot UPI ID change (requirement 2). Sits directly under
+                    the exchange's UPI sentence, because "Rejected due to invalid
+                    UPI" is the main reason anyone comes here. `mayChangeUpi` is
+                    enforced on the server; this only decides what to OFFER. */}
+                {a.applyMethod === 'native' && UPI_CHANGEABLE.includes(a.status) ? (
+                  <View style={{ marginTop: 9 }}>
+                    {upiEdit === a.id ? (
+                      <View style={styles.upiEdit}>
+                        <TextInput
+                          style={styles.upiInput}
+                          value={upiVal}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="email-address"
+                          placeholder="name@okaxis"
+                          placeholderTextColor={ui.muted}
+                          onChangeText={setUpiVal}
+                        />
+                        {upiErr ? <Text style={styles.upiEditErr}>{upiErr}</Text> : null}
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <Button
+                            small
+                            label="Save UPI ID"
+                            busy={busyId === a.id}
+                            onPress={() => onSaveUpi(a.id)}
+                            style={{ flex: 1 }}
+                          />
+                          <Button
+                            small
+                            variant="ghost"
+                            label="Cancel"
+                            onPress={() => { setUpiEdit(null); setUpiVal(''); setUpiErr(null); }}
+                            style={{ flex: 1 }}
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => { setUpiEdit(a.id); setUpiVal(''); setUpiErr(null); }}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.upiChangeLink}>Change UPI ID</Text>
+                      </Pressable>
+                    )}
+                    {upiNote[a.id] ? <Text style={styles.upiEditOk}>{upiNote[a.id]}</Text> : null}
+                  </View>
+                ) : null}
+
+                {/* "My money wasn't unblocked" → email the issue's sponsor
+                    bank(s) (requirement 1). The SERVER decides availability
+                    (`mayRequestUnblock`); this screen must not re-derive
+                    whether the bank is late, or it would offer a button that
+                    can only fail. KEEP IN STEP WITH `UnblockControl` in
+                    apps/web/components/Portfolio.tsx. */}
+                {a.unblockAvailable || a.unblockReason ? (
+                  <View style={styles.unblock}>
+                    {a.unblockStuckAmount != null ? (
+                      <Text style={styles.unblockAmt}>{inr(a.unblockStuckAmount)} has not come back from the bank.</Text>
+                    ) : null}
+                    {a.unblockAvailable ? (
+                      <>
+                        <Button
+                          small
+                          label="Ask the bank to release it"
+                          busy={busyId === `ub-${a.id}`}
+                          onPress={() => onUnblock(a.id)}
+                          style={{ alignSelf: 'flex-start', marginTop: 6 }}
+                        />
+                        {unblockErr[a.id] ? <Text style={styles.unblockErr}>{unblockErr[a.id]}</Text> : null}
+                        {unblockNote[a.id] ? <Text style={styles.unblockOk}>{unblockNote[a.id]}</Text> : null}
+                      </>
+                    ) : (
+                      <Text style={styles.unblockWhy}>{a.unblockReason}</Text>
+                    )}
                   </View>
                 ) : null}
 
@@ -283,6 +431,30 @@ const styles = StyleSheet.create({
   amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, flex: 1 },
   amountV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   result: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
+  upiRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 9,
+    backgroundColor: ui.canvas, borderRadius: 12, paddingVertical: 9, paddingHorizontal: 11,
+  },
+  upiDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
+  upiTxt: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.title, lineHeight: 17 },
+  upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  upiChangeLink: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.indigo },
+  unblock: {
+    marginTop: 9, padding: 11, borderRadius: 12,
+    backgroundColor: ui.amberTint, borderWidth: 1, borderColor: ui.amberTint,
+  },
+  unblockAmt: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.amber, lineHeight: 18 },
+  unblockWhy: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.body, lineHeight: 17, marginTop: 4 },
+  unblockErr: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.red, lineHeight: 17, marginTop: 6 },
+  unblockOk: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.green, lineHeight: 17, marginTop: 6 },
+  upiEdit: { gap: 8 },
+  upiInput: {
+    borderWidth: 1, borderColor: ui.divider, borderRadius: 10, backgroundColor: ui.card,
+    paddingHorizontal: 11, paddingVertical: 10,
+    fontFamily: fonts.semibold, fontSize: 13.5, fontWeight: '600', color: ui.title,
+  },
+  upiEditErr: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.red, lineHeight: 17 },
+  upiEditOk: { fontFamily: fonts.semibold, fontSize: 12, fontWeight: '600', color: ui.green, marginTop: 6, lineHeight: 16 },
   missingBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 10, gap: 4 },
   missingTxt: { fontSize: 12.5, color: ui.red, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },

@@ -1,0 +1,876 @@
+/**
+ * Fixture: MV Electrosystems (MVELECTRO) — Mainboard, book-built, ICDR 6(2).
+ * Every expected value comes from §5/§6/§9 of docs/ipo-entry-spec.md, which was
+ * reconciled against the live legacy screen. If the engine disagrees with a
+ * number here, the fixture is right.
+ */
+import { computeIssue, floorToLot, IssueInputs } from './computeIssue';
+import { isTradingHoliday } from './holidays';
+
+const MVELECTRO: IssueInputs = {
+  board: 'mainboard',
+  mechanism: 'book_built',
+  regulationBasis: 'icdr_6_2',
+  lotSize: 34,
+  priceFloor: 400,
+  priceCap: 425,
+  // Expressed in SHARES: the spec's floor check (6,823,528 x 400 = 272.94 Cr)
+  // holds the share count fixed and lets the amount move, which is only true on
+  // a shares basis. Whether MVELECTRO's offer was really fresh-only is open
+  // (brief §6 Q1); the arithmetic is unaffected by which leg carries it.
+  fresh: { basis: 'shares', value: 6_823_528 },
+  // CORRECTED split — Big takes two-thirds of the NII quota
+  reservation: { qib: 75, hni: 10, hni2: 5, retail: 10 },
+  anchor: { pctOfQib: 60 },
+};
+
+const cat = (r: ReturnType<typeof computeIssue>, key: string) =>
+  r.primary!.categories.find((c) => c.key === key)!;
+
+describe('floorToLot', () => {
+  it('rounds down to a whole number of lots', () => {
+    expect(floorToLot(6_823_529.4, 34)).toBe(6_823_528);
+    expect(floorToLot(100, 34)).toBe(68);
+    expect(floorToLot(34, 34)).toBe(34);
+  });
+  it('is 0 when the lot size is unknown', () => {
+    expect(floorToLot(1000, 0)).toBe(0);
+  });
+});
+
+describe('computeIssue — MVELECTRO fixture', () => {
+  const res = computeIssue(MVELECTRO);
+
+  it('resolves the total offer at cap and at floor (spec §5 Step 1)', () => {
+    expect(res.scenarios.cap!.totalOfferShares).toBe(6_823_528);
+    expect(res.scenarios.cap!.totalOfferAmount / 1e7).toBeCloseTo(290.0, 1);
+    expect(res.scenarios.floor!.totalOfferAmount / 1e7).toBeCloseTo(272.94, 1);
+  });
+
+  it('splits categories and absorbs the residual into QIB (spec §5 Step 3)', () => {
+    expect(cat(res, 'qib').shares).toBe(5_117_680);   // after residual
+    expect(cat(res, 'hni').shares).toBe(682_346);     // Big, 10%
+    expect(cat(res, 'hni2').shares).toBe(341_156);    // Small, 5%
+    expect(cat(res, 'retail').shares).toBe(682_346);
+  });
+
+  it('assigns every share — nothing is lost to rounding', () => {
+    const sum = res.primary!.categories.reduce((a, c) => a + c.shares, 0);
+    expect(sum).toBe(res.primary!.netOfferShares);
+  });
+
+  it('keeps every category a whole number of lots', () => {
+    for (const c of res.primary!.categories) expect(c.shares % 34).toBe(0);
+  });
+
+  it('derives the minimum application per category (spec §5 Step 5)', () => {
+    expect(cat(res, 'retail').minAppShares).toBe(34);      // 1 lot, ₹14,450
+    expect(cat(res, 'hni2').minLots).toBe(14);
+    expect(cat(res, 'hni2').minAppShares).toBe(476);       // > ₹2,00,000
+    expect(cat(res, 'hni').minLots).toBe(70);
+    expect(cat(res, 'hni').minAppShares).toBe(2_380);      // > ₹10,00,000
+  });
+
+  it('derives applications for 1x — the numbers the legacy screen got wrong', () => {
+    expect(cat(res, 'retail').appsFor1x).toBe(20_069);
+    expect(cat(res, 'hni2').appsFor1x).toBe(717);          // Small
+    expect(cat(res, 'hni').appsFor1x).toBe(287);           // Big — legacy showed 717 here
+  });
+
+  it('distinguishes applications-for-1x from allotment capacity (spec §5 Step 6)', () => {
+    const retail = cat(res, 'retail');
+    // divides exactly, so the two agree
+    expect(retail.appsFor1x).toBe(retail.maxAllottees);
+    const big = cat(res, 'hni');
+    // does not divide, so demand-to-reach-1x is one more than capacity-at-1x
+    expect(big.appsFor1x).toBe(287);
+    expect(big.maxAllottees).toBe(286);
+  });
+
+  it('sub-allocates the QIB book to anchor (spec §5 Step 4)', () => {
+    expect(res.primary!.anchor!.shares).toBe(3_070_608);
+    expect(res.primary!.anchor!.netQibShares).toBe(2_047_072);
+  });
+
+  it('generates the category remark instead of accepting one', () => {
+    expect(cat(res, 'retail').remark).toBe('₹29.00 Cr @ 20,069 forms for 1x');
+  });
+
+  it('infers ICDR 6(2) from a 75% QIB quota', () => {
+    const { regulationBasis } = computeIssue({ ...MVELECTRO, regulationBasis: undefined });
+    expect(regulationBasis).toBe('icdr_6_2');
+  });
+});
+
+describe('computeIssue — the legacy defect it prevents', () => {
+  it('produces different figures when Big and Small are transposed', () => {
+    const swapped = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 5, hni2: 10, retail: 10 } });
+    // this is what the live site published before the data was repaired
+    expect(swapped.primary!.categories.find((c) => c.key === 'hni2')!.appsFor1x).toBe(1_434);
+    // 144, not the 143 the old code produced: reaching 1x needs ceil(143.34)
+    // applications, and Math.round quietly reported one fewer than required.
+    expect(swapped.primary!.categories.find((c) => c.key === 'hni')!.appsFor1x).toBe(144);
+  });
+});
+
+describe('computeIssue — degrades instead of guessing', () => {
+  it('returns empty when the lot size is missing', () => {
+    expect(computeIssue({ ...MVELECTRO, lotSize: undefined }).empty).toBe(true);
+  });
+  it('returns empty when there is no offer size at all', () => {
+    expect(computeIssue({ ...MVELECTRO, fresh: undefined, issueSizeCr: undefined }).empty).toBe(true);
+  });
+  it('omits a category with no percentage rather than showing zero', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, retail: 25 } });
+    expect(r.primary!.categories.map((c) => c.key)).toEqual(['qib', 'retail']);
+  });
+  it('carves employee shares off the top before the category split', () => {
+    const r = computeIssue({
+      ...MVELECTRO,
+      carveouts: [{ key: 'employee', basis: 'amount', value: 2 }],
+    });
+    expect(r.primary!.carveoutShares).toBeGreaterThan(0);
+    expect(r.primary!.netOfferShares).toBe(r.primary!.totalOfferShares - r.primary!.carveoutShares);
+    const sum = r.primary!.categories.reduce((a, c) => a + c.shares, 0);
+    expect(sum).toBe(r.primary!.netOfferShares);
+  });
+
+  /**
+   * A carve-out quoted in RUPEES buys shares at ITS OWN price, and employees
+   * bid at a discount. Dividing by the band price understates the count and
+   * hands the difference to QIB — the fault that had RUNWALENTR publishing a
+   * QIB book 57,376 shares too large while it was live (2026-09-25).
+   */
+  it('converts a ₹ carve-out at the DISCOUNTED price, not the band price', () => {
+    const base = { ...MVELECTRO, carveouts: [{ key: 'employee', basis: 'amount' as const, value: 2 }] };
+    const plain = computeIssue(base).primary!;
+    const discounted = computeIssue({ ...base, discounts: { employee: 25 } }).primary!;
+    // ₹2 Cr buys MORE shares at 400 than at 425, so the carve-out grows …
+    expect(discounted.carveoutShares).toBeGreaterThan(plain.carveoutShares);
+    // … and every extra share comes out of the net offer, not out of thin air
+    expect(discounted.netOfferShares).toBe(discounted.totalOfferShares - discounted.carveoutShares);
+    expect(discounted.categories.reduce((a, c) => a + c.shares, 0)).toBe(discounted.netOfferShares);
+    // a discount that cannot be met falls back to the band price rather than
+    // dividing by zero or going negative
+    const absurd = computeIssue({ ...base, discounts: { employee: 10_000 } }).primary!;
+    expect(absurd.carveoutShares).toBe(plain.carveoutShares);
+  });
+
+  /**
+   * RUNWALENTR, against the exchange's own published table. `netQibOffered` had
+   * no test at all, which is how it took two operator reports to get right:
+   * once for the absorbed residual (VARMORA, 2026-09-24) and once for a
+   * floored carve-out (here, 2026-09-26).
+   *
+   * 1,20,275 employee shares are not a multiple of the 49 lot. The ALLOCATION
+   * basis floors them to 1,20,246, which leaves 29 shares in the net offer and
+   * puts 14 of them into QIB — the published figure must not inherit that.
+   */
+  const RUNWAL: IssueInputs = {
+    board: 'mainboard', mechanism: 'book_built', regulationBasis: 'icdr_6_1',
+    lotSize: 49, priceFloor: 290, priceCap: 305,
+    totalShares: 1_63_98_962,
+    carveouts: [{ key: 'employee', basis: 'shares', value: 1_20_275 }],
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+    anchor: { shares: 48_83_605 },
+  };
+  it('publishes net QIB off the OFFERED net offer, not the floored one', () => {
+    const s = computeIssue(RUNWAL).scenarios.cap!;
+    expect(s.anchor!.netQibOffered).toBe(32_55_739);      // the exchange's figure
+    expect(s.anchor!.netQibShares).not.toBe(32_55_739);   // allocation differs, deliberately
+    // the allocation side still reconciles — that is what B01/B04 guarantee
+    expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+  });
+  it('keeps the two bases apart: the carve-out floors for allocation, not for publication', () => {
+    const s = computeIssue(RUNWAL).scenarios.cap!;
+    expect(s.carveoutShares).toBe(1_20_246);              // floored to the 49 lot
+    expect(s.netOfferShares).toBe(1_63_98_962 - 1_20_246);
+    // published QIB is 50% of 1,62,78,687 — the net offer with the carve-out
+    // taken as the document states it
+    expect(s.anchor!.netQibOffered + 48_83_605).toBe(81_39_344);
+  });
+});
+
+describe('computeIssue — legacy amount-only records', () => {
+  /**
+   * Our legacy rows carry a single `issueSize` in rupees and no Fresh/OFS split.
+   * On an AMOUNT basis the money is fixed and the share count moves with price,
+   * the opposite of the shares basis above — so the two scenarios differ in
+   * shares, not in rupees. Worth asserting: it is the behaviour every existing
+   * record falls back to until the split is entered.
+   */
+  const legacy: IssueInputs = {
+    board: 'mainboard', mechanism: 'book_built', regulationBasis: 'icdr_6_2',
+    lotSize: 34, priceFloor: 400, priceCap: 425, issueSizeCr: 290,
+    reservation: { qib: 75, hni: 10, hni2: 5, retail: 10 },
+  };
+  const r = computeIssue(legacy);
+
+  it('still derives, so no record is left blank for want of a split', () => {
+    expect(r.empty).toBe(false);
+    expect(r.scenarios.cap!.totalOfferShares).toBe(6_823_528);
+  });
+
+  it('holds the AMOUNT fixed across scenarios and moves the share count', () => {
+    expect(r.scenarios.cap!.totalOfferAmount / 1e7).toBeCloseTo(290.0, 1);
+    expect(r.scenarios.floor!.totalOfferAmount / 1e7).toBeCloseTo(290.0, 1);
+    expect(r.scenarios.floor!.totalOfferShares).toBeGreaterThan(r.scenarios.cap!.totalOfferShares);
+  });
+
+  it('reaches the same retail figure as the shares basis at cap price', () => {
+    expect(cat(r, 'retail').appsFor1x).toBe(20_069);
+  });
+});
+
+/**
+ * Spec §9 negative cases. One test per rule code.
+ *
+ * These sit in the engine rather than the admin form because the form is not
+ * the only writer — the Excel importer and the API reach computeIssue directly.
+ */
+describe('computeIssue — validation catalogue (spec §6)', () => {
+  const problem = (r: ReturnType<typeof computeIssue>, code: string) =>
+    r.issues.find((i) => i.code === code);
+
+  it('is silent on the corrected fixture', () => {
+    expect(computeIssue(MVELECTRO).issues).toEqual([]);
+  });
+
+  /* ── negative case 1 ── */
+  it('B01 — reservation percentages must total 100', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 10, hni2: 5, retail: 9.9 } });
+    expect(problem(r, 'B01')?.severity).toBe('blocking');
+  });
+
+  it('B01 fires even though the residual absorbs the shortfall invisibly', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 10, hni2: 5, retail: 9.9 } });
+    const s = r.scenarios.cap!;
+    // the post-conditions still pass — which is exactly why B01 cannot be left
+    // to a Sigma-check downstream
+    expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+    expect(problem(r, 'B01')).toBeDefined();
+  });
+
+  /* ── negative case 3 ── */
+  it('B09 — anchor cannot exceed the rule pack cap', () => {
+    const r = computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 65 } });
+    expect(problem(r, 'B09')?.severity).toBe('blocking');
+    expect(problem(r, 'B09')?.message).toContain('60');
+  });
+
+  it('B09 accepts the cap exactly', () => {
+    expect(problem(computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 60 } }), 'B09')).toBeUndefined();
+  });
+
+  /* ── negative case 4 ── */
+  it('B10 — a fixed-price issue cannot have an anchor round', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: { pctOfQib: 60 },
+    });
+    expect(problem(r, 'B10')?.severity).toBe('blocking');
+  });
+
+  it('B10 does not fire on a fixed-price issue with no anchor', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: undefined,
+    });
+    expect(problem(r, 'B10')).toBeUndefined();
+  });
+
+  /* ── negative case 5: not reachable, and that is the point ── */
+  it('B03/B04 cannot be violated — every leg and carve-out is floored to a lot', () => {
+    for (const lotSize of [7, 34, 37, 200, 1_600]) {
+      const s = computeIssue({ ...MVELECTRO, lotSize }).scenarios.cap!;
+      expect(s.netOfferShares % lotSize).toBe(0);
+      expect(s.categories.every((c) => c.shares % lotSize === 0)).toBe(true);
+      expect(s.categories.reduce((a, c) => a + c.shares, 0)).toBe(s.netOfferShares);
+    }
+  });
+});
+
+describe('computeIssue — B09/B10 do not stack', () => {
+  it('reports B10 but not B09 on a fixed-price issue with an anchor', () => {
+    const r = computeIssue({
+      ...MVELECTRO, mechanism: 'fixed_price', fixedPrice: 425, anchor: { pctOfQib: 60 },
+    });
+    const codes = r.issues.map((i) => i.code);
+    expect(codes).toContain('B10');
+    // the fixed-price pack caps the anchor at 0, so an unguarded B09 would tell
+    // the operator to REDUCE a percentage they need to REMOVE
+    expect(codes).not.toContain('B09');
+    // B02 does fire here, and correctly: a fixed-price issue owes retail 50%
+    expect(r.issues.find((i) => i.code === 'B02')?.message).toMatch(/Retail.*at least 50/);
+  });
+});
+
+/**
+ * B02 — spec §9 negative case 2, and the rule the brief singles out:
+ * "B02 must reject the legacy HNI Big/Small swap under ICDR_6_2."
+ */
+describe('computeIssue — B02 category bounds', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+
+  it('rejects the legacy Big/Small transposition under ICDR 6(2)', () => {
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 5, hni2: 10, retail: 10 } });
+    const b02 = find(r, 'B02');
+    expect(b02.some((i) => i.severity === 'blocking' && /transposed/.test(i.message))).toBe(true);
+  });
+
+  it('rejects the same transposition under ICDR 6(1)', () => {
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 5, hni2: 10, retail: 35 },
+    });
+    expect(find(r, 'B02').some((i) => /transposed/.test(i.message))).toBe(true);
+  });
+
+  it('accepts a 2:1 split at an NII total above the 6(1) floor', () => {
+    // 6(1) sets a FLOOR on NII, so 24/12 is legal — absolute 10/5 bounds
+    // would have rejected it
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 29, hni: 24, hni2: 12, retail: 35 },
+    });
+    expect(r.issues).toEqual([]);
+  });
+
+  it('warns, but does not block, on an off-ratio split that is not transposed', () => {
+    const r = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 8, hni2: 7, retail: 35 },
+    });
+    const w = find(r, 'W01');
+    expect(w).toHaveLength(1);
+    expect(w[0].severity).toBe('warning');
+    expect(find(r, 'B02').filter((i) => /transposed/.test(i.message))).toHaveLength(0);
+  });
+
+  it('enforces the QIB floor under 6(2) and the retail floor under 6(1)', () => {
+    const lowQib = computeIssue({ ...MVELECTRO, reservation: { qib: 70, hni: 13, hni2: 7, retail: 10 } });
+    expect(find(lowQib, 'B02').some((i) => /QIB.*at least 75/.test(i.message))).toBe(true);
+
+    const lowRetail = computeIssue({
+      ...MVELECTRO, regulationBasis: 'icdr_6_1',
+      reservation: { qib: 50, hni: 20, hni2: 10, retail: 20 },
+    });
+    expect(find(lowRetail, 'B02').some((i) => /Retail.*at least 35/.test(i.message))).toBe(true);
+  });
+
+  it('bounds the COMBINED NII quota, not just the rows', () => {
+    // 20% NII under 6(2), correctly split 2:1 — each row alone looks unremarkable
+    const r = computeIssue({ ...MVELECTRO, reservation: { qib: 75, hni: 13.334, hni2: 6.666, retail: 5 } });
+    expect(find(r, 'B02').some((i) => /Big \+ Small.*caps it at 15/.test(i.message))).toBe(true);
+  });
+
+  it('stays silent on the corrected fixture', () => {
+    expect(computeIssue(MVELECTRO).issues).toEqual([]);
+  });
+});
+
+/**
+ * SME two-lot retail minimum, and the date / market-maker rules.
+ *
+ * The SME case is a REGRESSION test: the engine used to return one lot for SME
+ * retail while apps/api's Min Application used two, so one issue reported two
+ * different minimums to two different screens.
+ */
+describe('computeIssue — SME differs from Mainboard', () => {
+  const base = {
+    mechanism: 'book_built' as const, lotSize: 1_000,
+    priceFloor: 100, priceCap: 100,
+    ofs: { basis: 'shares' as const, value: 1_000_000 },
+    // carries both HNI rows, so the last case can prove the rupee bands are
+    // untouched and only the retail lot floor moves
+    reservation: { retail: 50, hni: 20, hni2: 10, qib: 20 },
+  };
+  const retailOf = (board: 'mainboard' | 'sme') =>
+    computeIssue({ ...base, board }).primary!.categories.find((c) => c.key === 'retail')!;
+
+  it('asks SME retail for TWO lots and Mainboard for one', () => {
+    expect(retailOf('mainboard').minLots).toBe(1);
+    expect(retailOf('sme').minLots).toBe(2);
+  });
+
+  it('agrees with the API rule: minApp = lot x (sme ? 2 : 1) x price', () => {
+    for (const board of ['mainboard', 'sme'] as const) {
+      const r = retailOf(board);
+      expect(r.minAppAmount).toBe(1_000 * (board === 'sme' ? 2 : 1) * 100);
+    }
+  });
+
+  it('halves the SME forms-for-1x, because each form is twice the size', () => {
+    expect(retailOf('sme').appsFor1x).toBe(retailOf('mainboard').appsFor1x! / 2);
+  });
+
+  it('leaves the rupee bands alone — only the lot floor differs', () => {
+    const m = computeIssue({ ...base, board: 'mainboard' }).primary!;
+    const s = computeIssue({ ...base, board: 'sme' }).primary!;
+    for (const k of ['hni', 'hni2']) {
+      expect(s.categories.find((c) => c.key === k)!.minLots)
+        .toBe(m.categories.find((c) => c.key === k)!.minLots);
+    }
+  });
+});
+
+describe('computeIssue — price band and calendar', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+
+  it('B08 — the cap may not exceed the floor by more than 20%', () => {
+    expect(find(computeIssue({ ...MVELECTRO, priceFloor: 400, priceCap: 480 }), 'B08')).toHaveLength(0);
+    const wide = computeIssue({ ...MVELECTRO, priceFloor: 400, priceCap: 500 });
+    expect(find(wide, 'B08')[0]?.severity).toBe('blocking');
+    const inverted = computeIssue({ ...MVELECTRO, priceFloor: 425, priceCap: 400 });
+    expect(find(inverted, 'B08')[0]?.message).toMatch(/cap is below the floor/);
+  });
+
+  it('B13 — milestone dates only ever move forwards', () => {
+    const ok = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', allotment: '2026-08-04', listing: '2026-08-06' } });
+    expect(find(ok, 'B13')).toHaveLength(0);
+    const back = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', listing: '2026-08-01' } });
+    expect(find(back, 'B13')[0]?.severity).toBe('blocking');
+  });
+
+  it('B11 / B12 warn rather than block — exchange holidays are not modelled', () => {
+    // Thu 30 Jul → Mon 3 Aug is 3 weekdays: inside the 3–10 window
+    const r = computeIssue({ ...MVELECTRO, dates: { open: '2026-07-30', close: '2026-08-03', listing: '2026-08-06' } });
+    for (const c of [...find(r, 'B11'), ...find(r, 'B12')]) expect(c.severity).toBe('warning');
+  });
+
+  it('says nothing at all when no dates are given', () => {
+    const r = computeIssue(MVELECTRO);
+    expect([...find(r, 'B11'), ...find(r, 'B12'), ...find(r, 'B13')]).toHaveLength(0);
+  });
+});
+
+describe('computeIssue — B18 SME market maker', () => {
+  const sme = {
+    board: 'sme' as const, mechanism: 'book_built' as const, lotSize: 100,
+    priceFloor: 100, priceCap: 100,
+    ofs: { basis: 'shares' as const, value: 1_000_000 },
+    reservation: { retail: 50, hni: 35, qib: 15 },
+  };
+  const b18 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'B18');
+
+  it('blocks an SME issue with no market-maker carve-out', () => {
+    expect(b18(sme)[0]?.severity).toBe('blocking');
+    expect(b18(sme)[0]?.message).toMatch(/at least 5%/);
+  });
+
+  it('blocks one that is under the floor, and accepts one that meets it', () => {
+    // 1,000,000 shares at ₹100 = ₹10 Cr, so 5% = ₹0.5 Cr
+    expect(b18({ ...sme, carveouts: [{ key: 'marketmaker', basis: 'amount', value: 0.3 }] })[0]?.severity).toBe('blocking');
+    expect(b18({ ...sme, carveouts: [{ key: 'marketmaker', basis: 'amount', value: 0.5 }] })).toHaveLength(0);
+  });
+
+  it('never asks a Mainboard issue for one', () => {
+    expect(b18({ ...sme, board: 'mainboard' })).toHaveLength(0);
+  });
+});
+
+/**
+ * Spec §5 Step 4 derives TWO mutual-fund figures and they are different
+ * numbers. The old field carried only one of them under the name `mfShares`.
+ */
+describe('computeIssue — the two mutual-fund figures', () => {
+  const r = computeIssue(MVELECTRO).primary!.anchor!;
+
+  it('gives a third of the ANCHOR book to mutual funds', () => {
+    // 3,070,608 anchor shares x 33.33%, floored to the 34-share lot
+    expect(r.anchorMfShares).toBe(floorToLot(3_070_608 * 0.3333, 34));
+  });
+
+  it('gives 5% of the POST-ANCHOR qib book to mutual funds', () => {
+    expect(r.qibMfShares).toBe(floorToLot(2_047_072 * 0.05, 34));
+  });
+
+  it('keeps them distinct — the whole reason both exist', () => {
+    expect(r.anchorMfShares).not.toBe(r.qibMfShares);
+    expect(r.anchorMfShares).toBeGreaterThan(r.qibMfShares);
+  });
+
+  it('lets the RHP override the anchor MF share', () => {
+    const custom = computeIssue({ ...MVELECTRO, anchor: { pctOfQib: 60, mfPct: 50 } }).primary!.anchor!;
+    expect(custom.anchorMfShares).toBe(floorToLot(3_070_608 * 0.5, 34));
+    // the QIB figure is driven by the rule pack, not the RHP, so it holds
+    expect(custom.qibMfShares).toBe(r.qibMfShares);
+  });
+
+  it('reports no anchor at all when none is configured', () => {
+    expect(computeIssue({ ...MVELECTRO, anchor: undefined }).primary!.anchor).toBeUndefined();
+  });
+});
+
+/**
+ * B11 / B12 with the real NSE equity calendar.
+ *
+ * Holidays are why these were warnings before: counting weekends alone makes a
+ * legitimate T+4 look wrong. They block only where the calendar covers the
+ * dates, and say so where it does not.
+ */
+describe('computeIssue — NSE trading calendar', () => {
+  const find = (r: ReturnType<typeof computeIssue>, code: string) => r.issues.filter((i) => i.code === code);
+  const withDates = (dates: any) => computeIssue({ ...MVELECTRO, dates });
+
+  it('knows Republic Day is not a trading day', () => {
+    expect(isTradingHoliday('2026-01-26')).toBe(true);   // Republic Day
+    expect(isTradingHoliday('2026-01-27')).toBe(false);  // the Tuesday after
+    expect(isTradingHoliday('2026-01-24')).toBe(true);   // a Saturday
+  });
+
+  it('counts a holiday out of the listing window, so T+3 still passes', () => {
+    // close Wed 2026-03-18 → Holi falls Tue 2026-03-03, outside this window
+    expect(find(withDates({ close: '2026-03-18', listing: '2026-03-23' }), 'B12')).toHaveLength(0);
+  });
+
+  it('lets SEVEN calendar days be a trading-day T+3 across two holidays', () => {
+    // Close Mon 30 Mar. Tue 31st is Mahavir Jayanti and Fri 3 Apr is Good
+    // Friday, so the three trading days are Wed 1, Thu 2 and Mon 6 April —
+    // a whole week on the calendar, and exactly on time. Counting weekdays
+    // alone would have called this T+5 and flagged a correct issue.
+    expect(find(withDates({ close: '2026-03-30', listing: '2026-04-06' }), 'B12')).toHaveLength(0);
+    expect(find(withDates({ close: '2026-03-30', listing: '2026-04-02' }), 'B12')[0]?.message)
+      .toMatch(/2 trading days/);
+  });
+
+  it('BLOCKS inside the covered years rather than warning', () => {
+    const bad = find(withDates({ close: '2026-03-18', listing: '2026-03-27' }), 'B12');
+    expect(bad[0]?.severity).toBe('blocking');
+    expect(bad[0]?.message).toMatch(/trading day/);
+  });
+
+  it('drops back to a warning outside the calendar, and says why', () => {
+    const far = find(withDates({ close: '2031-03-18', listing: '2031-03-27' }), 'B12');
+    expect(far[0]?.severity).toBe('warning');
+    expect(far[0]?.message).toMatch(/counted on weekends alone/);
+  });
+
+  it('measures the bidding window in trading days too', () => {
+    // Fri 2026-05-01 is Maharashtra Day, so Thu 30 Apr → Mon 4 May is 2 days
+    const r = find(withDates({ open: '2026-04-30', close: '2026-05-04' }), 'B11');
+    expect(r[0]?.severity).toBe('blocking');
+    expect(r[0]?.message).toMatch(/2 trading days/);
+  });
+});
+
+/**
+ * Fixture: ESDS Software Solution — Mainboard, book-built, ICDR 6(2).
+ * Every figure below is read off the NSE PREANCHOR / POSTANCHOR / anchor
+ * intimation for the issue, not computed by us. It is the fixture that proves
+ * the stated share counts are honoured, because NSE publishes the answer.
+ */
+const ESDS: IssueInputs = {
+  board: 'mainboard',
+  mechanism: 'book_built',
+  regulationBasis: 'icdr_6_2',
+  lotSize: 34,
+  priceFloor: 408,
+  priceCap: 429,
+  // PREANCHOR states the offer in shares; the percentages below reproduce it
+  totalShares: 1_76_47_058,
+  reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  anchor: { pctOfQib: 60, shares: 50_34_964, price: 429 },
+};
+const atFloor = (inp: IssueInputs) => computeIssue({ ...inp, priceCap: inp.priceFloor });
+
+describe('ESDS — stated share counts drive the split', () => {
+  const r = atFloor(ESDS);
+
+  it('uses the stated total verbatim, not ₹ ÷ price', () => {
+    expect(r.primary!.totalOfferShares).toBe(1_76_47_058);
+  });
+
+  /**
+   * NSE's published split, for reference:
+   *   QIB 88,23,528 · NIB-Big 17,64,706 · NIB-Small 8,82,353 · Retail 61,76,471
+   *
+   * We land within one lot of each but not ON them, because NSE rounds each
+   * category to the nearest SHARE while Step 3 floors to a whole lot. The lot
+   * constrains an application, not a reservation — see the note in the suite
+   * below. Asserting "within one lot" holds under either policy, so this test
+   * keeps its meaning if that is ever changed.
+   */
+  const NSE_SPLIT: Record<string, number> = {
+    qib: 88_23_528, hni: 17_64_706, hni2: 8_82_353, retail: 61_76_471,
+  };
+
+  it('lands within one lot of every published PREANCHOR category', () => {
+    for (const [key, published] of Object.entries(NSE_SPLIT)) {
+      // the residual holder absorbs everyone else's rounding, so it is the one
+      // category that can sit further out — see the test below
+      if (key === r.primary!.residualTo) continue;
+      expect(Math.abs(cat(r, key).shares - published)).toBeLessThanOrEqual(34);
+    }
+  });
+
+  it('hands the whole rounding residual to QIB', () => {
+    expect(r.primary!.residualTo).toBe('qib');
+    // four categories floored, so QIB can run up to four lots over its share
+    expect(cat(r, 'qib').shares - NSE_SPLIT.qib).toBeLessThanOrEqual(34 * 4);
+  });
+
+  it('the categories add back up to the stated total', () => {
+    const sum = r.primary!.categories.reduce((a, c) => a + c.shares, 0);
+    expect(sum).toBe(1_76_47_058);
+  });
+
+  it('nets the RESERVED anchor portion off QIB, near POSTANCHOR', () => {
+    // NSE's post-anchor sheet: anchor 52,94,116, QIB excluding anchor 35,29,412
+    expect(Math.abs(r.primary!.anchor!.shares - 52_94_116)).toBeLessThanOrEqual(34);
+    expect(Math.abs(r.primary!.anchor!.netQibShares - 35_29_412)).toBeLessThanOrEqual(34);
+  });
+
+  it('reports the ALLOCATED book separately from the reserved portion', () => {
+    expect(r.primary!.anchor!.allocatedShares).toBe(50_34_964);
+    expect(r.primary!.anchor!.allocationPrice).toBe(429);
+    // ₹216 Cr — the same money as the reserved portion, at a different price
+    expect(Math.round(r.primary!.anchor!.allocatedAmount! / 1e7)).toBe(216);
+  });
+
+  it('does not flag the allocation just because its share count differs', () => {
+    expect(r.issues.filter((i) => i.code === 'W03')).toHaveLength(0);
+  });
+
+  it('W03 fires when the anchor book overshoots its portion in rupees', () => {
+    const over = atFloor({ ...ESDS, anchor: { ...ESDS.anchor, shares: 60_00_000 } });
+    const w = over.issues.filter((i) => i.code === 'W03');
+    expect(w).toHaveLength(1);
+    expect(w[0].message).toMatch(/exceeds the anchor portion/);
+  });
+
+  it('W02 fires when Fresh + OFS disagree with the stated total', () => {
+    const bad = atFloor({ ...ESDS, fresh: { basis: 'shares', value: 1_00_00_000 } });
+    const w = bad.issues.filter((i) => i.code === 'W02');
+    expect(w).toHaveLength(1);
+    // the stated total still wins — the warning reports, it does not switch
+    expect(bad.primary!.totalOfferShares).toBe(1_76_47_058);
+  });
+
+  it('stays quiet when the legs reconcile to the stated total', () => {
+    const ok = atFloor({ ...ESDS, fresh: { basis: 'shares', value: 1_76_47_058 } });
+    expect(ok.issues.filter((i) => i.code === 'W02')).toHaveLength(0);
+  });
+
+  it('tolerates a ₹-basis leg, which can only approximate a count', () => {
+    // 719.99 Cr ÷ 408 ≈ 1,76,46,813 — 245 shares off the stated total
+    const ok = atFloor({ ...ESDS, fresh: { basis: 'amount', value: 719.99 } });
+    expect(ok.issues.filter((i) => i.code === 'W02')).toHaveLength(0);
+  });
+});
+
+/**
+ * W04 — the minimum application VALUE. SEBI puts a mainboard bid lot between
+ * ₹10,000 and ₹15,000 at the primary price, which is the cheapest available
+ * guard against a mis-keyed lot size.
+ *
+ * Calibrated against the catalogue before it was written: **470 of the 471
+ * mainboard records already sit inside the band**, and the single exception is
+ * an FPO — so the rule is scoped to `instrument: 'ipo'` and its only firing
+ * would otherwise have been a false positive.
+ */
+describe('computeIssue — W04 minimum application value', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const,
+    ofs: { basis: 'shares' as const, value: 1_00_00_000 },
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  };
+  const w04 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'W04');
+
+  it('stays quiet inside the band', () => {
+    // ORIENTCABL — 55 × ₹272 = ₹14,960
+    expect(w04({ ...base, lotSize: 55, priceFloor: 250, priceCap: 272 })).toHaveLength(0);
+    // the worked example — 70 × ₹200 = ₹14,000
+    expect(w04({ ...base, lotSize: 70, priceFloor: 190, priceCap: 200 })).toHaveLength(0);
+  });
+
+  it('warns — never blocks — when a lot is worth too little or too much', () => {
+    const low = w04({ ...base, lotSize: 4, priceFloor: 1556, priceCap: 1638 });
+    expect(low).toHaveLength(1);
+    expect(low[0].severity).toBe('warning');
+    expect(low[0].message).toMatch(/₹6,552/);
+    expect(w04({ ...base, lotSize: 700, priceFloor: 190, priceCap: 200 })).toHaveLength(1);
+  });
+
+  it('exempts a follow-on, which is priced against a listed market price', () => {
+    // Adani Enterprises' FPO — the catalogue's ONLY record outside the band.
+    const adani = { ...base, lotSize: 4, priceFloor: 1556, priceCap: 1638 };
+    expect(w04({ ...adani, instrument: 'fpo' })).toHaveLength(0);
+    expect(w04({ ...adani, instrument: 'ipo' })).toHaveLength(1);
+    expect(w04(adani)).toHaveLength(1); // absent means 'ipo'
+  });
+
+  it('is silent on SME, where no rupee band expresses a two-lot minimum', () => {
+    // SAIURJA — 1,200 × ₹113 = ₹1,35,600, far outside the mainboard band and
+    // entirely correct. A rule that guessed here would flag every SME issue.
+    expect(w04({
+      ...base, board: 'sme', lotSize: 1200, priceFloor: 107, priceCap: 113,
+      carveouts: [{ key: 'marketmaker', basis: 'shares' as const, value: 2_16_000 }],
+    })).toHaveLength(0);
+  });
+});
+
+/**
+ * W05 — the shareholder reservation cap. No record in the catalogue carries a
+ * shareholder carve-out today, so this is a guard for the historical import.
+ * A WARNING because the cap is well attested but its basis (issue size vs
+ * post-issue capital) is the operator's to confirm; the message names it.
+ */
+describe('computeIssue — W05 shareholder reservation cap', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const,
+    lotSize: 70, priceFloor: 190, priceCap: 200,
+    ofs: { basis: 'shares' as const, value: 1_00_00_000 },
+    reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+  };
+  const w05 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'W05');
+
+  it('accepts a reservation at or under a tenth of the issue', () => {
+    expect(w05(base)).toHaveLength(0); // none entered at all
+    expect(w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'shares', value: 10_00_000 }] })).toHaveLength(0);
+  });
+
+  it('warns above it, and says what the figure works out to', () => {
+    const over = w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'shares', value: 15_00_000 }] });
+    expect(over).toHaveLength(1);
+    expect(over[0].severity).toBe('warning');
+    expect(over[0].message).toMatch(/15% of the issue/);
+    expect(over[0].message).toMatch(/caps it at 10%/);
+  });
+
+  it('reads a ₹ Cr carve-out at the primary price', () => {
+    // ₹40 Cr at ₹200 = 20,00,000 shares = 20% of a 1,00,00,000-share offer
+    expect(w05({ ...base, carveouts: [{ key: 'shareholder', basis: 'amount', value: 40 }] })).toHaveLength(1);
+  });
+
+  it('says nothing about the EMPLOYEE quota, whose cap is a different denominator', () => {
+    // ICDR measures the employee cap against POST-ISSUE CAPITAL, which this
+    // engine is never given. A check against the wrong denominator is worse
+    // than none.
+    const r = computeIssue({ ...base, carveouts: [{ key: 'employee', basis: 'shares', value: 50_00_000 }] } as any);
+    expect(r.issues.filter((x) => x.code === 'W05')).toHaveLength(0);
+  });
+});
+
+/**
+ * The anchor book carries TWO reserved slices, not one: a third for domestic
+ * mutual funds and a further 6.67% for domestic life insurers and pension
+ * funds — 40% of the anchor portion between them. Both are ALLOCATION figures
+ * (floored to a lot), because a reserved slice is an allocation question and
+ * not a published one, which is the same ruling `anchorMfShares` follows.
+ */
+describe('computeIssue — the anchor insurer / pension slice', () => {
+  const r = () => computeIssue(MVELECTRO).primary!.anchor!;
+
+  it('is 6.67% of the anchor book, floored to a lot', () => {
+    const a = r();
+    expect(a.anchorInsPensionShares).toBe(floorToLot(a.shares * 0.0667, MVELECTRO.lotSize!));
+  });
+
+  it('is a DIFFERENT figure from either mutual-fund one', () => {
+    const a = r();
+    expect(a.anchorInsPensionShares).not.toBe(a.anchorMfShares);
+    expect(a.anchorInsPensionShares).not.toBe(a.qibMfShares);
+    // the MF third is roughly five times the insurer slice (33.33 vs 6.67)
+    expect(a.anchorMfShares).toBeGreaterThan(a.anchorInsPensionShares * 4);
+  });
+
+  it('and the two anchor slices together stay inside 40% of the book', () => {
+    const a = r();
+    expect(a.anchorMfShares + a.anchorInsPensionShares).toBeLessThanOrEqual(a.shares * 0.4);
+  });
+
+  it('is zero on a pack with no anchor round', () => {
+    const fixed = computeIssue({ ...MVELECTRO, mechanism: 'fixed_price' });
+    expect(fixed.primary?.anchor?.anchorInsPensionShares ?? 0).toBe(0);
+  });
+});
+
+/**
+ * B18 only speaks once there is an offer structure to attach a market maker to.
+ *
+ * Without that guard it fired 506 times across the SME catalogue and 505 of
+ * those were bare imported rows with no reservation table at all — so the one
+ * record where the market maker is genuinely wrong was invisible.
+ */
+describe('computeIssue — B18 waits for a reservation table', () => {
+  const bare = {
+    board: 'sme' as const, mechanism: 'book_built' as const, lotSize: 1200,
+    priceFloor: 96, priceCap: 101, issueSizeCr: 44,
+    reservation: {}, // nothing entered yet — the imported-row shape
+  };
+  const b18 = (i: any) => computeIssue(i).issues.filter((x) => x.code === 'B18');
+
+  it('stays silent on a record with no reservation table', () => {
+    expect(b18(bare)).toHaveLength(0);
+    // ...and on one where every percentage is present but zero.
+    expect(b18({ ...bare, reservation: { qib: 0, hni: 0, hni2: 0, retail: 0 } })).toHaveLength(0);
+  });
+
+  it('still blocks once a split exists and no market maker does', () => {
+    const withSplit = { ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 } };
+    expect(b18(withSplit)).toHaveLength(1);
+    expect(b18(withSplit)[0].severity).toBe('blocking');
+    expect(b18(withSplit)[0].message).toMatch(/None is entered/);
+  });
+
+  it('catches a market maker UNDER the floor — the case that was buried', () => {
+    // KHERIAAUTO: ₹2 Cr against a ₹44 Cr issue is 4.55%, short of 5%.
+    const kheria = {
+      ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+      carveouts: [{ key: 'marketmaker', basis: 'amount' as const, value: 2 }],
+    };
+    const hit = b18(kheria);
+    expect(hit).toHaveLength(1);
+    expect(hit[0].message).toMatch(/4\.55% of the issue/);
+    expect(hit[0].message).toMatch(/at least 5%/);
+  });
+
+  it('accepts one that meets the floor', () => {
+    expect(b18({
+      ...bare, reservation: { qib: 50, hni: 10, hni2: 5, retail: 35 },
+      carveouts: [{ key: 'marketmaker', basis: 'amount', value: 2.2 }],
+    })).toHaveLength(0);
+  });
+});
+
+/**
+ * W01 flags an UNUSUAL NII split, which is the issuer's business and so a
+ * warning. Its tolerance has to be loose enough to tell that apart from an
+ * operator writing two decimals: a 2:1 quota only lands on 2 dp when the NII
+ * total divides by 3, and the three catalogue records that tripped it each
+ * missed by exactly 0.00333 pp.
+ */
+describe('computeIssue — W01 tolerates 2-decimal entry, not a real off-ratio split', () => {
+  const base = {
+    board: 'mainboard' as const, mechanism: 'book_built' as const, lotSize: 70,
+    priceFloor: 190, priceCap: 200, issueSizeCr: 500,
+  };
+  const w01 = (hni: number, hni2: number, rest: Record<string, number> = {}) =>
+    computeIssue({ ...base, reservation: { qib: 50, retail: 35, hni, hni2, ...rest } })
+      .issues.filter((x) => x.code === 'W01');
+
+  it('stays quiet on the three real records that only rounded', () => {
+    expect(w01(10.03, 5.01)).toHaveLength(0);   // SKYWAYS
+    expect(w01(19.33, 9.67)).toHaveLength(0);   // VNL
+    expect(w01(26.67, 13.33)).toHaveLength(0);  // ANNU
+  });
+
+  it('stays quiet on a split that IS exactly 2:1, at any size', () => {
+    expect(w01(10, 5)).toHaveLength(0);
+    expect(w01(24, 12)).toHaveLength(0); // a legal 6(1) issuer offering more NII
+  });
+
+  it('still warns on a genuinely off-ratio split', () => {
+    expect(w01(20, 16)).toHaveLength(1);
+    expect(w01(20, 16)[0].severity).toBe('warning');
+    // and on a slip an order of magnitude smaller than that
+    expect(w01(10.13, 5.01)).toHaveLength(1);
+  });
+
+  it('leaves the TRANSPOSITION case to B02, which blocks', () => {
+    const r = computeIssue({ ...base, reservation: { qib: 50, retail: 35, hni: 5, hni2: 10 } });
+    expect(r.issues.filter((x) => x.code === 'W01')).toHaveLength(0);
+    const b02 = r.issues.filter((x) => x.code === 'B02' && /transposed/.test(x.message));
+    expect(b02).toHaveLength(1);
+    expect(b02[0].severity).toBe('blocking');
+  });
+});

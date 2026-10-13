@@ -8,7 +8,7 @@ import { extname, join } from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
-import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../../common/require-permissions.decorator';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
 const ALLOWED = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg']);
@@ -46,10 +46,16 @@ export class UploadController {
     return { url: `${base}/api/uploads/${file.filename}`, filename: file.filename };
   }
 
-  /** POST /api/admin/upload/doc — multipart 'file'. Accepts PDF/image KYC + empanelment documents (8 MB). */
+  /** POST /api/admin/upload/doc — multipart 'file'. Accepts PDF/image KYC +
+   *  empanelment documents (8 MB). Also used for IPO-form document rows
+   *  (DRHP / RHP / Prospectus etc.), so it must accept EITHER `tenants.manage`
+   *  (partner admin uploading KYC) OR `ipos.manage` (Staff attaching a DRHP
+   *  to an IPO). Was `tenants.manage` alone until 2026-09-22 — Staff got
+   *  "Missing permission: tenants.manage" on every DRHP upload, so AONESTEEL
+   *  never got its DRHP saved (completeness stuck at "missing"). */
   @Post('admin/upload/doc')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('tenants.manage')
+  @RequireAnyPermission('tenants.manage', 'ipos.manage')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: UPLOAD_DIR,

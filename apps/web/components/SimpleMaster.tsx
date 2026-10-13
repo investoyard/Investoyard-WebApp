@@ -4,9 +4,12 @@ import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { MasterBulkUpload } from '@/components/MasterBulkUpload';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog, type ConfirmState } from '@/components/ui/Confirm';
+import { RowMenu } from '@/components/ui/RowMenu';
 import { Loader } from '@/components/ui/Loader';
+import { usePagination } from '@/components/ui/Pagination';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
 
@@ -15,7 +18,7 @@ import * as api from '@/lib/tenants-admin';
  * `extra` renders the kind-specific field (platform type / category link) inside the modal
  * and its value in the list's middle column.
  */
-export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraCell, embedded }: {
+export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraCell, embedded, bulk }: {
   kind: api.MasterKind;
   title: string;
   sub: string;
@@ -24,6 +27,8 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   extraCell?: (row: api.MasterRow) => React.ReactNode;
   /** render without the page header (for tabbed hosting) — the Add button moves into the card head */
   embedded?: boolean;
+  /** offer a spreadsheet upload alongside ＋ Add */
+  bulk?: boolean;
 }) {
   const me = useOperator();
   const [rows, setRows] = useState<api.MasterRow[] | null>(null);
@@ -32,6 +37,7 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [modalErr, setModalErr] = useState<string | null>(null);
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     try { setRows(await api.fetchMaster(kind)); setErr(null); }
@@ -39,9 +45,30 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
   }, [kind]);
   useEffect(() => { load(); }, [load]);
 
+  // Search across the name and whatever the extra column holds (anchor type,
+  // handle, …) so one box covers the whole row the operator can see.
+  const filtered = (rows ?? []).filter((r) =>
+    !q.trim() || `${r.name} ${r.type ?? ''} ${r.notes ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()));
+  // a HOOK, so it runs before the guards below — see React #310
+  const { slice, node: pager } = usePagination(filtered, 25);
+
+  // Same per-kind perm mapping as MasterCrud — see there for the rationale.
+  const KIND_PERM: Record<string, string> = {
+    'lead-managers': 'masters.lead-managers.manage',
+    registrars: 'masters.registrars.manage',
+    'ipo-categories': 'masters.ipo-category.manage',
+    'issue-types': 'masters.ipo-category.manage',
+    relationships: 'masters.relationships.manage',
+    'upi-handles': 'masters.upi-handles.manage',
+    anchors: 'masters.anchors.manage',
+    sectors: 'masters.sectors.manage',
+    industries: 'masters.industries.manage',
+  };
+  const mkPerm = KIND_PERM[kind] ?? 'ipos.view';
+
   if (!me) return <Loader />;
-  if (!operatorCan(me, 'ipos.view')) return <NoAccess />;
-  const canManage = operatorCan(me, 'ipos.manage');
+  if (!operatorCan(me, 'ipos.view') && !operatorCan(me, mkPerm)) return <NoAccess />;
+  const canManage = operatorCan(me, mkPerm);
   const upd = (part: Partial<api.MasterRow>) => setModal((m) => m && { ...m, form: { ...m.form, ...part } });
 
   const save = async () => {
@@ -65,34 +92,66 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
     });
   };
 
+  /** Hard-delete — superadmin only, server refuses when the row is referenced. */
+  const askDelete = (r: api.MasterRow) => setConfirm({
+    title: `Delete ${r.name} permanently?`, danger: true, confirmLabel: 'Delete',
+    message: <>The row is removed from the master. If it's referenced by any IPO or investor profile, the server will refuse and tell you where.</>,
+    onConfirm: async () => {
+      try { await api.deleteMaster(kind, r.id); await load(); }
+      catch (e: any) { setErr(String(e?.message ?? e)); }
+    },
+  });
+
   return (
     <>
       {!embedded && (
         <PageHead title={title} sub={sub}
-          actions={canManage ? <button className="btn" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button> : undefined} />
+          actions={canManage ? (
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {bulk && <MasterBulkUpload kind={kind} onDone={load} />}
+              <button className="btn" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button>
+            </div>
+          ) : undefined} />
       )}
       {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}
       {!rows ? <Loader /> : (
         <div className="card">
           <div className="card-head">
             <span className="t">{title} <span className="count-badge">{rows.length}</span></span>
+            <input className="input" style={{ width: 220 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
             {embedded && canManage && <button className="btn btn-sm" onClick={() => { setModalErr(null); setModal({ form: { name: '', active: true } }); }}>＋ Add</button>}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%' }}>
-              <thead><tr><th>Name</th>{extraLabel && <th>{extraLabel}</th>}<th>Status</th><th /></tr></thead>
+            <table className="table mst-tbl" style={{ width: '100%' }}>
+              <thead><tr>
+                <th>Name</th>
+                {extraLabel && <th>{extraLabel}</th>}
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th />
+              </tr></thead>
               <tbody>
-                {rows.length === 0 ? <tr><td colSpan={extraLabel ? 4 : 3} className="muted" style={{ padding: 14 }}>None yet — click ＋ Add.</td></tr> :
-                  rows.map((r) => (
+                {filtered.length === 0 ? <tr><td colSpan={extraLabel ? 4 : 3} className="muted" style={{ padding: 14 }}>{q ? 'No matches.' : 'None yet — click ＋ Add.'}</td></tr> :
+                  slice.map((r) => (
                     <tr key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
-                      <td>{r.name}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}><span className="mst-name">{r.name}</span></td>
                       {extraCell && <td>{extraCell(r)}</td>}
-                      <td><span className={`st ${r.active ? 'ok' : 'mut'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`rl-st ${r.active ? 'on' : 'off'}`}>
+                          <span className="rl-dot" />{r.active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {canManage && (
                           <span className="row-actions">
                             <button className="icon-btn" title="Edit" onClick={() => { setModalErr(null); setModal({ id: r.id, form: { ...r } }); }}><Icon name="edit" size={15} /></button>
                             <button className={`icon-btn ${r.active ? 'danger' : 'pos'}`} title={r.active ? 'Deactivate' : 'Activate'} onClick={() => toggle(r)}><Icon name="power" size={15} /></button>
+                            {me.isSuperAdmin && (
+                              <RowMenu>
+                                <button className="danger" onClick={() => askDelete(r)}>
+                                  <Icon name="trash" size={14} /> Delete permanently
+                                </button>
+                              </RowMenu>
+                            )}
                           </span>
                         )}
                       </td>
@@ -101,6 +160,7 @@ export function SimpleMaster({ kind, title, sub, extraLabel, renderExtra, extraC
               </tbody>
             </table>
           </div>
+          {pager}
         </div>
       )}
 

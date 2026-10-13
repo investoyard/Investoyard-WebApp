@@ -75,11 +75,16 @@ export class NseEipoAdapter implements RailAdapter {
   }
 
   async login(cred: MemberCredential): Promise<AuthSession> {
+    // Field name on the wire is `member` — NOT `memberCode`. Confirmed
+    // against a live NSE e-IPO login on 2026-09-10 (member 13233 / AIRANAPI):
+    // the older name buried in the doc rejected with "Invalid Id/Password",
+    // the working shape is { member, loginId, password }. Response echoes
+    // the same key: { member: "13233", loginId, status: "success", token }.
     const res = await httpJson<any>(this.url(cred, PATHS.login), {
       method: 'POST',
       exchange: this.exchange,
       body: {
-        memberCode: cred.memberCode,
+        member: cred.memberCode,
         loginId: cred.loginId,
         password: cred.password,
       },
@@ -109,16 +114,17 @@ export class NseEipoAdapter implements RailAdapter {
       priceMin: num(r.priceBandLow ?? r.minPrice),
       priceMax: num(r.priceBandHigh ?? r.maxPrice),
       lotSize: num(r.lotSize ?? r.marketLot),
+      // ipomaster's `categoryDetails` only carries {code, startTime, endTime}
+      // for current-day issues — no per-category offered qty. We used to probe
+      // seven field-name spellings for the offered denominator; every one came
+      // back undefined on live NSE, which broke the poll. The subscription
+      // poller now derives per-bucket offered from OUR reservation table
+      // (`extra.shareResv × issueSize/priceBandMax`), so this only needs the
+      // category code — enough for `syncMaster()` to keep the catalog imports
+      // aligned with the exchange's category list.
       categories: (r.categoryDetails ?? r.categories ?? []).map((c: any) => ({
         code: c.category ?? c.code,
         label: c.label ?? c.description,
-        // Shares reserved/offered for this category — the denominator for
-        // "times subscribed". Field name varies by host build; probe the common
-        // spellings and confirm the exact key against your UAT ipomaster copy.
-        offered: num(
-          c.offeredQuantity ?? c.offered ?? c.sharesOffered ?? c.quantityOffered ??
-          c.noOfSharesOffered ?? c.reservedQuantity ?? c.offerQuantity,
-        ),
       })),
       raw: r,
     }));

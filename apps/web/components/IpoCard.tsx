@@ -4,24 +4,38 @@ import type { IpoFull } from '@/lib/api';
 import { priceBand, inr } from '@/lib/format';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { CountdownDial } from '@/components/CountdownDial';
 import { useTenant } from '@/components/TenantProvider';
 import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
-import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor } from '@/lib/catColor';
+import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime } from '@investoyard/shared-types';
 
-type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
+export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
-/** ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe. */
+
+/**
+ * ISO "2026-07-01" → friendly range. Deterministic (no Date.now) → hydration-safe.
+ *
+ * The year is printed ONCE, at the end, and the month once when both dates
+ * fall in it: "19–23 Sep 2026" · "28 Sep – 2 Oct 2026" · "30 Dec – 2 Jan 2027".
+ * Spelling it out on both ends ("19 Sep 2026 – 23 Sep 2026") measured 188px of
+ * the 283px the card's key row has at the two-up breakpoint, which left no
+ * room for the subscription figure beside it — that row then wrapped and the
+ * card grew ~48px taller than its neighbours (operator report 2026-09-23).
+ * An IPO window is a handful of days, so the closing year dates both ends
+ * unambiguously.
+ */
 function fmtRange(open?: string, close?: string): string {
   const p = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? { y: +s.slice(0, 4), m: +s.slice(5, 7) - 1, d: +s.slice(8, 10) } : null);
   const a = p(open), b = p(close);
-  const f = (x: { y: number; m: number; d: number }) => `${String(x.d).padStart(2, '0')} ${MON[x.m]} ${x.y}`;
+  const f = (x: { y: number; m: number; d: number }) => `${x.d} ${MON[x.m]} ${x.y}`;
   if (!a && !b) return '—';
-  if (a && b) return `${f(a)} – ${f(b)}`;
-  return f(a ?? b!);
+  if (!a || !b) return f(a ?? b!);
+  if (a.y === b.y && a.m === b.m) return `${a.d}–${b.d} ${MON[b.m]} ${b.y}`;
+  return `${a.d} ${MON[a.m]} – ${b.d} ${MON[b.m]} ${b.y}`;
 }
 
 /** Share the IPO detail link (native share sheet, else copy to clipboard). */
@@ -71,44 +85,120 @@ const daysFromToday = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
  * ONE time-aware status chip per card (calm & data-clear: a single precise
  * signal, never a badge pile). Live states carry a soft pulse dot.
  */
+/**
+ * The status chip's label and colour.
+ *
+ * `cls` is now a TONE from the shared stage map plus, for the two "today"
+ * states, a `solid` modifier — never a per-status colour invented here. Gold
+ * used to mean Closing Today on this chip, Upcoming in the filter bar and
+ * Allotment Out on mobile, because each surface picked its own.
+ */
 export function statusChip(ipo: IpoFull): { label: string; cls: string; pulse?: boolean } {
   const today = dayIso();
-  if (ipo.status === 'listed') return { label: 'Listed', cls: 'listed' };
-  if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: 'closed' };
+  const tone = `t-${toneOf(ipo as any)}`;
+  if (ipo.status === 'listed') return { label: 'Listed', cls: tone };
+  if (ipo.status === 'withdrawn') return { label: 'Withdrawn', cls: tone };
   if (ipo.status === 'closed') {
     const ad = daysFromToday(ipo.allotmentDate);
-    if (ad != null && ad <= 0) return { label: 'Allotment Out', cls: 'allot' };
-    return { label: 'Awaiting Allotment', cls: 'closed' };
+    if (ad != null && ad <= 0) return { label: 'Allotment Out', cls: tone };
+    return { label: 'Awaiting Allotment', cls: tone };
   }
   if (ipo.status === 'open') {
-    if (ipo.closeDate === today) return { label: 'Closing today', cls: 'closing', pulse: true };
-    if (ipo.openDate === today) return { label: 'Open today', cls: 'opentoday', pulse: true };
-    return { label: 'Live', cls: 'live', pulse: true };
+    // solid fill = it is happening TODAY; the hue still says what kind of day
+    if (ipo.closeDate === today) return { label: 'Closing Today', cls: `${tone} solid`, pulse: true };
+    if (ipo.openDate === today) return { label: 'Open Today', cls: `${tone} solid`, pulse: true };
+    return { label: 'Live', cls: tone, pulse: true };
   }
-  if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: 'preapply' };
+  if ((ipo as any).extra?.startBid === true) return { label: 'Pre Apply', cls: tone };
   const od = daysFromToday(ipo.openDate);
-  if (od === 1) return { label: 'Opens tomorrow', cls: 'soon' };
-  if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: 'soon' };
-  return { label: 'Upcoming', cls: 'upcoming' };
+  if (od === 1) return { label: 'Opens Tomorrow', cls: tone };
+  if (od != null && od > 1 && od <= 4) return { label: `Opens in ${od}d`, cls: tone };
+  return { label: 'Upcoming', cls: tone };
 }
 
 /**
- * Demand in plain words, calibrated per board (SME oversubscription runs an
- * order of magnitude hotter than Mainboard — same × means different things).
+ * Demand in plain words + the tier class that colours it.
+ *
+ * The thresholds and the wording are NOT redeclared here — `demandTier` /
+ * `demandWord` in shared-types are the one copy, so the card, the compare
+ * table, the banner and mobile can never drift apart. This card printed its
+ * own lowercase copy of the ladder until 2026-09-23.
  */
 export function demandLabel(subX: number, sme: boolean): { label: string; cls: string } {
-  const t = sme ? [1, 10, 50] : [1, 3, 10];
-  if (subX < t[0]) return { label: 'building up', cls: 'd0' };
-  if (subX < t[1]) return { label: 'steady demand', cls: 'd1' };
-  if (subX < t[2]) return { label: 'strong demand', cls: 'd2' };
-  return { label: 'exceptional demand', cls: 'd3' };
+  return { label: demandWord(subX, sme), cls: `d${demandTier(subX, sme)}` };
 }
 
-export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
+/**
+ * One icon per demand tier, in the ladder's own order — still filling, met,
+ * climbing, hot. The card shows this INSTEAD of the words; the words are the
+ * element's accessible name (operator decision, 2026-09-23).
+ */
+const DEMAND_ICON = ['clock-fill', 'check-fill', 'trending-fill', 'flame-fill'] as const;
+
+/**
+ * What the demand chip's tooltip shows — the category split behind the one
+ * headline figure, which is the question the figure raises (operator ask,
+ * 2026-09-23). Built lazily: `Tooltip` only calls this while it is open, so
+ * sixteen cards don't each compute a subscription table on first paint.
+ */
+/**
+ * Reading order for the tooltip's category list. `subscriptionTable` returns
+ * rows in the API's order, which put the synthetic `nii` roll-up AFTER Retail
+ * — in a flat list that reads as one more category rather than as the subtotal
+ * of the two HNI rows. Here NII leads its own splits, which are then indented.
+ */
+const SUB_ORDER = ['qib', 'nii', 'hni', 'hni2', 'retail', 'employee', 'shareholder', 'other'];
+const orderedSubRows = (rows: calc.SubRowT[]) => {
+  const rank = (k: string) => { const i = SUB_ORDER.indexOf(k); return i < 0 ? SUB_ORDER.length : i; };
+  return [...rows].sort((a, b) => rank(a.key) - rank(b.key));
+};
+
+function SubTip({ ipo }: { ipo: IpoFull }) {
+  const sme = ipo.type === 'sme';
+  const t = calc.subscriptionTable(ipo);
+  const subX = ipo.subscriptionTimes ?? t?.total.times ?? 0;
+  const asOf = ipo.subscription?.find((s) => s.asOf)?.asOf;
+  return (
+    <div className="tt-sub">
+      <div className="tt-sub-head">
+        <b className="mono">{subX}×</b>
+        <span className={`tt-sub-w d${demandTier(subX, sme)}`}>{demandWord(subX, sme)}</span>
+      </div>
+      {t ? (
+        <ul className="tt-sub-rows">
+          {orderedSubRows(t.rows).map((r) => (
+            <li key={r.key} className={r.key === 'hni' || r.key === 'hni2' ? 'tt-sub-in' : undefined}>
+              <span>{r.cat}</span><b className="mono">{r.times}×</b>
+            </li>
+          ))}
+          <li className="tt-sub-tot"><span>Total</span><b className="mono">{t.total.times}×</b></li>
+        </ul>
+      ) : (
+        <p className="tt-sub-none">Category split not published yet.</p>
+      )}
+      {/* The same string the subscription page's "Updated" stamp shows. This
+          used to slice the time off (`asOf.slice(0, 10)`), so a card read
+          "28 Sep 2026" beside a page reading "4:08 PM" for the same poll —
+          four milliseconds apart. One formatter, in shared-types. */}
+      {asOf && <div className="tt-sub-foot">As of {fmtDateTime(asOf)}</div>}
+    </div>
+  );
+}
+
+/**
+ * @param v2 the layout under review on /home2 — short names, light board
+ *           badges, "Exp. Premium" instead of "GMP", and a rotating third KPI.
+ *           Omitted everywhere else, so the live card is untouched while the
+ *           operator decides between the two.
+ */
+export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?: Lang; v2?: boolean }) {
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   // Detail pages have real per-locale SEO routes (/hi/ipos/...); app pages keep ?lang=.
-  const detailHref = lang === 'en' ? `/ipos/${ipo.symbol}` : `/${lang}/ipos/${ipo.symbol}`;
+  // Prefer the SEO slug when present — new visitors and Google index the
+  // clean URL; legacy /ipos/SYMBOL still resolves via the API's dual lookup.
+  const handle = ipo.slug ?? ipo.symbol;
+  const detailHref = lang === 'en' ? `/ipos/${handle}` : `/${lang}/ipos/${handle}`;
   const [open, setOpen] = useState<Topic | null>(null);
   // Operator gates: "Start Bid" → Apply (UPI flow) · "Start Printing" → Print PDF (ASBA forms).
   const inWindow = ipo.status === 'open' || ipo.status === 'upcoming';
@@ -118,8 +208,6 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
 
   const tenant = useTenant();
   const subX = ipo.subscriptionTimes;
-  const demandPct = subX != null ? Math.min(100, (subX / 15) * 100) : 0;
-  const heat = subX == null ? '' : subX < 1 ? 'cool' : subX < 3 ? 'ok' : subX < 10 ? 'warm' : 'hot';
 
   // Listed issues carry the ACTUAL listing price instead of the (now historical) GMP.
   // Price comes from the admin-entered NSE/BSE listing price; gain from the
@@ -142,17 +230,39 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
           key: 'gmp' as Topic,
           label: isListed
             ? <>Listed{listedGain != null ? <> <span className={`gmp-pill ${listedGain >= 0 ? 'gp' : 'gn'}`}>{listedGain >= 0 ? '+' : ''}{Math.round(listedGain * 10) / 10}%</span></> : null}</>
-            : ipo.gmp != null ? <>GMP <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></> : 'GMP',
+              // v1 keeps the % here because the chip is the only place its card
+              // shows GMP at all; on v2 the figure already sits beside the dates.
+              : ipo.gmp != null && !v2
+              ? <>{LABEL.gmp} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
+              : LABEL.gmp,
         }]
       : []),
   ];
 
   return (
-    <div className={`ipocard st-${ipo.status}`}>
+    /* The tone class carries --tone for the whole card, which is what colours
+       the left rail and the corner. Before this the rail had its own palette:
+       an Upcoming card wore an indigo chip and a GOLD rail, and gold belongs to
+       Allotment Out — two statuses in one swatch on one screen. */
+    <div className={`ipocard st-${ipo.status} t-${toneOf(ipo as any)}${v2 ? ' v2' : ''}`}>
+      {/* top-right corner fold. A real element because both of the card's
+          pseudo-elements are taken — ::before is the radial wash, ::after the
+          left rail. 30px keeps it clear of the 56px countdown dial, which
+          starts 14px in. */}
+      <span className="ic-corner" aria-hidden="true" />
       <div className="ic-top">
-        <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
+        {/* Logo is a click target too — the whole "identity block" (logo +
+            name) opens the detail page. Operator ask 2026-09-09; previously
+            only the name text carried the link. `aria-label` gives screen
+            readers something to read on the logo alone. */}
+        <a className="ic-logo-link" href={detailHref} aria-label={`Open ${titleCase(ipo.name)} details`}>
+          <IpoLogo logo={ipo.logo} name={ipo.name} size={42} />
+        </a>
         <div className="grow">
-          <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>{titleCase(ipo.name)}</a>
+          {/* the full legal name stays in the tooltip (and on the detail page) */}
+          <a className="ic-name" href={detailHref} title={titleCase(ipo.name)}>
+            {v2 ? shortName(ipo.name) : titleCase(ipo.name)}
+          </a>
           <div className="ic-meta">
             <span className={`ic-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME' : 'Mainboard'}</span>
             {(() => { const c = statusChip(ipo); return (
@@ -165,21 +275,55 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
 
       <div className="ic-keys">
         <span className="ic-dates"><Icon name="calendar" size={13} />{fmtRange(ipo.openDate, ipo.closeDate)}</span>
-        {ipo.status === 'open' && <CloseHint ipo={ipo} />}
+        {/* Beside the dates, because "when" and "what it's worth today" are the
+            two things a reader checks first. Amber pill to echo the Exp.
+            Premium tile in the strip above, but the FIGURE keeps semantic
+            green/red — a premium is a financial signal, and the direction has
+            to survive the decorative colour. */}
+        {v2 && tenant.flags.gmpEnabled && ipo.gmp != null && !isListed && (
+          <span className="ic-prem" title="Expected premium — grey-market, unofficial">
+            Exp. Premium
+            <b className={ipo.gmp >= 0 ? 'gp' : 'gn'}>{ipo.gmp >= 0 ? '+' : ''}₹{ipo.gmp}</b>
+          </span>
+        )}
+        {/* v2 drops this: the CountdownDial at the top-right of the card is
+            the same reading, and the date row now also carries the premium. */}
+        {!v2 && ipo.status === 'open' && <CloseHint ipo={ipo} />}
+        {/* Figure + one icon for the tier, with the category split a hover (or
+            tap) away. The words used to ride here too ("51.8× exceptional
+            demand") and wrapped the row on every subscribed card: at the
+            two-up breakpoint the row is 283px and the date pill alone took
+            188px. A progress bar under the row read the same tier a second
+            time, so the operator dropped it — the icon IS the reading now,
+            and the tooltip carries the detail (2026-09-23). */}
         {subX != null
-          ? (() => { const dm = demandLabel(subX, ipo.type === 'sme'); return (
-              <span className={`ic-subx2 ${dm.cls}`}><b className="mono">{subX}×</b> {dm.label}</span>
-            ); })()
+          ? (() => {
+              const tier = demandTier(subX, ipo.type === 'sme');
+              const word = demandWord(subX, ipo.type === 'sme');
+              return (
+                <Tooltip
+                  className={`ic-subx2 d${tier}`}
+                  label={`${subX} times subscribed — ${word.toLowerCase()}. Show the category split.`}
+                  render={() => <SubTip ipo={ipo} />}
+                >
+                  <b className="mono">{subX}×</b>
+                  <Icon name={DEMAND_ICON[tier]} size={14} />
+                </Tooltip>
+              );
+            })()
           : ipo.status === 'upcoming' ? <OpensIn ipo={ipo} /> : null}
       </div>
-      {subX != null && (
-        <div className="ic-track"><span className={heat} style={{ width: `${Math.max(6, demandPct)}%` }} /></div>
-      )}
 
+      {/* v2 runs the three specs on ONE row and drops Min Application: the
+          premium moved up beside the dates, and min application is one lot at
+          the band ceiling — derivable from the two cells beside it. v1 keeps
+          the 2x2 block. */}
       <div className="ic-specs">
         <div><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceBand(ipo.priceBandMin, ipo.priceBandMax)}</span></div>
         <div className="hi"><span className="k">{LABEL.lotSize}</span><span className="v mono">{ipo.lotSize ?? '—'}</span></div>
-        <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
+        {!v2 && (
+          <div className="hi"><span className="k">{LABEL.minApplication}</span><span className="v mono">{inr(ipo.minAmount)}</span></div>
+        )}
         <div><span className="k">{LABEL.issueSize}</span><span className="v mono">{ipo.issueSize ?? '—'}</span></div>
       </div>
 
@@ -190,7 +334,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
           </button>
         ))}
       </div>
-      {open && <TopicPanel k={open} ipo={ipo} tr={tr} />}
+      {open && <TopicPanel k={open} ipo={ipo} tr={tr} v2={v2} />}
 
       <div className="ic-foot">
         {canApply && (
@@ -205,7 +349,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
           </a>
         )}
         {!canApply && !canPrint && (
-          statusChip(ipo).cls === 'allot'
+          stageOf(ipo as any) === 'allotmentout'
             // allotment is out → the card's job changes: help the user check it
             ? <a className="btn ic-apply btn-allot" href={`/allotment${q}`}>{LABEL.checkAllotment} <Icon name="arrow-right" size={15} /></a>
             : <span className="ic-closed">{inWindow ? 'Bidding opens soon' : 'Applications closed'}</span>
@@ -223,7 +367,7 @@ export function IpoCard({ ipo, lang = 'en' }: { ipo: IpoFull; lang?: Lang }) {
 }
 
 /* ---- topic detail ---- */
-function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) => string }) {
+export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull; tr: (s: string) => string; v2?: boolean }) {
   // Listed issue → real listing performance replaces the grey-market panel.
   if (k === 'gmp' && ipo.status === 'listed') {
     const ex: any = (ipo as any).extra ?? {};
@@ -278,7 +422,7 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
           <>
             <div className="alloc">
               {rows.map((r) => (
-                <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${r.pct}%`}>
+                <span key={r.cat} style={{ flex: Math.max(0.001, r.pct), background: catColor(r.cat), color: segTextColor(r.cat) }} title={`${r.cat} · ${pctStr(r.pct)}%`}>
                   {segLabel(r.cat, r.pct, true)}
                 </span>
               ))}
@@ -288,7 +432,7 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
                 <div className="al" key={r.cat}>
                   <span className="swatch" style={{ background: catColor(r.cat) }} />
                   <div className="al-txt"><div className="who">{r.cat}</div><div className="num">{shC(r.shares)} sh · {calc.crOrInr(r.amount)}</div></div>
-                  <span className="pct">{r.pct}%</span>
+                  <span className="pct">{pctStr(r.pct)}%</span>
                 </div>
               ))}
             </div>
@@ -324,6 +468,22 @@ function TopicPanel({ k, ipo, tr }: { k: Topic; ipo: IpoFull; tr: (s: string) =>
                       ? <div className="lc-cell"><div className="k">Entry point</div><div className="v">{calc.crOrInr(g.min.amount)} <small>onward</small></div></div>
                       : <div className="lc-cell"><div className="k">Max · {g.max.lots} lots</div><div className="v">{g.max.shares.toLocaleString('en-IN')} <small>sh · {calc.crOrInr(g.max.amount)}</small></div></div>}
                   </div>
+                  {v2 && (() => {
+                    // Min/Max are PER APPLICATION; this is a count of applications
+                    // across the market, so it gets its own full-width line rather
+                    // than a third cell implying the three are comparable.
+                    const f = ipo.formsFor1x;
+                    const n = g.cat === 'Retail' ? f?.retail : g.cat === 'S-HNI' ? f?.sHni : f?.bHni;
+                    return (
+                      <div className={'lc-for1x' + (n == null ? ' na' : '')}
+                        title="Applications needed to fill this category once — derived from the issue's reservation table">
+                        <span className="k">For 1×</span>
+                        {n != null
+                          ? <span className="v"><b>{n.toLocaleString('en-IN')}</b> applications fill this category</span>
+                          : <span className="v">Needs the issue&apos;s reservation table</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

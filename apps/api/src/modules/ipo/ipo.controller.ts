@@ -19,12 +19,37 @@ export class IpoController {
     @Query('offset') offset?: string,
     /** admin surfaces opt IN to the bulk-imported historical rows */
     @Query('all') all?: string,
+    /** ISO yyyy-mm-dd window on the close date, for callers wanting a slice */
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.ipo.list({
-      type, status, q,
+      type, status, q, from, to,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
       includeCatalogOnly: all === '1' || all === 'true',
+    });
+  }
+
+  /**
+   * Archive: finished issues, filtered and paged server-side.
+   *
+   * MUST stay above `@Get(':id')` — Nest matches in declaration order and
+   * "archive" would otherwise be read as an id.
+   */
+  @Get('archive')
+  archive(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @Query('board') board?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('perPage') perPage?: string,
+  ) {
+    return this.ipo.archive({
+      year, month, type: board, q,
+      page: page ? Number(page) : undefined,
+      perPage: perPage ? Number(perPage) : undefined,
     });
   }
 
@@ -39,7 +64,7 @@ export class IpoController {
   /** IPO Operations quick controls — safe partial merge (never clobbers `extra`). */
   @Patch(':id/ops')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('ipos.manage')
+  @RequirePermissions('ipos.operations')
   updateOps(@Param('id') id: string, @Body() dto: UpdateIpoOpsDto) {
     return this.ipo.updateOps(id, dto);
   }
