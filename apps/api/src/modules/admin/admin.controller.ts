@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
@@ -123,6 +123,39 @@ class UpdateTenantDto {
   // vocabulary and the schema for the 1..500 clamp on the applicants cap.
   @IsOptional() @IsInt() @Min(1) @Max(500) partnerMaxApplicantsPerCall?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) partnerApiScopes?: string[];
+}
+/**
+ * One content block's patch.
+ *
+ * TWO DTOs AND NOT ONE FREE-FORM OBJECT, because class-validator's whitelist is
+ * what keeps a stray key out of a PUBLIC response: `/tenants` serves this back
+ * on every white-label domain, so an unrecognised field posted here would be
+ * published verbatim. Every field is optional — a partner is approved before
+ * their compliance team has necessarily handed over a CIN, and an empty string
+ * DELETES the field rather than storing "" (see mergeContentPatch).
+ */
+class TenantIdentityDto {
+  @IsOptional() @IsString() @MaxLength(160) legalName?: string;
+  @IsOptional() @IsString() @MaxLength(120) tradeName?: string;
+  @IsOptional() @IsString() @MaxLength(60) sebiRegistration?: string;
+  @IsOptional() @IsString() @MaxLength(40) cin?: string;
+  @IsOptional() @IsString() @MaxLength(30) gstin?: string;
+  @IsOptional() @IsString() @MaxLength(600) registeredAddress?: string;
+}
+class TenantContactDto {
+  /* Not @IsEmail: the field may be CLEARED, and '' is not an email. An address
+     that fails to deliver is the operator's to notice; refusing the save of
+     every other field on the panel because of it is not an improvement. */
+  @IsOptional() @IsString() @MaxLength(160) supportEmail?: string;
+  @IsOptional() @IsString() @MaxLength(60) supportPhone?: string;
+  @IsOptional() @IsString() @MaxLength(120) hours?: string;
+  @IsOptional() @IsString() @MaxLength(600) officeAddress?: string;
+  @IsOptional() @IsString() @MaxLength(120) grievanceName?: string;
+  @IsOptional() @IsString() @MaxLength(160) grievanceEmail?: string;
+  @IsOptional() @IsString() @MaxLength(60) grievancePhone?: string;
+  @IsOptional() @IsString() @MaxLength(120) complianceName?: string;
+  @IsOptional() @IsString() @MaxLength(160) complianceEmail?: string;
+  @IsOptional() @IsString() @MaxLength(60) compliancePhone?: string;
 }
 class CreateClientDto {
   @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile!: string;
@@ -336,6 +369,26 @@ export class AdminController {
   @Patch('tenants/:slug')
   updateTenant(@Req() req: any, @Param('slug') slug: string, @Body() dto: UpdateTenantDto) {
     return this.admin.updateTenant(req.user.sub, slug, dto as any);
+  }
+
+  /*
+   * PUBLISHED IDENTITY — who operates this channel's site, and how to reach
+   * them. Until this existed, a white-label domain served OUR legal name in its
+   * footer and in the Organization structured data on every page.
+   *
+   * ONE ROUTE PER KEY rather than one taking `{ identity, contact }`, so the
+   * body is a typed DTO and not an index signature — see the DTO comment: the
+   * whitelist is the only thing standing between a posted key and a public
+   * response. Superadmin is enforced in the service, with the reason.
+   */
+  @Patch('tenants/:slug/content/identity')
+  updateTenantIdentity(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantIdentityDto) {
+    return this.admin.updateTenantContent(req.user.sub, slug, 'identity', dto as any);
+  }
+
+  @Patch('tenants/:slug/content/contact')
+  updateTenantContact(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantContactDto) {
+    return this.admin.updateTenantContent(req.user.sub, slug, 'contact', dto as any);
   }
 
   /* ---- clients (investors) ---- */

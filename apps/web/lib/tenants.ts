@@ -1,4 +1,11 @@
-import { UPI_MANDATE_MAX } from '@investoyard/shared-types';
+import {
+  UPI_MANDATE_MAX,
+  TenantContent,
+  resolveIdentity,
+  resolveContact,
+  displayName,
+  legalEntity,
+} from '@investoyard/shared-types';
 /**
  * Multi-tenant foundation (web) — mock registry + host-based resolution + branding.
  *
@@ -26,12 +33,21 @@ export interface Tenant {
   logo?: string;               // logo URL; undefined ⇒ text wordmark (or default logo for platform)
   isDefault?: boolean;
   flags: { gmpEnabled: boolean; upiCap: number; whatsappChannel: string };
+  /**
+   * WHO OPERATES THIS SITE — the legal entity and how to reach it.
+   *
+   * Comes down on the same `/tenants` call as the branding, so the footer can
+   * render on the first paint without a second request. Always an object; the
+   * halves are absent until the operator enters them, and `resolveIdentity`
+   * decides what may be substituted (for the DEFAULT channel, nothing else).
+   */
+  content: TenantContent;
 }
 
 export const TENANTS: Tenant[] = [
-  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
-  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
-  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', flags: { gmpEnabled: false, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
+  { id: 't-direct', slug: 'investoyard', type: 'direct', name: 'Investoyard', isDefault: true, content: {}, flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
+  { id: 't-axis', slug: 'axis', type: 'partner', name: 'Axis IPO', customDomain: 'ipo.axis.example', brandColor: '#c1121f', content: {}, flags: { gmpEnabled: true, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
+  { id: 't-pbank', slug: 'partnerbank', type: 'partner', name: 'PartnerBank IPO', customDomain: 'ipo.partnerbank.example', brandColor: '#0b5cad', content: {}, flags: { gmpEnabled: false, upiCap: UPI_MANDATE_MAX, whatsappChannel: '' } },
 ];
 
 export const DEFAULT_TENANT: Tenant = TENANTS.find((t) => t.isDefault)!;
@@ -60,6 +76,9 @@ function mapApi(a: any): Tenant {
     id: a.id, slug: a.slug, type: a.type, name: a.name, customDomain: a.customDomain,
     brandColor: a.brandColor, goldColor: a.goldColor, logo: a.logoUrl,
     isDefault: a.type === 'direct',
+    /* An API that predates the content store sends nothing; `{}` keeps every
+       reader able to say `content.identity` without a guard. */
+    content: (a.content && typeof a.content === 'object' ? a.content : {}) as TenantContent,
     flags: {
       gmpEnabled: a.flags?.gmpEnabled ?? true,
       upiCap: Number(a.flags?.upiCap) || UPI_MANDATE_MAX,
@@ -116,3 +135,25 @@ export function applyBranding(t: Tenant): void {
   Object.entries(palette(t.brandColor)).forEach(([k, v]) => root.style.setProperty(k, v));
   if (t.goldColor) { root.style.setProperty('--gold', t.goldColor); root.style.setProperty('--gold-600', darken(t.goldColor, 0.1)); }
 }
+
+/* ------------------------------------------------- published identity (web) */
+/**
+ * Adapters onto the SHARED resolvers in `@investoyard/shared-types`.
+ *
+ * Four one-liners rather than the shape repeated at each call site: the footer,
+ * the contact page and the Organization structured data must agree about who
+ * operates the site, and the rule they agree on — a white-label never inherits
+ * our identity — lives in one tested module, not in three components.
+ */
+export const identityInput = (t: Tenant) => ({
+  isDefault: !!t.isDefault,
+  name: t.name,
+  identity: t.content?.identity,
+  contact: t.content?.contact,
+});
+export const tenantIdentity = (t: Tenant) => resolveIdentity(identityInput(t));
+export const tenantContact = (t: Tenant) => resolveContact(t.content?.contact);
+/** Never empty — the footer and the page title both need something to print. */
+export const tenantDisplayName = (t: Tenant) => displayName(identityInput(t));
+/** Undefined until a legal entity is known; the caller must then say nothing. */
+export const tenantLegalEntity = (t: Tenant) => legalEntity(identityInput(t));

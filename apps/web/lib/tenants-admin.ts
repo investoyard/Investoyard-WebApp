@@ -3,6 +3,13 @@
  * Admin API client for the live tenant tree + settings cascade (apps/api).
  * This is the first admin surface backed by the real API rather than the mock store.
  */
+import type {
+  TenantContent, TenantIdentity, TenantContact, ContentGap,
+} from '@investoyard/shared-types';
+/* Re-exported so the admin pages read one module — they already import
+   everything else tenant-shaped through `* as api`. */
+export type { TenantContent, TenantIdentity, TenantContact, ContentGap };
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
 export interface AdminTenant {
@@ -123,8 +130,33 @@ export interface PartnerDetail {
   partnerApiScopes?: string[];
   counts: { branches: number; users: number; operators: number };
   createdAt: string;
+  /** What this channel publishes about itself — see the Content panel. */
+  content?: TenantContent;
+  /**
+   * What is still missing before this partner's domain faces their customers.
+   * Computed SERVER-side by the same resolver the site renders with, so the
+   * panel cannot drift from what the footer and contact page actually print.
+   */
+  contentGaps?: ContentGap[];
 }
 export const fetchTenant = (slug: string) => authed<PartnerDetail>(`${API}/admin/tenants/${slug}`, { method: 'GET' });
+
+/**
+ * Save one content block. ONE ROUTE PER KEY, matching the API: the body is a
+ * typed DTO there rather than an index signature, because class-validator's
+ * whitelist is what keeps a stray key out of the PUBLIC /tenants response.
+ *
+ * A PATCH — an omitted field is left alone, an EMPTY STRING deletes it.
+ */
+export interface ContentSaved { ok: boolean; content: TenantContent; gaps: ContentGap[] }
+export const updateTenantIdentity = (slug: string, patch: Partial<TenantIdentity>) =>
+  authed<ContentSaved>(`${API}/admin/tenants/${slug}/content/identity`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  });
+export const updateTenantContact = (slug: string, patch: Partial<TenantContact>) =>
+  authed<ContentSaved>(`${API}/admin/tenants/${slug}/content/contact`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  });
 
 /* ---- partner API keys (white-label Print-PDF API) ---- */
 export interface PartnerApiKeyRow {

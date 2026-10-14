@@ -243,6 +243,7 @@ model Tenant {
   memberCredentials MemberCredential[]
   settings          TenantSetting[]
   partnerApiKeys    PartnerApiKey[]
+  content           TenantContent[]
 
   @@index([parentId])
   @@index([type])
@@ -573,6 +574,39 @@ model FeatureDefinition {
 /// A tenant's override for one feature. `locked` freezes the value for the whole
 /// subtree below this tenant (descendants inherit it and cannot override).
 /// NOT tenant-scoped by RLS: the resolver walks ANCESTOR tenants' settings.
+/// Per-tenant SITE CONTENT — the operating entity and its contact details, so a
+/// white-label domain stops publishing OURS. See packages/shared-types
+/// tenantContent.ts for the shapes, the resolvers and the one rule they encode:
+/// A WHITE-LABEL NEVER INHERITS OUR IDENTITY.
+///
+/// A ROW PER KEY rather than one JSON blob on Tenant, deliberately. This project
+/// has twice paid for two writers racing over a single unschema'd JSON column —
+/// the admin IPO form deleting the poller's `extra` keys, and the poller
+/// reverting the operator's — and both are the same fault: last write wins the
+/// whole object. Separate rows mean a save of `contact` cannot touch
+/// `identity`, with no whitelist to keep in step.
+///
+/// NOT scoped by RLS (see setup-rls.sql): the public /tenants registry reads
+/// every active channel's content cross-tenant to brand a domain, exactly as it
+/// already reads Tenant itself.
+model TenantContent {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// One of TENANT_CONTENT_KEYS — 'identity' | 'contact' today. The rich-text
+  /// keys (about / terms / privacy / disclaimer) join the same table without a
+  /// migration; those are fetched per page, never on the public list.
+  key   String
+  value Json
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
 model TenantSetting {
   id         String            @id @default(uuid())
   tenantId   String

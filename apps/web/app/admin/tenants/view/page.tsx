@@ -209,6 +209,150 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
   );
 }
 
+/* The fields, in the order staff work through them. `area` renders a textarea:
+   an address is a block, not a line. */
+type CField = { key: string; label: string; hint?: string; area?: boolean; w?: number };
+
+const IDENTITY_FIELDS: CField[] = [
+  { key: 'legalName', label: 'Registered company name', hint: 'As incorporated — the accountable entity', w: 300 },
+  { key: 'tradeName', label: 'Trade name', hint: 'Only if different from the channel name', w: 220 },
+  { key: 'sebiRegistration', label: 'SEBI registration', hint: 'e.g. INZ000123456', w: 200 },
+  { key: 'cin', label: 'CIN', w: 220 },
+  { key: 'gstin', label: 'GSTIN', w: 190 },
+  { key: 'registeredAddress', label: 'Registered office address', area: true },
+];
+const CONTACT_FIELDS: CField[] = [
+  { key: 'supportEmail', label: 'Support email', w: 260 },
+  { key: 'supportPhone', label: 'Support phone', w: 180 },
+  { key: 'hours', label: 'Hours', hint: 'e.g. Mon-Fri, 9:00am - 6:00pm IST', w: 260 },
+  { key: 'officeAddress', label: 'Office address', hint: 'Shown instead of the registered office, if different', area: true },
+  { key: 'grievanceName', label: 'Grievance officer', hint: 'SEBI requires a designated officer', w: 230 },
+  { key: 'grievanceEmail', label: 'Grievance email', w: 260 },
+  { key: 'grievancePhone', label: 'Grievance phone', w: 180 },
+  { key: 'complianceName', label: 'Compliance officer', w: 230 },
+  { key: 'complianceEmail', label: 'Compliance email', w: 260 },
+  { key: 'compliancePhone', label: 'Compliance phone', w: 180 },
+];
+
+/**
+ * PUBLISHED IDENTITY — who operates this channel's site, and how to reach them.
+ *
+ * WHAT THIS FIXES. A white-label domain used to serve OUR identity: the footer
+ * said Investoyard, there was no contact page at all, and the Organization
+ * structured data on every page declared Safal Capital Services Private Limited
+ * as the operator, with our logo. Nothing substitutes across tenants any more —
+ * which means a field nobody fills is a field nobody publishes, and that is what
+ * the gap list is for.
+ *
+ * THE GAPS COME FROM THE SERVER, computed by the same `contentGaps()` the site's
+ * own resolvers are built on. Re-deriving "what is missing" here would let the
+ * panel drift from what the footer actually prints — the mistake this codebase
+ * has paid for four times over (three mappers into computeIssue, four readers of
+ * sharesUpper), and the reason the subscription readiness card calls
+ * `offeredFromIpo()` rather than re-testing its conditions.
+ *
+ * BLOCKING vs ADVISORY is a real distinction, not a severity gradient: without a
+ * grievance officer a SEBI-registered broker's clients have nowhere to escalate,
+ * and the only alternative on offer would be ours.
+ */
+function ContentPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void }) {
+  const stored = tenant.content ?? {};
+  const asForm = (o: Record<string, any> | undefined, fields: CField[]) =>
+    Object.fromEntries(fields.map((f) => [f.key, String((o ?? {})[f.key] ?? '')]));
+
+  const [idf, setIdf] = useState(() => asForm(stored.identity, IDENTITY_FIELDS));
+  const [cf, setCf] = useState(() => asForm(stored.contact, CONTACT_FIELDS));
+  const [busy, setBusy] = useState<'identity' | 'contact' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [gaps, setGaps] = useState<api.ContentGap[]>(tenant.contentGaps ?? []);
+
+  const dirtyIn = (form: Record<string, string>, o: Record<string, any> | undefined, fields: CField[]) =>
+    fields.some((f) => form[f.key] !== String((o ?? {})[f.key] ?? ''));
+  const idDirty = dirtyIn(idf, stored.identity, IDENTITY_FIELDS);
+  const cDirty = dirtyIn(cf, stored.contact, CONTACT_FIELDS);
+
+  const saveBlock = async (key: 'identity' | 'contact') => {
+    setBusy(key); setErr(null); setSavedKey(null);
+    try {
+      /* Every box is posted, including the empty ones — that is what makes a
+         cleared field DELETE rather than linger (see mergeContentPatch). */
+      const r = key === 'identity'
+        ? await api.updateTenantIdentity(slug, idf as any)
+        : await api.updateTenantContact(slug, cf as any);
+      setGaps(r.gaps ?? []);
+      setSavedKey(key);
+      onSaved();
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(null); }
+  };
+
+  const blocking = gaps.filter((g) => g.severity === 'blocking');
+  const advisory = gaps.filter((g) => g.severity === 'advisory');
+
+  const box = (f: CField, form: Record<string, string>, set: (v: Record<string, string>) => void) => (
+    <div className="field" key={f.key} style={{ width: f.area ? '100%' : f.w ?? 220 }}>
+      <label>{f.label}</label>
+      {f.area ? (
+        <textarea className="input" rows={3} style={{ resize: 'vertical' }}
+          value={form[f.key]} onChange={(e) => set({ ...form, [f.key]: e.target.value })} />
+      ) : (
+        <input className="input" value={form[f.key]}
+          onChange={(e) => set({ ...form, [f.key]: e.target.value })} />
+      )}
+      {f.hint ? <span className="hint">{f.hint}</span> : null}
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+      <div className="section-title" style={{ fontSize: 13, marginTop: 0 }}>Published identity &amp; contact</div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        What this channel&apos;s site says about who runs it — the footer, the Contact page and the
+        structured data on every page. Nothing here is inherited from Investoyard: a field left
+        blank is simply not published.
+      </p>
+
+      {/* The gap list leads, because it is the reason to open the panel — and it
+          renders nothing at all when there is nothing to say. A card that is
+          permanently present and permanently empty is a card people stop
+          reading, which is how ten SME issues closed with no subscription data. */}
+      {blocking.length ? (
+        <div className="banner bad" style={{ marginBottom: 14 }}>
+          <b>Not ready for this partner&apos;s customers.</b>{' '}
+          Still missing: {blocking.map((g) => g.label).join(' · ')}. Without a registered name the
+          footer has no accountable entity, and without a grievance officer their clients have
+          nowhere to escalate.
+        </div>
+      ) : gaps.length ? (
+        <div className="banner" style={{ marginBottom: 14 }}>
+          Ready to go live. Still worth filling: {advisory.map((g) => g.label).join(' · ')}.
+        </div>
+      ) : null}
+
+      <div className="fs-head" style={{ marginBottom: 10 }}><div className="t">Operating entity</div></div>
+      <div className="filter-row">{IDENTITY_FIELDS.map((f) => box(f, idf, setIdf))}</div>
+      <div className="row" style={{ gap: 10, alignItems: 'center', marginBottom: 20 }}>
+        <button className="btn" disabled={busy !== null || !idDirty} onClick={() => saveBlock('identity')}>
+          {busy === 'identity' ? 'Saving…' : 'Save entity'}
+        </button>
+        {savedKey === 'identity' ? <span className="hint">Saved.</span> : null}
+      </div>
+
+      <div className="fs-head" style={{ marginBottom: 10 }}><div className="t">Contact &amp; grievance</div></div>
+      <div className="filter-row">{CONTACT_FIELDS.map((f) => box(f, cf, setCf))}</div>
+      <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+        <button className="btn" disabled={busy !== null || !cDirty} onClick={() => saveBlock('contact')}>
+          {busy === 'contact' ? 'Saving…' : 'Save contact'}
+        </button>
+        {savedKey === 'contact' ? <span className="hint">Saved.</span> : null}
+      </div>
+
+      {err ? <div className="banner bad" style={{ marginTop: 12 }}>{err}</div> : null}
+    </div></div>
+  );
+}
+
 function ProfileView({ profile }: { profile: Record<string, any> }) {
   const individual = isIndividual(profile.applicantType);
   return (
@@ -460,6 +604,8 @@ function PartnerProfilePage() {
       </div></div>
 
       <BrandingPanel slug={slug} tenant={data} onSaved={load} />
+
+      <ContentPanel slug={slug} tenant={data} onSaved={load} />
 
       <ApiKeysPanel tenantId={data.id} />
 

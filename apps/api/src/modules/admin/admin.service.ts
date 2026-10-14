@@ -12,6 +12,13 @@ import { SmsService } from '../../common/sms.service';
 import { EmpanelmentPdfService } from './empanelment-pdf.service';
 import { tenantContext } from '../../common/tenant-context';
 import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common/permissions-catalog';
+import {
+  TENANT_CONTENT_KEYS,
+  TenantContent,
+  TenantContentKey,
+  contentGaps,
+  mergeContentPatch,
+} from '@investoyard/shared-types';
 
 /**
  * Back-office operator management (users ↔ tenants ↔ roles). Reuses the RBAC layer:
@@ -726,6 +733,7 @@ export class AdminService {
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const flags = (t.flags as any) ?? {};
+      const content = await this.tenantContent(t.id);
       // Trim operator-only fields (commissionRate, customDomain, Partner
       // API operator controls) for non-superadmin callers — a partner
       // reading their own tenant via the My Organisation page must not
@@ -739,6 +747,27 @@ export class AdminService {
         profile: (t.profile as any) ?? {},
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
+        /*
+         * WHO OPERATES THIS CHANNEL'S SITE — see the Content panel.
+         *
+         * In `base`, so a partner reading their own tenant through My
+         * Organisation sees it too: it is their own legal identity, and showing
+         * them the gaps is the point of listing them.
+         */
+        content,
+        /*
+         * What is still missing before this partner's domain should face their
+         * customers. Computed by the SHARED resolver the site renders with, so
+         * the panel cannot drift from what the footer and contact page actually
+         * print — the same reason the subscription readiness card calls
+         * `offeredFromIpo()` rather than re-testing its conditions.
+         */
+        contentGaps: contentGaps({
+          isDefault: t.type === 'direct',
+          name: t.name,
+          identity: content.identity,
+          contact: content.contact,
+        }),
       };
       if (!scope.superadmin) return base;
       return {
@@ -842,6 +871,114 @@ export class AdminService {
         },
       }).catch(() => { /* best-effort */ });
       return { ok: true };
+    });
+  }
+
+  /**
+   * The TenantContent delegate, or `null` when the generated client predates it.
+   *
+   * THE NULL BRANCH IS A DEPLOY GUARD, NOT TIDINESS. `prisma db push` creates
+   * the table while the pool runs, but the delegate only exists after
+   * `prisma generate` — which is part of the pool handshake and is exactly the
+   * step a hurried deploy skips. Without the guard, `GET /tenants` would throw
+   * on `undefined.findMany`, and that endpoint is the PUBLIC registry every
+   * single page load resolves its brand from: a missed step would take the whole
+   * site down rather than merely leave a footer line blank. It logs, so the
+   * cause is findable.
+   *
+   * The cast goes with it: delete both once the client is regenerated.
+   */
+  private get contentTable(): any | null {
+    const t = (this.prisma as any).tenantContent;
+    if (!t) {
+      if (!AdminService.warnedNoContentTable) {
+        AdminService.warnedNoContentTable = true;
+        // eslint-disable-next-line no-console
+        console.warn('[tenant-content] Prisma client has no TenantContent delegate — run `prisma generate`. Serving empty content.');
+      }
+      return null;
+    }
+    return t;
+  }
+  private static warnedNoContentTable = false;
+
+  /** A tenant's content blocks, folded to `{ identity, contact }`. */
+  private async tenantContent(tenantId: string): Promise<TenantContent> {
+    const table = this.contentTable;
+    if (!table) return {};
+    const rows: Array<{ key: string; value: unknown }> = await table.findMany({ where: { tenantId } });
+    const out: TenantContent = {};
+    for (const r of rows) {
+      if (!(TENANT_CONTENT_KEYS as readonly string[]).includes(r.key)) continue;
+      (out as any)[r.key] = r.value ?? undefined;
+    }
+    return out;
+  }
+
+  /**
+   * Write one content block — the operating entity, or how to reach it.
+   *
+   * SUPERADMIN ONLY, the same gate as branding and the custom domain. A partner
+   * may read their own block through My Organisation but not change it: the
+   * legal name, SEBI registration and grievance officer are what our
+   * empanelment was approved against, and `updateTenant` already freezes PAN,
+   * GSTIN and entity type after approval for exactly that reason. Loosening this
+   * to the Admin tier is one line if the operator wants it.
+   *
+   * A PATCH, not a replace — see `mergeContentPatch`: a blanked box deletes its
+   * field, and a field the patch does not mention is left alone.
+   */
+  async updateTenantContent(
+    callerId: string,
+    slug: string,
+    key: TenantContentKey,
+    patch: Record<string, unknown>,
+  ) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException("Only a superadmin may edit a channel's published identity.");
+    if (!(TENANT_CONTENT_KEYS as readonly string[]).includes(key)) {
+      throw new BadRequestException(`Unknown content key '${key}'.`);
+    }
+    /* The READ falls back to empty when the delegate is missing; the WRITE must
+       REFUSE. Reporting "Saved." over a store that does not exist is the exact
+       failure this project has written up twice — a script that reports success
+       has only proved it issued the write. */
+    const table = this.contentTable;
+    if (!table) throw new BadRequestException('Content store unavailable until the API is redeployed (prisma generate).');
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      const existing = await table.findUnique({ where: { tenantId_key: { tenantId: t.id, key } } });
+      const value = mergeContentPatch((existing?.value as any) ?? undefined, patch);
+      await table.upsert({
+        where: { tenantId_key: { tenantId: t.id, key } },
+        create: { tenantId: t.id, key, value },
+        update: { value },
+      });
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'tenant.content.update',
+          actorId: callerId,
+          targetType: 'tenant',
+          targetId: t.id,
+          targetLabel: `${t.name} (${t.slug})`,
+          tenantSlug: t.slug,
+          /* The FIELD NAMES, never the values: an audit row should say what
+             changed without becoming a second copy of the data. */
+          detail: { key, fields: Object.keys(patch) } as any,
+        },
+      }).catch(() => { /* best-effort */ });
+      const content = await this.tenantContent(t.id);
+      return {
+        ok: true,
+        content,
+        gaps: contentGaps({
+          isDefault: t.type === 'direct',
+          name: t.name,
+          identity: content.identity,
+          contact: content.contact,
+        }),
+      };
     });
   }
 

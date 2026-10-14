@@ -4607,3 +4607,24 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .sb-chip.on { border-color: var(--brand); background: var(--brand-50); }
 .sb-chip input { margin: 0; cursor: pointer; }
 .sb-noemail { color: var(--warn); font-weight: 700; }
+
+/* ── /contact — the label/value pairs ────────────────────────────────────── */
+/* A real <dl>, because these ARE term/definition pairs and a screen reader
+   should read them as such. `ctc-` prefix and NOT `ct-`, which the IPO compare
+   table already owns (.ct-wrap / .ct-th / .ct-row);
+   `globals.css` is one global sheet and this file's history is four separate
+   collisions, so grep-then-prefix is the standing rule — and this one caught a
+   live near-miss. */
+.ctc-dl {
+  display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  gap: 6px 16px; margin: 12px 0 0; align-items: baseline;
+}
+.ctc-dl dt { font-size: 13.5px; color: var(--text-muted); }
+.ctc-dl dd { margin: 0; font-size: 14.5px; line-height: 1.6; color: var(--text); }
+
+@media (max-width: 620px) {
+  /* One column on a phone — a 170px label beside a long email wraps the value
+     to three lines and reads worse than stacking. */
+  .ctc-dl { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  .ctc-dl dt { margin-top: 8px; }
+}
