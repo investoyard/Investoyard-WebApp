@@ -409,3 +409,148 @@
 .pa-kv dt { color: var(--text-muted); }
 .pa-kv dd { margin: 0; color: var(--text); }
 .pa-kv dd code { font-size: .85em; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PRINT — the Partner API reference as a PDF.
+
+   SCOPE, AND IT IS THE WHOLE DESIGN DECISION: the PDF is the API DETAIL and
+   nothing else. The web page keeps its overview, its onboarding paths and its
+   support prose, because that page is indexed and is where a prospective
+   partner lands. A developer with the PDF open beside an editor wants the
+   endpoints, the fields, the examples and the errors — so everything else is
+   marked `pa-noprint` in the JSX rather than hidden by a selector here, which
+   keeps "what is in the PDF" readable in the markup.
+
+   The cover, @page, and the hiding of the site header/footer come from
+   platform.css, imported first. Only what is specific to THIS document lives
+   below.
+   ════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .pa-noprint { display: none !important; }
+
+  /*
+   * THE WRAPPER'S OWN PADDING HAS TO GO, and this is not cosmetic.
+   * `.pa` carries `padding: 2rem 0 4rem` for the screen. The shared cover is
+   * `height: 267mm` inside a 269mm @page content box, so 32px of top padding
+   * (~8.5mm) pushed its last 6mm — the footer bar naming the entity and the
+   * version — onto a PAGE OF ITS OWN. The tell was page 2 at 7% fill holding
+   * one line; the cause was two files away, in a rule written for the screen.
+   */
+  .pa { padding: 0 !important; font-size: 10.2pt; }
+
+  /* The TOC is a sticky screen affordance. A PDF has its own navigation and a
+     240px rail would leave a permanent empty column down every page. */
+  .pa-rail { display: none !important; }
+  .pa-page {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+  .pa-main { padding: 0 !important; min-width: 0; }
+
+  /* The section numbers are hard-coded 01..09 in the markup and two of those
+     sections do not print, so a numbered run would read 02, 03, 04 with a gap
+     where 01 should be. Dropping the badges is honest; renumbering in CSS is
+     not possible and renumbering in markup would make the web page wrong. */
+  .pa-num { display: none !important; }
+
+  .pa { color: #16141f !important; }
+  .pa-section { margin-bottom: 7mm; break-inside: auto; }
+  /* A heading must never sit alone at the foot of a page. */
+  .pa-section > h2 { break-after: avoid; page-break-after: avoid; font-size: 15pt; margin: 0 0 3mm; }
+  .pa-section > h3, .pa-main h3 { break-after: avoid; page-break-after: avoid; font-size: 10.5pt; margin: 4mm 0 2mm; }
+  .pa-main p, .pa-main li { font-size: 9.2pt; line-height: 1.5; color: #3c4050 !important; max-width: none !important; }
+  .pa-main ol, .pa-main ul { max-width: none !important; }
+
+  /*
+   * CODE BLOCKS WRAP RATHER THAN SCROLL, and this is the single thing most
+   * likely to ruin this particular PDF. On screen `.pa-code pre` scrolls
+   * sideways; paper has no sideways. An unwrapped 90-character request line is
+   * silently CLIPPED at the page edge — the reader does not see a scrollbar,
+   * they see a field list that is missing its right-hand half.
+   *
+   * `break-inside: avoid` is deliberately NOT set on the block itself: the
+   * print-forms request example runs longer than a page, and Chrome responds
+   * to an unsatisfiable avoid by clipping the overflow rather than moving it.
+   * That exact fault cost this project a rebuilt broker document. The HEAD is
+   * kept with its first lines instead.
+   */
+  .pa-code {
+    max-width: none !important;
+    background: #f6f5fa !important;
+    border: 1px solid #e4e2ec !important;
+    border-radius: 2mm;
+    margin: 2.5mm 0 4mm;
+    break-inside: auto;
+  }
+  .pa-code-head {
+    background: #eeecf4 !important;
+    border-bottom: 1px solid #e4e2ec !important;
+    padding: 1.4mm 2.6mm;
+    font-size: 7.2pt;
+    color: #5a5870 !important;
+    break-after: avoid; page-break-after: avoid;
+  }
+  .pa-code pre {
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    overflow: visible !important;
+    padding: 2.6mm 3mm;
+    font-size: 7.6pt;
+    line-height: 1.5;
+    color: #26242f !important;
+  }
+  /* The syntax tints have to survive a print colour profile, and each must
+     still be legible on the pale block rather than on the dark one. */
+  .pa-code .pa-k { color: #7c3aed !important; }
+  .pa-code .pa-s { color: #0c6b41 !important; }
+  .pa-code .pa-c { color: #76738a !important; }
+
+  /* Field and limits tables: a ROW may not split, a table may. */
+  .pa-fields { max-width: none !important; break-inside: auto; }
+  .pa-fields table { width: 100% !important; }
+  .pa-fields thead { display: table-header-group; }
+  .pa-fields tr { break-inside: avoid; page-break-inside: avoid; }
+  .pa-fields th, .pa-fields td {
+    font-size: 8.2pt; line-height: 1.42; padding: 1.6mm 2mm;
+    border-color: #e4e2ec !important; color: #3c4050 !important;
+  }
+  .pa-fields th { background: #f6f5fa !important; color: #2a2052 !important; }
+  .pa-fields .pa-name { white-space: nowrap; color: #2a2052 !important; }
+
+  .pa-callout {
+    background: #f6f5fa !important; border-color: #e4e2ec !important;
+    padding: 3mm 3.4mm; border-radius: 2mm; margin: 3mm 0;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .pa-callout p { font-size: 8.6pt !important; line-height: 1.48; color: #3c4050 !important; }
+
+  .pa-endpoint, .pa-kv { break-inside: avoid; page-break-inside: avoid; }
+  .pa-endpoint-path, .pa-main code { font-size: 8pt; color: #2a2052 !important; }
+  .pa-method { color: #fff !important; }
+
+  .pa-footer {
+    border-top: 1px solid #e4e2ec !important; margin-top: 6mm; padding-top: 3mm;
+    break-inside: avoid;
+  }
+  .pa-footer p { font-size: 7.6pt !important; color: #6c7080 !important; }
+
+  /* The logo on the dark cover: a white panel, because the asset carries its
+     own indigo-and-gold fills and cannot be recoloured from here. Same
+     treatment as the broker document. */
+  .pa-cover-logo {
+    display: inline-flex; align-self: flex-start;
+    background: #fff !important; border-radius: 2mm; padding: 2.4mm 3.4mm;
+  }
+}
+
+/* Download affordance in the doc header. `pa-dl`: `pa-download` is unused but
+   the prefix rule in this file is one word after `pa-`. */
+.pa-dl {
+  margin-left: auto; font-size: .8rem; font-weight: 600; text-decoration: none;
+  color: var(--brand); border: 1px solid var(--pa-code-border); border-radius: 7px;
+  padding: .3rem .7rem; white-space: nowrap;
+}
+.pa-dl:hover { background: var(--pa-brand-soft); }

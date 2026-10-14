@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { PartnerApiScrollSpy } from './scroll-spy';
+/* The cover and the print scaffolding (@page, hiding the site chrome,
+   resetting main.container) come from the platform document's stylesheet, as
+   they already do for /brokers — so all three PDFs carry the SAME cover by
+   construction rather than by three people remembering to match it. */
+import '../platform/platform.css';
 import './partner-api.css';
 
 // JetBrains Mono only — Inter and Plus Jakarta already load from the root
@@ -48,6 +53,66 @@ export default function PartnerApiDoc() {
   return (
     <div className={`pa ${jetbrainsMono.variable}`}>
       <PartnerApiScrollSpy />
+
+      {/*
+        * PRINT-ONLY COVER. `display: none` on screen (platform.css), shown by
+        * the print rules — so the web page is unchanged and the PDF opens on a
+        * cover like the other two documents.
+        */}
+      <div className="plt-cover" aria-hidden="true">
+        <svg className="plt-cover-art" viewBox="0 0 420 120" preserveAspectRatio="none" aria-hidden="true">
+          {[
+            [10, 34, 62, 18, 86], [46, 50, 78, 32, 96], [82, 22, 54, 10, 72],
+            [118, 44, 88, 28, 104], [154, 30, 58, 16, 78], [190, 56, 96, 40, 110],
+            [226, 26, 66, 14, 84], [262, 48, 82, 34, 98], [298, 36, 70, 22, 90],
+            [334, 54, 100, 42, 114], [370, 28, 60, 12, 80],
+          ].map(([x, top, bot, wTop, wBot], i) => (
+            <g key={i} className={i % 3 === 0 ? 'plt-c-gold' : 'plt-c-pale'}>
+              <line x1={x + 9} y1={wTop} x2={x + 9} y2={wBot} strokeWidth="1.5" />
+              <rect x={x} y={top} width="18" height={bot - top} rx="2" />
+            </g>
+          ))}
+        </svg>
+
+        <span className="pa-cover-logo">
+          <img src="/investoyard-logo.svg" alt="Investoyard" style={{ height: 30, width: 'auto', display: 'block' }} />
+        </span>
+
+        <div className="plt-cover-mid">
+          <div className="plt-cover-kicker">API reference for empanelled partners</div>
+          <h1>Partner API</h1>
+          <span className="plt-cover-rule" />
+          <p>
+            The print-forms contract: authentication, the full request field list, the response
+            and the error codes — with curl, JavaScript and Python examples.
+          </p>
+        </div>
+
+        <div className="plt-cover-stats">
+          <div>
+            <div className="plt-cover-stat-v">v1.0</div>
+            <div className="plt-cover-stat-l">API version</div>
+          </div>
+          <div>
+            <div className="plt-cover-stat-v">POST</div>
+            <div className="plt-cover-stat-l">/partner/v1/print-forms</div>
+          </div>
+          <div>
+            <div className="plt-cover-stat-v">HTTPS</div>
+            <div className="plt-cover-stat-l">Only, key per tenant</div>
+          </div>
+          <div>
+            <div className="plt-cover-stat-v">JSON</div>
+            <div className="plt-cover-stat-l">Request and response</div>
+          </div>
+        </div>
+
+        <div className="plt-cover-foot">
+          <span>Safal Capital Services Private Limited</span>
+          <span>v1.0 · October 2026 · newipoapi.finwave.co</span>
+        </div>
+      </div>
+
       <div className="pa-page">
         <aside className="pa-rail">
           <nav className="pa-toc" id="pa-toc">
@@ -72,13 +137,17 @@ export default function PartnerApiDoc() {
         <main className="pa-main">
 
           {/* ── Overview / hero ── */}
-          <section id="overview" className="pa-section">
+          <section id="overview" className="pa-section pa-noprint">
             <div className="pa-hero-head">
               <span className="pa-version">
                 <span className="pa-version-dot"></span>
                 v1.0
               </span>
               <span className="pa-doc-updated">First release · September 2026</span>
+              {/* Same affordance /platform and /brokers carry. It sits inside
+                  the overview section, which is pa-noprint, so it cannot
+                  appear in the PDF it links to. */}
+              <a className="pa-dl" href="/Investoyard-Partner-API.pdf" download>Download PDF</a>
             </div>
             <h1>Partner <em>API</em></h1>
             <p className="pa-lede">
@@ -104,7 +173,7 @@ export default function PartnerApiDoc() {
           </section>
 
           {/* ── How to get an API key ── */}
-          <section id="getting-started" className="pa-section">
+          <section id="getting-started" className="pa-section pa-noprint">
             <h2><span className="pa-num">01</span>How to get an API key</h2>
             <p>
               Every call to this API is authenticated with a partner <strong>API key</strong>, issued against an active partner tenant on Investoyard. Which path you follow depends on whether your organisation already has a tenant on the platform.
@@ -374,7 +443,7 @@ with open(data["filename"], "wb") as f:
           </section>
 
           {/* ── GET /ipos ── */}
-          <section id="list-ipos" className="pa-section">
+          <section id="list-ipos" className="pa-section pa-noprint">
             <h2><span className="pa-num">05</span>List IPOs</h2>
             <p>List IPOs from the catalog, optionally filtered by board type, instrument, or status. Every response is projected through the operational contract, so adding an internal reporting field can never change your payload.</p>
 
@@ -397,7 +466,7 @@ with open(data["filename"], "wb") as f:
           </section>
 
           {/* ── GET /ipos/:symbol ── */}
-          <section id="get-ipo" className="pa-section">
+          <section id="get-ipo" className="pa-section pa-noprint">
             <h2><span className="pa-num">06</span>Get one IPO</h2>
             <p>Return the full catalog record for a single IPO by ticker symbol.</p>
             <div className="pa-endpoint">
@@ -450,7 +519,7 @@ with open(data["filename"], "wb") as f:
           </section>
 
           {/* ── Limits & behaviour ── */}
-          <section id="limits" className="pa-section">
+          <section id="limits" className="pa-section pa-noprint">
             <h2><span className="pa-num">08</span>Limits &amp; behaviour</h2>
             <div className="pa-fields"><table>
               <thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead>
@@ -470,10 +539,12 @@ with open(data["filename"], "wb") as f:
 
           {/* ── Support ── */}
           <section id="support" className="pa-section">
-            <h2><span className="pa-num">09</span>Support</h2>
-            <p>Questions about the API, key issuance, incident reports, and feature requests: contact the operator through your existing empanelment channel, or reach out to your Investoyard relationship manager.</p>
-            <p>When reporting an integration issue, include: the request timestamp (UTC), your keyId (never the secret), the endpoint called, the HTTP status you received, and the response body — this is enough for us to trace the call in the audit log.</p>
+            <h2 className="pa-noprint"><span className="pa-num">09</span>Support</h2>
+            <p className="pa-noprint">Questions about the API, key issuance, incident reports, and feature requests: contact the operator through your existing empanelment channel, or reach out to your Investoyard relationship manager.</p>
+            <p className="pa-noprint">When reporting an integration issue, include: the request timestamp (UTC), your keyId (never the secret), the endpoint called, the HTTP status you received, and the response body — this is enough for us to trace the call in the audit log.</p>
 
+            {/* NOT marked pa-noprint: a PDF that leaves our hands has to name
+                the entity that published it and who it is for. */}
             <footer className="pa-footer">
               <p>Investoyard is a product of <strong style={{ color: 'var(--text)' }}>Safal Capital Services Private Limited</strong>. The Partner API is provided to empanelled distribution partners only.</p>
             </footer>

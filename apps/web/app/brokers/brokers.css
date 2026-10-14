@@ -1,9 +1,17 @@
 /*
- * /brokers — ONLY what is unique to this document. The visual system comes
- * from ../platform/platform.css, imported first, so the two cannot drift.
+ * /brokers v3.0 — ONLY what is unique to this document. The visual system
+ * comes from ../platform/platform.css, imported first, so the two cannot
+ * drift.
  *
  * `brk-` prefix, scoped under `.brk`. `pf-` is taken in globals.css and `plt-`
  * belongs to the platform document; grep before adding a third.
+ *
+ * v3.0 REPLACED FIVE LAYOUTS WITH ONE. v2.0 carried feature cards, a ten-row
+ * tier table, a boxed callout, a tick-list grid and a numbered vertical flow —
+ * five shapes a reader had to learn across seven pages. Everything is now the
+ * same tile; only the COLUMN COUNT changes. The tier table, the callout and
+ * the flow are gone with their CSS, which also removes the page-break traps
+ * they needed (`break-inside` on the flow, `break-after` on its heading).
  */
 
 /* ── the real logo on a dark ground ──────────────────────────────────────── */
@@ -21,94 +29,73 @@
   box-shadow: 0 2px 10px rgba(12, 8, 34, .22);
 }
 
-/* ── the data tiers ──────────────────────────────────────────────────────── */
-.brk-data { display: flex; flex-direction: column; gap: 10px; }
+/* ── THE tile ────────────────────────────────────────────────────────────── */
+.brk-tiles { display: grid; gap: 14px; }
+.brk-tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.brk-tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.brk-tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
-/* A row, not a card grid. The four tiers must be COMPARABLE down a column —
-   a reader is scanning for "which of these is locked", and a two-up grid makes
-   that a zigzag. */
-.brk-row {
+.brk-tile {
+  min-width: 0;
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
-  padding: 15px 18px 14px; box-shadow: 0 1px 3px rgba(28, 22, 60, .06);
+  padding: 16px 17px 15px; box-shadow: 0 1px 3px rgba(28, 22, 60, .06);
 }
-.brk-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 5px; }
-.brk-row-head b { font-size: 15px; letter-spacing: -.012em; }
-.brk-row p { margin: 0; font-size: 13.5px; line-height: 1.58; color: var(--dim); }
-.brk-note { margin-top: 6px !important; font-size: 12.4px !important; color: #7a7788 !important; }
+.brk-tile b { display: block; font-size: 14.6px; letter-spacing: -.012em; margin: 10px 0 5px; }
+.brk-tile p { margin: 0; font-size: 13.3px; line-height: 1.55; color: var(--dim); }
 
-.brk-tier {
-  flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
-  text-transform: uppercase; border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+/* The three MODELS carry a number instead of an icon — they are three choices
+   to pick between, and numbering is what says so. Same tile otherwise. */
+.brk-tile-n { padding-top: 15px; }
+.brk-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 27px; height: 27px; border-radius: 50%;
+  background: var(--indigo); color: #fff; font-size: 12.5px; font-weight: 700;
 }
-/* Semantic colour is reserved for financial signals on the product surfaces,
-   but this IS a risk ladder and reads as one — green through to red is the
-   whole point of the column. */
-.brk-t-open { background: #e6f4ec; color: #0c6b41; }
-.brk-t-optin { background: #fff8e3; color: #8a6200; }
-.brk-t-locked { background: #fcebe8; color: #a3301f; }
-.brk-t-never { background: #f2f1f7; color: #4b4860; }
-
-.brk-callout {
-  margin-top: 22px; background: var(--lav); border: 1px solid var(--line);
-  border-radius: 16px; padding: 22px 24px;
+.brk-k {
+  margin-top: 11px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--indigo);
 }
-.brk-callout-h { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
-.brk-callout-h svg { color: var(--indigo); }
-.brk-callout-h b { font-size: 15.5px; }
-.brk-callout p { margin: 0; font-size: 14px; line-height: 1.62; color: var(--dim); }
-.brk-checks { margin: 13px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
-.brk-checks li { font-size: 13.6px; line-height: 1.55; color: var(--dim); }
-.brk-checks li::marker { color: var(--indigo); font-weight: 700; }
+.brk-tile-n b { margin-top: 4px; }
 
-/* ── what you bring ──────────────────────────────────────────────────────── */
-/* Grouped ticked lists, NOT more feature cards. This section answers a
-   different question from every other one — it is a checklist someone will
-   work through with their compliance team — so it should not look like the
-   marketing above it. */
-.brk-req { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 28px; }
+/* ── the compliance note under section 05 ────────────────────────────────── */
+/* A single LINE, not a boxed callout. v2.0 put this reasoning in a panel with
+   a heading and a four-item list, which took a third of a page to say one
+   thing — and a box reads as an aside, when this sentence is the point. */
+.brk-note-line {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 16px 0 0; padding: 13px 16px;
+  background: var(--lav); border: 1px solid var(--line); border-radius: 12px;
+  font-size: 13.2px; line-height: 1.58; color: var(--dim);
+}
+.brk-note-line svg { flex: 0 0 auto; margin-top: 2px; color: var(--indigo); }
+
+/* ── what we need from you ───────────────────────────────────────────────── */
+.brk-req { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 22px; }
 .brk-req-col { min-width: 0; }
 .brk-req-k {
-  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--indigo); padding-bottom: 7px; margin-bottom: 10px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--indigo); padding-bottom: 6px; margin-bottom: 9px;
   border-bottom: 2px solid var(--gold);
 }
-.brk-req ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.brk-req li { display: flex; gap: 9px; align-items: flex-start; font-size: 13.4px; line-height: 1.52; color: var(--dim); }
+.brk-req ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.brk-req li { display: flex; gap: 8px; align-items: flex-start; font-size: 12.8px; line-height: 1.48; color: var(--dim); }
 .brk-tick {
-  flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; margin-top: 1px;
+  flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%; margin-top: 1px;
   background: var(--brand-50); color: var(--indigo);
   display: inline-flex; align-items: center; justify-content: center;
 }
-
-/* ── how it runs ─────────────────────────────────────────────────────────── */
-/* A numbered vertical flow with a connecting rule — a sequence should LOOK
-   like a sequence. Five equal cards in a row read as five options. */
-.brk-flow { list-style: none; margin: 0; padding: 0; position: relative; }
-.brk-flow::before {
-  content: ''; position: absolute; left: 13px; top: 10px; bottom: 10px;
-  width: 2px; background: var(--line);
-}
-.brk-flow li { display: flex; gap: 14px; padding: 9px 0; position: relative; }
-.brk-flow-n {
-  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
-  background: var(--indigo); color: #fff; font-size: 13px; font-weight: 700;
-  display: inline-flex; align-items: center; justify-content: center;
-  position: relative; z-index: 1; box-shadow: 0 0 0 4px #fff;
-}
-.brk-flow b { display: block; font-size: 14.6px; margin-bottom: 3px; }
-.brk-flow p { margin: 0; font-size: 13.4px; line-height: 1.55; color: var(--dim); }
 
 /* ── the close ───────────────────────────────────────────────────────────── */
 .brk-close {
   display: flex; gap: 26px; align-items: center; justify-content: space-between;
   flex-wrap: wrap; background: var(--g); border-radius: 22px;
-  padding: 32px 34px; color: #fff; margin-bottom: 30px;
+  padding: 30px 32px; color: #fff; margin-bottom: 30px;
 }
 .brk-close h2 {
-  font-family: var(--font-display); font-weight: 800; font-size: 26px;
+  font-family: var(--font-display); font-weight: 800; font-size: 25px;
   letter-spacing: -.025em; margin: 0 0 7px; color: #fff;
 }
-.brk-close p { margin: 0; font-size: 14.6px; line-height: 1.6; color: rgba(255,255,255,.80); max-width: 52ch; }
+.brk-close p { margin: 0; font-size: 14.4px; line-height: 1.6; color: rgba(255,255,255,.80); max-width: 54ch; }
 .brk-close-cta { flex: 0 0 auto; text-align: right; }
 .brk-close-label {
   display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
@@ -118,11 +105,11 @@
 
 /* ── narrow ──────────────────────────────────────────────────────────────── */
 @media screen and (max-width: 1000px) {
-  .brk-req { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .brk-tiles-3, .brk-tiles-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .brk-req { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@media screen and (max-width: 760px) {
-  .brk-row-head { flex-direction: column; align-items: flex-start; gap: 6px; }
-  .brk-callout { padding: 18px; }
+@media screen and (max-width: 700px) {
+  .brk-tiles-2, .brk-tiles-3, .brk-tiles-4 { grid-template-columns: minmax(0, 1fr); }
   .brk-req { grid-template-columns: minmax(0, 1fr); }
   .brk-close { padding: 24px 22px; }
   .brk-close-cta { text-align: left; }
@@ -130,68 +117,68 @@
 
 /* ── print ───────────────────────────────────────────────────────────────── */
 @media print {
+  /*
+   * FOUR PAGES, AND THE BREAKS ARE DECLARED RATHER THAN HOPED FOR. v2.0 let
+   * the content fall where it would and then fought the result with
+   * break-inside on whatever straddled a fold. `brk-page-start` names the
+   * three sections that OPEN a page, which is a statement about the document
+   * rather than a patch on its symptoms.
+   */
+  .brk-page-start { break-before: page; page-break-before: always; }
+
   /* Grids are re-asserted because Chrome lays print out at the PAGE width,
      about 680 CSS pixels, which is below the narrow breakpoints — the phone
      rules would otherwise fire inside the PDF. */
-  .brk-req { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 4mm 7mm; }
+  .brk-tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .brk-tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .brk-tiles-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .brk-tiles { gap: 3.6mm; }
+  .brk-req { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 3mm 5mm; }
 
-  .brk-data { gap: 2.2mm; }
-  .brk-row {
-    padding: 2.6mm 3.4mm; border-radius: 2.6mm; box-shadow: none !important;
-    border-color: #e9e7f0 !important; break-inside: avoid; page-break-inside: avoid;
+  .brk-tile {
+    padding: 4mm 4.2mm 3.8mm; border-radius: 2.6mm; box-shadow: none !important;
+    border-color: #e9e7f0 !important;
+    /* A TILE IS SHORT ENOUGH THAT KEEPING IT WHOLE IS ALWAYS SATISFIABLE —
+       which is why break-inside is safe here and was NOT safe on v2.0's
+       full-width panels, where Chrome silently CLIPPED the overflow instead
+       of moving it. */
+    break-inside: avoid; page-break-inside: avoid;
   }
-  .brk-row-head { margin-bottom: 1mm; }
-  .brk-row-head b { font-size: 9.4pt; }
-  .brk-row p { font-size: 8.4pt; line-height: 1.4; color: #4b5162; }
-  .brk-note { font-size: 7.8pt !important; color: #6c7080 !important; margin-top: 1mm !important; }
-  /* Each badge keeps a border as well as a fill, so the tier still reads if a
-     printer drops backgrounds. */
-  .brk-tier { font-size: 6.8pt; padding: 0.5mm 1.8mm; border: 1px solid currentColor; }
-  .brk-t-open { background: #e6f4ec !important; color: #0c6b41 !important; }
-  .brk-t-optin { background: #fff8e3 !important; color: #8a6200 !important; }
-  .brk-t-locked { background: #fcebe8 !important; color: #a3301f !important; }
-  .brk-t-never { background: #f2f1f7 !important; color: #4b4860 !important; }
+  /* SIZES SET FROM THE RENDERED PDF, not from the screen. At the first pass
+     these were 9.2pt/8.1pt and pages 2 and 3 came out roughly 40% empty —
+     small type in a document whose brief was "easy to understand". */
+  .brk-tile b { font-size: 10.4pt; margin: 2.4mm 0 1.4mm; }
+  .brk-tile p { font-size: 9.1pt; line-height: 1.45; color: #4b5162; }
+  .brk-tile .plt-ic { width: 24px; height: 24px; background: #eeebfa !important; color: #3c2e7e !important; }
+  .brk-tile .plt-ic svg { width: 14px; height: 14px; }
 
-  .brk-callout {
-    background: #f4f3f8 !important; border-color: #e9e7f0 !important; padding: 4mm;
-    border-radius: 3mm; margin-top: 5mm; break-inside: avoid;
+  .brk-n { width: 21px; height: 21px; font-size: 9.6pt; background: #3c2e7e !important; color: #fff !important; }
+  .brk-k { margin-top: 2.2mm; font-size: 7.6pt; color: #3c2e7e !important; }
+
+  .brk-note-line {
+    background: #f4f3f8 !important; border-color: #e9e7f0 !important;
+    padding: 2.6mm 3.2mm; border-radius: 2.4mm; margin-top: 3mm;
+    font-size: 9pt; line-height: 1.5; color: #43485a !important;
+    break-inside: avoid;
   }
-  .brk-callout-h b { font-size: 9.6pt; }
-  .brk-callout p { font-size: 8.6pt; line-height: 1.45; color: #43485a; }
-  .brk-checks { margin-top: 2mm; gap: 1.2mm; padding-left: 5mm; }
-  .brk-checks li { font-size: 8.4pt; line-height: 1.42; color: #4b5162; }
+  .brk-note-line svg { width: 13px; height: 13px; color: #3c2e7e !important; }
+
+  .brk-req-col { break-inside: avoid; }
+  .brk-req-k { font-size: 7.6pt; color: #3c2e7e !important; border-bottom: 1.5px solid #ffcb32 !important; padding-bottom: 1.4mm; margin-bottom: 2.2mm; }
+  .brk-req li { font-size: 8.7pt; line-height: 1.44; color: #4b5162; gap: 2mm; }
+  .brk-req ul { gap: 1.8mm; }
+  .brk-tick { width: 13px; height: 13px; background: #eeebfa !important; color: #3c2e7e !important; }
+  .brk-tick svg { width: 8px; height: 8px; }
 
   .brk-logo-panel { background: #fff !important; box-shadow: none !important; padding: 2.4mm 3.4mm; border-radius: 2mm; }
 
-  .brk-req-col { break-inside: avoid; }
-  .brk-req-k { font-size: 7.6pt; color: #3c2e7e !important; border-bottom: 1.5px solid #ffcb32 !important; padding-bottom: 1.4mm; margin-bottom: 2mm; }
-  .brk-req li { font-size: 8.3pt; line-height: 1.4; color: #4b5162; gap: 2mm; }
-  .brk-req ul { gap: 1.6mm; }
-  .brk-tick { width: 12px; height: 12px; background: #eeebfa !important; color: #3c2e7e !important; }
-  .brk-tick svg { width: 8px; height: 8px; }
-
-  /* A SEQUENCE MUST NOT SPLIT ACROSS A FOLD — step 1 sat alone on the
-     previous page and 2-5 on the next, which reads as two lists. Five short
-     items are nowhere near a page tall, so the request is always satisfiable
-     and cannot clip the way a full-height panel would. */
-  .brk-flow { break-inside: avoid; page-break-inside: avoid; }
-  /* ...and its heading travels WITH it. Keeping the list together pushed it to
-     the next page and left "How it runs" orphaned at the foot of the previous
-     one, which is the same fault wearing different clothes. */
-  .plt-h3 { break-after: avoid; page-break-after: avoid; }
-  .brk-flow::before { background: #e9e7f0 !important; left: 10px; }
-  .brk-flow li { padding: 1.6mm 0; break-inside: avoid; gap: 4mm; }
-  .brk-flow-n { width: 21px; height: 21px; font-size: 9.5pt; background: #3c2e7e !important; color: #fff !important; box-shadow: 0 0 0 3px #fff !important; }
-  .brk-flow b { font-size: 9.6pt; }
-  .brk-flow p { font-size: 8.4pt; line-height: 1.42; color: #4b5162; }
-
   .brk-close {
     background: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 38%, #2a2052 100%) !important;
-    padding: 10mm 9mm; border-radius: 4mm; break-inside: avoid;
-    margin: 8mm 0 7mm;
+    padding: 6mm 7mm; border-radius: 3.4mm; break-inside: avoid;
+    margin: 5mm 0 3mm;
   }
   .brk-close h2 { font-size: 16pt; color: #fff !important; }
-  .brk-close p { font-size: 9.4pt; color: rgba(255,255,255,.82) !important; max-width: none; }
-  .brk-close-label { font-size: 7.5pt; color: #ffcb32 !important; }
-  .brk-close-url { font-size: 12pt; color: #fff !important; }
+  .brk-close p { font-size: 9.6pt; color: rgba(255,255,255,.82) !important; max-width: none; }
+  .brk-close-label { font-size: 7.2pt; color: #ffcb32 !important; }
+  .brk-close-url { font-size: 11.5pt; color: #fff !important; }
 }

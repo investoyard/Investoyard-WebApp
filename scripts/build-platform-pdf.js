@@ -36,6 +36,13 @@ const path = require('path');
 const DOCS = {
   platform: { url: 'http://localhost:4300/platform/', out: 'Investoyard-Platform-Overview.pdf' },
   brokers:  { url: 'http://localhost:4300/brokers/',  out: 'Investoyard-For-Brokers.pdf' },
+  /* The PUBLIC /partner-api page, not the admin docs screen. The admin page is
+     auth-gated, carries the admin shell and an operator-only dry-run TESTER,
+     and documents only print-forms — the public page additionally covers the
+     two catalogue reads, the error table and the limits, so it is both the
+     cleaner source and the more complete one. Its print rules drop the
+     narrative sections so the PDF is API detail alone. */
+  api:      { url: 'http://localhost:4300/partner-api/', out: 'Investoyard-Partner-API.pdf' },
 };
 const which = DOCS[process.argv[2]] ? process.argv[2] : null;
 const URL = which ? DOCS[which].url : (process.argv[2] || DOCS.platform.url);

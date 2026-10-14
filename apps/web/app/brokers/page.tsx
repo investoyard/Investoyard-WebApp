@@ -4,28 +4,36 @@ import { Icon } from '@/components/Icon';
 import '../platform/platform.css';
 import './brokers.css';
 import {
-  APPLY, CHECKS, CLIENT, CLOSE, DATA, DESK, DISCLAIMER, DOC, Feature, GLANCE,
-  GOVERNANCE, HERO_LINE, MODELS, REQUIREMENTS, SECTIONS, STEPS, WHY,
+  APPLY, CLIENT, CLOSE, DISCLAIMER, DOC, Feature, GLANCE,
+  HERO_LINE, MODELS, REQUIREMENTS, SEBI, SEBI_NOTE, SECTIONS, WHY,
 } from './content';
 
 /**
  * /brokers — the capability document for SEBI-registered stock brokers.
  *
- * v2.0, rebuilt after sir rejected v1.0 on branding, on having nothing to
- * attract a broker, and on never saying what onboarding requires. See the
- * header of content.ts for the full diagnosis; the structural consequences
- * here are:
+ * v3.0 — COMPACT, four pages, one tile system throughout. Sir asked for short,
+ * key points only, tiles, and plain Indian English. See content.ts for the full
+ * diagnosis of what was removed and why each removal is a correction rather
+ * than a trim. The structural consequences here:
  *
- *  - THE REAL LOGO, inside a white panel on the dark cover. v1.0 drew a gold
- *    square plus letterspaced text while investoyard-logo.svg sat unused. The
- *    panel is what lets the actual asset appear in its true indigo-and-gold
- *    rather than being recoloured into a second file that would drift.
- *  - SECTION 01 IS THE BUSINESS CASE, before anything technical. A broker is
- *    not buying features, and v1.0 opened with integration models.
- *  - SECTION 08 IS WHAT THEY BRING. A broker reading this is deciding whether
- *    to forward it to compliance, which they cannot do without the list.
- *  - IT CLOSES ON AN INVITATION. v1.0 ended on a legal paragraph and half a
- *    page of white space, which is the worst possible last impression.
+ *  - ONE TILE COMPONENT RENDERS EVERY SECTION. v2.0 had five different
+ *    treatments — feature cards, a ten-row tier table, a boxed callout, a
+ *    three-column tick list and a numbered vertical flow. A reader meets a new
+ *    layout on every page and has to learn it before reading it. Now the grid
+ *    only changes WIDTH (4-up, 3-up, 2-up) and the eye carries across.
+ *
+ *  - SECTION 04 IS GONE ENTIRELY, with the ten-row table, its callout and the
+ *    four-item check list. The two rows that were real restrictions moved into
+ *    section 05, where a compliance officer looks for them anyway.
+ *
+ *  - THE "HOW IT RUNS" NUMBERED FLOW IS GONE. It cost most of a page to say
+ *    what the close already says in two sentences, and it was the step list
+ *    that had to be kept together with break-inside in v2.0 — removing it
+ *    removes that whole class of page-break fault.
+ *
+ *  - SECTION 05 IS THE REASON THE DOCUMENT GETS FORWARDED. Nine SEBI rules the
+ *    product enforces, each carrying its figure, plus the one sentence that
+ *    stops the page reading as a regulatory clearance.
  *
  * Shares /platform's stylesheet so the two documents cannot drift; only what
  * is unique to this reader lives in brokers.css.
@@ -35,7 +43,7 @@ import {
 export const metadata: Metadata = {
   title: 'For stock brokers — Investoyard',
   description:
-    'The Investoyard IPO platform for SEBI-registered stock brokers: why partner with us, white-label and API integration, which data you can display, compliance posture, and exactly what onboarding requires.',
+    'The Investoyard IPO platform for SEBI-registered stock brokers: why partner with us, white-label and API integration, how your clients apply, the SEBI rules the product enforces, and what onboarding needs from you.',
   robots: { index: false, follow: false },
 };
 
@@ -49,12 +57,17 @@ const Logo = ({ dark = false, h = 26 }: { dark?: boolean; h?: number }) =>
     <img src="/investoyard-logo.svg" alt="Investoyard" style={{ height: h, width: 'auto', display: 'block' }} />
   );
 
-function Grid({ items, cols = 2 }: { items: readonly Feature[]; cols?: 2 | 3 }) {
+/**
+ * THE one tile. Every section is a grid of these and nothing else, so the
+ * reader learns the shape once on page 2 and never re-learns it.
+ * `cols` changes the width of the grid, never the anatomy of the tile.
+ */
+function Tiles({ items, cols = 3 }: { items: readonly Feature[]; cols?: 2 | 3 | 4 }) {
   return (
-    <div className={`plt-grid${cols === 3 ? ' plt-grid-3' : ''}`}>
+    <div className={`brk-tiles brk-tiles-${cols}`}>
       {items.map((x) => (
-        <div key={x.t} className="plt-card">
-          <span className="plt-ic"><Icon name={x.icon as never} size={17} /></span>
+        <div key={x.t} className="brk-tile">
+          <span className="plt-ic"><Icon name={x.icon as never} size={16} /></span>
           <b>{x.t}</b>
           <p>{x.d}</p>
         </div>
@@ -72,13 +85,6 @@ function Opener({ id }: { id: string }) {
     </div>
   );
 }
-
-const TIER = {
-  open: { label: 'On by default', cls: 'brk-t-open' },
-  optin: { label: 'Opt-in per account', cls: 'brk-t-optin' },
-  locked: { label: 'Off and locked', cls: 'brk-t-locked' },
-  never: { label: 'Never shared', cls: 'brk-t-never' },
-} as const;
 
 export default function BrokersPage() {
   return (
@@ -147,99 +153,46 @@ export default function BrokersPage() {
         ))}
       </section>
 
-      {/* 01 — the business case leads. */}
-      <section id="why" className="plt-sec">
+      {/* ── page 2 ─────────────────────────────────────────────────────── */}
+      {/* The business case leads. A broker is not buying a feature list. */}
+      <section id="why" className="plt-sec brk-page-start">
         <Opener id="why" />
-        <p className="plt-body plt-body-lead">
-          You already have the clients and the licence. What you probably do not have is an IPO desk
-          that keeps them in your app for the one week a year they are most tempted to look elsewhere.
-        </p>
-        <Grid items={WHY} />
-      </section>
-
-      <section id="models" className="plt-sec">
-        <Opener id="models" />
-        <ol className="plt-stack">
-          {MODELS.map((m) => (
-            <li key={m.n}>
-              <span className="plt-stack-n">{m.n}</span>
-              <div className="plt-stack-k">{m.k}</div>
-              <div className="plt-stack-t">{m.t}</div>
-              <div className="plt-stack-d">{m.d}</div>
-            </li>
-          ))}
-        </ol>
+        <Tiles items={WHY} cols={2} />
       </section>
 
       <section id="client" className="plt-sec">
         <Opener id="client" />
-        <p className="plt-body plt-body-lead">
-          The research surface is the retention argument. A client who leaves your app to check
-          subscription is a client in someone else&rsquo;s funnel.
-        </p>
-        <Grid items={CLIENT} />
+        <Tiles items={CLIENT} cols={2} />
       </section>
 
-      <section id="data" className="plt-sec">
-        <Opener id="data" />
-        <p className="plt-body plt-body-lead">
-          Every data surface is controlled per account. Some are on from day one, some are granted
-          deliberately, and one is locked off on every white-label and cannot be self-enabled.
-        </p>
-
-        <div className="brk-data">
-          {DATA.map((d) => (
-            <div key={d.t} className="brk-row">
-              <div className="brk-row-head">
-                <b>{d.t}</b>
-                <span className={`brk-tier ${TIER[d.tier as keyof typeof TIER].cls}`}>
-                  {TIER[d.tier as keyof typeof TIER].label}
-                </span>
-              </div>
-              <p>{d.d}</p>
-              <p className="brk-note">{d.note}</p>
+      {/* ── page 3 ─────────────────────────────────────────────────────── */}
+      <section id="models" className="plt-sec brk-page-start">
+        <Opener id="models" />
+        {/* The one place a tile carries a number instead of an icon: these are
+            three CHOICES, and numbering them is what says "pick one". */}
+        <div className="brk-tiles brk-tiles-3">
+          {MODELS.map((m) => (
+            <div key={m.n} className="brk-tile brk-tile-n">
+              <span className="brk-n">{m.n}</span>
+              <div className="brk-k">{m.k}</div>
+              <b>{m.t}</b>
+              <p>{m.d}</p>
             </div>
           ))}
-        </div>
-
-        <div className="brk-callout">
-          <div className="brk-callout-h">
-            <Icon name="shield" size={16} />
-            <b>Where our responsibility ends and yours begins</b>
-          </div>
-          <p>
-            The controls above are ours, and we will configure and lock them to whatever you decide.
-            Whether your registration permits publishing a particular figure is your compliance
-            function&rsquo;s determination, not ours — this document is not legal advice. Four things
-            worth settling before you go live:
-          </p>
-          <ol className="brk-checks">{CHECKS.map((c) => <li key={c}>{c}</li>)}</ol>
         </div>
       </section>
 
       <section id="apply" className="plt-sec">
         <Opener id="apply" />
-        <Grid items={APPLY} />
+        <Tiles items={APPLY} cols={3} />
       </section>
 
-      <section id="governance" className="plt-sec plt-dark">
-        <Opener id="governance" />
-        <Grid items={GOVERNANCE} cols={3} />
-      </section>
-
-      <section id="desk" className="plt-sec">
-        <Opener id="desk" />
-        <Grid items={DESK} cols={3} />
-      </section>
-
-      {/* 08 — what they bring, and how it runs. The section sir asked for. */}
+      {/* Page 3 closes on the checklist. It was on page 4 and pushed the
+          footer onto a FIFTH page carrying nothing but the disclaimer — the
+          "ends on half a page of white space" fault v2.0 was rebuilt to fix,
+          wearing different clothes. Pages 2 and 3 had the room. */}
       <section id="onboard" className="plt-sec">
         <Opener id="onboard" />
-        <p className="plt-body plt-body-lead">
-          Nothing here is unusual for a registered intermediary — but it is worth having to hand
-          before you start, because the application asks for all of it.
-        </p>
-
         <div className="brk-req">
           {REQUIREMENTS.map((g) => (
             <div key={g.k} className="brk-req-col">
@@ -252,28 +205,27 @@ export default function BrokersPage() {
             </div>
           ))}
         </div>
-
-        <h3 className="plt-h3" style={{ marginTop: 26 }}>How it runs</h3>
-        <ol className="brk-flow">
-          {STEPS.map((s) => (
-            <li key={s.n}>
-              <span className="brk-flow-n">{s.n}</span>
-              <div><b>{s.t}</b><p>{s.d}</p></div>
-            </li>
-          ))}
-        </ol>
       </section>
 
-      {/* A document a broker is meant to act on closes on an invitation, not a
-          disclaimer. v1.0 ended on the legal paragraph and empty space. */}
+      {/* ── page 4 ─────────────────────────────────────────────────────── */}
+      <section id="sebi" className="plt-sec brk-page-start">
+        <Opener id="sebi" />
+        <Tiles items={SEBI} cols={3} />
+        <p className="brk-note-line">
+          <Icon name="shield" size={14} />
+          <span>{SEBI_NOTE}</span>
+        </p>
+      </section>
+
+      {/* A document a broker is meant to act on closes on an invitation. */}
       <section className="brk-close">
         <div>
           <h2>{CLOSE.title}</h2>
           <p>{CLOSE.body}</p>
         </div>
         <div className="brk-close-cta">
-          <span className="brk-close-label">Apply online</span>
-          <span className="brk-close-url">{CLOSE.cta}</span>
+          <span className="brk-close-label">{CLOSE.label}</span>
+          <span className="brk-close-url">{CLOSE.url}</span>
         </div>
       </section>
 
