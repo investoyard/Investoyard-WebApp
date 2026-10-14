@@ -109,7 +109,7 @@ export default function PartnerApiDoc() {
 
         <div className="plt-cover-foot">
           <span>Safal Capital Services Private Limited</span>
-          <span>v1.0 · October 2026 · newipoapi.finwave.co</span>
+          <span>v1.0 · October 2026</span>
         </div>
       </div>
 
@@ -248,7 +248,7 @@ export default function PartnerApiDoc() {
             <h2><span className="pa-num">03</span>Base URL &amp; versioning</h2>
             <dl className="pa-kv">
               <dt>Production base URL</dt>
-              <dd><code>https://newipoapi.finwave.co/api</code></dd>
+              <dd><code>Issued with your API key</code></dd>
               <dt>API prefix</dt>
               <dd><code>/partner/v1</code></dd>
               <dt>Transport</dt>
@@ -390,7 +390,7 @@ export default function PartnerApiDoc() {
             <div className="pa-code">
               <div className="pa-code-head"><span>bash</span></div>
               <pre>{`# Save the response body to disk, then extract the PDF.
-curl https://newipoapi.finwave.co/api/partner/v1/print-forms \\
+curl https://<your-base-url>/partner/v1/print-forms \\
   -H "Content-Type: application/json" \\
   -H "X-Api-Key: pk_a1b2c3d4.3f9e7c5b…" \\
   -d @request.json \\
@@ -404,7 +404,7 @@ jq -r '.pdfBase64' response.json | base64 -d > forms.pdf`}</pre>
               <div className="pa-code-head"><span>javascript</span></div>
               <pre>{`import fs from 'node:fs/promises';
 
-const res = await fetch('https://newipoapi.finwave.co/api/partner/v1/print-forms', {
+const res = await fetch('https://<your-base-url>/partner/v1/print-forms', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -427,7 +427,7 @@ await fs.writeFile(filename, Buffer.from(pdfBase64, 'base64'));`}</pre>
               <pre>{`import os, base64, requests
 
 r = requests.post(
-    "https://newipoapi.finwave.co/api/partner/v1/print-forms",
+    "https://<your-base-url>/partner/v1/print-forms",
     headers={"X-Api-Key": os.environ["INVESTOYARD_API_KEY"]},
     json={
         "ipoSymbol": "PERNIASPOP",

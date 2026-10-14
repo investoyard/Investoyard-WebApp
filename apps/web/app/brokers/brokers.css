@@ -95,13 +95,7 @@
   font-family: var(--font-display); font-weight: 800; font-size: 25px;
   letter-spacing: -.025em; margin: 0 0 7px; color: #fff;
 }
-.brk-close p { margin: 0; font-size: 14.4px; line-height: 1.6; color: rgba(255,255,255,.80); max-width: 54ch; }
-.brk-close-cta { flex: 0 0 auto; text-align: right; }
-.brk-close-label {
-  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--gold); margin-bottom: 6px;
-}
-.brk-close-url { font-family: var(--font-display); font-weight: 800; font-size: 19px; color: #fff; letter-spacing: -.015em; }
+.brk-close p { margin: 0; font-size: 14.4px; line-height: 1.6; color: rgba(255,255,255,.80); max-width: 72ch; }
 
 /* ── narrow ──────────────────────────────────────────────────────────────── */
 @media screen and (max-width: 1000px) {
@@ -112,7 +106,6 @@
   .brk-tiles-2, .brk-tiles-3, .brk-tiles-4 { grid-template-columns: minmax(0, 1fr); }
   .brk-req { grid-template-columns: minmax(0, 1fr); }
   .brk-close { padding: 24px 22px; }
-  .brk-close-cta { text-align: left; }
 }
 
 /* ── print ───────────────────────────────────────────────────────────────── */
@@ -179,6 +172,4 @@
   }
   .brk-close h2 { font-size: 16pt; color: #fff !important; }
   .brk-close p { font-size: 9.6pt; color: rgba(255,255,255,.82) !important; max-width: none; }
-  .brk-close-label { font-size: 7.2pt; color: #ffcb32 !important; }
-  .brk-close-url { font-size: 11.5pt; color: #fff !important; }
 }

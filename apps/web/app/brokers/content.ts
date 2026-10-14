@@ -60,7 +60,6 @@ export const DOC = {
   version: 'v3.0',
   updated: 'October 2026',
   entity: 'Safal Capital Services Private Limited',
-  site: 'newipo.finwave.co',
 };
 
 export const HERO_LINE =
@@ -221,8 +220,6 @@ export const CLOSE = {
     'Tell us which model suits you and what your compliance team needs to see. Approval takes a ' +
     'couple of working days, and we configure your brand, your domain and your settings before a ' +
     'single client sees it.',
-  label: 'Apply online at',
-  url: 'newipo.finwave.co/partner',
 };
 
 export const DISCLAIMER =

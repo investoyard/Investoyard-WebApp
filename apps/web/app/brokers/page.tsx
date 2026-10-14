@@ -124,7 +124,7 @@ export default function BrokersPage() {
 
         <div className="plt-cover-foot">
           <span>{DOC.entity}</span>
-          <span>{DOC.version} · {DOC.updated} · {DOC.site}</span>
+          <span>{DOC.version} · {DOC.updated}</span>
         </div>
       </div>
 
@@ -223,16 +223,12 @@ export default function BrokersPage() {
           <h2>{CLOSE.title}</h2>
           <p>{CLOSE.body}</p>
         </div>
-        <div className="brk-close-cta">
-          <span className="brk-close-label">{CLOSE.label}</span>
-          <span className="brk-close-url">{CLOSE.url}</span>
-        </div>
       </section>
 
       <footer className="plt-foot">
         <Logo h={24} />
         <p style={{ marginTop: 12 }}>{DISCLAIMER}</p>
-        <p className="plt-foot-meta">For stock brokers · {DOC.version} · {DOC.updated} · {DOC.site}</p>
+        <p className="plt-foot-meta">For stock brokers · {DOC.version} · {DOC.updated}</p>
       </footer>
     </div>
   );
