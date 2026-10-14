@@ -251,7 +251,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
           {ipo.subscription && subT && (
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
-              <LiveSubscription rows={subT.rows} total={subT.total} anchorDeducted={subT.anchorDeducted} anchorBasis={subT.anchorBasis} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} />
+              <LiveSubscription rows={subT.rows} total={subT.total} anchorDeducted={subT.anchorDeducted} anchorBasis={subT.anchorBasis} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} qibSplit={(ipo as any)?.extra?.qibSplit} />
               {/* Day-wise + hourly drill-down moved to /subscription/v2 (2026-09-22).
                   Operator ask: keep the detail page slim; a "View detail" link on
                   the Live Subscription card sends the reader over to

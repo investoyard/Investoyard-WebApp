@@ -19,7 +19,10 @@ const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice
  *
  * Add to this list whenever a background job starts writing a new `extra` key.
  */
-const SERVER_OWNED_EXTRA = ['subLog', 'subLogHour', 'gmpLog', 'gmpSourceId'] as const;
+/* Add to this list whenever a background job starts writing a new `extra`
+   key — the form PATCHes an object built from its own field state, so any key
+   it has never heard of is deleted on save. `qibSplit` joined 2026-10-14. */
+const SERVER_OWNED_EXTRA = ['subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit'] as const;
 
 const num = (d: any): number | undefined => (d == null ? undefined : Number(d));
 const day = (d: Date | null | undefined): string | undefined => (d ? d.toISOString().slice(0, 10) : undefined);

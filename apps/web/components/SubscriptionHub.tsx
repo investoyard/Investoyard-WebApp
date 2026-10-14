@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { getIpos, type IpoFull } from '@/lib/api';
 import { subscriptionTable, lotLadder, type SubRowT, type AnchorBasis, subCatLabel } from '@/lib/ipoCalc';
 import { IpoLogo } from '@/components/IpoLogo';
@@ -475,7 +475,7 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
               <AppWisePanel rows={table.rows} />
               <LotLadderPanel ipo={ipo} />
             </div>
-            <DemandPanel rows={table.rows} total={table.total} price={price} />
+            <DemandPanel rows={table.rows} total={table.total} price={price} qibSplit={(ipo as any)?.extra?.qibSplit} />
           </div>
         </div>
       )}
@@ -658,8 +658,37 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
  * is not in our data at all, and inventing it would be fabrication. Adding it
  * is a poller and schema change, not a display one.
  */
-export function DemandPanel({ rows, total, price }: { rows: SubRowT[]; total: SubRowT; price: number }) {
+/**
+ * The QIB institutional split, as the four lines every information site prints.
+ *
+ * Written by the poller to `extra.qibSplit` from data BOTH exchanges have
+ * always sent and we used to discard. It is a PARTITION of the qib row, not an
+ * addition to it — probed against the live feed 2026-10-13, where the five
+ * exchange codes summed to exactly the qib shares already stored. So the
+ * sub-rows are indented UNDER QIB and excluded from the Total, the same way
+ * the NII subtotal is never summed alongside bHNI and sHNI.
+ *
+ * FI and IC are both domestic institutions and share one line, which is why
+ * five codes print as four.
+ */
+export type QibSplit = Partial<Record<'fii' | 'dii' | 'mf' | 'oth', { sh: number; bids: number }>>;
+
+/* The reference's order, and the order a reader expects: foreign, domestic,
+   mutual funds, then the remainder. */
+const QIB_SUB_ROWS: ReadonlyArray<[keyof QibSplit, string]> = [
+  ['fii', 'FIIs'],
+  ['dii', 'DIIs'],
+  ['mf', 'Mutual funds'],
+  ['oth', 'Others'],
+];
+
+export function DemandPanel({ rows, total, price, qibSplit }: {
+  rows: SubRowT[]; total: SubRowT; price: number; qibSplit?: QibSplit;
+}) {
   if (!rows.length) return null;
+  const subRows = QIB_SUB_ROWS
+    .map(([k, label]) => [label, qibSplit?.[k]?.sh ?? 0] as const)
+    .filter(([, sh]) => sh > 0);
   const at = (shares: number, rowPrice?: number) => {
     const px = rowPrice && rowPrice > 0 ? rowPrice : price;
     return px > 0 ? (shares * px) / 1e7 : 0;
@@ -681,12 +710,26 @@ export function DemandPanel({ rows, total, price }: { rows: SubRowT[]; total: Su
               const isCombo = r.key === 'nii';
               const isSubcat = r.key === 'hni' || r.key === 'hni2';
               return (
-                <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
-                  <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
-                  <td>{cr(at(r.bookSize, r.price))}</td>
-                  <td><b>{cr(at(r.subscribed, r.price))}</b></td>
-                  <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
-                </tr>
+                <Fragment key={r.key}>
+                  <tr className={isSubcat ? 'subcat' : undefined}>
+                    <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
+                    <td>{cr(at(r.bookSize, r.price))}</td>
+                    <td><b>{cr(at(r.subscribed, r.price))}</b></td>
+                    <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
+                  </tr>
+                  {/* OFFERED AND TIMES ARE BLANK ON PURPOSE. A sub-category has
+                      no reserved quota of its own, so there is no denominator —
+                      printing a multiple here would be inventing one. The
+                      reference does the same. */}
+                  {r.key === 'qib' && subRows.map(([label, sh]) => (
+                    <tr key={label} className="subcat">
+                      <td><span className="subv2-dot qib" />{label}</td>
+                      <td>—</td>
+                      <td><b>{cr(at(sh, r.price))}</b></td>
+                      <td>—</td>
+                    </tr>
+                  ))}
+                </Fragment>
               );
             })}
             <tr className="tot">

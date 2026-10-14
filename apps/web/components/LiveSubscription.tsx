@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { ShareWisePanel, AppWisePanel, DemandPanel } from '@/components/SubscriptionHub';
+import { ShareWisePanel, AppWisePanel, DemandPanel, type QibSplit } from '@/components/SubscriptionHub';
 import { Icon } from '@/components/Icon';
 import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
 
@@ -28,10 +28,14 @@ import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
  * Below the hero: Share-Wise + Application-Wise panels (unchanged).
  */
 export function LiveSubscription({
-  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0, anchorBasis = null,
+  rows, total, status, asOf, priceMin, priceMax, totalApps, ipoType, symbol, anchorDeducted = 0, anchorBasis = null, qibSplit,
 }: {
   rows: SubRowT[];
   total: SubRowT;
+  /** The QIB institutional split the poller writes to extra.qibSplit, when
+   *  the exchange sent one. Absent on every issue that closed before
+   *  2026-10-14 and on any the exchange gives no sub-category data for. */
+  qibSplit?: QibSplit;
   /** Anchor shares actually taken off QIB — 0 when the record has no anchor
    *  figure, which changes what the footnote is allowed to claim. */
   anchorDeducted?: number;
@@ -135,7 +139,7 @@ export function LiveSubscription({
           <AppWisePanel rows={rows} />
           {/* The detail page carries no Lot ladder, so the Demand card takes
               the third column directly rather than stacking (2026-10-13). */}
-          <DemandPanel rows={rows} total={total} price={price} />
+          <DemandPanel rows={rows} total={total} price={price} qibSplit={qibSplit} />
         </div>
       </div>
 

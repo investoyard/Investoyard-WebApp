@@ -113,11 +113,48 @@ function emptyAgg(): CatAgg { return { nseShares: 0, bseShares: 0, nseBids: 0, b
  * the fudge for the affected bucket and let retail absorb the full BSE
  * totalapplication.
  */
+/**
+ * QIB sub-category -> the four lines every information site prints.
+ *
+ * BOTH EXCHANGES HAVE ALWAYS SENT THIS AND THE POLLER THREW IT AWAY. NSE puts
+ * it on `subCategory` of each QIB row — which `bucketNse` was never even
+ * passed — and BSE ships the same codes as TOP-LEVEL categories, which
+ * `bucketBse` collapses into 'qib' at the category level. Probed against the
+ * live feed 2026-10-13: HDFIRE returned FII / FI / IC / MF / OTH with NO bare
+ * QIB row, and their sum was EXACTLY the qib nseShares already stored. So this
+ * is a PARTITION of a total we already hold — nothing to add, nothing to
+ * subtract, and no double-count risk.
+ *
+ * FI (financial institutions) and IC (insurance companies) are both DOMESTIC
+ * institutions and share the DIIs line, which is why five codes print as four.
+ */
+const QIB_SUB: Record<string, QibSplitKey> = {
+  FII: 'fii',
+  MF: 'mf',
+  FI: 'dii',
+  IC: 'dii',
+  OTH: 'oth',
+};
+export type QibSplitKey = 'fii' | 'dii' | 'mf' | 'oth';
+export interface QibSplitAgg { sh: number; bids: number }
+
+/* An unrecognised code lands in Others rather than being dropped: the sub-rows
+   must still sum to the QIB total, and a code we have not seen before is
+   exactly the case that would silently break that. */
+const qibSubKey = (code: string | undefined): QibSplitKey => QIB_SUB[String(code ?? '').toUpperCase()] ?? 'oth';
+
 function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
   buckets: Map<Bucket, CatAgg>;
   bseTotalApps: number;
+  qibSplit: Map<QibSplitKey, QibSplitAgg>;
 } {
   const buckets = new Map<Bucket, CatAgg>();
+  const qibSplit = new Map<QibSplitKey, QibSplitAgg>();
+  const qs = (k: QibSplitKey): QibSplitAgg => {
+    let v = qibSplit.get(k);
+    if (!v) { v = { sh: 0, bids: 0 }; qibSplit.set(k, v); }
+    return v;
+  };
   const get = (k: Bucket): CatAgg => {
     let v = buckets.get(k);
     if (!v) { v = emptyAgg(); buckets.set(k, v); }
@@ -130,6 +167,12 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
     const a = get(b);
     a.nseShares += r.quantity ?? 0;
     a.nseBids += r.bidCount ?? 0;
+    /* NSE carries the institutional split on subCategory of the QIB rows. */
+    if (b === 'qib') {
+      const k = qs(qibSubKey(r.subCategory));
+      k.sh += r.quantity ?? 0;
+      k.bids += r.bidCount ?? 0;
+    }
   }
 
   // BSE `totalapplication` is repeated on every row — take MAX so partial
@@ -140,6 +183,10 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
     if (b) {
       const a = get(b);
       a.bseShares += r.quantity ?? 0;
+      /* BSE sends the same five as top-level CATEGORIES, which bucketBse
+         collapses into qib — so the split key comes from the category here,
+         not from subCategory as on NSE. */
+      if (b === 'qib') qs(qibSubKey(r.category)).sh += r.quantity ?? 0;
     }
     if (r.applications != null && r.applications > bseTotalApps) bseTotalApps = r.applications;
   }
@@ -161,7 +208,7 @@ function bucketize(nseRows: CatwiseRow[], bseRows: BseDemandRow[]): {
     retail.bseBids = Math.max(0, bseTotalApps - nonRetailBseBids);
   }
 
-  return { buckets, bseTotalApps };
+  return { buckets, bseTotalApps, qibSplit };
 }
 
 
@@ -459,7 +506,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         catch (e: any) { this.log.warn(`${ipo.symbol} BSE: ${e.message}`); }
       }
 
-      const { buckets } = bucketize(nseRows, bseRows);
+      const { buckets, qibSplit } = bucketize(nseRows, bseRows);
       /* Same cap-then-floor price resolution as `offeredFromIpo`: this one
          feeds `shniMinShares`, so on a fixed-price issue reading only the cap
          left it 0 and no HNI row got an `applicationsSubscribed` figure. */
@@ -536,6 +583,26 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         const hh = String(istNow.hour).padStart(2, '0');
         const t = `${hh}:00`;
         const hourKey = `${day}T${hh}`;
+        /*
+         * The QIB institutional split, OMITTED ENTIRELY when the exchange sent
+         * none — most of the catalogue has no sub-category data and an empty
+         * object on every row would cost something for nothing, the same
+         * reasoning the `apps` key follows.
+         *
+         * HISTORY CANNOT BE BACKFILLED. Every issue that closed before this
+         * shipped will never carry it, and neither will the part of today that
+         * preceded the pool restart.
+         */
+        const qibSplitPatch: Record<string, unknown> = {};
+        {
+          const anySplit = [...qibSplit.values()].some((v) => v.sh > 0 || v.bids > 0);
+          if (anySplit) {
+            const out: Record<string, { sh: number; bids: number }> = {};
+            for (const [k, v] of qibSplit) if (v.sh > 0 || v.bids > 0) out[k] = { sh: v.sh, bids: v.bids };
+            qibSplitPatch.qibSplit = out;
+          }
+        }
+
         const subLogHour = [
           ...(Array.isArray(ex.subLogHour) ? ex.subLogHour : [])
             .filter((e: any) => `${e?.d}T${String(e?.t ?? '').slice(0, 2)}` !== hourKey),
@@ -580,7 +647,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           }),
           this.prisma.$executeRaw`
             UPDATE "Ipo"
-               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour })}::jsonb
+               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour, ...qibSplitPatch })}::jsonb
              WHERE "id" = ${ipo.id}`,
           /*
            * `subscriptionAsOf` deliberately stays on the PRISMA path, in both
