@@ -1,3 +1,4 @@
+import { TrustPage } from '@/components/TrustPage';
 export const metadata = {
   title: 'About Us | Investoyard',
   description: 'Investoyard — India’s IPO companion by Safal Capital Services Pvt. Ltd. Track every Mainboard & SME IPO and apply for yourself and your family, the easy way.',
@@ -6,9 +7,11 @@ export const metadata = {
 /** Draft copy — operator will refine. Structure and claims kept factual. */
 export default function AboutPage() {
   return (
-    <div className="trust-page">
-      <h1>About Investoyard</h1>
-      <p className="lead-p">Investing in IPOs, has never been this easy.</p>
+    <TrustPage
+      pageKey="about"
+      heading="About Investoyard"
+      lede="Investing in IPOs, has never been this easy."
+    >
 
       <div className="prose">
         <p>
@@ -43,6 +46,6 @@ export default function AboutPage() {
           {' '}<a href="https://scores.sebi.gov.in" target="_blank" rel="noopener noreferrer">SEBI SCORES</a>.
         </p>
       </div>
-    </div>
+    </TrustPage>
   );
 }

@@ -1,3 +1,4 @@
+import { TrustPage } from '@/components/TrustPage';
 export const metadata = {
   title: 'Privacy Policy | Investoyard',
   description: 'How Safal Capital Services Pvt. Ltd. (Investoyard) collects, uses, protects and discloses your information.',
@@ -6,8 +7,10 @@ export const metadata = {
 /** Content sourced from www.investoyard.com/policies/privacy-policy (operator's existing policy). */
 export default function PrivacyPolicyPage() {
   return (
-    <div className="trust-page">
-      <h1>Privacy Policy</h1>
+    <TrustPage
+      pageKey="privacy"
+      heading="Privacy Policy"
+    >
       <div className="prose">
         <p>
           At Safal Capital Services Private Limited, the creators of this Privacy Policy, we are dedicated to
@@ -116,6 +119,6 @@ export default function PrivacyPolicyPage() {
           the site.
         </p>
       </div>
-    </div>
+    </TrustPage>
   );
 }

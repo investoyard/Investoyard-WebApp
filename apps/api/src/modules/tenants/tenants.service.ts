@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { TENANT_CONTENT_KEYS, TenantContent } from '@investoyard/shared-types';
+import {
+  TENANT_CONTENT_KEYS,
+  TENANT_PAGE_KEYS,
+  TenantContent,
+  TenantPage,
+  TenantPageKey,
+} from '@investoyard/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 
@@ -78,6 +84,34 @@ export class TenantsService {
        */
       content: content ?? {},
     };
+  }
+
+  /**
+   * ONE published page, by tenant slug.
+   *
+   * A SEPARATE ROUTE RATHER THAN A FIELD ON THE REGISTRY, and that is the whole
+   * transport design: `/tenants` is fetched by EVERY page load to resolve the
+   * brand, so putting four rich-text blobs per tenant on it would make a reader
+   * of the home page download every partner's legal prose. This is fetched only
+   * by the page that renders it.
+   *
+   * Returns `null` for an unknown tenant and `{ html: '' }` for a tenant that
+   * has not published that page — the caller must be able to tell "no such
+   * channel" from "nothing published yet", because the second is a state the
+   * page has copy for.
+   */
+  async page(slug: string, key: string): Promise<{ key: string; html: string } | null> {
+    if (!(TENANT_PAGE_KEYS as readonly string[]).includes(key)) return null;
+    const t = await this.prisma.tenant.findFirst({
+      where: { slug: slug.toLowerCase(), status: 'active' },
+      select: { id: true },
+    });
+    if (!t) return null;
+    const table = this.contentTable;
+    if (!table) return { key, html: '' };
+    const row = await table.findUnique({ where: { tenantId_key: { tenantId: t.id, key } } });
+    const html = (row?.value as TenantPage | null)?.html;
+    return { key, html: typeof html === 'string' ? html : '' };
   }
 
   /** Content for one tenant, as the public view wants it. */

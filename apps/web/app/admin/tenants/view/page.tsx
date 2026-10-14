@@ -9,6 +9,13 @@ import { Loader } from '@/components/ui/Loader';
 import { EmpanelmentFields } from '@/components/EmpanelmentFields';
 import { EMPANELMENT, isIndividual, type EField } from '@/lib/empanelment';
 import * as api from '@/lib/tenants-admin';
+import { RichText } from '@/components/ui/RichText';
+import { PAGE_LABEL, TENANT_PAGE_KEYS } from '@investoyard/shared-types';
+
+/* The selector's order: what a partner is most likely to be chased for first.
+   PAGE_LABEL is the shared map, so the admin and the public page cannot name
+   the same document differently. */
+const PAGE_ORDER = ['terms', 'privacy', 'disclaimer', 'about'] as const;
 
 function fmtVal(f: EField, v: any) {
   if (v == null || v === '' || (Array.isArray(v) && !v.length)) return null;
@@ -353,6 +360,97 @@ function ContentPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Par
   );
 }
 
+/**
+ * PUBLISHED PAGES — About, Terms, Privacy, Disclaimer.
+ *
+ * ONE EDITOR AND A KEY SELECTOR, not four editors stacked. TipTap is a heavy
+ * mount and four live instances on a page that already carries the branding,
+ * content, API-key and empanelment panels is a lot of editor for a screen
+ * someone opened to change a phone number. The selector shows which pages are
+ * published, so nothing is hidden by the collapse.
+ *
+ * NOTHING HERE INHERITS. A page left empty is NOT filled with Investoyard's
+ * copy — the partner's site says so plainly instead — which is why the three
+ * legal pages are BLOCKING in the gap list and About is only advisory. See
+ * TrustPage for the rendering half of the same rule.
+ */
+function PagesPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void }) {
+  const stored = tenant.pages ?? {};
+  const [key, setKey] = useState<api.TenantPageKey>('terms');
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(PAGE_ORDER.map((k) => [k, String(stored[k]?.html ?? '')])));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [gaps, setGaps] = useState<api.ContentGap[]>(tenant.contentGaps ?? []);
+
+  const dirty = draft[key] !== String(stored[key]?.html ?? '');
+
+  const save = async () => {
+    setBusy(true); setErr(null); setSavedAt(null);
+    try {
+      const r = await api.updateTenantPage(slug, key, draft[key] ?? '');
+      setGaps(r.gaps ?? []);
+      setSavedAt(Date.now());
+      onSaved();
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  /* The gap list is the server's, computed by the same resolver the site
+     renders with — the panel must not form its own opinion of "published". */
+  const missing = new Set(gaps.filter((g) => g.field === 'html').map((g) => g.key));
+  const blocking = gaps.filter((g) => g.field === 'html' && g.severity === 'blocking');
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+      <div className="section-title" style={{ fontSize: 13, marginTop: 0 }}>Published pages</div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        The channel&apos;s own About, Terms, Privacy Policy and Disclaimer. Nothing is inherited from
+        Investoyard: a page left empty tells the partner&apos;s visitors it has not been published,
+        rather than showing them ours.
+      </p>
+
+      {blocking.length ? (
+        <div className="banner bad" style={{ marginBottom: 14 }}>
+          <b>Not ready for this partner&apos;s customers.</b>{' '}
+          Still unpublished: {blocking.map((g) => g.label).join(' · ')}. These are the agreements
+          between the partner and their client — ours under their brand would name the wrong company.
+        </div>
+      ) : null}
+
+      <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {PAGE_ORDER.map((k) => (
+          <button
+            key={k}
+            className={`btn btn-sm ${k === key ? '' : 'btn-secondary'}`}
+            onClick={() => setKey(k)}
+          >
+            {PAGE_LABEL[k]}
+            <span className={missing.has(k) ? 'st bad' : 'st ok'} style={{ marginLeft: 8 }}>
+              {missing.has(k) ? 'empty' : 'published'}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <RichText value={draft[key] ?? ''} onChange={(html) => setDraft({ ...draft, [key]: html })} minHeight={260} />
+
+      <div className="row" style={{ gap: 10, alignItems: 'center', marginTop: 12 }}>
+        <button className="btn" disabled={busy || !dirty} onClick={save}>
+          {busy ? 'Saving…' : `Save ${PAGE_LABEL[key]}`}
+        </button>
+        {savedAt ? <span className="hint">Saved.</span> : null}
+        <span className="hint" style={{ marginLeft: 'auto' }}>
+          Links are kept; scripts, event handlers and pasted styling are stripped when it is shown.
+        </span>
+      </div>
+
+      {err ? <div className="banner bad" style={{ marginTop: 12 }}>{err}</div> : null}
+    </div></div>
+  );
+}
+
 function ProfileView({ profile }: { profile: Record<string, any> }) {
   const individual = isIndividual(profile.applicantType);
   return (
@@ -606,6 +704,8 @@ function PartnerProfilePage() {
       <BrandingPanel slug={slug} tenant={data} onSaved={load} />
 
       <ContentPanel slug={slug} tenant={data} onSaved={load} />
+
+      <PagesPanel slug={slug} tenant={data} onSaved={load} />
 
       <ApiKeysPanel tenantId={data.id} />
 

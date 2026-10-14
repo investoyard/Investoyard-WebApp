@@ -1,3 +1,4 @@
+import { TrustPage } from '@/components/TrustPage';
 export const metadata = {
   title: 'Disclaimer | Investoyard',
   description: 'Important disclaimers about the information published on Investoyard — including grey-market premium data.',
@@ -7,8 +8,10 @@ export const metadata = {
  *  placeholder text); for operator/counsel review before go-live. */
 export default function DisclaimerPage() {
   return (
-    <div className="trust-page">
-      <h1>Disclaimer</h1>
+    <TrustPage
+      pageKey="disclaimer"
+      heading="Disclaimer"
+    >
       <div className="prose">
         <h2>No investment advice</h2>
         <p>
@@ -55,6 +58,6 @@ export default function DisclaimerPage() {
           the <a href="https://smartodr.in" target="_blank" rel="noopener noreferrer">Online Dispute Resolution portal</a>.
         </p>
       </div>
-    </div>
+    </TrustPage>
   );
 }

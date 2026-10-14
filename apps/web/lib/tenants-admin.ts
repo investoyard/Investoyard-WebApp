@@ -138,6 +138,8 @@ export interface PartnerDetail {
    * panel cannot drift from what the footer and contact page actually print.
    */
   contentGaps?: ContentGap[];
+  /** The rich-text pages, carried on the ADMIN read so the editor has them. */
+  pages?: Record<string, { html?: string }>;
 }
 export const fetchTenant = (slug: string) => authed<PartnerDetail>(`${API}/admin/tenants/${slug}`, { method: 'GET' });
 
@@ -1432,3 +1434,16 @@ export const rewriteNoteField = async (kind: 'description' | 'strength' | 'objec
   const parsed = body ? JSON.parse(body) : {};
   return String(parsed.html ?? '');
 };
+
+/* ---- published pages (About / Terms / Privacy / Disclaimer) ---- */
+export type { TenantPage, TenantPageKey } from '@investoyard/shared-types';
+/**
+ * Save one published page. ONE route with the key in the path, matching the
+ * API — every page has the identical one-field body, so four routes would be
+ * four copies of the same thing.
+ */
+export const updateTenantPage = (slug: string, key: string, html: string) =>
+  authed<{ ok: boolean; pages: Record<string, { html?: string }>; gaps: ContentGap[] }>(
+    `${API}/admin/tenants/${slug}/page/${key}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }) },
+  );

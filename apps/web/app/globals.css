@@ -4628,3 +4628,20 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .ctc-dl { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
   .ctc-dl dt { margin-top: 8px; }
 }
+
+/* ── trust pages: the "not published yet" state ──────────────────────────── */
+/* Deliberately quiet rather than an error banner. A visitor is not at fault
+   and cannot act on it; the message is for them, while the admin Content
+   panel is what tells our staff it is blocking. `tp-` is free (grepped). */
+.tp-unpublished {
+  padding: 13px 16px; border-radius: 10px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── our-channel-only content, hidden on a foreign host ──────────────────── */
+/* The attribute is set by an inline script in the root layout that runs during
+   parse — see the comment there. A CSS rule rather than the script touching
+   each element: the stylesheet is already parsed, so the content is never
+   painted, and one rule covers every page that marks its own copy this way. */
+html[data-foreign-host] [data-own-only] { display: none; }

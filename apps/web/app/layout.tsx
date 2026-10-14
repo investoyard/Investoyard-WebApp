@@ -71,6 +71,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`}>
       <body>
+        {/*
+          * HIDE OUR-CHANNEL-ONLY CONTENT BEFORE THE BROWSER PAINTS.
+          *
+          * The site is a static export: one set of HTML answers every host, so
+          * our Terms, Privacy and Disclaimer are in the markup that a partner's
+          * domain also serves. React cannot help here — it only knows the host
+          * after hydration, which is already too late to stop a visitor reading
+          * a contract naming the wrong company.
+          *
+          * This runs during parse, needs no network, and compares the hostname
+          * against the one this build was made for. Not ours → the content is
+          * hidden before it is ever shown, and `TrustPage` then replaces it
+          * with the partner's own page.
+          *
+          * Deliberately NOT a tenant lookup: knowing "this is not our domain"
+          * is enough to stop the flash, and it is the only thing knowable
+          * without a request.
+          */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              `(function(){try{var h=location.hostname;`
+              + `if(h===${JSON.stringify(new URL(SITE_ORIGIN).hostname)}||h==='localhost'||h==='127.0.0.1')return;`
+              + `document.documentElement.setAttribute('data-foreign-host','');`
+              + `}catch(e){}})()`,
+          }}
+        />
         <OrganizationJsonLd />
         <ChromeWrapper>{children}</ChromeWrapper>
         <PwaRegister />

@@ -14,8 +14,11 @@ import { tenantContext } from '../../common/tenant-context';
 import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common/permissions-catalog';
 import {
   TENANT_CONTENT_KEYS,
+  TENANT_PAGE_KEYS,
   TenantContent,
   TenantContentKey,
+  TenantPage,
+  TenantPageKey,
   contentGaps,
   mergeContentPatch,
 } from '@investoyard/shared-types';
@@ -734,6 +737,7 @@ export class AdminService {
       if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
       const flags = (t.flags as any) ?? {};
       const content = await this.tenantContent(t.id);
+      const pages = await this.tenantPages(t.id);
       // Trim operator-only fields (commissionRate, customDomain, Partner
       // API operator controls) for non-superadmin callers — a partner
       // reading their own tenant via the My Organisation page must not
@@ -756,6 +760,12 @@ export class AdminService {
          */
         content,
         /*
+         * The rich-text pages ride the ADMIN detail read, unlike the public
+         * path where each is fetched on its own — this screen is about to put
+         * them in an editor, so one round trip is right here and wrong there.
+         */
+        pages,
+        /*
          * What is still missing before this partner's domain should face their
          * customers. Computed by the SHARED resolver the site renders with, so
          * the panel cannot drift from what the footer and contact page actually
@@ -767,6 +777,7 @@ export class AdminService {
           name: t.name,
           identity: content.identity,
           contact: content.contact,
+          pages,
         }),
       };
       if (!scope.superadmin) return base;
@@ -915,6 +926,82 @@ export class AdminService {
     return out;
   }
 
+  /** A tenant's published pages, keyed. */
+  private async tenantPages(tenantId: string): Promise<Partial<Record<TenantPageKey, TenantPage>>> {
+    const table = this.contentTable;
+    if (!table) return {};
+    const rows: Array<{ key: string; value: unknown }> = await table.findMany({ where: { tenantId } });
+    const out: Partial<Record<TenantPageKey, TenantPage>> = {};
+    for (const r of rows) {
+      if (!(TENANT_PAGE_KEYS as readonly string[]).includes(r.key)) continue;
+      out[r.key as TenantPageKey] = (r.value ?? {}) as TenantPage;
+    }
+    return out;
+  }
+
+  /**
+   * Write one published PAGE — About, Terms, Privacy or Disclaimer.
+   *
+   * Same superadmin gate and the same reasoning as the identity block: Terms,
+   * Privacy and Disclaimer are the legal instruments between a partner and
+   * their client, and what they say is what the empanelment was approved
+   * against.
+   *
+   * THE HTML IS STORED AS THE OPERATOR WROTE IT AND SANITISED ON READ, which is
+   * what every other rich-text field here does (`cleanRich` at the render
+   * site). Sanitising on write would freeze today's rules into the data: a
+   * later tightening of the allow-list would protect new pages and leave every
+   * stored one exactly as it was.
+   */
+  async updateTenantPage(callerId: string, slug: string, key: TenantPageKey, html: string) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException("Only a superadmin may edit a channel's published pages.");
+    if (!(TENANT_PAGE_KEYS as readonly string[]).includes(key)) {
+      throw new BadRequestException(`Unknown page '${key}'.`);
+    }
+    /* The READ falls back to empty when the delegate is missing; the WRITE
+       refuses. Reporting "Saved." over a store that does not exist is the
+       failure this project has written up twice. */
+    const table = this.contentTable;
+    if (!table) throw new BadRequestException('Content store unavailable until the API is redeployed (prisma generate).');
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      const value: TenantPage = { html: String(html ?? '') };
+      await table.upsert({
+        where: { tenantId_key: { tenantId: t.id, key } },
+        create: { tenantId: t.id, key, value },
+        update: { value },
+      });
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'tenant.page.update',
+          actorId: callerId,
+          targetType: 'tenant',
+          targetId: t.id,
+          targetLabel: `${t.name} (${t.slug})`,
+          tenantSlug: t.slug,
+          /* The page and its SIZE, never its text: an audit row should say what
+             changed without becoming a second copy of the document. */
+          detail: { key, chars: String(html ?? '').length } as any,
+        },
+      }).catch(() => { /* best-effort */ });
+      const content = await this.tenantContent(t.id);
+      const pages = await this.tenantPages(t.id);
+      return {
+        ok: true,
+        pages,
+        gaps: contentGaps({
+          isDefault: t.type === 'direct',
+          name: t.name,
+          identity: content.identity,
+          contact: content.contact,
+          pages,
+        }),
+      };
+    });
+  }
+
   /**
    * Write one content block — the operating entity, or how to reach it.
    *
@@ -969,6 +1056,7 @@ export class AdminService {
         },
       }).catch(() => { /* best-effort */ });
       const content = await this.tenantContent(t.id);
+      const pages = await this.tenantPages(t.id);
       return {
         ok: true,
         content,
@@ -977,6 +1065,7 @@ export class AdminService {
           name: t.name,
           identity: content.identity,
           contact: content.contact,
+          pages,
         }),
       };
     });

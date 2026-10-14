@@ -157,3 +157,33 @@ export const tenantContact = (t: Tenant) => resolveContact(t.content?.contact);
 export const tenantDisplayName = (t: Tenant) => displayName(identityInput(t));
 /** Undefined until a legal entity is known; the caller must then say nothing. */
 export const tenantLegalEntity = (t: Tenant) => legalEntity(identityInput(t));
+
+/* ------------------------------------------------------- published pages */
+/**
+ * One published page for a channel — About, Terms, Privacy or Disclaimer.
+ *
+ * A REQUEST OF ITS OWN, deliberately: the `/tenants` registry is fetched on
+ * every page load to resolve the brand, so carrying four rich-text blobs per
+ * tenant on it would make a reader of the home page download every partner's
+ * legal prose.
+ *
+ * Returns `null` when the channel or the page is unknown, `''` when the tenant
+ * exists and has published nothing — the trust pages render different copy for
+ * those two, so the distinction has to survive the wire. Nest sends an EMPTY
+ * BODY for a null handler result, not the string "null", so this reads the body
+ * as text rather than calling `res.json()` (which throws "Unexpected end of
+ * JSON input" — the fault that once broke /partner/apply for every first-time
+ * visitor).
+ */
+export async function fetchTenantPage(slug: string, key: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${API}/tenants/${encodeURIComponent(slug)}/page/${encodeURIComponent(key)}`);
+    if (!r.ok) return null;
+    const text = await r.text();
+    if (!text.trim()) return null;
+    const html = (JSON.parse(text) as { html?: unknown }).html;
+    return typeof html === 'string' ? html : null;
+  } catch {
+    return null;
+  }
+}

@@ -1,3 +1,4 @@
+import { TrustPage } from '@/components/TrustPage';
 export const metadata = {
   title: 'Terms & Conditions | Investoyard',
   description: 'The terms governing your use of Investoyard — the IPO information and application platform by Safal Capital Services Pvt. Ltd.',
@@ -7,8 +8,10 @@ export const metadata = {
  *  are written fresh for review by the operator and counsel before go-live. */
 export default function TermsPage() {
   return (
-    <div className="trust-page">
-      <h1>Terms &amp; Conditions</h1>
+    <TrustPage
+      pageKey="terms"
+      heading="Terms & Conditions"
+    >
       <div className="prose">
         <p>
           These Terms &amp; Conditions (&quot;Terms&quot;) govern your use of the Investoyard website and mobile application
@@ -90,6 +93,6 @@ export default function TermsPage() {
           continued use after changes constitutes acceptance.
         </p>
       </div>
-    </div>
+    </TrustPage>
   );
 }

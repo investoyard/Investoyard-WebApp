@@ -9,6 +9,11 @@ import {
   TENANT_CONTENT_KEYS,
   mergeContentPatch,
   TenantIdentity,
+  hasPage,
+  TENANT_PAGE_KEYS,
+  TENANT_WRITABLE_KEYS,
+  REQUIRED_PAGE_KEYS,
+  PAGE_LABEL,
 } from './tenantContent';
 
 /**
@@ -126,24 +131,30 @@ describe('contentGaps — what staff must chase before a domain goes live', () =
     expect(contentReady(DIRECT)).toBe(true);
   });
 
-  it('blocks a fresh partner on the legal name and both grievance fields', () => {
-    const blocking = contentGaps(PARTNER).filter((g) => g.severity === 'blocking').map((g) => g.field);
-    expect(blocking).toEqual(['legalName', 'grievanceName', 'grievanceEmail']);
+  it('blocks a fresh partner on the legal name, both grievance fields AND the three legal pages', () => {
+    const blocking = contentGaps(PARTNER).filter((g) => g.severity === 'blocking');
+    expect(blocking.map((g) => g.field === 'html' ? g.key : g.field))
+      .toEqual(['legalName', 'grievanceName', 'grievanceEmail', 'terms', 'privacy', 'disclaimer']);
     expect(contentReady(PARTNER)).toBe(false);
   });
 
   it('still reports the advisory gaps beside the blocking ones', () => {
-    const advisory = contentGaps(PARTNER).filter((g) => g.severity === 'advisory').map((g) => g.field);
-    expect(advisory).toEqual(['supportEmail', 'supportPhone', 'sebiRegistration', 'registeredAddress']);
+    const advisory = contentGaps(PARTNER).filter((g) => g.severity === 'advisory');
+    expect(advisory.map((g) => g.field === 'html' ? g.key : g.field))
+      .toEqual(['supportEmail', 'supportPhone', 'sebiRegistration', 'registeredAddress', 'about']);
   });
 
-  it('clears to ready on the three blocking fields alone', () => {
+  it('three fields clear the IDENTITY half; the pages are then what is left', () => {
     const input = {
       ...PARTNER,
       identity: { legalName: 'PartnerBank Securities Limited' },
       contact: { grievanceName: 'A Mehta', grievanceEmail: 'grievance@partner.com' },
     };
-    expect(contentReady(input)).toBe(true);
+    /* Not ready, and ONLY because of the pages — nothing on the identity side
+       is blocking any more. */
+    expect(contentReady(input)).toBe(false);
+    expect(contentGaps(input).filter((g) => g.severity === 'blocking').map((g) => g.key))
+      .toEqual(['terms', 'privacy', 'disclaimer']);
     /* Ready is not the same as complete — the advisory rows stay listed. */
     expect(contentGaps(input).length).toBeGreaterThan(0);
   });
@@ -154,7 +165,7 @@ describe('contentGaps — what staff must chase before a domain goes live', () =
 
   it('every gap names a key the content store actually has', () => {
     for (const g of contentGaps(PARTNER)) {
-      expect(TENANT_CONTENT_KEYS as readonly string[]).toContain(g.key);
+      expect(TENANT_WRITABLE_KEYS as readonly string[]).toContain(g.key);
     }
   });
 });
@@ -203,5 +214,103 @@ describe('mergeContentPatch — what an admin save stores', () => {
     const existing = { supportEmail: 'help@p.com' };
     mergeContentPatch(existing, { supportEmail: '' });
     expect(existing).toEqual({ supportEmail: 'help@p.com' });
+  });
+});
+
+describe('hasPage — an empty editor is not a published page', () => {
+  it('is false for undefined, empty and whitespace', () => {
+    expect(hasPage(undefined)).toBe(false);
+    expect(hasPage({})).toBe(false);
+    expect(hasPage({ html: '' })).toBe(false);
+    expect(hasPage({ html: '   ' })).toBe(false);
+  });
+
+  /* TipTap serialises an empty document as <p></p>, never ''. Treating that as
+     present would publish a blank legal page AND clear the gap that should
+     still be open — the worse of the two failures by far. */
+  it('is false for an EMPTY TipTap document', () => {
+    expect(hasPage({ html: '<p></p>' })).toBe(false);
+    expect(hasPage({ html: '<p><br></p>' })).toBe(false);
+    expect(hasPage({ html: '<p>&nbsp;</p>' })).toBe(false);
+  });
+
+  it('is true once there is real text', () => {
+    expect(hasPage({ html: '<p>These terms govern…</p>' })).toBe(true);
+  });
+
+  it('is false for a non-string, which a hand-edited row could hold', () => {
+    expect(hasPage({ html: 42 as unknown as string })).toBe(false);
+  });
+});
+
+describe('contentGaps — the published pages', () => {
+  const PAGES = {
+    about: { html: '<p>About PartnerBank.</p>' },
+    terms: { html: '<p>Terms.</p>' },
+    privacy: { html: '<p>Privacy.</p>' },
+    disclaimer: { html: '<p>Disclaimer.</p>' },
+  };
+  const FILLED = {
+    ...PARTNER,
+    identity: { legalName: 'PartnerBank Securities Limited' },
+    contact: { grievanceName: 'A Mehta', grievanceEmail: 'grievance@partner.com' },
+  };
+
+  it('BLOCKS a partner on terms, privacy and disclaimer', () => {
+    const blocking = contentGaps(FILLED).filter((g) => g.severity === 'blocking').map((g) => g.key);
+    expect(blocking).toEqual(['terms', 'privacy', 'disclaimer']);
+    expect(contentReady(FILLED)).toBe(false);
+  });
+
+  /* A shop window is not a contract. */
+  it('treats about as advisory, not blocking', () => {
+    const about = contentGaps(FILLED).find((g) => g.key === 'about');
+    expect(about?.severity).toBe('advisory');
+  });
+
+  it('clears once the three legal pages exist', () => {
+    expect(contentReady({ ...FILLED, pages: PAGES })).toBe(true);
+  });
+
+  /* The whole point of hasPage: an operator who opened the editor and saved
+     without typing has NOT published a Terms page. */
+  it('is NOT cleared by an empty editor saved over a legal page', () => {
+    expect(contentReady({ ...FILLED, pages: { ...PAGES, terms: { html: '<p></p>' } } })).toBe(false);
+  });
+
+  it('says nothing about the default channel, pages included', () => {
+    expect(contentGaps(DIRECT)).toEqual([]);
+    expect(contentReady(DIRECT)).toBe(true);
+  });
+
+  it('every page gap names a key the store actually has', () => {
+    for (const g of contentGaps(FILLED).filter((x) => x.field === 'html')) {
+      expect(TENANT_PAGE_KEYS as readonly string[]).toContain(g.key);
+    }
+  });
+});
+
+describe('the two key lists are deliberately separate', () => {
+  /* Adding a page key to TENANT_CONTENT_KEYS would put every partner's legal
+     prose on the PUBLIC registry that every page load fetches. */
+  it('no page key leaks into the registry list', () => {
+    for (const k of TENANT_PAGE_KEYS) {
+      expect(TENANT_CONTENT_KEYS as readonly string[]).not.toContain(k);
+    }
+  });
+
+  it('the writable union covers both and nothing else', () => {
+    expect([...TENANT_WRITABLE_KEYS].sort())
+      .toEqual([...TENANT_CONTENT_KEYS, ...TENANT_PAGE_KEYS].sort());
+  });
+
+  it('every required page is a real page key', () => {
+    for (const k of REQUIRED_PAGE_KEYS) {
+      expect(TENANT_PAGE_KEYS as readonly string[]).toContain(k);
+    }
+  });
+
+  it('every page key has a label', () => {
+    for (const k of TENANT_PAGE_KEYS) expect(PAGE_LABEL[k]).toBeTruthy();
   });
 });

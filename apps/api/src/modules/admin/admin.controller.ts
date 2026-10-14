@@ -157,6 +157,16 @@ class TenantContactDto {
   @IsOptional() @IsString() @MaxLength(160) complianceEmail?: string;
   @IsOptional() @IsString() @MaxLength(60) compliancePhone?: string;
 }
+/**
+ * A published page. `html` only — the key is a path segment, checked against
+ * TENANT_PAGE_KEYS in the service, so a stray key cannot reach the store.
+ *
+ * 120 KB is generous for a legal page and still bounds what one PATCH can
+ * write; our own Privacy Policy is roughly 9 KB of HTML.
+ */
+class TenantPageDto {
+  @IsString() @MaxLength(120_000) html!: string;
+}
 class CreateClientDto {
   @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile!: string;
   @IsOptional() @IsString() name?: string;
@@ -389,6 +399,26 @@ export class AdminController {
   @Patch('tenants/:slug/content/contact')
   updateTenantContact(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantContactDto) {
     return this.admin.updateTenantContent(req.user.sub, slug, 'contact', dto as any);
+  }
+
+  /**
+   * The rich-text pages — About, Terms, Privacy, Disclaimer.
+   *
+   * ONE ROUTE WITH THE KEY IN THE PATH, unlike identity and contact which get a
+   * route each: those carry a typed DTO per shape, and class-validator's
+   * whitelist is what keeps a stray field out of the PUBLIC registry. Every
+   * page has the identical one-field body, so a route each would be four copies
+   * of the same thing. The key is checked against TENANT_PAGE_KEYS in the
+   * service before anything reaches the store.
+   */
+  @Patch('tenants/:slug/page/:key')
+  updateTenantPage(
+    @Req() req: any,
+    @Param('slug') slug: string,
+    @Param('key') key: string,
+    @Body() dto: TenantPageDto,
+  ) {
+    return this.admin.updateTenantPage(req.user.sub, slug, key as any, dto.html);
   }
 
   /* ---- clients (investors) ---- */
