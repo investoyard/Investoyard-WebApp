@@ -339,7 +339,7 @@
   /* The candlestick motif sits across the upper third — the area that was
      dead space. Low contrast on purpose: it is a texture, not a chart. */
   .plt-cover-art {
-    position: absolute; top: 40mm; left: 0; right: 0; width: 100%; height: 62mm;
+    position: absolute; top: 52mm; left: 0; right: 0; width: 100%; height: 78mm;
     z-index: 0; opacity: .5;
   }
   .plt-cover-art .plt-c-gold rect { fill: rgba(255,203,50,.55); }

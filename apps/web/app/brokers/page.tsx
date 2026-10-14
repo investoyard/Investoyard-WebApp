@@ -4,46 +4,50 @@ import { Icon } from '@/components/Icon';
 import '../platform/platform.css';
 import './brokers.css';
 import {
-  APPLY, CHECKS, CLIENT, DATA, DESK, DISCLAIMER, DOC, Feature, GLANCE,
-  GOVERNANCE, HERO_LINE, MODELS, SECTIONS, STEPS,
+  APPLY, CHECKS, CLIENT, CLOSE, DATA, DESK, DISCLAIMER, DOC, Feature, GLANCE,
+  GOVERNANCE, HERO_LINE, MODELS, REQUIREMENTS, SECTIONS, STEPS, WHY,
 } from './content';
 
 /**
  * /brokers — the capability document for SEBI-registered stock brokers.
  *
- * Shares /platform's visual system by importing its stylesheet, so the two
- * documents cannot drift. Only the pieces unique to this reader live in
- * brokers.css — chiefly the data table, which is the section the whole
- * document exists for.
+ * v2.0, rebuilt after sir rejected v1.0 on branding, on having nothing to
+ * attract a broker, and on never saying what onboarding requires. See the
+ * header of content.ts for the full diagnosis; the structural consequences
+ * here are:
  *
- * ORDER OF ARGUMENT IS DELIBERATELY DIFFERENT from /platform. A broker already
- * has clients, a brand and a compliance function, so what they buy is a desk
- * under their own name, not a distribution channel. White-label and data
- * governance lead; the research surface follows as a RETENTION argument; there
- * is no commercial talk at all.
+ *  - THE REAL LOGO, inside a white panel on the dark cover. v1.0 drew a gold
+ *    square plus letterspaced text while investoyard-logo.svg sat unused. The
+ *    panel is what lets the actual asset appear in its true indigo-and-gold
+ *    rather than being recoloured into a second file that would drift.
+ *  - SECTION 01 IS THE BUSINESS CASE, before anything technical. A broker is
+ *    not buying features, and v1.0 opened with integration models.
+ *  - SECTION 08 IS WHAT THEY BRING. A broker reading this is deciding whether
+ *    to forward it to compliance, which they cannot do without the list.
+ *  - IT CLOSES ON AN INVITATION. v1.0 ended on a legal paragraph and half a
+ *    page of white space, which is the worst possible last impression.
  *
- * SECTION 02 STATES WHAT THE PLATFORM DOES, NOT WHAT THE LAW ALLOWS. Which
- * feeds are open, opt-in, locked or never shared is a fact about our product
- * and we can assert it. Whether a given firm may publish a given figure is
- * their compliance function's determination, and the page says so plainly
- * rather than implying a clearance we are in no position to give.
+ * Shares /platform's stylesheet so the two documents cannot drift; only what
+ * is unique to this reader lives in brokers.css.
  *
- * Unlisted (`noindex`, nothing links to it) and zero client JavaScript, for
- * the same reasons as /platform.
+ * Unlisted (`noindex`, nothing links to it) and zero client JavaScript.
  */
 export const metadata: Metadata = {
   title: 'For stock brokers — Investoyard',
   description:
-    'The Investoyard IPO platform for SEBI-registered stock brokers: white-label and API integration, which data you can display, client experience, applications, and data governance.',
+    'The Investoyard IPO platform for SEBI-registered stock brokers: why partner with us, white-label and API integration, which data you can display, compliance posture, and exactly what onboarding requires.',
   robots: { index: false, follow: false },
 };
 
-const Mark = () => (
-  <div className="plt-mark">
-    <span className="plt-mark-sq" />
-    <span className="plt-mark-w">Investoyard</span>
-  </div>
-);
+/** The real mark. `dark` puts it on a white panel so it keeps its own colours. */
+const Logo = ({ dark = false, h = 26 }: { dark?: boolean; h?: number }) =>
+  dark ? (
+    <span className="brk-logo-panel">
+      <img src="/investoyard-logo.svg" alt="Investoyard" style={{ height: h, width: 'auto', display: 'block' }} />
+    </span>
+  ) : (
+    <img src="/investoyard-logo.svg" alt="Investoyard" style={{ height: h, width: 'auto', display: 'block' }} />
+  );
 
 function Grid({ items, cols = 2 }: { items: readonly Feature[]; cols?: 2 | 3 }) {
   return (
@@ -93,13 +97,16 @@ export default function BrokersPage() {
             </g>
           ))}
         </svg>
-        <Mark />
+
+        <Logo dark h={30} />
+
         <div className="plt-cover-mid">
           <div className="plt-cover-kicker">{DOC.kicker}</div>
           <h1>{DOC.title}</h1>
           <span className="plt-cover-rule" />
           <p>{HERO_LINE}</p>
         </div>
+
         <div className="plt-cover-stats">
           {GLANCE.map((g) => (
             <div key={g.l}>
@@ -108,6 +115,7 @@ export default function BrokersPage() {
             </div>
           ))}
         </div>
+
         <div className="plt-cover-foot">
           <span>{DOC.entity}</span>
           <span>{DOC.version} · {DOC.updated} · {DOC.site}</span>
@@ -115,7 +123,7 @@ export default function BrokersPage() {
       </div>
 
       <header className="plt-hero">
-        <Mark />
+        <Logo dark h={28} />
         <div className="plt-hero-kicker">{DOC.kicker}</div>
         <h1>{DOC.title}</h1>
         <p className="plt-hero-lede">{HERO_LINE}</p>
@@ -123,8 +131,8 @@ export default function BrokersPage() {
           <a className="plt-btn plt-btn-gold" href="/Investoyard-For-Brokers.pdf" download>
             <Icon name="download" size={15} /> Download as PDF
           </a>
-          <Link className="plt-btn plt-btn-ghost" href="/partner-api">
-            Read the API reference <Icon name="arrow-right" size={15} />
+          <Link className="plt-btn plt-btn-ghost" href="/partner/apply">
+            Apply to partner <Icon name="arrow-right" size={15} />
           </Link>
         </div>
       </header>
@@ -139,6 +147,16 @@ export default function BrokersPage() {
         ))}
       </section>
 
+      {/* 01 — the business case leads. */}
+      <section id="why" className="plt-sec">
+        <Opener id="why" />
+        <p className="plt-body plt-body-lead">
+          You already have the clients and the licence. What you probably do not have is an IPO desk
+          that keeps them in your app for the one week a year they are most tempted to look elsewhere.
+        </p>
+        <Grid items={WHY} />
+      </section>
+
       <section id="models" className="plt-sec">
         <Opener id="models" />
         <ol className="plt-stack">
@@ -151,6 +169,15 @@ export default function BrokersPage() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section id="client" className="plt-sec">
+        <Opener id="client" />
+        <p className="plt-body plt-body-lead">
+          The research surface is the retention argument. A client who leaves your app to check
+          subscription is a client in someone else&rsquo;s funnel.
+        </p>
+        <Grid items={CLIENT} />
       </section>
 
       <section id="data" className="plt-sec">
@@ -175,32 +202,19 @@ export default function BrokersPage() {
           ))}
         </div>
 
-        {/* The honest boundary. Stating what the platform enforces is ours to
-            state; stating what a registered firm may publish is not. */}
         <div className="brk-callout">
           <div className="brk-callout-h">
             <Icon name="shield" size={16} />
             <b>Where our responsibility ends and yours begins</b>
           </div>
           <p>
-            The controls above are ours and we will configure and lock them to whatever you decide.
+            The controls above are ours, and we will configure and lock them to whatever you decide.
             Whether your registration permits publishing a particular figure is your compliance
-            function’s determination, not ours — this document is not legal advice. Four things worth
-            settling before you go live:
+            function&rsquo;s determination, not ours — this document is not legal advice. Four things
+            worth settling before you go live:
           </p>
-          <ol className="brk-checks">
-            {CHECKS.map((c) => <li key={c}>{c}</li>)}
-          </ol>
+          <ol className="brk-checks">{CHECKS.map((c) => <li key={c}>{c}</li>)}</ol>
         </div>
-      </section>
-
-      <section id="client" className="plt-sec">
-        <Opener id="client" />
-        <p className="plt-body plt-body-lead">
-          The research surface is a retention argument. A client who leaves your app to check
-          subscription somewhere else is a client in someone else’s funnel.
-        </p>
-        <Grid items={CLIENT} />
       </section>
 
       <section id="apply" className="plt-sec">
@@ -218,22 +232,54 @@ export default function BrokersPage() {
         <Grid items={DESK} cols={3} />
       </section>
 
-      <section className="plt-sec plt-tint">
-        <div className="plt-eyebrow">Getting started</div>
-        <h2 className="plt-h2">Four steps, and nothing to build.</h2>
-        <ol className="plt-steps">
+      {/* 08 — what they bring, and how it runs. The section sir asked for. */}
+      <section id="onboard" className="plt-sec">
+        <Opener id="onboard" />
+        <p className="plt-body plt-body-lead">
+          Nothing here is unusual for a registered intermediary — but it is worth having to hand
+          before you start, because the application asks for all of it.
+        </p>
+
+        <div className="brk-req">
+          {REQUIREMENTS.map((g) => (
+            <div key={g.k} className="brk-req-col">
+              <div className="brk-req-k">{g.k}</div>
+              <ul>
+                {g.items.map((i) => (
+                  <li key={i}><span className="brk-tick"><Icon name="check" size={11} /></span>{i}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="plt-h3" style={{ marginTop: 26 }}>How it runs</h3>
+        <ol className="brk-flow">
           {STEPS.map((s) => (
             <li key={s.n}>
-              <span className="plt-step-n">{s.n}</span>
+              <span className="brk-flow-n">{s.n}</span>
               <div><b>{s.t}</b><p>{s.d}</p></div>
             </li>
           ))}
         </ol>
       </section>
 
+      {/* A document a broker is meant to act on closes on an invitation, not a
+          disclaimer. v1.0 ended on the legal paragraph and empty space. */}
+      <section className="brk-close">
+        <div>
+          <h2>{CLOSE.title}</h2>
+          <p>{CLOSE.body}</p>
+        </div>
+        <div className="brk-close-cta">
+          <span className="brk-close-label">Apply online</span>
+          <span className="brk-close-url">{CLOSE.cta}</span>
+        </div>
+      </section>
+
       <footer className="plt-foot">
-        <Mark />
-        <p>{DISCLAIMER}</p>
+        <Logo h={24} />
+        <p style={{ marginTop: 12 }}>{DISCLAIMER}</p>
         <p className="plt-foot-meta">For stock brokers · {DOC.version} · {DOC.updated} · {DOC.site}</p>
       </footer>
     </div>
