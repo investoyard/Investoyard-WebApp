@@ -19,6 +19,46 @@ import { PERMISSION_CATALOG, ROLE_SCOPES, VALID_PERMISSIONS } from '../../common
  * platform SuperAdmin manages any tenant and a partner Admin only its own subtree.
  * User writes run UNSCOPED (a user is global by mobile; the membership binds the tenant).
  */
+/**
+ * A custom domain is typed by a human, so it arrives as a URL about as often
+ * as a host. Normalise before it reaches a UNIQUE column, because
+ * "https://ipo.partner.com/" and "ipo.partner.com" are the same domain to
+ * everyone except the database — and the tenant resolver matches
+ * window.location.host, which is a bare lowercase host and nothing else.
+ *
+ * REFUSING OUR OWN HOSTS IS THE SECURITY-RELEVANT PART. Without it a tenant
+ * could be pointed at newipo.finwave.co, and since the resolver picks the
+ * tenant whose customDomain matches the host, that tenant's branding and
+ * feature flags would take over the main site for every visitor.
+ */
+const OUR_HOSTS = new Set([
+  'newipo.finwave.co', 'www.newipo.finwave.co',
+  'newipoapi.finwave.co', 'investoyard.com', 'www.investoyard.com',
+  'localhost',
+]);
+
+export function normaliseCustomDomain(raw: string | null | undefined): string | null {
+  let v = String(raw ?? '').trim().toLowerCase();
+  if (!v) return null;
+  v = v.replace(/^[a-z]+:\/\//, '');  // paste of a full URL
+  v = v.split('/')[0];                 // any path
+  v = v.split('?')[0].split('#')[0];
+  v = v.split(':')[0];                 // :443
+  v = v.replace(/\.$/, '');            // trailing root dot
+  if (!v) return null;
+  if (OUR_HOSTS.has(v)) {
+    throw new BadRequestException('That is one of our own hostnames — a partner domain must be their own.');
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) {
+    throw new BadRequestException('Enter a hostname such as ipo.partner.com — no scheme, path or port.');
+  }
+  return v;
+}
+
+/* Probing a host the operator typed is a server-side fetch, so refuse the
+   addresses that make it an SSRF tool rather than a diagnostic. */
+const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1)/;
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -610,6 +650,72 @@ export class AdminService {
   }
 
   /** A single tenant with its full empanelment profile (for the partner detail/edit view). */
+  /**
+   * WHICH LAYER OF A CUSTOM DOMAIN IS NOT DONE YET — the whole point of this
+   * endpoint. Four things have to line up (partner DNS, the IIS binding, the
+   * TLS certificate, our own customDomain field) and when a partner says "it
+   * does not work" the useful answer names the one that is missing. Guessing
+   * from the office is how an afternoon goes.
+   *
+   * It decides from BEHAVIOUR, not from an IP match: an A record may legally
+   * point at a load balancer or a proxy, so what matters is what answers. The
+   * IIS default page is the specific tell that DNS has arrived and the binding
+   * has not — that is what an unbound hostname falls through to on this box.
+   */
+  async checkTenantDomain(callerId: string, slug: string) {
+    const scope = await this.callerScope(callerId);
+    const t = await this.tenantBySlug(slug);
+    if (!scope.superadmin && !scope.tenantIds.has(t.id)) throw new ForbiddenException('Outside your scope.');
+
+    /* tenantBySlug selects a narrow shape shared by many callers; read the
+       one extra column here rather than widening it for everyone. */
+    const row = await this.prisma.tenant.findUnique({ where: { id: t.id }, select: { customDomain: true } });
+    const host = (row?.customDomain ?? '').trim().toLowerCase();
+    if (!host) return { host: null, state: 'unset', detail: 'No custom domain is set on this partner yet.' };
+    if (PRIVATE_HOST.test(host)) return { host, state: 'refused', detail: 'That host is on a private range and will not be probed.' };
+
+    const probe = async (scheme: 'http' | 'https') => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 6000);
+      try {
+        const res = await fetch(scheme + '://' + host + '/', { signal: ctl.signal, redirect: 'follow' });
+        const body = (await res.text()).slice(0, 4000);
+        return { ok: true, status: res.status, body };
+      } catch (e: any) {
+        return { ok: false, error: String(e?.cause?.code ?? e?.code ?? e?.message ?? e) };
+      } finally { clearTimeout(timer); }
+    };
+
+    const http = await probe('http');
+    const https = await probe('https');
+    const reached = https.ok ? https : http;
+
+    let state: string;
+    let detail: string;
+    if (!http.ok && !https.ok) {
+      state = 'no-dns';
+      detail = 'Nothing answered on either scheme (' + http.error + '). The partner\u2019s DNS A record is probably not in place yet, or has not propagated.';
+    } else if ((reached.body ?? '').includes('IIS Windows Server')) {
+      state = 'no-binding';
+      detail = 'DNS reaches this server, but the hostname has no binding on the Investoyard site \u2014 it is falling through to the IIS default page. Run scripts/add-partner-domain.ps1 for this host.';
+    } else if (!/investoyard/i.test(reached.body ?? '')) {
+      state = 'other-site';
+      detail = 'Something answered, but it is not this platform. Check the A record points at our address and not at the partner\u2019s existing website.';
+    } else if (!https.ok) {
+      state = 'no-tls';
+      detail = 'The site is served over HTTP but HTTPS failed (' + https.error + '). The certificate has not been issued or bound yet \u2014 win-acme still has to run.';
+    } else {
+      state = 'live';
+      detail = 'Reachable over HTTPS and serving this platform. Branding follows whatever is set above.';
+    }
+
+    return {
+      host, state, detail,
+      http: http.ok ? { status: http.status } : { error: http.error },
+      https: https.ok ? { status: https.status } : { error: https.error },
+    };
+  }
+
   async tenantDetail(callerId: string, slug: string) {
     const scope = await this.callerScope(callerId);
     return tenantContext.runUnscoped(async () => {
@@ -695,7 +801,7 @@ export class AdminService {
       // My Organisation client doesn't need to know the field list.
       if (scope.superadmin) {
         for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
-        if (dto.customDomain !== undefined) data.customDomain = dto.customDomain.trim() || null;
+        if (dto.customDomain !== undefined) data.customDomain = normaliseCustomDomain(dto.customDomain);
         if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
         if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
         if (dto.partnerApiScopes !== undefined) data.partnerApiScopes = dto.partnerApiScopes;

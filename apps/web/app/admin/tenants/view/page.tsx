@@ -17,6 +17,198 @@ function fmtVal(f: EField, v: any) {
   return String(v);
 }
 
+/**
+ * Our public origin. A partner's A record points here, so it is operator-facing
+ * setup copy rather than anything the app resolves — the box itself sits behind
+ * NAT at 192.168.46.88 and never sees this address bound locally.
+ */
+const ORIGIN_IP = '103.107.27.38';
+
+const DOMAIN_TONE: Record<string, { label: string; cls: string }> = {
+  unset:        { label: 'Not set',          cls: 'st' },
+  refused:      { label: 'Refused',          cls: 'st bad' },
+  'no-dns':     { label: 'DNS not pointing here', cls: 'st bad' },
+  'no-binding': { label: 'IIS binding missing',   cls: 'st bad' },
+  'other-site': { label: 'Another site answers',  cls: 'st bad' },
+  'no-tls':     { label: 'Certificate missing',   cls: 'st bad' },
+  live:         { label: 'Live',             cls: 'st ok' },
+};
+
+/**
+ * BRANDING AND DOMAIN, EDITABLE AFTER REGISTRATION.
+ *
+ * The API has always accepted these fields on PATCH /admin/tenants/:slug —
+ * superadmin only — but nothing rendered them, so in practice a partner's logo,
+ * colours and domain were write-once at registration and could only be changed
+ * with a direct database edit.
+ *
+ * THE DOMAIN SETUP CARD IS THE POINT OF THE PANEL, not decoration. Four layers
+ * have to line up before a white-label works (partner DNS, the IIS binding, the
+ * TLS certificate, this customDomain field) and when a partner reports "it does
+ * not work" the useful answer names the one that is missing. The Check button
+ * asks the server, which probes from outside and reports which layer failed.
+ */
+function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void }) {
+  const [brand, setBrand] = useState(tenant.brandColor ?? '');
+  const [gold, setGold] = useState(tenant.goldColor ?? '');
+  const [logo, setLogo] = useState(tenant.logoUrl ?? '');
+  const [domain, setDomain] = useState(tenant.customDomain ?? '');
+  const [busy, setBusy] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [check, setCheck] = useState<api.DomainCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const dirty =
+    brand !== (tenant.brandColor ?? '') || gold !== (tenant.goldColor ?? '') ||
+    logo !== (tenant.logoUrl ?? '') || domain !== (tenant.customDomain ?? '');
+
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await api.updateTenant(slug, {
+        brandColor: brand.trim(), goldColor: gold.trim(),
+        logoUrl: logo.trim(), customDomain: domain.trim(),
+      });
+      setSavedAt(Date.now());
+      onSaved();
+    } catch (e: any) {
+      /* A duplicate customDomain is a UNIQUE violation; say which field, since
+         the raw Prisma text names a constraint and not a cause. */
+      const m = String(e?.message ?? e);
+      setErr(/unique|P2002/i.test(m) ? 'That domain is already assigned to another partner.' : m);
+    } finally { setBusy(false); }
+  };
+
+  const pickLogo = async (f: File | undefined) => {
+    if (!f) return;
+    setLogoBusy(true); setErr(null);
+    try { setLogo(await api.uploadImage(f)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setLogoBusy(false); }
+  };
+
+  const runCheck = async () => {
+    setChecking(true); setCheck(null); setErr(null);
+    try { setCheck(await api.checkTenantDomain(slug)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setChecking(false); }
+  };
+
+  const tone = check ? (DOMAIN_TONE[check.state] ?? DOMAIN_TONE.unset) : null;
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+      <div className="section-title" style={{ fontSize: 13, marginTop: 0 }}>Branding &amp; domain</div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        What this partner's clients see. The whole brand scale is derived from the primary colour.
+      </p>
+
+      <div className="filter-row">
+        <div className="field" style={{ width: 170 }}>
+          <label>Primary colour</label>
+          <div className="row" style={{ gap: 8 }}>
+            <input type="color" style={{ width: 38, height: 34, padding: 2 }}
+              value={brand || '#3c2e7e'} onChange={(e) => setBrand(e.target.value)} />
+            <input className="input mono" value={brand} placeholder="#3c2e7e"
+              onChange={(e) => setBrand(e.target.value)} />
+          </div>
+        </div>
+        <div className="field" style={{ width: 170 }}>
+          <label>Accent colour <span className="hint">(optional)</span></label>
+          <div className="row" style={{ gap: 8 }}>
+            <input type="color" style={{ width: 38, height: 34, padding: 2 }}
+              value={gold || '#ffcb32'} onChange={(e) => setGold(e.target.value)} />
+            <input className="input mono" value={gold} placeholder="#ffcb32"
+              onChange={(e) => setGold(e.target.value)} />
+          </div>
+        </div>
+        <div className="field" style={{ width: 240 }}>
+          <label>Logo</label>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            {logo
+              ? <img src={logo} alt="" style={{ height: 28, maxWidth: 110, objectFit: 'contain' }} />
+              : <span className="hint">Name is used if none</span>}
+            <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer' }}>
+              {logoBusy ? 'Uploading…' : 'Upload'}
+              <input type="file" accept="image/*" hidden onChange={(e) => pickLogo(e.target.files?.[0])} />
+            </label>
+            {logo ? <button className="btn btn-sm btn-ghost" onClick={() => setLogo('')}>Clear</button> : null}
+          </div>
+        </div>
+      </div>
+
+      {/* A preview beats a hex code: staff are choosing what a broker's clients
+          will see, and nobody reads #3c2e7e as a colour. */}
+      <div className="row" style={{ gap: 10, alignItems: 'center', margin: '4px 0 16px' }}>
+        <span className="hint">Preview</span>
+        <span style={{ display: 'inline-block', padding: '7px 14px', borderRadius: 9, fontSize: 13,
+          fontWeight: 600, background: brand || '#3c2e7e', color: '#fff' }}>Apply now</span>
+        <span style={{ display: 'inline-block', padding: '5px 11px', borderRadius: 999, fontSize: 12,
+          fontWeight: 700, background: gold || '#ffcb32', color: '#2a2052' }}>Exp. Premium</span>
+        <span style={{ fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase',
+          fontSize: 13, color: brand || '#3c2e7e' }}>{tenant.name}</span>
+      </div>
+
+      <div className="filter-row">
+        <div className="field" style={{ width: 280 }}>
+          <label>Custom domain</label>
+          <input className="input mono" value={domain} placeholder="ipo.partner.com"
+            onChange={(e) => setDomain(e.target.value)} />
+          <span className="hint">Hostname only — no https://, no path.</span>
+        </div>
+        <button className="btn" disabled={busy || !dirty} onClick={save}>
+          {busy ? 'Saving…' : 'Save branding'}
+        </button>
+        <button className="btn btn-secondary" disabled={checking || !tenant.customDomain} onClick={runCheck}>
+          {checking ? 'Checking…' : 'Check domain'}
+        </button>
+        {savedAt ? <span className="hint" style={{ alignSelf: 'center' }}>Saved.</span> : null}
+      </div>
+
+      {err ? <div className="banner bad" style={{ marginTop: 10 }}>{err}</div> : null}
+
+      {check && tone ? (
+        <div className="panel" style={{ padding: 14, marginTop: 12 }}>
+          <div className="row" style={{ gap: 9, alignItems: 'center' }}>
+            <span className={tone.cls}>{tone.label}</span>
+            <b style={{ fontSize: 13 }}>{check.host ?? '—'}</b>
+          </div>
+          <p className="muted" style={{ margin: '7px 0 0', fontSize: 13.2, lineHeight: 1.55 }}>{check.detail}</p>
+        </div>
+      ) : null}
+
+      {/* The setup steps live beside the field so staff never have to remember
+          the order — and the order matters: win-acme validates over HTTP, so
+          the port-80 binding has to exist before a certificate can. */}
+      <div className="panel" style={{ padding: 16, marginTop: 14 }}>
+        <b style={{ fontSize: 13.5 }}>Pointing a partner's domain here</b>
+        <ol style={{ margin: '9px 0 0', paddingLeft: 20, fontSize: 13.2, lineHeight: 1.7, color: 'var(--text-muted)' }}>
+          <li>
+            The partner adds one DNS record:{' '}
+            <code className="mono">A</code> &nbsp;<code className="mono">{domain || 'ipo.partner.com'}</code>
+            {' '}&rarr; <code className="mono">{ORIGIN_IP}</code>
+          </li>
+          <li>Wait for it to resolve, then run on the server (elevated):<br />
+            <code className="mono" style={{ fontSize: 12.4 }}>
+              scripts\add-partner-domain.ps1 -Domain {domain || 'ipo.partner.com'} -Apply
+            </code><br />
+            <span className="hint">Adds the HTTP binding, runs win-acme, binds HTTPS with SNI.</span>
+          </li>
+          <li>Set <b>Custom domain</b> above and save — this is what makes the site render their brand.</li>
+          <li>Press <b>Check domain</b> to confirm all four layers.</li>
+        </ol>
+        <p className="hint" style={{ marginTop: 10 }}>
+          Until step 3 the domain serves the default Investoyard brand, and certificate renewal
+          is automatic from then on — but never redirect <code className="mono">/.well-known/acme-challenge/</code>
+          {' '}to HTTPS or renewals will fail silently in about 60 days.
+        </p>
+      </div>
+    </div></div>
+  );
+}
+
 function ProfileView({ profile }: { profile: Record<string, any> }) {
   const individual = isIndividual(profile.applicantType);
   return (
@@ -266,6 +458,8 @@ function PartnerProfilePage() {
           </Field>
         </div>
       </div></div>
+
+      <BrandingPanel slug={slug} tenant={data} onSaved={load} />
 
       <ApiKeysPanel tenantId={data.id} />
 

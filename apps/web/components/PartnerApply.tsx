@@ -63,7 +63,22 @@ export function PartnerApply() {
   const submit = async () => {
     const problems: string[] = [];
     if (!f.legalName.trim()) problems.push('Business name');
-    if (!f.contactName.trim()) problems.push('Contact name');
+    /*
+     * A DIGITS-ONLY CONTACT NAME IS REJECTED, because this field becomes a
+     * LOGIN IDENTITY. On approval it is written to User.name, which is what
+     * the dashboard and the profile menu greet the partner with — one real
+     * application arrived with a mobile number here and that partner was shown
+     * "Welcome back, 63XXXXXX12" on every visit, with no screen anywhere to
+     * correct it. The approver can also override it now, but catching it at
+     * the source costs nothing.
+     *
+     * Deliberately NARROW: digits, spaces, +, - and brackets only. A real name
+     * can legitimately contain a digit (a generational suffix, a numbered
+     * firm), so anything containing a LETTER is accepted.
+     */
+    const nameRaw = f.contactName.trim();
+    if (!nameRaw) problems.push('Contact name');
+    else if (!/[A-Za-z]/.test(nameRaw)) problems.push('Contact name (a person\u2019s name, not a number)');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) problems.push('Email');
     if (f.pan && !PAN_RE.test(f.pan.toUpperCase())) problems.push('PAN (ABCDE1234F)');
     if (problems.length) { setErr(`Please check: ${problems.join(', ')}`); return; }

@@ -9,6 +9,27 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { EmailService } from '../../common/email.service';
 import { ProviderConfigModule } from '../../common/provider-config.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+
+/**
+ * The apply form and the empanelment profile use DIFFERENT vocabularies for the
+ * same fact, and nothing bridged them — which is why an approved partner's
+ * tenant page showed almost nothing it had been told at onboarding.
+ *
+ * The apply form offers Individual / Proprietorship / Partnership / LLP /
+ * Private Limited / Public Limited; the empanelment schema that actually
+ * RENDERS the profile offers Individual / Sole Proprietor / Partnership / LLP /
+ * Company / HUF / Trust / Other, and decides individual-vs-entity field
+ * visibility from it. Writing the raw form value through would leave the select
+ * on the edit screen with no matching option.
+ */
+const APPLICANT_TYPE: Record<string, string> = {
+  'Individual': 'Individual',
+  'Proprietorship': 'Sole Proprietor',
+  'Partnership': 'Partnership',
+  'LLP': 'LLP',
+  'Private Limited': 'Company',
+  'Public Limited': 'Company',
+};
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { tenantContext } from '../../common/tenant-context';
@@ -169,12 +190,13 @@ export class PartnerOnboardingService {
     return { ok: true };
   }
 
+
   /**
    * Approve → create the tenant through the normal path, then email an
    * activation link. The link is ALSO returned so the operator can send it
    * manually when SMTP isn't configured (dev fallback logs instead of sending).
    */
-  async approve(id: string, reviewerId: string, opts: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) {
+  async approve(id: string, reviewerId: string, opts: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string; adminName?: string }) {
     const app = await this.prisma.partnerApplication.findUnique({ where: { id } });
     if (!app) throw new NotFoundException('Application not found.');
     if (app.status === 'approved') throw new BadRequestException('Already approved.');
@@ -191,14 +213,55 @@ export class PartnerOnboardingService {
 
     const username = `${slug}-admin`.slice(0, 40);
     const tempPassword = randomBytes(12).toString('base64url');
+    /*
+     * THE APPROVER MAY CORRECT THE CONTACT NAME, because it becomes a LOGIN
+     * IDENTITY and the applicant typed it. One real application arrived with a
+     * mobile number in the contact-name box, which sailed through approval and
+     * greeted that partner as "Welcome back, 63XXXXXX12" on every visit, with
+     * no screen anywhere to fix it. The apply form now rejects a digits-only
+     * name, but this is the backstop for everything else a free-text box
+     * attracts.
+     */
+    const adminName = (opts.adminName ?? '').trim() || app.contactName;
+
     const created = await this.admin.registerTenant(reviewerId, {
       kind, name: app.legalName, slug, parentSlug: opts.parentSlug,
-      adminName: app.contactName, adminUsername: username, adminPassword: tempPassword,
+      adminName, adminUsername: username, adminPassword: tempPassword,
+      /*
+       * KEYED TO THE EMPANELMENT SCHEMA, not to the apply form's own names.
+       * The tenant page renders a profile by walking that schema and reading
+       * profile[field.key], so a value stored under any other name is kept and
+       * never shown — which is what happened to entity type, city, state and
+       * the SEBI registration, while PAN and the contact person were not
+       * carried across at all.
+       *
+       * The PAN stored here is the MASKED form. The full value stays in the
+       * vault behind panTokenRef, which travels in the application block below so a
+       * screen can resolve it the same admin-only way the review panel does —
+       * a clear PAN must not sit in an unencrypted JSON column.
+       */
       profile: {
         source: 'self-onboarding', applicationId: app.id,
-        entityType: app.entityType, gstin: app.gstin, city: app.city, state: app.state,
-        sebiRegNo: app.sebiRegNo, arn: app.arn, contactEmail: app.email, contactMobile: app.mobile,
+        applicantType: (app.entityType && APPLICANT_TYPE[app.entityType]) || (app.entityType ? 'Other' : undefined),
+        entityName: app.legalName,
+        pan: app.panMasked ?? undefined,
+        gstin: app.gstin ?? undefined,
+        corrCity: app.city ?? undefined,
+        corrState: app.state ?? undefined,
+        sebiRegistration: app.sebiRegNo ?? undefined,
+        arn: app.arn ?? undefined,
+        contactPerson: adminName,
+        contactMobile: app.mobile,
+        contactEmail: app.email,
         documents: app.documents ?? [],
+        /* The submission verbatim, for provenance — the operator can always
+           see what was actually typed, whatever we mapped it onto. */
+        application: {
+          entityType: app.entityType, legalName: app.legalName, contactName: app.contactName,
+          city: app.city, state: app.state, sebiRegNo: app.sebiRegNo, arn: app.arn,
+          gstin: app.gstin, panMasked: app.panMasked, panTokenRef: app.panTokenRef,
+          email: app.email, mobile: app.mobile, notes: app.notes,
+        },
       },
     });
 
@@ -403,7 +466,7 @@ export class PartnerApplicationsController {
 
   @Post(':id/approve')
   @RequirePermissions('tenants.applications.review')
-  approve(@Req() req: any, @Param('id') id: string, @Body() body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) {
+  approve(@Req() req: any, @Param('id') id: string, @Body() body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string; adminName?: string }) {
     return this.svc.approve(id, req.user.sub, body ?? {});
   }
 

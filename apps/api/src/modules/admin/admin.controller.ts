@@ -306,6 +306,16 @@ export class AdminController {
     return this.admin.tenantDetail(req.user.sub, slug);
   }
 
+  /**
+   * Is this partner's custom domain actually working, and if not, which layer?
+   * Superadmin only: it makes an outbound request from this server.
+   */
+  @Get('tenants/:slug/domain-check')
+  @RequirePermissions('tenants.manage')
+  checkTenantDomain(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.checkTenantDomain(req.user.sub, slug);
+  }
+
   /** Download the partner's pre-filled Business Associate Empanelment Form (PDF). */
   @Get('tenants/:slug/empanelment.pdf')
   @RequirePermissions('tenants.manage')

@@ -36,6 +36,8 @@ export default function PartnerApplicationsPage() {
   const [kind, setKind] = useState('partner');
   const [slug, setSlug] = useState('');
   const [parentSlug, setParentSlug] = useState('');
+  /* Seeded from the application, editable before it becomes a login identity. */
+  const [adminName, setAdminName] = useState('');
   const [parents, setParents] = useState<api.PartnerRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export default function PartnerApplicationsPage() {
     setErr(null); setResult(null); setNote('');
     try {
       const d = await api.fetchPartnerApplication(id);
-      setOpen(d); setKind(d.kind); setSlug(''); setParentSlug('');
+      setOpen(d); setKind(d.kind); setSlug(''); setParentSlug(''); setAdminName(d.contactName ?? '');
     } catch (e: any) { setErr(String(e?.message ?? e)); }
   };
 
@@ -71,7 +73,7 @@ export default function PartnerApplicationsPage() {
     if (!open) return;
     if (kind === 'branch' && !parentSlug) { setErr('Choose the parent partner for this branch.'); return; }
     const r = await act(
-      () => api.approvePartnerApplication(open.id, { kind, slug: slug || undefined, parentSlug: kind === 'branch' ? parentSlug : undefined }),
+      () => api.approvePartnerApplication(open.id, { kind, slug: slug || undefined, parentSlug: kind === 'branch' ? parentSlug : undefined, adminName: adminName.trim() || undefined }),
       'Partner approved');
     if (r) { setResult(r); setOpen({ ...open, status: 'approved' }); }
   };
@@ -239,6 +241,15 @@ export default function PartnerApplicationsPage() {
                     <option value="whitelabel">White-label</option>
                     <option value="branch">Branch</option>
                   </select>
+                </div>
+                {/* THE ADMIN NAME IS A LOGIN IDENTITY, so it is editable here
+                    rather than taken on trust from a free-text box the
+                    applicant filled. It greets them on every visit and there is
+                    no screen to change it afterwards. */}
+                <div className="field" style={{ width: 220 }}>
+                  <label>Admin name <span className="hint">(greets them on sign-in)</span></label>
+                  <input className="input" value={adminName} placeholder="Contact person"
+                    onChange={(e) => setAdminName(e.target.value)} />
                 </div>
                 <div className="field" style={{ width: 220 }}>
                   <label>Tenant slug</label>

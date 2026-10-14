@@ -287,6 +287,17 @@ export const updateTenant = (slug: string, body: Partial<{
 }>) =>
   authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+/** Which layer of a partner's custom domain is not done yet. Superadmin only. */
+export interface DomainCheck {
+  host: string | null;
+  state: 'unset' | 'refused' | 'no-dns' | 'no-binding' | 'other-site' | 'no-tls' | 'live';
+  detail: string;
+  http?: { status?: number; error?: string };
+  https?: { status?: number; error?: string };
+}
+export const checkTenantDomain = (slug: string) =>
+  authed<DomainCheck>(`${API}/admin/tenants/${slug}/domain-check`, { method: 'GET' });
+
 /* -------------------------------------------------- admin: WhatsApp chatbot flow (Level 1) */
 export type BotAction = 'open' | 'upcoming' | 'listed' | 'gmp' | 'text';
 export interface BotMenuItem { key: string; label: string; keywords: string[]; action: BotAction; text?: string }
@@ -853,7 +864,7 @@ export const fetchPartnerApplications = (status = 'submitted') =>
   authed<PartnerApplicationRow[]>(`${API}/admin/partner-applications?status=${status}`, { method: 'GET' });
 export const fetchPartnerApplication = (id: string) =>
   authed<PartnerApplicationDetail>(`${API}/admin/partner-applications/${id}`, { method: 'GET' });
-export const approvePartnerApplication = (id: string, body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string }) =>
+export const approvePartnerApplication = (id: string, body: { kind?: string; slug?: string; parentSlug?: string; baseUrl?: string; adminName?: string }) =>
   authed<{ ok: boolean; slug: string; code: string | null; username: string; activationLink: string; emailSent: boolean; emailDev: boolean }>(
     `${API}/admin/partner-applications/${id}/approve`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

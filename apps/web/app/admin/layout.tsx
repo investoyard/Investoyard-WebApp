@@ -223,7 +223,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }))
     .filter((n) => (!n.perm || operatorCan(me, n.perm)) && (n.href || (n.children && n.children.length)));
   const roleLabel = me.isSuperAdmin ? 'Super Admin' : (me.memberships[0]?.role ?? 'Operator');
-  const initials = (me.name ?? 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  /*
+   * NEVER RENDER A BLANK NAME. User.name is null on every OTP-created account
+   * (the upsert stores only mobile + tenant), and 13 of 21 users carry no name
+   * today. The welcome line already degraded to "there", but the profile menu
+   * rendered me.name raw and would have shown an empty space beside the
+   * avatar. Fall back to the username, which every operator login has.
+   */
+  const displayName = me.name?.trim() || me.username || 'Operator';
+  const initials = displayName.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || 'U';
   const signOut = () => { clearOperator(); router.replace('/admin/login'); };
 
   return (
@@ -330,7 +338,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <button className="profile-btn" onClick={() => setMenuOpen((o) => !o)}>
               <div className="admin-avatar">{initials}</div>
               <div className="pm-id">
-                <span className="pm-name">{me.name}</span>
+                <span className="pm-name">{displayName}</span>
                 <span className="pm-role">{roleLabel}</span>
               </div>
               <Icon name="chevron-down" size={15} style={{ color: 'var(--text-faint)' }} />
@@ -340,7 +348,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div className="pm-head">
                   <div className="admin-avatar">{initials}</div>
                   <div style={{ minWidth: 0 }}>
-                    <div className="pm-name">{me.name}</div>
+                    <div className="pm-name">{displayName}</div>
                     <div className="muted" style={{ fontSize: 12 }}>{me.homeTenant.name}</div>
                   </div>
                 </div>
