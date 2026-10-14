@@ -1,0 +1,488 @@
+/*
+ * /platform — screen styles, then print rules that re-render the SAME markup
+ * as A4. One content source, two presentations; see content.ts.
+ *
+ * THIS IS THE BRAND'S MARKETING LANGUAGE, NOT THE APP'S. Taken from the comps
+ * in D:\Investoyard-Social: a lavender ground rather than white, the indigo
+ * gradient for hero surfaces, GOLD AS A PRIMARY (it is the most-used colour
+ * across those files, not an accent), Plus Jakarta 800 display type set large
+ * and tight, and elevated white cards at a generous radius with a real shadow.
+ * The first version of this page used the app's dense utility register — flat
+ * bordered cards, 12px radius, no shadow, almost no gold — and read as a
+ * documentation page. For a subscription table that register is right; for a
+ * document a broker is meant to be impressed by, it is wrong.
+ *
+ * EVERY CLASS IS `plt-` PREFIXED AND SCOPED UNDER `.plt`. globals.css is one
+ * big global sheet and a bare name has collided four times in this project.
+ * `pf-` was the obvious prefix here and is ALREADY TAKEN (`.pf-sec`, `.pf-n`,
+ * `.pf-row`) — which is exactly the collision that rule exists to catch.
+ */
+
+.plt {
+  --g: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 38%, #2a2052 100%);
+  --ink: #16141f;
+  --dim: #5e5b6e;
+  --line: #e9e7f0;
+  --gold: #ffcb32;
+  --indigo: #3c2e7e;
+  --lav: #f4f3f8;
+  --shadow: 0 10px 28px rgba(28, 22, 60, .10), 0 3px 8px rgba(28, 22, 60, .06);
+  color: var(--ink);
+}
+.plt-cover { display: none; }
+
+/* ── brand lockup ─────────────────────────────────────────────────────── */
+.plt-mark { display: flex; align-items: center; gap: 11px; }
+.plt-mark-sq { width: 20px; height: 20px; border-radius: 6px; background: var(--gold); flex: 0 0 auto; }
+.plt-mark-w {
+  font-family: var(--font-display); font-weight: 800; font-size: 16px;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--indigo);
+}
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+.plt-hero {
+  background: var(--g); border-radius: 26px; padding: 44px 46px 46px; color: #fff;
+  position: relative; overflow: hidden; margin-bottom: 18px;
+}
+/* One ornament: a soft gold bloom off the top-right. The comps use gold as a
+   solid block; at this size a solid block fights the headline, so it is a
+   light source instead. */
+.plt-hero::after {
+  content: ''; position: absolute; top: -170px; right: -140px; width: 440px; height: 440px;
+  border-radius: 50%; background: radial-gradient(circle, rgba(255,203,50,.30) 0%, rgba(255,203,50,0) 68%);
+}
+.plt-hero > * { position: relative; z-index: 1; }
+.plt-hero .plt-mark-w { color: #fff; }
+.plt-hero-kicker {
+  margin-top: 30px; font-size: 11.5px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--gold);
+}
+.plt-hero h1 {
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(34px, 5.4vw, 60px);
+  line-height: 1.03; letter-spacing: -.035em; margin: 14px 0 0; white-space: pre-line; color: #fff;
+}
+.plt-hero-lede {
+  margin: 18px 0 0; max-width: 60ch; font-size: 16.5px; line-height: 1.6; color: rgba(255,255,255,.80);
+}
+.plt-actions { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 28px; }
+.plt-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 19px; border-radius: 11px;
+  font-size: 14.5px; font-weight: 650; text-decoration: none; border: 1px solid transparent;
+}
+.plt-btn-gold { background: var(--gold); color: #2a2052; }
+.plt-btn-gold:hover { background: #ffd863; }
+.plt-btn-ghost { border-color: rgba(255,255,255,.34); color: #fff; }
+.plt-btn-ghost:hover { background: rgba(255,255,255,.10); }
+
+/* ── stat band ────────────────────────────────────────────────────────── */
+.plt-band {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 46px;
+}
+.plt-tile {
+  background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 20px 20px 18px;
+  box-shadow: var(--shadow); min-width: 0;
+}
+.plt-tile-v {
+  font-family: var(--font-display); font-weight: 800; font-size: 32px; letter-spacing: -.03em;
+  line-height: 1; color: var(--indigo); font-variant-numeric: tabular-nums;
+}
+.plt-tile-l { margin-top: 9px; font-size: 13.5px; font-weight: 650; }
+.plt-tile-s { margin-top: 2px; font-size: 12.5px; color: var(--dim); }
+
+/* ── sections ─────────────────────────────────────────────────────────── */
+.plt-sec { margin-bottom: 52px; }
+.plt-eyebrow {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--indigo); margin-bottom: 12px;
+}
+.plt-h2 {
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 3.4vw, 36px);
+  line-height: 1.08; letter-spacing: -.03em; margin: 0 0 14px; max-width: 22ch; text-wrap: balance;
+}
+.plt-h3 { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: -.02em; margin: 0 0 10px; }
+.plt-body { margin: 0 0 13px; max-width: 68ch; font-size: 15px; line-height: 1.66; color: var(--dim); }
+.plt-body-lead { font-size: 16.5px; margin-bottom: 26px; }
+
+/* Section opener: an oversized numeral doing the work a rule would do. */
+.plt-open {
+  display: flex; gap: 22px; align-items: flex-start; padding-bottom: 26px; margin-bottom: 26px;
+  border-bottom: 1px solid var(--line);
+}
+.plt-open-n {
+  font-family: var(--font-display); font-weight: 800; font-size: 54px; line-height: .86;
+  letter-spacing: -.045em; color: var(--line); flex: 0 0 auto;
+}
+.plt-open h2 {
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(24px, 3.2vw, 33px);
+  line-height: 1.08; letter-spacing: -.03em; margin: 0 0 8px;
+}
+.plt-open p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--dim); max-width: 62ch; }
+
+/* ── the stack ────────────────────────────────────────────────────────── */
+.plt-stack { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.plt-stack li {
+  display: grid; grid-template-columns: 44px 128px 1fr; gap: 18px; align-items: center;
+  background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--gold);
+  border-radius: 14px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(28,22,60,.06);
+}
+.plt-stack-n {
+  font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--indigo);
+  font-variant-numeric: tabular-nums;
+}
+.plt-stack-k {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+}
+.plt-stack-t { font-weight: 650; font-size: 15px; grid-column: 3; }
+.plt-stack-d { grid-column: 3; font-size: 13.5px; color: var(--dim); line-height: 1.5; margin-top: 2px; }
+
+/* ── split: prose beside the live panel ───────────────────────────────── */
+.plt-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 30px; align-items: start; margin-bottom: 26px; }
+
+/* ── the real data panel ──────────────────────────────────────────────── */
+.plt-snap {
+  margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.plt-snap-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 15px 18px; background: #faf9fc; border-bottom: 1px solid var(--line);
+}
+.plt-snap-name { font-weight: 700; font-size: 14.5px; }
+.plt-snap-meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.plt-live {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: #0c6b41; background: #e6f4ec;
+  border-radius: 999px; padding: 4px 10px;
+}
+.plt-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #12925a; }
+.plt-snap-tbl { width: 100%; border-collapse: collapse; }
+.plt-snap-tbl th {
+  text-align: right; padding: 10px 18px; font-size: 10px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line);
+}
+.plt-snap-tbl th:first-child { text-align: left; }
+.plt-snap-tbl td {
+  padding: 10px 18px; font-size: 13.5px; text-align: right; border-bottom: 1px solid #f2f1f7;
+  font-variant-numeric: tabular-nums;
+}
+.plt-snap-tbl td:first-child { text-align: left; font-variant-numeric: normal; }
+.plt-snap-tbl tfoot td { border-bottom: 0; background: #faf9fc; font-weight: 700; }
+.plt-x { font-weight: 700; }
+.plt-x-hot { color: #12925a; }
+.plt-x-mid { color: var(--ink); }
+.plt-x-low { color: var(--dim); }
+.plt-snap-foot { padding: 11px 18px; font-size: 11.5px; color: var(--dim); background: #faf9fc; border-top: 1px solid var(--line); }
+
+/* ── feature cards ────────────────────────────────────────────────────── */
+.plt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.plt-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.plt-card {
+  background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 20px 21px 19px;
+  box-shadow: var(--shadow); min-width: 0;
+}
+.plt-ic {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+  border-radius: 10px; background: #eeebfa; color: var(--indigo); margin-bottom: 12px;
+}
+.plt-card b { display: block; font-size: 15px; letter-spacing: -.012em; margin-bottom: 6px; }
+.plt-card p { margin: 0; font-size: 13.6px; line-height: 1.6; color: var(--dim); }
+
+/* ── dark section ─────────────────────────────────────────────────────── */
+.plt-dark { background: var(--g); border-radius: 26px; padding: 40px 42px 42px; color: #fff; }
+.plt-dark .plt-open { border-bottom-color: rgba(255,255,255,.16); }
+.plt-dark .plt-open-n { color: rgba(255,255,255,.22); }
+.plt-dark .plt-open h2 { color: #fff; }
+.plt-dark .plt-open p, .plt-dark .plt-card p { color: rgba(255,255,255,.74); }
+.plt-dark .plt-eyebrow { color: var(--gold); }
+.plt-dark .plt-card {
+  background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); box-shadow: none;
+}
+.plt-dark .plt-card b { color: #fff; }
+.plt-dark .plt-ic { background: rgba(255,203,50,.16); color: var(--gold); }
+
+/* ── tinted section ───────────────────────────────────────────────────── */
+.plt-tint { background: var(--lav); border-radius: 26px; padding: 40px 42px 42px; }
+.plt-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 30px; }
+.plt-check { display: flex; gap: 12px; align-items: flex-start; }
+.plt-check-ic {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--indigo); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.plt-check b { display: block; font-size: 14.5px; margin-bottom: 3px; }
+.plt-check p { margin: 0; font-size: 13.4px; line-height: 1.55; color: var(--dim); }
+
+/* ── steps + close ────────────────────────────────────────────────────── */
+.plt-steps { list-style: none; margin: 0 0 26px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.plt-steps li { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 19px 20px; box-shadow: var(--shadow); }
+.plt-step-n {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--indigo); color: #fff; font-size: 13px; font-weight: 700;
+  margin-bottom: 11px;
+}
+.plt-steps b { display: block; font-size: 14.8px; margin-bottom: 4px; }
+.plt-steps p { margin: 0; font-size: 13.4px; line-height: 1.55; color: var(--dim); }
+
+.plt-cta {
+  display: flex; gap: 22px; align-items: center; flex-wrap: wrap; justify-content: space-between;
+  background: var(--g); border-radius: 22px; padding: 30px 34px; color: #fff;
+}
+.plt-cta h3 { font-family: var(--font-display); font-weight: 800; font-size: 21px; letter-spacing: -.02em; margin: 0 0 5px; color: #fff; }
+.plt-cta p { margin: 0; font-size: 14.5px; color: rgba(255,255,255,.78); }
+
+/* ── footer ───────────────────────────────────────────────────────────── */
+.plt-foot { border-top: 1px solid var(--line); padding-top: 22px; }
+.plt-foot .plt-mark { margin-bottom: 13px; }
+.plt-foot p { margin: 0; font-size: 12.2px; line-height: 1.62; color: #76738a; max-width: 82ch; }
+.plt-foot-meta { margin-top: 10px !important; font-variant-numeric: tabular-nums; }
+
+/* ── narrow ───────────────────────────────────────────────────────────── */
+@media screen and (max-width: 1000px) {
+  .plt-split { grid-template-columns: minmax(0, 1fr); }
+  .plt-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plt-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media screen and (max-width: 760px) {
+  .plt-hero { padding: 30px 24px 32px; border-radius: 20px; }
+  .plt-dark, .plt-tint { padding: 28px 22px 30px; border-radius: 20px; }
+  .plt-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plt-grid, .plt-grid-3, .plt-checks, .plt-steps { grid-template-columns: minmax(0, 1fr); }
+  .plt-open { gap: 14px; }
+  .plt-open-n { font-size: 38px; }
+  .plt-stack li { grid-template-columns: 34px 1fr; gap: 10px; }
+  .plt-stack-k { grid-column: 2; }
+  .plt-stack-t, .plt-stack-d { grid-column: 2; }
+}
+
+/*
+ * ── PRINT ────────────────────────────────────────────────────────────────
+ *  1. STRIP THE SITE CHROME. ChromeWrapper wraps children in
+ *     `<main class="container">` with a 1160px cap and 96px of bottom padding,
+ *     under a sticky `.header` and above `.footer`. Printed as-is you get the
+ *     nav bar on page one and a hole on every page.
+ *  2. FORCE LIGHT, EXPLICITLY. The site redefines its tokens under
+ *     `prefers-color-scheme: dark`, so a partner printing from a dark-themed
+ *     browser would get white text on white paper. Values are HARDCODED here
+ *     for that reason, and `print-color-adjust: exact` keeps the gradient,
+ *     the gold and the tints — without it the cover prints as a white page.
+ *  3. NEVER SPLIT A CARD. `break-inside: avoid` everywhere, so a feature's
+ *     heading cannot sit alone at the foot of a page.
+ */
+@media print {
+  .header, .footer, .install-banner, .plt-hero, .plt-actions { display: none !important; }
+
+  @page { size: A4; margin: 14mm 15mm; }
+  /* THE COVER IS A FRAMED PANEL, NOT A BLEED, and that is deliberate on both
+     counts. A full bleed needs `@page :first { margin: 0 }`, whose support is
+     not something to bet a deliverable on: when it is ignored a 297mm cover
+     overflows its 269mm content box and pushes 28mm of itself onto page two —
+     which is exactly what put two stack rows on a page of their own. And a
+     desktop printer cannot print to the paper edge regardless, so a partner
+     printing this would have had the cover clipped or scaled to fit. A panel
+     inside the normal margins renders identically everywhere. */
+
+  html, body {
+    background: #fff !important; color: #16141f !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  main.container { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+
+  /*
+   * EVERY GRID IS RE-ASSERTED HERE, and this is not belt-and-braces — it is
+   * the single biggest fault this document had.
+   *
+   * Chrome lays print out at the PAGE width, about 680px of CSS pixels for A4
+   * with these margins. That is below both narrow breakpoints, so the phone
+   * rules were firing INSIDE THE PDF: the stat band rendered 2x2, and the
+   * stack rows put their label, title and description in one 30mm column
+   * where every line wrapped — which is why a row measured 30mm instead of
+   * 14mm, why sections overflowed by a row, and why two pages ended up
+   * holding a single card. The breakpoints are now `@media screen and (...)`,
+   * and these declarations make the print layout explicit so a future
+   * breakpoint cannot reach in here again.
+   */
+  /* HIDDEN IN PRINT: these four figures are on the cover now, and a reader
+     meeting them again on page two reads it as a document that repeats
+     itself. The screen keeps its band, which has no cover above it. */
+  .plt-band { display: none !important; }
+  .plt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .plt-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .plt-checks { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .plt-steps { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .plt-stack li { grid-template-columns: 12mm 30mm 1fr !important; align-items: baseline;
+    border-left-width: 4px !important; }
+  .plt-stack-k { grid-column: 2 !important; }
+  .plt-stack-t, .plt-stack-d { grid-column: 3 !important; }
+  .plt { font-size: 10.2pt; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── cover ── */
+  .plt-cover {
+    display: flex !important; flex-direction: column; justify-content: space-between;
+    height: 267mm; padding: 15mm 16mm 13mm; box-sizing: border-box; border-radius: 4mm;
+    position: relative; overflow: hidden;
+    background: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 38%, #2a2052 100%) !important;
+    color: #fff; break-after: page; page-break-after: always;
+  }
+  .plt-cover .plt-mark-w { color: #fff; font-size: 12pt; }
+  .plt-cover .plt-mark-sq { background: #ffcb32 !important; width: 16px; height: 16px; }
+  .plt-cover > * { position: relative; z-index: 1; }
+
+  /* A gold bloom off the top-right, the same light source the screen hero
+     uses. It was defined ONLY on .plt-hero, which is display:none in print —
+     so the printed cover had no ornament at all and read as a flat box. */
+  .plt-cover::after {
+    content: ''; position: absolute; top: -70mm; right: -50mm; width: 170mm; height: 170mm;
+    border-radius: 50%; z-index: 0;
+    background: radial-gradient(circle, rgba(255,203,50,.26) 0%, rgba(255,203,50,0) 68%);
+  }
+
+  /* The candlestick motif sits across the upper third — the area that was
+     dead space. Low contrast on purpose: it is a texture, not a chart. */
+  .plt-cover-art {
+    position: absolute; top: 40mm; left: 0; right: 0; width: 100%; height: 62mm;
+    z-index: 0; opacity: .5;
+  }
+  .plt-cover-art .plt-c-gold rect { fill: rgba(255,203,50,.55); }
+  .plt-cover-art .plt-c-gold line { stroke: rgba(255,203,50,.55); }
+  .plt-cover-art .plt-c-pale rect { fill: rgba(255,255,255,.16); }
+  .plt-cover-art .plt-c-pale line { stroke: rgba(255,255,255,.16); }
+
+  /* The title block is anchored, not centred. The old cover used
+     space-between across three children, which pushed the text to the middle
+     and left two large voids — the composition read as accidental. */
+  .plt-cover-mid { margin-top: auto; padding-bottom: 10mm; }
+  .plt-cover-rule { display: block; width: 46mm; height: 3px; background: #ffcb32; margin: 7mm 0 6mm; }
+
+  .plt-cover-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm;
+    border-top: 1px solid rgba(255,255,255,.20); padding-top: 6mm; margin-bottom: 8mm;
+  }
+  .plt-cover-stat-v {
+    font-family: var(--font-display); font-weight: 800; font-size: 17pt; line-height: 1;
+    color: #ffcb32; letter-spacing: -.02em;
+  }
+  .plt-cover-stat-l { margin-top: 2mm; font-size: 8pt; line-height: 1.3; color: rgba(255,255,255,.76); }
+  .plt-cover-kicker {
+    font-size: 9pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: #ffcb32; margin-bottom: 7mm;
+  }
+  .plt-cover h1 {
+    font-family: var(--font-display); font-weight: 800; font-size: 37pt; line-height: 1.02;
+    letter-spacing: -.035em; margin: 0; color: #fff; white-space: pre-line;
+  }
+  .plt-cover p { margin: 0; font-size: 10.5pt; line-height: 1.52; color: rgba(255,255,255,.80); max-width: 128mm; }
+  .plt-cover-foot {
+    display: flex; justify-content: space-between; gap: 10mm; font-size: 8.5pt;
+    color: rgba(255,255,255,.66); border-top: 1px solid rgba(255,255,255,.22); padding-top: 4mm;
+  }
+
+  /* ── body ── */
+  .plt-band { gap: 3mm; margin-bottom: 8mm; }
+  .plt-tile { padding: 2.8mm; border-radius: 3mm; box-shadow: none !important; border-color: #e9e7f0 !important; break-inside: avoid; }
+  .plt-tile-v { font-size: 16pt; color: #3c2e7e; }
+  .plt-tile-l { font-size: 9pt; margin-top: 2mm; }
+  .plt-tile-s { font-size: 8pt; color: #5e5b6e; }
+
+  .plt-sec { margin-bottom: 6mm; }
+  /* `.plt-break` NO LONGER FORCES A PAGE. Measured with a break per section:
+     page 3 used 94mm of 297 and page 5 used 143mm, because a section's
+     natural height almost never matches a sheet — so the document was a
+     third white space. Flowing instead, with cards unsplittable and each
+     opener kept with what follows, fills every page. The class stays in the
+     markup as the hook for re-introducing a break if one is ever wanted. */
+  .plt-break { break-before: auto; }
+  /* An opener must never be the last thing on a page. */
+  .plt-open { break-after: avoid; page-break-after: avoid; break-inside: avoid; }
+  .plt-sec > .plt-eyebrow { break-after: avoid; page-break-after: avoid; }
+  .plt-stack, .plt-checks, .plt-steps { break-inside: auto; }
+  .plt-stack li { break-inside: avoid; }
+  /* NEVER `break-inside: avoid` A FULL-WIDTH PANEL. Chrome satisfies it by
+     overflowing and CLIPPING, so the compliance panel printed 3 of its 8
+     rules into a half-empty tinted box and the closing panel printed as an
+     empty purple bar. Losing content beats a background band at the fold by
+     no measure at all. Only units that always fit a page keep the rule. */
+  .plt-dark, .plt-tint { break-inside: auto; }
+  .plt-cta { break-inside: avoid; }  /* short enough to always fit */
+  .plt-eyebrow { font-size: 8.5pt; color: #3c2e7e; margin-bottom: 2mm; }
+  .plt-h2 { font-size: 17pt; margin-bottom: 2.5mm; break-after: avoid; page-break-after: avoid; max-width: none; }
+  .plt-h3 { font-size: 12pt; }
+  .plt-body { font-size: 9.6pt; line-height: 1.52; color: #43485a; max-width: none; margin-bottom: 2.5mm; }
+  .plt-body-lead { font-size: 9.8pt; margin-bottom: 4mm; }
+
+  .plt-open { padding-bottom: 3mm; margin-bottom: 4mm; gap: 5mm; border-bottom-color: #e9e7f0 !important; break-after: avoid; page-break-after: avoid; }
+  .plt-open-n { font-size: 26pt; color: #ddd8ea !important; }
+  .plt-open h2 { font-size: 16.5pt; }
+  .plt-open p { font-size: 9pt; color: #43485a; max-width: none; }
+
+  .plt-stack { gap: 4mm; }
+  .plt-stack li {
+    padding: 6mm 5mm; border-radius: 2.5mm; box-shadow: none !important;
+    border-color: #e9e7f0 !important; border-left: 3px solid #ffcb32 !important; break-inside: avoid;
+    grid-template-columns: 10mm 30mm 1fr; gap: 4mm;
+  }
+  .plt-stack-n { font-size: 14pt; color: #3c2e7e; }
+  .plt-stack-k { font-size: 8pt; }
+  .plt-stack-t { font-size: 12pt; }
+  .plt-stack-d { font-size: 9.4pt; color: #4b5162; margin-top: 1.5mm; }
+
+  .plt-split { grid-template-columns: 1fr 72mm; gap: 7mm; margin-bottom: 6mm; break-inside: avoid; }
+  .plt-snap { box-shadow: none !important; border-color: #e9e7f0 !important; border-radius: 3mm; break-inside: avoid; }
+  .plt-snap-head { padding: 2.6mm 3.4mm; background: #faf9fc !important; border-bottom-color: #e9e7f0 !important; }
+  .plt-snap-name { font-size: 9.6pt; }
+  .plt-snap-meta { font-size: 7.8pt; color: #5e5b6e; }
+  .plt-live { font-size: 7pt; padding: 0.6mm 2mm; background: #e6f4ec !important; color: #0c6b41 !important; }
+  .plt-snap-tbl th { padding: 2mm 3.4mm; font-size: 7pt; border-bottom-color: #e9e7f0 !important; }
+  .plt-snap-tbl td { padding: 1.9mm 3.4mm; font-size: 8.8pt; border-bottom-color: #f2f1f7 !important; }
+  .plt-snap-tbl tfoot td { background: #faf9fc !important; }
+  .plt-x-hot { color: #12925a !important; }
+  .plt-snap-foot { padding: 2mm 3.4mm; font-size: 7.6pt; background: #faf9fc !important; border-top-color: #e9e7f0 !important; }
+
+  .plt-grid { gap: 2.4mm; }
+  .plt-card {
+    padding: 2.6mm 3mm; border-radius: 2.6mm; box-shadow: none !important;
+    border-color: #e9e7f0 !important; break-inside: avoid; page-break-inside: avoid;
+  }
+  .plt-ic { width: 17px; height: 17px; border-radius: 5px; margin-bottom: 1.3mm; background: #eeebfa !important; color: #3c2e7e !important; }
+  .plt-ic svg { width: 10px; height: 10px; }
+  .plt-card b { font-size: 9.1pt; }
+  .plt-card p { font-size: 8.1pt; line-height: 1.36; color: #4b5162; }
+
+  .plt-dark {
+    background: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 38%, #2a2052 100%) !important;
+    padding: 6mm; border-radius: 4mm; color: #fff !important;
+  }
+  .plt-dark .plt-open-n { color: rgba(255,255,255,.26) !important; }
+  .plt-dark .plt-open h2, .plt-dark .plt-card b { color: #fff !important; }
+  .plt-dark .plt-open p, .plt-dark .plt-card p { color: rgba(255,255,255,.76) !important; }
+  .plt-dark .plt-card { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.16) !important; }
+  .plt-dark .plt-ic { background: rgba(255,203,50,.18) !important; color: #ffcb32 !important; }
+  .plt-dark .plt-eyebrow { color: #ffcb32 !important; }
+
+  .plt-tint { background: #f4f3f8 !important; padding: 6mm; border-radius: 4mm; }
+  .plt-checks { gap: 3mm 7mm; }
+  .plt-check { break-inside: avoid; }
+  .plt-check-ic { width: 16px; height: 16px; background: #3c2e7e !important; color: #fff !important; }
+  .plt-check-ic svg { width: 10px; height: 10px; }
+  .plt-check b { font-size: 9.4pt; }
+  .plt-check p { font-size: 8.4pt; line-height: 1.42; color: #4b5162; }
+
+  .plt-steps { gap: 3mm; margin-bottom: 6mm; }
+  .plt-steps li { padding: 3.2mm; border-radius: 3mm; box-shadow: none !important; border-color: #e9e7f0 !important; break-inside: avoid; }
+  .plt-step-n { width: 20px; height: 20px; font-size: 9pt; background: #3c2e7e !important; color: #fff !important; margin-bottom: 2mm; }
+  .plt-steps b { font-size: 9.6pt; }
+  .plt-steps p { font-size: 8.4pt; color: #4b5162; }
+
+  .plt-cta {
+    background: linear-gradient(150deg, #4a3a95 0%, #3c2e7e 38%, #2a2052 100%) !important;
+    padding: 6mm 7mm; border-radius: 4mm; break-inside: avoid;
+  }
+  .plt-cta h3 { font-size: 13pt; color: #fff !important; }
+  .plt-cta p { font-size: 9.4pt; color: rgba(255,255,255,.80) !important; }
+  .plt-cta .plt-btn { display: none !important; }
+
+  .plt-foot { border-top-color: #e9e7f0 !important; padding-top: 4mm; margin-top: 6mm; break-inside: avoid; }
+  .plt-foot .plt-mark-w { font-size: 10pt; }
+  .plt-foot p { font-size: 7.6pt; line-height: 1.48; color: #6c7080; max-width: none; }
+
+  a { text-decoration: none !important; color: inherit !important; }
+}

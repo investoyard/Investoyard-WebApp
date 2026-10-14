@@ -1,0 +1,78 @@
+/*
+ * /brokers — ONLY what is unique to this document. The visual system comes
+ * from ../platform/platform.css, imported first, so the two cannot drift.
+ *
+ * `brk-` prefix, scoped under `.brk`. `pf-` is taken in globals.css and `plt-`
+ * belongs to the platform document; grep before adding a third.
+ */
+
+.brk-data { display: flex; flex-direction: column; gap: 10px; }
+
+/* A row, not a card grid. The four tiers have to be COMPARABLE down a column —
+   a reader is scanning for "which of these is locked", and a two-up grid makes
+   that a zigzag. */
+.brk-row {
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 15px 18px 14px; box-shadow: 0 1px 3px rgba(28, 22, 60, .06);
+}
+.brk-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 5px; }
+.brk-row-head b { font-size: 15px; letter-spacing: -.012em; }
+.brk-row p { margin: 0; font-size: 13.5px; line-height: 1.58; color: var(--dim); }
+.brk-note { margin-top: 6px !important; font-size: 12.4px !important; color: #7a7788 !important; }
+
+.brk-tier {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+}
+/* Semantic colour is reserved for financial signals on the product surfaces,
+   but this IS a risk ladder and reads as one — green through to red is the
+   whole point of the column. */
+.brk-t-open { background: #e6f4ec; color: #0c6b41; }
+.brk-t-optin { background: #fff8e3; color: #8a6200; }
+.brk-t-locked { background: #fcebe8; color: #a3301f; }
+.brk-t-never { background: #f2f1f7; color: #4b4860; }
+
+.brk-callout {
+  margin-top: 22px; background: var(--lav); border: 1px solid var(--line);
+  border-radius: 16px; padding: 22px 24px;
+}
+.brk-callout-h { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.brk-callout-h svg { color: var(--indigo); }
+.brk-callout-h b { font-size: 15.5px; }
+.brk-callout p { margin: 0; font-size: 14px; line-height: 1.62; color: var(--dim); }
+.brk-checks { margin: 13px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+.brk-checks li { font-size: 13.6px; line-height: 1.55; color: var(--dim); }
+.brk-checks li::marker { color: var(--indigo); font-weight: 700; }
+
+@media screen and (max-width: 760px) {
+  .brk-row-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .brk-callout { padding: 18px; }
+}
+
+@media print {
+  /* The tier badges carry meaning, so they must survive a print that drops
+     backgrounds — each keeps a border as well as a fill. */
+  .brk-data { gap: 2.2mm; }
+  .brk-row {
+    padding: 2.6mm 3.4mm; border-radius: 2.6mm; box-shadow: none !important;
+    border-color: #e9e7f0 !important; break-inside: avoid; page-break-inside: avoid;
+  }
+  .brk-row-head { margin-bottom: 1mm; }
+  .brk-row-head b { font-size: 9.4pt; }
+  .brk-row p { font-size: 8.4pt; line-height: 1.4; color: #4b5162; }
+  .brk-note { font-size: 7.8pt !important; color: #6c7080 !important; margin-top: 1mm !important; }
+  .brk-tier { font-size: 6.8pt; padding: 0.5mm 1.8mm; border: 1px solid currentColor; }
+  .brk-t-open { background: #e6f4ec !important; color: #0c6b41 !important; }
+  .brk-t-optin { background: #fff8e3 !important; color: #8a6200 !important; }
+  .brk-t-locked { background: #fcebe8 !important; color: #a3301f !important; }
+  .brk-t-never { background: #f2f1f7 !important; color: #4b4860 !important; }
+
+  .brk-callout {
+    background: #f4f3f8 !important; border-color: #e9e7f0 !important; padding: 4mm;
+    border-radius: 3mm; margin-top: 5mm; break-inside: avoid;
+  }
+  .brk-callout-h b { font-size: 9.6pt; }
+  .brk-callout p { font-size: 8.6pt; line-height: 1.45; color: #43485a; }
+  .brk-checks { margin-top: 2mm; gap: 1.2mm; padding-left: 5mm; }
+  .brk-checks li { font-size: 8.4pt; line-height: 1.42; color: #4b5162; }
+}
