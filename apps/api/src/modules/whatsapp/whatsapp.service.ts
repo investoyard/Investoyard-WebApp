@@ -176,7 +176,7 @@ export class WhatsappService {
 
   /** {site} → the public website URL. */
   private subst(s: string): string {
-    const site = process.env.PUBLIC_WEB_URL || 'https://newipo.finwave.co';
+    const site = process.env.PUBLIC_WEB_URL || 'https://investoyard.com';
     return (s ?? '').replace(/\{site\}/g, site);
   }
 

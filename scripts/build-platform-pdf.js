@@ -3,7 +3,7 @@
  * Render /platform to apps/web/public/Investoyard-Platform-Overview.pdf.
  *
  *   node scripts/build-platform-pdf.js                      # from the dev server (4300)
- *   node scripts/build-platform-pdf.js https://newipo.finwave.co/platform
+ *   node scripts/build-platform-pdf.js https://investoyard.com/platform
  *
  * THE PDF IS NOT A SECOND DOCUMENT. It is the /platform page printed through
  * the `@media print` rules in platform.css, so the file and the page cannot

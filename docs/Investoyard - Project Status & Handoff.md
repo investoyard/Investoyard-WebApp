@@ -20,7 +20,8 @@ Investoyard is a **B2C IPO information + application platform for India** (Mainb
 operated as an **independent** product that consumes the firm's existing **merchant-banker
 IPO-distribution empanelment** (Axis Capital / Nuvama / JM Financial) as its application rail.
 
-**It is live.** Web at `newipo.finwave.co` (Next.js static export served by IIS), API at
+**It is live.** Web at `investoyard.com` (Next.js static export served by IIS; the former
+`newipo.finwave.co` 301s to it since 2026-10-15), API at
 `newipoapi.finwave.co/api` (NestJS via iisnode), on portable Postgres + Redis — **no Docker**.
 Operating entity: **Safal Capital Services Private Limited**.
 

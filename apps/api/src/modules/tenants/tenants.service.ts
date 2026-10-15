@@ -68,6 +68,10 @@ export class TenantsService {
       brandColor: t.brandColor ?? undefined,
       goldColor: t.goldColor ?? undefined,
       logoUrl: t.logoUrl ?? undefined,
+      /* One more short string on the registry every page already fetches, so
+         the footer still renders on the FIRST paint with no second request —
+         the same reasoning that put identity and contact here. */
+      footerLogoUrl: t.footerLogoUrl ?? undefined,
       flags: await this.settings.publicFlags(t.id),
       /*
        * WHO OPERATES THIS SITE, so a white-label domain stops publishing OURS.

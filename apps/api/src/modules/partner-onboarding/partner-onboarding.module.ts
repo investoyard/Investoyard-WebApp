@@ -276,7 +276,7 @@ export class PartnerOnboardingService {
       },
     });
 
-    const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://newipo.finwave.co').replace(/\/$/, '');
+    const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://investoyard.com').replace(/\/$/, '');
     const link = `${base}/partner/activate?token=${token}`;
 
     // Look up the parent's display name if this is a branch, so the email
@@ -327,7 +327,7 @@ export class PartnerOnboardingService {
       data: { inviteToken: token, inviteExpires: expires },
     });
 
-    const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://newipo.finwave.co').replace(/\/$/, '');
+    const base = (opts.baseUrl || process.env.WEB_BASE_URL || 'https://investoyard.com').replace(/\/$/, '');
     const link = `${base}/partner/activate?token=${token}`;
 
     // Recover the username + kind + parent name so the resend email reads

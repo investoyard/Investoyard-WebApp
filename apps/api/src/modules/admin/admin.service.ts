@@ -1,5 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { Resolver } from 'node:dns';
+import { networkInterfaces } from 'node:os';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { hashPassword } from '../../common/password';
@@ -37,15 +41,28 @@ import {
  * window.location.host, which is a bare lowercase host and nothing else.
  *
  * REFUSING OUR OWN HOSTS IS THE SECURITY-RELEVANT PART. Without it a tenant
- * could be pointed at newipo.finwave.co, and since the resolver picks the
+ * could be pointed at investoyard.com, and since the resolver picks the
  * tenant whose customDomain matches the host, that tenant's branding and
  * feature flags would take over the main site for every visitor.
  */
 const OUR_HOSTS = new Set([
-  'newipo.finwave.co', 'www.newipo.finwave.co',
-  'newipoapi.finwave.co', 'investoyard.com', 'www.investoyard.com',
+  'investoyard.com', 'www.investoyard.com',
+  // Reserved rather than live: the API has not moved here, and the point of
+  // this list is that a tenant must never be able to CLAIM one of our hosts.
+  'api.investoyard.com',
+  // The API host. OURS, and deliberately still here.
+  'newipoapi.finwave.co',
   'localhost',
 ]);
+
+/* newipo.finwave.co IS NOT ON THAT LIST, AND THAT IS DELIBERATE (2026-10-15).
+   It was the main site's host until the move to investoyard.com, and it was
+   briefly listed here as "still ours" -- which made PATCH /admin/tenants/:slug
+   reject it with a 400 the moment the operator tried to hand it to FINWAVE as
+   their white-label domain. It is a PARTNER host now, so it must be settable.
+
+   Only the hosts that serve OUR OWN brand belong here. A retired host is ours
+   until something else is pointed at it, and then it is not. */
 
 export function normaliseCustomDomain(raw: string | null | undefined): string | null {
   let v = String(raw ?? '').trim().toLowerCase();
@@ -68,6 +85,86 @@ export function normaliseCustomDomain(raw: string | null | undefined): string | 
 /* Probing a host the operator typed is a server-side fetch, so refuse the
    addresses that make it an SSRF tool rather than a diagnostic. */
 const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1)/;
+
+/** The host whose A record defines "points at us". */
+const OUR_CANONICAL_HOST = 'investoyard.com';
+
+/*
+ * THIS BOX'S CONFIGURED RESOLVER IS 127.0.0.1 AND NOTHING LISTENS THERE, so
+ * dns.resolve4() returns ECONNREFUSED for every name while the OS resolver
+ * (dns.lookup, which fetch uses) answers perfectly. Measured 2026-10-15.
+ * A diagnostic that reports "no DNS" because of that would be worse than
+ * useless, so this asks public resolvers explicitly.
+ */
+const PUBLIC_RESOLVERS = ['1.1.1.1', '8.8.8.8'];
+
+async function resolveA(host: string): Promise<string[]> {
+  const r = new Resolver();
+  r.setServers(PUBLIC_RESOLVERS);
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v: string[]) => { if (!settled) { settled = true; resolve(v); } };
+    const timer = setTimeout(() => done([]), 5000);
+    r.resolve4(host, (err, addrs) => { clearTimeout(timer); done(err ? [] : (addrs ?? [])); });
+  });
+}
+
+/** Every IPv4 address this machine actually holds, loopback last. */
+function localAddresses(): string[] {
+  const out: string[] = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const ni of list ?? []) {
+      if (ni.family === 'IPv4' && !ni.internal && !ni.address.startsWith('169.254.')) out.push(ni.address);
+    }
+  }
+  out.push('127.0.0.1');
+  return [...new Set(out)];
+}
+
+/*
+ * Ask OUR OWN server for a hostname, over the LAN address with the Host header
+ * and the TLS SNI name set — which is what a visitor's request looks like by
+ * the time it reaches IIS.
+ *
+ * It CANNOT go to the public hostname: this box sits behind NAT and its public
+ * address is not bound locally, so the connection hairpins and times out. That
+ * is the whole reason this method was rewritten.
+ */
+function probeLocal(ip: string, host: string, tls: boolean, timeoutMs = 6000):
+    Promise<{ ok: true; status: number; body: string } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    const req = (tls ? httpsRequest : httpRequest)({
+      host: ip,
+      port: tls ? 443 : 80,
+      path: '/',
+      method: 'GET',
+      headers: { Host: host },
+      ...(tls ? { servername: host, rejectUnauthorized: false } : {}),
+      timeout: timeoutMs,
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { if (body.length < 4000) body += c; });
+      res.on('end', () => resolve({ ok: true, status: res.statusCode ?? 0, body: body.slice(0, 4000) }));
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.on('error', (e: any) => resolve({ ok: false, error: String(e?.code ?? e?.message ?? e) }));
+    req.end();
+  });
+}
+
+/** Does the certificate this host is served with actually validate? */
+function probeTlsValid(ip: string, host: string, timeoutMs = 6000): Promise<string | null> {
+  return new Promise((resolve) => {
+    const req = httpsRequest({
+      host: ip, port: 443, path: '/', method: 'HEAD',
+      headers: { Host: host }, servername: host, rejectUnauthorized: true, timeout: timeoutMs,
+    }, () => { req.destroy(); resolve(null); });
+    req.on('timeout', () => { req.destroy(); resolve('timeout'); });
+    req.on('error', (e: any) => resolve(String(e?.code ?? e?.message ?? e)));
+    req.end();
+  });
+}
 
 @Injectable()
 export class AdminService {
@@ -684,45 +781,117 @@ export class AdminService {
     if (!host) return { host: null, state: 'unset', detail: 'No custom domain is set on this partner yet.' };
     if (PRIVATE_HOST.test(host)) return { host, state: 'refused', detail: 'That host is on a private range and will not be probed.' };
 
-    const probe = async (scheme: 'http' | 'https') => {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 6000);
-      try {
-        const res = await fetch(scheme + '://' + host + '/', { signal: ctl.signal, redirect: 'follow' });
-        const body = (await res.text()).slice(0, 4000);
-        return { ok: true, status: res.status, body };
-      } catch (e: any) {
-        return { ok: false, error: String(e?.cause?.code ?? e?.code ?? e?.message ?? e) };
-      } finally { clearTimeout(timer); }
-    };
+    /*
+     * DNS AND REACHABILITY ARE TWO DIFFERENT QUESTIONS, and conflating them is
+     * what made this endpoint lie. The old version fetched the PUBLIC hostname
+     * from this server; that can never succeed here, because the box is behind
+     * NAT and its own public address is not bound locally, so the connection
+     * hairpins and times out. The timeout was then reported as "the partner's
+     * DNS A record is probably not in place yet" \u2014 which would have been the
+     * verdict for EVERY correctly-pointed partner domain, forever. Reported by
+     * the operator on 2026-10-15 for a host whose DNS was verifiably correct
+     * worldwide.
+     *
+     * So: ask a public resolver what the A record says, and ask our OWN server
+     * what it serves. Neither question needs the request to leave the building.
+     */
+    const [theirs, ours] = await Promise.all([resolveA(host), resolveA(OUR_CANONICAL_HOST)]);
 
-    const http = await probe('http');
-    const https = await probe('https');
-    const reached = https.ok ? https : http;
+    if (theirs.length === 0) {
+      return {
+        host, state: 'no-dns', dns: { host: [], ours },
+        detail: 'No A record resolved for this host from a public resolver. The partner\u2019s DNS is not in place yet, or has not propagated.',
+      };
+    }
 
-    let state: string;
-    let detail: string;
-    if (!http.ok && !https.ok) {
-      state = 'no-dns';
-      detail = 'Nothing answered on either scheme (' + http.error + '). The partner\u2019s DNS A record is probably not in place yet, or has not propagated.';
-    } else if ((reached.body ?? '').includes('IIS Windows Server')) {
-      state = 'no-binding';
-      detail = 'DNS reaches this server, but the hostname has no binding on the Investoyard site \u2014 it is falling through to the IIS default page. Run scripts/add-partner-domain.ps1 for this host.';
-    } else if (!/investoyard/i.test(reached.body ?? '')) {
-      state = 'other-site';
-      detail = 'Something answered, but it is not this platform. Check the A record points at our address and not at the partner\u2019s existing website.';
-    } else if (!https.ok) {
-      state = 'no-tls';
-      detail = 'The site is served over HTTP but HTTPS failed (' + https.error + '). The certificate has not been issued or bound yet \u2014 win-acme still has to run.';
-    } else {
-      state = 'live';
-      detail = 'Reachable over HTTPS and serving this platform. Branding follows whatever is set above.';
+    /* "Points at us" is decided by matching OUR canonical host's address
+       rather than a hardcoded IP, so this keeps working if we ever move. */
+    const pointsAtUs = ours.length > 0 && theirs.some((ip) => ours.includes(ip));
+    if (!pointsAtUs) {
+      return {
+        host, state: 'other-dns', dns: { host: theirs, ours },
+        detail: `DNS resolves to ${theirs.join(', ')}, which is not where this platform is served from (${ours.join(', ') || 'unknown'}). The A record points somewhere else \u2014 often the partner\u2019s existing website.`,
+      };
+    }
+
+    /* The A record is right. Everything left is on OUR side, so probe
+       ourselves: Host header for the binding, SNI for the certificate. */
+    type Probe = Awaited<ReturnType<typeof probeLocal>>;
+    let http: Probe = { ok: false, error: 'not attempted' };
+    let https: Probe = { ok: false, error: 'not attempted' };
+    for (const ip of localAddresses()) {
+      http = await probeLocal(ip, host, false);
+      https = await probeLocal(ip, host, true);
+      if (http.ok || https.ok) break;   // bindings may be IP-specific; any hit will do
+    }
+
+    const dns = { host: theirs, ours };
+
+    /*
+     * `ok` MEANS THE REQUEST COMPLETED, NOT THAT THE SITE SERVED IT, and
+     * reading it as the latter is how a first cut of this called an unbound
+     * host "other-site": the HTTPS probe returned a 404 \u2014 generated by
+     * http.sys itself, because no SNI binding matched \u2014 and a 404 page is
+     * neither the IIS default page nor our markup, so it fell through to the
+     * wrong branch. Judge on what came BACK, across both schemes, never on
+     * whichever one happened to connect.
+     */
+    const answers = [http, https].filter((p): p is Extract<Probe, { ok: true }> => p.ok);
+    const servesUs = answers.some((p) => p.status < 400 && /investoyard/i.test(p.body));
+    const httpsServesUs = https.ok && https.status < 400 && /investoyard/i.test(https.body);
+
+    if (answers.length === 0) {
+      return {
+        host, state: 'no-binding', dns,
+        detail: `DNS is correct (${theirs.join(', ')}), but this server answers nothing for that hostname on any of its own addresses \u2014 http.sys has no binding registered for it. Run scripts/bind-investoyard-domain.ps1 -Hosts ${host} -Apply.`,
+        http, https,
+      };
+    }
+
+    if (!servesUs) {
+      /* The IIS default page is what an unbound host falls through to on port
+         80 here; an http.sys 404 is what it gets on 443, where SNI has to
+         match a binding and there is no catch-all site to land on. Both say
+         the same thing: DNS arrived, the binding did not. */
+      const defaultPage = answers.some((p) => p.body.includes('IIS Windows Server'));
+      const httpSysRefusal = answers.some((p) => p.status === 404 && p.body.length < 1000);
+      if (defaultPage || httpSysRefusal) {
+        return {
+          host, state: 'no-binding', dns,
+          detail: `DNS points here correctly (${theirs.join(', ')}), but the hostname is not bound to the Investoyard site \u2014 ${defaultPage ? 'it falls through to the IIS default page' : 'http.sys has no binding for it and answers its own 404'}. Run scripts/bind-investoyard-domain.ps1 -Hosts ${host} -Apply.`,
+          http, https,
+        };
+      }
+      return {
+        host, state: 'other-site', dns,
+        detail: 'DNS points here and a real page answered, but it is not this platform \u2014 the hostname is bound to a different site on this server.',
+        http, https,
+      };
+    }
+
+    if (!httpsServesUs) {
+      return {
+        host, state: 'no-tls', dns,
+        detail: `Served over HTTP, but HTTPS did not serve this platform (${https.ok ? 'status ' + https.status : https.error}). The hostname has no HTTPS binding, or that binding carries no certificate \u2014 win-acme still has to run.`,
+        http, https,
+      };
+    }
+
+    /* Served over TLS is not the same as served over VALID TLS, and the
+       difference is a browser warning on every visit. */
+    const certError = await probeTlsValid(localAddresses()[0], host);
+    if (certError) {
+      return {
+        host, state: 'no-tls', dns,
+        detail: `Served over HTTPS, but the certificate does not validate for this hostname (${certError}). Visitors would see a security warning. Check the binding carries a certificate covering ${host} \u2014 a wildcard covers one label only.`,
+        http, https,
+      };
     }
 
     return {
-      host, state, detail,
-      http: http.ok ? { status: http.status } : { error: http.error },
-      https: https.ok ? { status: https.status } : { error: https.error },
+      host, state: 'live', dns,
+      detail: 'DNS points here, the hostname is bound, and the certificate validates. Branding follows whatever is set above.',
+      http, https,
     };
   }
 
@@ -748,6 +917,7 @@ export class AdminService {
         code: t.code ?? undefined,
         brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
         logoUrl: t.logoUrl ?? undefined,
+        footerLogoUrl: t.footerLogoUrl ?? undefined,
         profile: (t.profile as any) ?? {},
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
@@ -822,7 +992,7 @@ export class AdminService {
 
   /** Update a partner/branch's brand + empanelment profile (merges into existing profile). */
   async updateTenant(callerId: string, slug: string, dto: {
-    name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string;
+    name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string; footerLogoUrl?: string;
     customDomain?: string; profile?: Record<string, any>; commissionRate?: number | null;
     partnerMaxApplicantsPerCall?: number;
     partnerApiScopes?: string[];
@@ -840,7 +1010,7 @@ export class AdminService {
       // superadmin-only. Silently drop rather than 403 so the
       // My Organisation client doesn't need to know the field list.
       if (scope.superadmin) {
-        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl', 'footerLogoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
         if (dto.customDomain !== undefined) data.customDomain = normaliseCustomDomain(dto.customDomain);
         if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
         if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;

@@ -62,3 +62,14 @@ apis/
 # operator's setup — both stay ignored.
 Data/
 data/
+
+# TLS material. A .pfx holds the PRIVATE KEY — committing one publishes the
+# ability to impersonate the site to everyone with repo access, and a key in
+# git history cannot be deleted, only rotated. Investoyard_2026-27.pfx was
+# sitting untracked in the repo root on 2026-10-15, one `git add -A` from being
+# committed. Keep certificates outside the repo; import them into the machine
+# store and delete the file.
+*.pfx
+*.p12
+*.key
+*.pem

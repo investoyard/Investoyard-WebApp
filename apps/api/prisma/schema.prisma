@@ -211,6 +211,17 @@ model Tenant {
   brandColor     String?
   goldColor      String?
   logoUrl        String?
+  /// Optional SECOND mark, for the dark footer only.
+  ///
+  /// A partner's ordinary logo is usually dark lettering on transparency, which
+  /// is invisible on the footer's indigo gradient — so when this is empty the
+  /// footer forces `logoUrl` to white in CSS. That always reads, but it costs
+  /// the mark its colour, so a partner who HAS a light/reversed version can
+  /// upload it here and it is rendered exactly as supplied.
+  ///
+  /// Deliberately a separate column rather than a flag on `logoUrl`: the two
+  /// are different images, and a single field could not hold both.
+  footerLogoUrl  String?
   flags          Json?
   profile        Json? // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
   code           String?    @unique // 6-digit channel code (partners/branches), sequential from 601001

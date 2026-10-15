@@ -704,7 +704,17 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
       </header>
       <div className="subv2-tbl-wrap">
         <table className="subv2-tbl">
-          <thead><tr><th>Category</th><th>Offered</th><th>Applied</th><th>Times</th></tr></thead>
+          {/* OFFERED AND TIMES WERE REMOVED ON OPERATOR INSTRUCTION (2026-10-15).
+              Both already sit in the Share-wise panel beside this one, and
+              `times` is identical in either unit because both sides of the
+              ratio scale by the same price — so the two cards were printing
+              the same multiple twice and inviting the reader to look for a
+              difference that cannot exist. What is left is the one thing only
+              this card says: the money actually bid, per category.
+              A sub-category keeps no multiple either, for the older reason —
+              it has no reserved quota, so there is no denominator to divide by
+              and printing one would be inventing it. */}
+          <thead><tr><th>Category</th><th>Applied</th></tr></thead>
           <tbody>
             {ordered.map((r) => {
               const isCombo = r.key === 'nii';
@@ -713,20 +723,12 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
                 <Fragment key={r.key}>
                   <tr className={isSubcat ? 'subcat' : undefined}>
                     <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
-                    <td>{cr(at(r.bookSize, r.price))}</td>
                     <td><b>{cr(at(r.subscribed, r.price))}</b></td>
-                    <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
                   </tr>
-                  {/* OFFERED AND TIMES ARE BLANK ON PURPOSE. A sub-category has
-                      no reserved quota of its own, so there is no denominator —
-                      printing a multiple here would be inventing one. The
-                      reference does the same. */}
                   {r.key === 'qib' && subRows.map(([label, sh]) => (
                     <tr key={label} className="subcat">
                       <td><span className="subv2-dot qib" />{label}</td>
-                      <td>—</td>
                       <td><b>{cr(at(sh, r.price))}</b></td>
-                      <td>—</td>
                     </tr>
                   ))}
                 </Fragment>
@@ -734,9 +736,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
             })}
             <tr className="tot">
               <td>Total</td>
-              <td>{cr(at(total.bookSize, total.price))}</td>
               <td><b>{cr(at(total.subscribed, total.price))}</b></td>
-              <td className={`tone-${tone(total.times)}`}><b>{total.times.toFixed(2)}×</b></td>
             </tr>
           </tbody>
         </table>

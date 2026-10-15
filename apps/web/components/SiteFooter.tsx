@@ -47,8 +47,20 @@ export function SiteFooter() {
     <footer className="footer">
       <div className="footer-inner">
         <div>
-          {tenant.logo && !own ? (
-            <img src={tenant.logo} alt={name} style={{ height: 30, maxWidth: 170, objectFit: 'contain' }} />
+          {/* A FOOTER MARK THE PARTNER SUPPLIED WINS, AND IS RENDERED UNTOUCHED.
+              Falling back to `.footer-logo` forces their ordinary logo white,
+              which always reads on the indigo gradient but flattens the brand
+              colour — fine as a default nobody has to think about, wrong to
+              impose on a partner who has gone and made a reversed version.
+              So the filter is the FALLBACK and the upload is the override,
+              never the other way round. */}
+          {(tenant.footerLogo || tenant.logo) && !own ? (
+            <img
+              className={tenant.footerLogo ? undefined : 'footer-logo'}
+              src={tenant.footerLogo || tenant.logo}
+              alt={name}
+              style={tenant.footerLogo ? { height: 30, maxWidth: 170, objectFit: 'contain' } : undefined}
+            />
           ) : (
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, color: '#fff', letterSpacing: '-0.02em' }}>
               {wordmark}

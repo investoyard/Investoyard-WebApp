@@ -116,6 +116,10 @@ class UpdateTenantDto {
   @IsOptional() @IsString() brandColor?: string;
   @IsOptional() @IsString() goldColor?: string;
   @IsOptional() @IsString() logoUrl?: string;
+  /* Deliberately NOT on RegisterTenantDto: a footer mark is a refinement a
+     partner supplies once they have seen their site, never something anyone
+     has at the moment the tenant is created. */
+  @IsOptional() @IsString() footerLogoUrl?: string;
   @IsOptional() @IsString() customDomain?: string;
   @IsOptional() profile?: Record<string, any>;
   @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number | null;

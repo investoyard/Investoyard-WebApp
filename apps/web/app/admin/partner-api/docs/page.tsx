@@ -39,8 +39,23 @@ const SAMPLE_APPLICANTS = JSON.stringify([
  * partner logins alike), so integrating brokers can self-serve the contract.
  */
 
+/*
+ * THE SAMPLES QUOTE THE REAL BASE URL, DERIVED NOT TYPED. An operator copies
+ * the curl block and runs it; a host typed into a template literal survives a
+ * domain move silently and hands them a command that resolves nowhere. Falls
+ * back to the dev origin, which is what NEXT_PUBLIC_API_URL is absent for.
+ *
+ * The API host is deliberately NOT the site host — the two are separate
+ * origins (that is what the CORS allow-list exists for), and as of the
+ * 2026-10-15 domain move the API stayed put while the site changed.
+ */
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api').replace(/\/+$/, '');
+const API_HOST = (() => {
+  try { return new URL(API_BASE).host; } catch { return 'localhost:3000'; }
+})();
+
 const SAMPLE_REQUEST = `POST /partner/v1/print-forms
-Host: newipoapi.finwave.co
+Host: ${API_HOST}
 Content-Type: application/json
 X-Api-Key: pk_a1b2c3d4e5f6.<secret>
 
@@ -91,7 +106,7 @@ const SAMPLE_RESPONSE = `201 Created
   "pdfBase64": "JVBERi0xLjcK…"       // all applicants merged into ONE PDF
 }`;
 
-const SAMPLE_CURL = `curl -X POST https://newipoapi.finwave.co/api/partner/v1/print-forms \\
+const SAMPLE_CURL = `curl -X POST ${API_BASE}/partner/v1/print-forms \\
   -H "Content-Type: application/json" \\
   -H "X-Api-Key: pk_a1b2c3d4e5f6.<secret>" \\
   -d @request.json`;

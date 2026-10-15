@@ -23,6 +23,8 @@
  *     so anything baked is dated at the point it is shown.
  */
 
+import { SITE_HOST } from '@/lib/site';
+
 export type Feature = { icon: string; t: string; d: string };
 
 export const DOC = {
@@ -32,7 +34,10 @@ export const DOC = {
   updated: 'October 2026',
   entity: 'Safal Capital Services Private Limited',
   tagline: 'Investing in IPOs, has never been this easy.',
-  site: 'newipo.finwave.co',
+  /* The cover and footer print the host. Taken from the build's own origin,
+     never typed: the two partner-facing PDFs carry no domain at all, so this
+     is the ONE printed document that can go stale on a domain move. */
+  site: SITE_HOST,
 };
 
 export const HERO_LINE =

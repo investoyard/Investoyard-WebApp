@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { PartnerApiScrollSpy } from './scroll-spy';
+/* The canonical and og:url are ABSOLUTE by necessity, so they are built from
+   the one origin constant rather than typed — a page with a stale canonical
+   tells Google its own domain is a duplicate of a domain we no longer use. */
+import { SITE_HOST, absolute } from '@/lib/site';
 /* The cover and the print scaffolding (@page, hiding the site chrome,
    resetting main.container) come from the platform document's stylesheet, as
    they already do for /brokers — so all three PDFs carry the SAME cover by
@@ -23,11 +27,11 @@ export const metadata: Metadata = {
   description:
     'Partner API reference for empanelled Investoyard distribution partners: authentication, print-forms endpoint, IPO catalog reads, error responses.',
   robots: { index: true, follow: true },
-  alternates: { canonical: 'https://newipo.finwave.co/partner-api' },
+  alternates: { canonical: absolute('/partner-api') },
   openGraph: {
     title: 'Investoyard Partner API',
     description: 'Reference for empanelled distribution partners integrating with Investoyard.',
-    url: 'https://newipo.finwave.co/partner-api',
+    url: absolute('/partner-api'),
     type: 'article',
   },
 };
@@ -182,9 +186,9 @@ export default function PartnerApiDoc() {
             <h3>Path A — new partner onboarding</h3>
             <p>Follow this path if you do not yet have a tenant on Investoyard.</p>
             <ol style={{ maxWidth: '42em' }}>
-              <li><strong>Visit the partner landing page.</strong> Open <a href="https://newipo.finwave.co/partner"><code>newipo.finwave.co/partner</code></a>. This page explains what the Partner API offers and links to the application form.</li>
+              <li><strong>Visit the partner landing page.</strong> Open <a href="/partner"><code>{SITE_HOST}/partner</code></a>. This page explains what the Partner API offers and links to the application form.</li>
               <li><strong>Sign in with your mobile number.</strong> Investoyard uses OTP-based sign-in. Enter your mobile number, receive the OTP over SMS, and confirm. You now have a personal session; the partner application is filed against it.</li>
-              <li><strong>Fill the partner application.</strong> At <a href="https://newipo.finwave.co/partner/apply"><code>/partner/apply</code></a>, complete the short form with your organisation details, a primary contact person, and references to any existing empanelment arrangement (if applicable). Submit.</li>
+              <li><strong>Fill the partner application.</strong> At <a href="/partner/apply"><code>/partner/apply</code></a>, complete the short form with your organisation details, a primary contact person, and references to any existing empanelment arrangement (if applicable). Submit.</li>
               <li><strong>Operator review.</strong> The Investoyard operations team reviews the application in an internal queue. Turnaround is typically one business day. You will be contacted if the team needs any clarification before deciding.</li>
               <li><strong>Activation email.</strong> On approval, the operator creates a partner tenant for your organisation and emails you a one-time activation link. Click the link, land on <code>/partner/activate</code>, and set your admin password. This account is your partner admin.</li>
               <li><strong>Generate your first API key.</strong> Sign in with the credentials you just set. Under <strong>Tenants → your tenant → API access</strong>, click <em>Create key</em> and give it a label (e.g. &quot;prod backend&quot;). The response shows the full <code>keyId.secret</code> string <strong>once</strong>. Copy it and store it in your secrets manager.</li>

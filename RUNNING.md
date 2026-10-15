@@ -3,7 +3,7 @@
 End-to-end: Postgres → API (NestJS) → web + mobile on real data.
 
 > **THIS IS THE DEVELOPER SETUP DOC, NOT THE PRODUCTION ONE.** Investoyard is
-> **live** on the operator's Windows server (web `newipo.finwave.co`, API
+> **live** on the operator's Windows server (web `investoyard.com`, API
 > `newipoapi.finwave.co`) served by IIS, with a catalogue of **1,269 IPOs** and
 > real investor data. Nothing below describes that box: the deploy handshake,
 > the IIS app-pool rules and every production trap live in **`CLAUDE.md`**, which

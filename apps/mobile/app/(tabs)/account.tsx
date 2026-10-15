@@ -17,9 +17,9 @@ import {
   BellIcon, BookIcon, ChevronDownIcon, ChevronRightIcon, DocsIcon, GlobeIcon, LockIcon,
   NewsIcon, ShieldIcon, SignOutIcon, UsersIcon,
 } from '../../components/ui/icons';
+import { siteUrl } from '../../lib/site';
 
-const SITE = 'https://newipo.finwave.co';
-const openSite = (path: string) => Linking.openURL(`${SITE}${path}`).catch(() => {});
+const openSite = (path: string) => Linking.openURL(siteUrl(path)).catch(() => {});
 
 export default function AccountScreen() {
   const t = useT();

@@ -17,7 +17,7 @@ const { titleCase, demandWord, LABEL } = require('../../packages/shared-types/di
 
 export { titleCase, demandWord, LABEL };
 
-export const SITE = 'newipo.finwave.co';
+export const SITE = 'investoyard.com';
 export const ENTITY_LINE =
   'Investoyard is an IPO application platform by Safal Capital Services Pvt Ltd. Information only, not advice.';
 export const GMP_DISCLAIMER =

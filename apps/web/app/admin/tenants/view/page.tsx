@@ -34,7 +34,12 @@ const ORIGIN_IP = '103.107.27.38';
 const DOMAIN_TONE: Record<string, { label: string; cls: string }> = {
   unset:        { label: 'Not set',          cls: 'st' },
   refused:      { label: 'Refused',          cls: 'st bad' },
-  'no-dns':     { label: 'DNS not pointing here', cls: 'st bad' },
+  /* 'no-dns' now means the name resolves NOWHERE. A record that resolves to
+     the wrong address is 'other-dns' — a different problem with a different
+     owner, and before the two were split this said "DNS not pointing here"
+     for a domain whose DNS was verifiably correct worldwide. */
+  'no-dns':     { label: 'No DNS record',         cls: 'st bad' },
+  'other-dns':  { label: 'DNS points elsewhere',  cls: 'st bad' },
   'no-binding': { label: 'IIS binding missing',   cls: 'st bad' },
   'other-site': { label: 'Another site answers',  cls: 'st bad' },
   'no-tls':     { label: 'Certificate missing',   cls: 'st bad' },
@@ -59,9 +64,11 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
   const [brand, setBrand] = useState(tenant.brandColor ?? '');
   const [gold, setGold] = useState(tenant.goldColor ?? '');
   const [logo, setLogo] = useState(tenant.logoUrl ?? '');
+  const [footerLogo, setFooterLogo] = useState(tenant.footerLogoUrl ?? '');
   const [domain, setDomain] = useState(tenant.customDomain ?? '');
   const [busy, setBusy] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [footerBusy, setFooterBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [check, setCheck] = useState<api.DomainCheck | null>(null);
@@ -69,14 +76,15 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
 
   const dirty =
     brand !== (tenant.brandColor ?? '') || gold !== (tenant.goldColor ?? '') ||
-    logo !== (tenant.logoUrl ?? '') || domain !== (tenant.customDomain ?? '');
+    logo !== (tenant.logoUrl ?? '') || domain !== (tenant.customDomain ?? '') ||
+    footerLogo !== (tenant.footerLogoUrl ?? '');
 
   const save = async () => {
     setBusy(true); setErr(null);
     try {
       await api.updateTenant(slug, {
         brandColor: brand.trim(), goldColor: gold.trim(),
-        logoUrl: logo.trim(), customDomain: domain.trim(),
+        logoUrl: logo.trim(), footerLogoUrl: footerLogo.trim(), customDomain: domain.trim(),
       });
       setSavedAt(Date.now());
       onSaved();
@@ -94,6 +102,14 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
     try { setLogo(await api.uploadImage(f)); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLogoBusy(false); }
+  };
+
+  const pickFooterLogo = async (f: File | undefined) => {
+    if (!f) return;
+    setFooterBusy(true); setErr(null);
+    try { setFooterLogo(await api.uploadImage(f)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setFooterBusy(false); }
   };
 
   const runCheck = async () => {
@@ -143,6 +159,33 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
             </label>
             {logo ? <button className="btn btn-sm btn-ghost" onClick={() => setLogo('')}>Clear</button> : null}
           </div>
+        </div>
+        {/* PREVIEWED ON THE FOOTER'S OWN BACKGROUND, because that is the only
+            place the question "can you read this?" can be answered. The
+            fallback preview applies the same filter the site will, so what is
+            shown here is what their clients get. */}
+        <div className="field" style={{ width: 300 }}>
+          <label>Footer logo <span className="hint">(optional)</span></label>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', height: 34, padding: '0 10px',
+              borderRadius: 7, background: 'linear-gradient(150deg,#4a3a95,#2a2050)' }}>
+              {footerLogo
+                ? <img src={footerLogo} alt="" style={{ height: 22, maxWidth: 110, objectFit: 'contain' }} />
+                : logo
+                  ? <img src={logo} alt="" style={{ height: 22, maxWidth: 110, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+                  : <span style={{ color: 'rgba(255,255,255,.65)', fontSize: 12 }}>Name is used</span>}
+            </span>
+            <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer' }}>
+              {footerBusy ? 'Uploading…' : 'Upload'}
+              <input type="file" accept="image/*" hidden onChange={(e) => pickFooterLogo(e.target.files?.[0])} />
+            </label>
+            {footerLogo ? <button className="btn btn-sm btn-ghost" onClick={() => setFooterLogo('')}>Clear</button> : null}
+          </div>
+          <span className="hint">
+            {footerLogo
+              ? 'Shown as uploaded on the dark footer.'
+              : 'None uploaded — the logo above is shown in white. Upload a light version to keep its colours.'}
+          </span>
         </div>
       </div>
 

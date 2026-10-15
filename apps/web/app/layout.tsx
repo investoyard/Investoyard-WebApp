@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { ChromeWrapper } from '@/components/ChromeWrapper';
 import { PwaRegister } from '@/components/PwaRegister';
-import { SITE_ORIGIN } from '@/lib/site';
+import { OWN_HOSTS, SITE_ORIGIN } from '@/lib/site';
 import { OrganizationJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
@@ -81,7 +81,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           * a contract naming the wrong company.
           *
           * This runs during parse, needs no network, and compares the hostname
-          * against the one this build was made for. Not ours → the content is
+          * against OWN_HOSTS — the canonical host for this build plus the ones
+          * still redirecting to it. Not ours → the content is
           * hidden before it is ever shown, and `TrustPage` then replaces it
           * with the partner's own page.
           *
@@ -93,7 +94,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{
             __html:
               `(function(){try{var h=location.hostname;`
-              + `if(h===${JSON.stringify(new URL(SITE_ORIGIN).hostname)}||h==='localhost'||h==='127.0.0.1')return;`
+              + `if(${JSON.stringify(OWN_HOSTS)}.indexOf(h)>-1)return;`
               + `document.documentElement.setAttribute('data-foreign-host','');`
               + `}catch(e){}})()`,
           }}

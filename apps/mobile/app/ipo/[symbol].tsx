@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { animateNext, fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
+import { siteUrl } from '../../lib/site';
 import { getIpo } from '../../lib/api';
 import { useT } from '../../components/i18n';
 import { tapSelect } from '../../lib/haptics';
@@ -173,7 +174,7 @@ export default function IpoDetailScreen() {
   };
   const onShare = () => {
     Share.share({
-      message: `${ipo.name} (${ipo.symbol}) IPO — ${priceBand(ipo.priceBandMin, ipo.priceBandMax)}, lot ${ipo.lotSize ?? '—'}, ${fmtRange(ipo.openDate, ipo.closeDate)}. Details: https://newipo.finwave.co/ipos/${ipo.symbol}`,
+      message: `${ipo.name} (${ipo.symbol}) IPO — ${priceBand(ipo.priceBandMin, ipo.priceBandMax)}, lot ${ipo.lotSize ?? '—'}, ${fmtRange(ipo.openDate, ipo.closeDate)}. Details: ${siteUrl(`/ipos/${ipo.symbol}`)}`,
     }).catch(() => {});
   };
 

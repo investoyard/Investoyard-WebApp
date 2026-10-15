@@ -12,7 +12,14 @@ async function bootstrap() {
   // Separate-hosting: the browser calls the API cross-origin from the web app. The known
   // production web origins are ALWAYS allowed (so a missing/mistyped CORS_ORIGIN or an app-pool
   // restart can never break login); CORS_ORIGIN adds more (comma-separated). '*'/'true' = allow all.
-  const DEFAULT_ORIGINS = ['https://newipo.finwave.co', 'https://www.newipo.finwave.co'];
+  //
+  // ONLY OUR OWN ORIGINS. newipo.finwave.co was briefly listed here while it
+  // was treated as a retiring host of ours; it is now FINWAVE's white-label
+  // domain and is allowed FROM THE DATABASE instead, by the customDomain
+  // lookup below. That is not a stylistic preference: an origin hardcoded here
+  // outlives the tenant row, so the day a partner domain is withdrawn in admin
+  // this file would go on trusting it.
+  const DEFAULT_ORIGINS = ['https://investoyard.com', 'https://www.investoyard.com'];
   const env = process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
   const wildcard = env.includes('*') || env.includes('true');
   const allow = new Set([...DEFAULT_ORIGINS, ...env.filter((o) => o !== '*' && o !== 'true')]);
@@ -20,8 +27,8 @@ async function bootstrap() {
 
   /*
    * A WHITE-LABEL PARTNER'S OWN DOMAIN IS ALLOWED FROM THE DATABASE, not from
-   * this file. Until this existed the allow-list was the two newipo.finwave.co
-   * origins and nothing else, so a partner served on their own domain would
+   * this file. Until this existed the allow-list was our own origins and
+   * nothing else, so a partner served on their own domain would
    * load the page shell and then have EVERY api call rejected by the browser —
    * catalogue, login, subscription, and `GET /tenants` itself, which is where
    * the branding comes from. The site would have rendered blank AND unbranded.

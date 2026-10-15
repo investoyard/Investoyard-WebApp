@@ -114,7 +114,10 @@ One week before T-0, run the entire product against a **live** IPO with a small 
 
 ### 1.7 Measurement setup
 
-- GA4 and Google Search Console on `newipo.finwave.co`, verified before launch.
+- GA4 and Google Search Console on `investoyard.com`, verified before launch. **Also
+  add the retired `newipo.finwave.co` as its own Search Console property and use
+  Change of Address** — that is what tells Google the 301 is a move and not a
+  coincidence, and it is the single highest-value step in keeping the rankings.
 - **One UTM convention, used without exception:** `?utm_source=<whatsapp|telegram|instagram|youtube|x|linkedin>&utm_medium=social&utm_campaign=<ipo-slug|evergreen-topic>&utm_content=<template-id>`
 - A single weekly dashboard: unique PANs applied · applications per IPO · allotment-checker uses · channel followers · site sessions · top 10 organic queries.
 

@@ -16,7 +16,7 @@ export type OutMessage =
   | { kind: 'buttons'; body: string; buttons: { id: string; title: string }[] }
   | { kind: 'list'; body: string; button: string; header?: string; rows: { id: string; title: string; description?: string }[] };
 
-const site = () => process.env.PUBLIC_WEB_URL || 'https://newipo.finwave.co';
+const site = () => process.env.PUBLIC_WEB_URL || 'https://investoyard.com';
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /**

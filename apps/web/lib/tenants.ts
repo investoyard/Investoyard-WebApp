@@ -31,6 +31,13 @@ export interface Tenant {
   brandColor?: string;         // primary brand hex; undefined ⇒ default Investoyard palette
   goldColor?: string;          // optional accent override
   logo?: string;               // logo URL; undefined ⇒ text wordmark (or default logo for platform)
+  /**
+   * A mark made for the DARK footer. Absent ⇒ `logo` is used and forced white
+   * by `.footer-logo`, which always reads but flattens the brand colour.
+   * Present ⇒ rendered exactly as uploaded, because the partner has supplied
+   * something already designed for that background.
+   */
+  footerLogo?: string;
   isDefault?: boolean;
   flags: { gmpEnabled: boolean; upiCap: number; whatsappChannel: string };
   /**
@@ -75,6 +82,7 @@ function mapApi(a: any): Tenant {
   return {
     id: a.id, slug: a.slug, type: a.type, name: a.name, customDomain: a.customDomain,
     brandColor: a.brandColor, goldColor: a.goldColor, logo: a.logoUrl,
+    footerLogo: a.footerLogoUrl,
     isDefault: a.type === 'direct',
     /* An API that predates the content store sends nothing; `{}` keeps every
        reader able to say `content.identity` without a guard. */

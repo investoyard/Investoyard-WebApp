@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Broker Outreach Email</title>
+<!--
+  COPY-AND-PASTE SOURCE for the broker outreach email.
+
+  Open this file, click "Select the email body" (or select from the first line
+  of the greeting to the end of the disclaimer), copy, and paste straight into
+  Gmail or Outlook. Bold, bullets and spacing survive the paste because the
+  browser carries the rendered styling; pasting Markdown would show the
+  asterisks.
+
+  Everything in [brackets] is a placeholder. No name, designation, mobile or
+  email address is invented here - those are the sender's to fill in.
+-->
+<style>
+  :root {
+    --ink: #1a1a1a; --dim: #4a4a4a; --line: #e3e1ea;
+    --indigo: #3c2e7e; --gold: #ffcb32; --paper: #f4f3f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* The toolbar is NOT part of the email - it is excluded from the copy. */
+  .bar {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin-bottom: 18px;
+  }
+  .bar h1 { margin: 0 0 4px; font-size: 16px; letter-spacing: -.01em; }
+  .bar p { margin: 0; font-size: 13px; color: var(--dim); line-height: 1.55; }
+  .btn {
+    margin-top: 12px; display: inline-flex; align-items: center; gap: 8px;
+    background: var(--indigo); color: #fff; border: 0; border-radius: 8px;
+    padding: 9px 15px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { background: #4a3a95; }
+  .ok { margin-left: 10px; font-size: 13px; color: #0c6b41; font-weight: 600; }
+
+  .subjects {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin-bottom: 18px; font-size: 13.5px;
+  }
+  .subjects b { display: block; margin-bottom: 7px; font-size: 12px;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--indigo); }
+  .subjects ol { margin: 0; padding-left: 20px; color: var(--dim); line-height: 1.85; }
+  .subjects code {
+    font-family: inherit; color: var(--ink); background: #f6f5fa;
+    padding: 1px 6px; border-radius: 4px;
+  }
+
+  /* ── the email body itself ─────────────────────────────────────────── */
+  /* Sizes and colours are ordinary email sizes, not web-page sizes, so the
+     paste lands looking like a letter rather than a landing page. */
+  #email {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 34px 38px 30px;
+    font-size: 15px; line-height: 1.62; color: var(--ink);
+  }
+  #email p { margin: 0 0 15px; }
+  #email .lead { font-size: 16px; }
+  #email ul { margin: 0 0 18px; padding-left: 22px; }
+  #email li { margin-bottom: 11px; line-height: 1.58; }
+  #email .sig { margin-top: 22px; }
+  #email .rule { border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px; }
+  #email .legal { font-size: 12.5px; line-height: 1.6; color: #6b6b78; margin: 0; }
+  #email .kicker {
+    font-size: 13px; font-weight: 700; letter-spacing: .02em;
+    color: var(--indigo); margin: 0 0 14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <h1>Broker outreach email</h1>
+    <p>
+      Click the button, then paste into Gmail or Outlook — the bold, bullets and
+      spacing come across. Fill in everything in <b>[brackets]</b> before sending,
+      and attach both PDFs.
+    </p>
+    <button class="btn" id="copy">Copy the email body</button>
+    <span class="ok" id="ok" hidden>Copied — paste into your email client.</span>
+  </div>
+
+  <div class="subjects">
+    <b>Subject line — pick one</b>
+    <ol>
+      <li><code>Your clients are applying for IPOs. Just not with you.</code></li>
+      <li><code>A complete IPO desk, under [Broker name]'s brand</code></li>
+      <li><code>White-label IPO platform for [Broker name] — live in weeks, no build</code></li>
+    </ol>
+  </div>
+
+  <div id="email">
+    <p class="kicker">INVESTOYARD · FOR SEBI-REGISTERED STOCK BROKERS</p>
+
+    <p>Dear [Name],</p>
+
+    <p class="lead">
+      <b>IPO week is the one week a year your clients open somebody else's app.</b>
+      They come back — but not always, and not all of them.
+    </p>
+
+    <p>
+      I am [Your name], [designation] at <b>Safal Capital Services Private
+      Limited</b>. We run <b>Investoyard</b>, an IPO platform for Mainboard and
+      SME issues, and we make it available to brokers under <b>their own brand</b>.
+    </p>
+
+    <p>What that means for [Broker name]:</p>
+
+    <ul>
+      <li>
+        <b>Your brand, your domain, your clients.</b> Your logo, your colours,
+        your own site. We host it and we run it. There is nothing for your team
+        to build.
+      </li>
+      <li>
+        <b>Or keep the app you already have.</b> Call our API from your own
+        front end and we stay invisible.
+      </li>
+      <li>
+        <b>Live in weeks, not quarters.</b> No engineering project, no vendor
+        integration, no new headcount.
+      </li>
+      <li>
+        <b>Compliance is built into the product.</b> The one-PAN rule, the
+        retail and HNI bid limits, the UPI and syndicate ASBA split, the ICDR
+        offer checks — enforced by the platform, not left to whoever is on the
+        desk that morning.
+      </li>
+      <li>
+        <b>Your book stays yours.</b> Your reports cover your own clients only.
+        No other applicant's data, and no other broker's. Ever.
+      </li>
+    </ul>
+
+    <p>
+      I have attached two documents. <b>Investoyard for Brokers</b> (4 pages) is
+      the one to forward to your compliance team — it sets out what your clients
+      get and every SEBI rule the platform enforces. <b>Partner API Reference</b>
+      (6 pages) is for your technology team, if the API route suits you better.
+    </p>
+
+    <p>
+      <b>If this is worth fifteen minutes, simply reply to this email</b> and we
+      will find a time. I am happy to walk your compliance function through the
+      controls before anything else is discussed.
+    </p>
+
+    <p class="sig">
+      Warm regards,<br>
+      <b>[Your name]</b><br>
+      [Designation] · Safal Capital Services Private Limited<br>
+      [Mobile] · [Email]
+    </p>
+
+    <hr class="rule">
+
+    <p class="legal">
+      Investoyard is an IPO information and application platform operated by
+      Safal Capital Services Private Limited. We distribute and inform, and give
+      no investment advice or recommendation. Investments in securities carry
+      market risk — read all offer documents carefully. This message and the
+      attachments describe platform capability. They are not an offer, and not a
+      regulatory clearance for any figure a partner chooses to publish.
+    </p>
+  </div>
+
+</div>
+
+<script>
+  /* Copies the RENDERED email, so the formatting travels. `text/html` on the
+     clipboard is what Gmail and Outlook paste as rich text; the plain-text
+     fallback is written alongside for clients that refuse HTML. */
+  document.getElementById('copy').addEventListener('click', async () => {
+    const el = document.getElementById('email');
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([el.innerHTML], { type: 'text/html' }),
+          'text/plain': new Blob([el.innerText], { type: 'text/plain' }),
+        }),
+      ]);
+    } catch (e) {
+      /* Older clients, or a page without clipboard permission: fall back to
+         selecting the body so Ctrl+C still works. */
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const s = getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      try { document.execCommand('copy'); } catch (e2) { /* leave it selected */ }
+    }
+    const ok = document.getElementById('ok');
+    ok.hidden = false;
+    setTimeout(() => { ok.hidden = true; }, 2600);
+  });
+</script>
+</body>
+</html>

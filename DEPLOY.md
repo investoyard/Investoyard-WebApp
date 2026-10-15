@@ -165,19 +165,27 @@ Notes:
 The frontend and the Node API live on **different domains** and talk cross-origin (CORS). No ARR
 needed. Example in use:
 
-- **Frontend:** `https://newipo.finwave.co` — serves the static `apps/web/out`
-- **API:** `https://newipoapi.finwave.co` — the Node API (routes under `/api`)
+- **Frontend:** `https://investoyard.com` — serves the static `apps/web/out`.
+  `www.investoyard.com` and the retired `newipo.finwave.co` pair are bound to the
+  SAME site and 301 to the canonical host (see the `canonical-host` rule in
+  `apps/web/public/web.config`)
+- **API:** `https://newipoapi.finwave.co` — the Node API (routes under `/api`).
+  **It did NOT move with the site on 2026-10-15**: partner integrations hold this
+  base URL and the shipped mobile build is compiled against it
 
 **API side (`newipoapi.finwave.co`):**
 - Run the Node API (`node apps/api/dist/main.js`) behind HTTPS on its own domain (iisnode, an ARR
   site, or any TLS reverse proxy — whatever your host uses for Node apps). Keep DB/Redis private.
 - Lock CORS to the frontend origin (in the API's env):
   ```
-  CORS_ORIGIN=https://newipo.finwave.co     # comma-separated for multiple; unset = allow all (dev)
+  CORS_ORIGIN=https://investoyard.com,https://www.investoyard.com,https://newipo.finwave.co,https://www.newipo.finwave.co
+  WEB_BASE_URL=https://investoyard.com     # partner activation links in approval emails
+  PUBLIC_WEB_URL=https://investoyard.com   # {site} in WhatsApp templates
   ```
 
-**Frontend side (`newipo.finwave.co`):** `apps/web/.env.production`
+**Frontend side (`investoyard.com`):** `apps/web/.env.production`
 ```
+NEXT_PUBLIC_SITE_ORIGIN=https://investoyard.com        # canonical/og:url/sitemap — BAKED IN, needs a rebuild
 NEXT_PUBLIC_API_URL=https://newipoapi.finwave.co/api   # browser → the API domain (absolute)
 API_INTERNAL_URL=http://localhost:3000/api             # build-time SSG → LOCAL live API (real DB data)
 ```
