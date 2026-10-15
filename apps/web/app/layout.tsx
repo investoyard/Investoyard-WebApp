@@ -42,7 +42,19 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: { icon: '/favicon.ico', shortcut: '/favicon.ico', apple: '/icon.svg' },
   appleWebApp: { capable: true, title: 'Investoyard', statusBarStyle: 'default' },
-  alternates: { canonical: '/' },
+  /*
+   * SELF-REFERENCING, NOT THE HOME PAGE. This read `'/'` until 2026-10-15,
+   * and because metadata INHERITS, 37 of the 41 public routes emitted
+   * `<link rel="canonical" href="https://…/">` — every hub, every listing and
+   * all four trust pages telling Google they were duplicates of the home page
+   * and should not be indexed on their own. Only four routes overrode it.
+   *
+   * `'./'` is resolved by Next against the ROUTE, so each page canonicalises
+   * to itself and the four explicit overrides still win. Verified on the built
+   * export rather than assumed — a relative canonical that silently resolved
+   * to the origin would reproduce the identical bug while looking fixed.
+   */
+  alternates: { canonical: './' },
   openGraph: {
     type: 'website',
     siteName: 'Investoyard',
