@@ -120,6 +120,7 @@ class UpdateTenantDto {
      partner supplies once they have seen their site, never something anyone
      has at the moment the tenant is created. */
   @IsOptional() @IsString() footerLogoUrl?: string;
+  @IsOptional() @IsString() faviconUrl?: string;
   @IsOptional() @IsString() customDomain?: string;
   @IsOptional() profile?: Record<string, any>;
   @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number | null;

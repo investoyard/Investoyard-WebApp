@@ -65,10 +65,12 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
   const [gold, setGold] = useState(tenant.goldColor ?? '');
   const [logo, setLogo] = useState(tenant.logoUrl ?? '');
   const [footerLogo, setFooterLogo] = useState(tenant.footerLogoUrl ?? '');
+  const [favicon, setFavicon] = useState(tenant.faviconUrl ?? '');
   const [domain, setDomain] = useState(tenant.customDomain ?? '');
   const [busy, setBusy] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
   const [footerBusy, setFooterBusy] = useState(false);
+  const [faviconBusy, setFaviconBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [check, setCheck] = useState<api.DomainCheck | null>(null);
@@ -77,14 +79,15 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
   const dirty =
     brand !== (tenant.brandColor ?? '') || gold !== (tenant.goldColor ?? '') ||
     logo !== (tenant.logoUrl ?? '') || domain !== (tenant.customDomain ?? '') ||
-    footerLogo !== (tenant.footerLogoUrl ?? '');
+    footerLogo !== (tenant.footerLogoUrl ?? '') || favicon !== (tenant.faviconUrl ?? '');
 
   const save = async () => {
     setBusy(true); setErr(null);
     try {
       await api.updateTenant(slug, {
         brandColor: brand.trim(), goldColor: gold.trim(),
-        logoUrl: logo.trim(), footerLogoUrl: footerLogo.trim(), customDomain: domain.trim(),
+        logoUrl: logo.trim(), footerLogoUrl: footerLogo.trim(),
+        faviconUrl: favicon.trim(), customDomain: domain.trim(),
       });
       setSavedAt(Date.now());
       onSaved();
@@ -102,6 +105,14 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
     try { setLogo(await api.uploadImage(f)); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLogoBusy(false); }
+  };
+
+  const pickFavicon = async (f: File | undefined) => {
+    if (!f) return;
+    setFaviconBusy(true); setErr(null);
+    try { setFavicon(await api.uploadImage(f)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setFaviconBusy(false); }
   };
 
   const pickFooterLogo = async (f: File | undefined) => {
@@ -127,6 +138,18 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
       <p className="hint" style={{ marginTop: 0 }}>
         What this partner's clients see. The whole brand scale is derived from the primary colour.
       </p>
+      {/* Only reachable for a Standard partner that already carries branding —
+          the panel is hidden for one that does not. Says why it is here, because
+          otherwise it reads as a screen that should not exist. */}
+      {!tenant.whitelabel ? (
+        <div className="banner warn" style={{ margin: '0 0 14px' }}>
+          This is a <b>Standard</b> partner — they call the Partner API from their own front end and
+          have no branded site here, so none of this is shown to anyone. It appears only because
+          values are still set. A <b>custom domain</b> is the one that is not inert: it is still
+          matched to this tenant and still allowed through the API's CORS list. Clear it unless
+          this partner is being made white-label.
+        </div>
+      ) : null}
 
       <div className="filter-row">
         <div className="field" style={{ width: 170 }}>
@@ -187,6 +210,33 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
               : 'None uploaded — the logo above is shown in white. Upload a light version to keep its colours.'}
           </span>
         </div>
+        {/* Previewed at 16px, the size it is actually used at — a mark that
+            reads fine at 110px wide can be an unidentifiable smudge in a tab,
+            and that is the whole question this field answers. */}
+        <div className="field" style={{ width: 260 }}>
+          <label>Browser icon <span className="hint">(optional)</span></label>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 34, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: '#fff' }}>
+              {favicon || logo
+                ? <img src={favicon || logo} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }} />
+                : <span className="hint" style={{ fontSize: 10 }}>none</span>}
+            </span>
+            <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer' }}>
+              {faviconBusy ? 'Uploading…' : 'Upload'}
+              <input type="file" accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico,.png,.svg"
+                hidden onChange={(e) => pickFavicon(e.target.files?.[0])} />
+            </label>
+            {favicon ? <button className="btn btn-sm btn-ghost" onClick={() => setFavicon('')}>Clear</button> : null}
+          </div>
+          <span className="hint">
+            {favicon
+              ? 'Shown in the browser tab.'
+              : logo
+                ? 'None uploaded — the logo above is used. A square .ico, .png or .svg reads better.'
+                : 'None uploaded — the tab shows no icon rather than ours.'}
+          </span>
+        </div>
       </div>
 
       {/* A preview beats a hex code: staff are choosing what a broker's clients
@@ -201,12 +251,18 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
           fontSize: 13, color: brand || '#3c2e7e' }}>{tenant.name}</span>
       </div>
 
-      <div className="filter-row">
+      {/* THE HINT SITS UNDER THE ROW, NOT UNDER THE INPUT, and that is the fix
+          rather than a nudge. `.filter-row` is `align-items: flex-end`, so
+          every item lines up on its own BOTTOM edge — and a field whose last
+          child is a hint line is ~18px taller than one ending at its input.
+          The buttons were therefore aligning to the bottom of the hint and
+          sitting below the box they act on. Every other field in this panel
+          ends at its control, which is why only this row looked wrong. */}
+      <div className="filter-row" style={{ marginBottom: 4 }}>
         <div className="field" style={{ width: 280 }}>
           <label>Custom domain</label>
           <input className="input mono" value={domain} placeholder="ipo.partner.com"
             onChange={(e) => setDomain(e.target.value)} />
-          <span className="hint">Hostname only — no https://, no path.</span>
         </div>
         <button className="btn" disabled={busy || !dirty} onClick={save}>
           {busy ? 'Saving…' : 'Save branding'}
@@ -216,6 +272,7 @@ function BrandingPanel({ slug, tenant, onSaved }: { slug: string; tenant: api.Pa
         </button>
         {savedAt ? <span className="hint" style={{ alignSelf: 'center' }}>Saved.</span> : null}
       </div>
+      <div className="hint" style={{ marginBottom: 16 }}>Hostname only — no https://, no path.</div>
 
       {err ? <div className="banner bad" style={{ marginTop: 10 }}>{err}</div> : null}
 
@@ -713,6 +770,24 @@ function PartnerProfilePage() {
   };
 
   if (!operatorCan(me, 'tenants.manage')) return <NoAccess />;
+
+  /* See the comment at the render site. `data` is null until the fetch lands,
+     so this is guarded rather than read directly. */
+  const whiteLabelSurface = !!data && (
+    data.whitelabel
+    /* OUR OWN CHANNEL KEEPS ALL THREE, and leaving it out was a real
+       regression caught before shipping: `investoyard` is type `direct`, is not
+       white-label and has nothing filled in yet — so a gate on `whitelabel`
+       alone hides the ONLY screen for entering our own registered name,
+       grievance officer and support contact, which our footer and /contact
+       render from. A channel that publishes a site needs these; "white-label"
+       is not the same question as "publishes a site". */
+    || data.type === 'direct'
+    || !!(data.customDomain || data.brandColor || data.goldColor
+          || data.logoUrl || data.footerLogoUrl || data.faviconUrl)
+    || Object.keys(data.content ?? {}).length > 0
+    || Object.values(data.pages ?? {}).some((p) => (p?.html ?? '').trim().length > 0)
+  );
   if (loading) return <Loader />;
   if (!data) return <div className="banner warn">{err ?? 'Partner not found.'}</div>;
 
@@ -744,11 +819,33 @@ function PartnerProfilePage() {
         </div>
       </div></div>
 
-      <BrandingPanel slug={slug} tenant={data} onSaved={load} />
+      {/*
+        THESE THREE PANELS ARE A WHITE-LABEL CONCERN AND NOTHING ELSE —
+        Branding & domain, Published identity & contact, and Published pages.
+        A Standard partner consumes the Partner API from their own front end and
+        has no site of ours to brand: there is no footer to print their legal
+        entity in, no page to publish their Terms on, and no domain to serve
+        either from. Every control in all three is inert for them, sitting at
+        the top of the screen staff read first.
 
-      <ContentPanel slug={slug} tenant={data} onSaved={load} />
+        ONE GATE, COMPUTED ONCE. Three copies of this condition is how two of
+        them end up disagreeing after the next field is added.
 
-      <PagesPanel slug={slug} tenant={data} onSaved={load} />
+        THE SECOND HALF IS THE PART THAT MATTERS: a Standard tenant that ALREADY
+        carries any of this still gets all three panels, because the values are
+        not inert just because the screen is hidden. A customDomain on any
+        tenant is matched by the host resolver and allowed through the API's
+        CORS list; a published Terms page is served by
+        GET /tenants/:slug/page/:key to anyone who asks. Hiding the screen would
+        leave live configuration with nothing left to clear it from.
+      */}
+      {whiteLabelSurface ? (
+        <>
+          <BrandingPanel slug={slug} tenant={data} onSaved={load} />
+          <ContentPanel slug={slug} tenant={data} onSaved={load} />
+          <PagesPanel slug={slug} tenant={data} onSaved={load} />
+        </>
+      ) : null}
 
       <ApiKeysPanel tenantId={data.id} />
 

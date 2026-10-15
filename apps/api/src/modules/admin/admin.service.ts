@@ -918,6 +918,7 @@ export class AdminService {
         brandColor: t.brandColor ?? undefined, goldColor: t.goldColor ?? undefined,
         logoUrl: t.logoUrl ?? undefined,
         footerLogoUrl: t.footerLogoUrl ?? undefined,
+        faviconUrl: t.faviconUrl ?? undefined,
         profile: (t.profile as any) ?? {},
         counts: { branches: t._count.children, users: t._count.users, operators: t._count.memberships },
         createdAt: t.createdAt.toISOString().slice(0, 10),
@@ -992,7 +993,7 @@ export class AdminService {
 
   /** Update a partner/branch's brand + empanelment profile (merges into existing profile). */
   async updateTenant(callerId: string, slug: string, dto: {
-    name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string; footerLogoUrl?: string;
+    name?: string; status?: string; brandColor?: string; goldColor?: string; logoUrl?: string; footerLogoUrl?: string; faviconUrl?: string;
     customDomain?: string; profile?: Record<string, any>; commissionRate?: number | null;
     partnerMaxApplicantsPerCall?: number;
     partnerApiScopes?: string[];
@@ -1010,7 +1011,7 @@ export class AdminService {
       // superadmin-only. Silently drop rather than 403 so the
       // My Organisation client doesn't need to know the field list.
       if (scope.superadmin) {
-        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl', 'footerLogoUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl', 'footerLogoUrl', 'faviconUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
         if (dto.customDomain !== undefined) data.customDomain = normaliseCustomDomain(dto.customDomain);
         if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
         if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;

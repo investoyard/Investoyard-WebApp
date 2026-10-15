@@ -72,12 +72,12 @@ export function TenantHead() {
     if (!links.length) return;
     const before = links.map((l) => ({ el: l, href: l.getAttribute('href') }));
 
-    if (tenant.logo) {
-      /* Their mark, scaled by the browser. A wordmark makes an imperfect
-         square icon — but an imperfect icon of THEIR brand beats a crisp one
-         of ours on their clients' screens. A dedicated square upload would be
-         better and is a field away if a partner asks. */
-      for (const l of links) l.setAttribute('href', tenant.logo);
+    const icon = tenant.favicon || tenant.logo;
+    if (icon) {
+      /* An uploaded favicon wins. Falling back to the logo is better than ours
+         but imperfect — a wordmark squeezed into 16 square pixels is a smudge —
+         so the upload is the override and the logo is the fallback. */
+      for (const l of links) l.setAttribute('href', icon);
     } else {
       /* No mark to substitute, so REMOVE ours rather than leave it. The
          browser then falls back to its blank document icon, which says
@@ -92,7 +92,7 @@ export function TenantHead() {
         if (!el.isConnected) document.head.appendChild(el);
       }
     };
-  }, [tenant.isDefault, tenant.logo]);
+  }, [tenant.isDefault, tenant.favicon, tenant.logo]);
 
   return null;
 }

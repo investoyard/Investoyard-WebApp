@@ -120,7 +120,7 @@ export interface PartnerDetail {
   id: string; slug: string; name: string; type: string; status: string;
   parent?: { slug: string; name: string }; whitelabel: boolean;
   code?: string; commissionRate?: number;
-  brandColor?: string; goldColor?: string; logoUrl?: string; footerLogoUrl?: string; customDomain?: string;
+  brandColor?: string; goldColor?: string; logoUrl?: string; footerLogoUrl?: string; faviconUrl?: string; customDomain?: string;
   profile: Record<string, any>;
   /** Partner API operator controls (Phase D). Default 25 for a new partner,
    *  clamped to 1..500 by the server. */
@@ -314,7 +314,7 @@ export interface PartnerPrintDetail {
 export const fetchPartnerPrintDetail = (id: string) =>
   authed<PartnerPrintDetail>(`${API}/admin/partner-api/print-detail?id=${encodeURIComponent(id)}`, { method: 'GET' });
 export const updateTenant = (slug: string, body: Partial<{
-  name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; footerLogoUrl?: string;
+  name: string; status: string; brandColor: string; goldColor: string; logoUrl: string; footerLogoUrl?: string; faviconUrl?: string;
   customDomain: string; profile: Record<string, any>; commissionRate: number | null;
   partnerMaxApplicantsPerCall: number;
   partnerApiScopes: string[];

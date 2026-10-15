@@ -38,6 +38,11 @@ export interface Tenant {
    * something already designed for that background.
    */
   footerLogo?: string;
+  /**
+   * The browser-tab icon. Absent ⇒ `logo` is used, and absent too ⇒ our icon
+   * links are REMOVED rather than left pointing at ours.
+   */
+  favicon?: string;
   isDefault?: boolean;
   flags: { gmpEnabled: boolean; upiCap: number; whatsappChannel: string };
   /**
@@ -83,6 +88,7 @@ function mapApi(a: any): Tenant {
     id: a.id, slug: a.slug, type: a.type, name: a.name, customDomain: a.customDomain,
     brandColor: a.brandColor, goldColor: a.goldColor, logo: a.logoUrl,
     footerLogo: a.footerLogoUrl,
+    favicon: a.faviconUrl,
     isDefault: a.type === 'direct',
     /* An API that predates the content store sends nothing; `{}` keeps every
        reader able to say `content.identity` without a guard. */

@@ -222,6 +222,12 @@ model Tenant {
   /// Deliberately a separate column rather than a flag on `logoUrl`: the two
   /// are different images, and a single field could not hold both.
   footerLogoUrl  String?
+  /// Optional browser-tab icon, for a white-label domain.
+  ///
+  /// Without it the partner's `logoUrl` is used, which is better than ours but
+  /// imperfect: a wordmark squeezed into 16 square pixels is a smudge. A
+  /// partner who owns a real icon uploads it here.
+  faviconUrl     String?
   flags          Json?
   profile        Json? // partner/branch empanelment profile (JM+Nuvama fields, doc URLs)
   code           String?    @unique // 6-digit channel code (partners/branches), sequential from 601001

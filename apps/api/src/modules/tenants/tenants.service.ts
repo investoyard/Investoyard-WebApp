@@ -72,6 +72,7 @@ export class TenantsService {
          the footer still renders on the FIRST paint with no second request —
          the same reasoning that put identity and contact here. */
       footerLogoUrl: t.footerLogoUrl ?? undefined,
+      faviconUrl: t.faviconUrl ?? undefined,
       flags: await this.settings.publicFlags(t.id),
       /*
        * WHO OPERATES THIS SITE, so a white-label domain stops publishing OURS.

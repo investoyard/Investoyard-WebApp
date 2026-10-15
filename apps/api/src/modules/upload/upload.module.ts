@@ -11,9 +11,16 @@ import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions, RequireAnyPermission } from '../../common/require-permissions.decorator';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
-const ALLOWED = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg']);
+/* .ico is here ONLY for partner favicons -- browsers have accepted PNG and
+   SVG icons for years, but a broker who already owns a .ico should not be
+   told to go and convert it. Express sets the content type from the
+   extension on the way out, so nothing else needs to know. */
+const ALLOWED = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']);
 const ALLOWED_DOCS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.pdf']); // KYC/empanelment docs
-const SAFE_NAME = /^[a-f0-9-]{8,}\.(png|jpe?g|webp|svg|pdf)$/i;
+/* The SERVING guard, and it is a separate list on purpose: a file that can be
+   uploaded but not served is a silent 400 long after the upload "worked".
+   Both lists move together. */
+const SAFE_NAME = /^[a-f0-9-]{8,}\.(png|jpe?g|webp|svg|ico|pdf)$/i;
 
 if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
 
