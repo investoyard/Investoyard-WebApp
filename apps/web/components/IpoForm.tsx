@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -97,7 +97,13 @@ type Doc = {
   source?: 'upload' | 'url';
 };
 type Partner = { member: string; exchange: string };
-type Series = { member: string; from: string; to: string; active: boolean; exchange?: string };
+/**
+ * `kind` is the PDF-printing form type: resident | syndicate | shareholder.
+ * Absent on every row written before 16 Oct 2026 — those sit in the Resident
+ * slot, which is also the fallback the server applies to them, so a legacy
+ * IPO keeps numbering exactly as it does today until someone edits it.
+ */
+type Series = { member: string; from: string; to: string; active?: boolean; kind?: string; exchange?: string };
 /**
  * A reservation row as STORED: the percentage, plus optional exact share
  * counts at each end of the price band.
@@ -182,6 +188,8 @@ interface FormState {
   anchorDate: string; refundDate: string;
   openDate: string; closeDate: string; qibCloseDate: string; allotmentDate: string; dematDate: string; listingDate: string;
   documents: Doc[]; leads: string[]; partners: Partner[]; pdfSeries: Series[]; onlineSeries: Series[];
+  /** Which PARTNER's three print ranges are live. One value, never a flag per row. */
+  pdfSeriesMember: string;
   shareResv: Record<string, Resv>; resvRemarks: string;
   asbaResident: string; asbaSyndicate: string; asbaSingle: string; asbaShareholder: string; // blank ASBA form PDFs (URLs) for prefill printing
   asbaResidentName: string; asbaSyndicateName: string; asbaSingleName: string; asbaShareholderName: string; // original file names (display)
@@ -253,6 +261,7 @@ const blankForm = (): FormState => ({
   anchorDate: '', refundDate: '',
   openDate: '', closeDate: '', qibCloseDate: '', allotmentDate: '', dematDate: '', listingDate: '',
   documents: [], leads: [], partners: [], pdfSeries: [], onlineSeries: [],
+  pdfSeriesMember: '',
   shareResv: blankShareResv(), resvRemarks: '',
   asbaResident: '', asbaSyndicate: '', asbaSingle: '', asbaShareholder: '',
   asbaResidentName: '', asbaSyndicateName: '', asbaSingleName: '', asbaShareholderName: '',
@@ -494,6 +503,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           companyDescription: str(ex.companyDescription), companyStrength: str(ex.companyStrength), companyFinancials: str(ex.companyFinancials), contactInfo: str(ex.contactInfo),
           faqs: Array.isArray(ex.faqs) ? ex.faqs : [], leads: Array.isArray(ex.leads) ? ex.leads : [], partners: Array.isArray(ex.partners) ? ex.partners : [],
           pdfSeries: Array.isArray(ex.pdfSeries) ? ex.pdfSeries : [], onlineSeries: Array.isArray(ex.onlineSeries) ? ex.onlineSeries : [],
+          pdfSeriesMember: str(ex.pdfSeriesMember),
           // legacy rows carry count/remark/req1x — read the inputs only and let
           // the derived columns come from the engine
           shareResv: ex.shareResv
@@ -674,7 +684,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       companyWebsite: form.companyWebsite, companyPromoter: form.companyPromoter,
       companyDescription: form.companyDescription, companyStrength: form.companyStrength, companyFinancials: form.companyFinancials, contactInfo: form.contactInfo,
       faqs: form.faqs, leads: form.leads, partners: form.partners,
-      pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries,
+      pdfSeries: form.pdfSeries, onlineSeries: form.onlineSeries, pdfSeriesMember: form.pdfSeriesMember,
       asbaNames: { resident: form.asbaResidentName, syndicate: form.asbaSyndicateName, single: form.asbaSingleName, shareholder: form.asbaShareholderName },
       // anchor investors (master-picked, per-IPO ₹ amount) → detail-page section
       anchors: form.anchors.filter((a) => a.name.trim()).map((a) => ({
@@ -1619,6 +1629,121 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
 
   // Application-series members are restricted to the partners added in Basic Details → IPO Partner.
   const partnerMembers = Array.from(new Set(form.partners.map((p) => p.member).filter(Boolean)));
+  /**
+   * PDF printing — THREE ranges per PARTNER (operator, 16 Oct 2026):
+   * Physical Resident, Syndicate ASBA and Shareholders. Pick the partner and
+   * all of its ranges go live together; anything not entered draws from
+   * Physical Resident.
+   *
+   * Deliberately NOT the generic `seriesPanel` below. That one is a flat list
+   * with a single active ROW, which is right for online bidding — the active
+   * row's exchange is what routes the bid — and cannot express "pick a
+   * partner, three ranges switch at once". The two shapes have genuinely
+   * diverged, so they are two panels rather than one with a flag.
+   *
+   * Slots render whether or not they are filled, so "every IPO has three
+   * series" is what the screen says rather than something the operator has to
+   * assemble out of an empty list. An empty slot PERSISTS NOTHING and instead
+   * shows the range it will borrow — same discipline as `mergeContentPatch`,
+   * where a blanked box deletes rather than storing "".
+   */
+  const pdfSeriesPanel = () => {
+    const rows = form.pdfSeries;
+    const smeLike = form.type !== 'mainboard' || /ncd|debt/i.test(form.issueType);
+    // SME and NCD print one blank at any amount, so one range serves. Three
+    // slots with two greyed out would be noise on 804 of the 1,304 records.
+    const kinds: AsbaSeriesKind[] = smeLike
+      ? ['resident']
+      : form.allowShareholder ? ['resident', 'syndicate', 'shareholder'] : ['resident', 'syndicate'];
+    const issues = seriesIssues(rows);
+    const eq = (a?: string | null, b?: string | null) =>
+      String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+    // Same precedence the server applies, so the screen cannot claim a
+    // different partner is live than the one numbers will come from.
+    const live = (form.pdfSeriesMember || '').trim() || activeSeriesMember(rows) || partnerMembers[0] || '';
+    // A legacy row carries no `kind`; it belongs in the Resident slot, which is
+    // also the fallback the server gives it. Editing it stamps the kind.
+    const idxOf = (m: string, k: AsbaSeriesKind) =>
+      rows.findIndex((r) => eq(r.member, m) && (normSeriesKind(r.kind) ?? 'resident') === k);
+    const rowOf = (m: string, k: AsbaSeriesKind) => { const i = idxOf(m, k); return i >= 0 ? rows[i] : null; };
+    const setPdf = (m: string, k: AsbaSeriesKind, part: Partial<Series>) => {
+      const i = idxOf(m, k);
+      const next = [...rows];
+      const merged: Series = { from: '', to: '', ...(i >= 0 ? next[i] : {}), ...part, member: m, kind: k };
+      const empty = !String(merged.from ?? '').trim() && !String(merged.to ?? '').trim();
+      if (i >= 0) { if (empty) next.splice(i, 1); else next[i] = merged; }
+      else if (!empty) next.push(merged);
+      set({ pdfSeries: next });
+    };
+    // The swap is ONE value. Per-row `active` is cleared with it so the two can
+    // never disagree about which partner is live.
+    const makeLive = (m: string) =>
+      set({ pdfSeriesMember: m, pdfSeries: rows.map((r) => ({ ...r, active: false })) });
+
+    return (
+      <Panel
+        title="Application Series — PDF Printing"
+        desc="Three ranges per partner. Pick which partner is live; all of its ranges switch together."
+      >
+        {partnerMembers.length === 0 ? (
+          <div className="banner info" style={{ fontSize: 13 }}>
+            Add syndicate members in <b>Basic Details → IPO Partner</b> first — only those members can have application series.
+          </div>
+        ) : (
+          <>
+            {issues.map((v) => (
+              <div key={v.code + v.message} className={`banner ${v.severity === 'blocking' ? 'warn' : 'info'}`} style={{ marginBottom: 10 }}>
+                <b>{v.severity === 'blocking' ? 'Fix before publishing' : 'Check'}:</b> {v.message}
+              </div>
+            ))}
+            {partnerMembers.map((m) => {
+              const mine = rows.some((r) => eq(r.member, m));
+              return (
+                <div key={m} className="rb-group">
+                  <label className="rb-group-head">
+                    <input
+                      type="radio" name="pdfSeriesMember" checked={eq(live, m)}
+                      onChange={() => makeLive(m)}
+                      style={{ width: 17, height: 17, accentColor: 'var(--brand)' }}
+                    />
+                    <b>{m}</b>
+                    {eq(live, m) && <span className="rb-live">Live</span>}
+                  </label>
+                  <table className="table rb-table" style={{ width: '100%' }}>
+                    <thead><tr>
+                      <th>Form type</th><th style={{ width: 150 }}>From</th><th style={{ width: 150 }}>To</th><th>If left blank</th>
+                    </tr></thead>
+                    <tbody>
+                      {kinds.map((k) => {
+                        const r = rowOf(m, k);
+                        return (
+                          <tr key={k}>
+                            <td>{smeLike ? 'Application Series — all SME forms' : ASBA_SERIES_LABEL[k]}</td>
+                            <td><input className="input mono" value={r?.from ?? ''} placeholder="78043401"
+                              onChange={(e) => setPdf(m, k, { from: e.target.value.replace(/\D/g, '') })} /></td>
+                            <td><input className="input mono" value={r?.to ?? ''} placeholder="78093400"
+                              onChange={(e) => setPdf(m, k, { to: e.target.value.replace(/\D/g, '') })} /></td>
+                            <td className="muted" style={{ fontSize: 11.5 }}>
+                              {!r && mine ? seriesFallbackNote(rows, m, k) : ''}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+            <div className="muted" style={{ fontSize: 12 }}>
+              Any type left blank draws from <b>Physical Resident</b>, and a reprint keeps the number it was first given.
+              {!smeLike && !form.allowShareholder && <> The Shareholders slot appears once this issue offers that quota.</>}
+            </div>
+          </>
+        )}
+      </Panel>
+    );
+  };
+
   const seriesPanel = (title: string, desc: string, key: 'pdfSeries' | 'onlineSeries', radio: string) => {
     const list = form[key];
     const withExchange = key === 'onlineSeries'; // the ACTIVE row's exchange routes native bids
@@ -2959,7 +3084,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         {/* ================= IPO Application Series ================= */}
         {tab === 'docs' && (
           <div className="fstack">
-            {seriesPanel('Application Series — PDF Printing', 'Ranges per syndicate member; the active one is used for prefilled-ASBA PDF printing.', 'pdfSeries', 'pdfActive')}
+            {pdfSeriesPanel()}
             {seriesPanel('Application Series — Online Apply', 'Ranges per syndicate member; the active one is used for online applications.', 'onlineSeries', 'onlineActive')}
           </div>
         )}

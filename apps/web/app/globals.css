@@ -4660,3 +4660,13 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    each element: the stylesheet is already parsed, so the content is never
    painted, and one rule covers every page that marks its own copy this way. */
 html[data-foreign-host] [data-own-only] { display: none; }
+
+/* PDF-printing application series — one block per syndicate partner, holding
+   that partner's three form-type ranges. `rb-group`/`rb-live` are new names;
+   grepped against globals.css first, per the four times a collision in this
+   sheet has silently changed a layout. */
+.rb-group { border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; margin-bottom: 10px; }
+.rb-group-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
+.rb-group-head b { font-weight: 600; }
+.rb-live { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px; background: var(--brand-50); color: var(--brand-700); }
+.rb-group .rb-table { border-radius: 0; }

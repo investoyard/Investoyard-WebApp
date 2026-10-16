@@ -17,10 +17,12 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, ASBA_SYNDICATE_ABOVE, mayCancel, mayChangeUpi, mayRequestUnblock, matchSponsorBanks } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, mayCancel, mayChangeUpi, mayRequestUnblock, matchSponsorBanks, asbaDocOrder, resolveSeriesRange, type AsbaDocType } from '@investoyard/shared-types';
 
-/** ASBA form threshold: bids up to ₹5,00,000 use the Resident form, above use Syndicate (mainboard only). */
-const ASBA_RETAIL_LIMIT = ASBA_SYNDICATE_ABOVE;
+/* The ₹5,00,000 Resident/Syndicate threshold is NOT re-stated here any more.
+   It lives in `asbaDocOrder` (shared-types), beside ASBA_SYNDICATE_ABOVE and
+   under test — one copy, so the form that prints and the series its number
+   comes from can never be decided against two different numbers. */
 
 /** Shared relations needed to fill an ASBA form for an application. */
 const ASBA_INCLUDE = {
@@ -285,10 +287,7 @@ export class ApplicationsService {
    * profile mutation) share the exact same template-picking + fill ladder.
    */
   async buildAsbaFromPayload(ipo: any, a: any, formNo: string): Promise<Buffer> {
-    const amount = Number(a.amount ?? 0);
-    const applicantType =
-      a.category === 'Shareholder' ? 'shareholder'
-      : a.category === 'Employee' ? 'employee' : 'individual';
+    const { amount, applicantType } = ApplicationsService.payloadBid(a);
     const address = [a.address, a.city, a.state].filter(Boolean).join(', ') || null;
     const shares = a.shareQty ?? ((a.lots ?? 0) * (ipo.lotSize ?? 0));
     const template = this.pickAsbaTemplate(ipo, amount, applicantType);
@@ -376,7 +375,12 @@ export class ApplicationsService {
     const bufs: Buffer[] = [];
     const formNos = new Map<string, string | null>();
     for (const { id, payload } of apps) {
-      const formNo = await this.allocateAsbaFormNo(ipo, id, null);
+      // Resolve the blank FIRST so the number comes from the matching series —
+      // `buildAsbaFromPayload` resolves the same thing off the same payload
+      // through the same helper, so the two cannot disagree.
+      const { amount, applicantType } = ApplicationsService.payloadBid(payload);
+      const { docType } = this.asbaTemplateFor(ipo, amount, applicantType);
+      const formNo = await this.allocateAsbaFormNo(ipo, id, null, docType);
       formNos.set(id, formNo);
       bufs.push(await this.buildAsbaFromPayload(ipo, payload, formNo ?? id.slice(0, 8)));
     }
@@ -390,9 +394,9 @@ export class ApplicationsService {
 
   /** Fill one application onto its ASBA form (AcroForm fill → overlay → placeholder). */
   private async buildAsbaForApp(app: any): Promise<{ buffer: Buffer; formNo: string | null }> {
-    const template = this.pickAsbaTemplate(app.ipo, Number(app.amount), app.applicantType);
+    const { docType, path: template } = this.asbaTemplateFor(app.ipo, Number(app.amount), app.applicantType);
     if (template) {
-      const formNo = await this.allocateAsbaFormNo(app.ipo, app.id, app.asbaFormNo);
+      const formNo = await this.allocateAsbaFormNo(app.ipo, app.id, app.asbaFormNo, docType);
       const bytes = readFileSync(template);
 
       // Fillable blank (AcroForm) → set values by FIELD NAME (pixel-perfect on
@@ -600,6 +604,23 @@ export class ApplicationsService {
    * a real-looking PDF.
    */
   pickAsbaTemplate(ipo: any, amount: number, applicantType?: string | null): string | null {
+    return this.asbaTemplateFor(ipo, amount, applicantType).path;
+  }
+
+  /**
+   * The blank we will print on AND which type it is.
+   *
+   * Both come back together on purpose: the form number has to be drawn from
+   * the series matching the form that ACTUALLY printed, and resolving the two
+   * separately is how they drift. `asbaDocOrder` is the pure, tested ladder in
+   * shared-types; the only thing decided here is the one question that needs
+   * the filesystem — whether the blank is really on disk.
+   */
+  asbaTemplateFor(
+    ipo: any,
+    amount: number,
+    applicantType?: string | null,
+  ): { docType: AsbaDocType | null; path: string | null } {
     const docs: Array<{ type: string; url: string }> = ipo.documents ?? [];
     const toPath = (doc?: { type: string; url: string }): string | null => {
       if (!doc?.url) return null;
@@ -608,31 +629,62 @@ export class ApplicationsService {
       const path = join(UPLOAD_DIR, decodeURIComponent(filename));
       return existsSync(path) ? path : null;
     };
-    if (applicantType === 'shareholder') {
-      const sha = toPath(docs.find((d) => d.type === 'asba_form_shareholder'));
-      if (sha) return sha; // no shareholder blank uploaded → fall through to the regular pick
-    }
     const isNcd = /ncd|debt/i.test(String(ipo.extra?.issueType ?? ''));
-    const isMainboard = ipo.type === 'mainboard' && !isNcd;
-    const wanted = isMainboard
-      ? amount > ASBA_RETAIL_LIMIT ? 'asba_form_syndicate' : 'asba_form_resident'
-      : 'asba_form_single';
-    return toPath(
-      docs.find((d) => d.type === wanted) ||
-      docs.find((d) => d.type === 'asba_form_single') ||       // SME/NCD single, or mainboard fallback
-      docs.find((d) => d.type?.startsWith('asba_form')),       // any ASBA form as last resort
-    );
+    const order = asbaDocOrder({
+      board: ipo.type === 'mainboard' ? 'mainboard' : 'sme',
+      isNcd,
+      applicantType,
+      amount,
+    });
+    // First UPLOADED type wins, exactly as before — a row that exists but whose
+    // file is missing still falls through to the generated placeholder rather
+    // than silently printing a different form type.
+    const doc = order.map((t) => docs.find((d) => d.type === t)).find(Boolean);
+    return { docType: (doc?.type as AsbaDocType) ?? null, path: toPath(doc) };
   }
 
   /**
-   * Allocate the ASBA print-form number from the IPO's active "PDF Printing" series.
-   * Reuses the already-assigned number on reprint; returns null if no series is configured.
+   * Amount + applicant type as the print engine reads them off a partner payload.
+   *
+   * Static and shared because `generatePartnerFormsPdf` has to know the form
+   * type BEFORE it allocates a number, while `buildAsbaFromPayload` needs the
+   * same two values to fill the blank. Two copies of this derivation is two
+   * chances for the number and the form to describe different applicants.
    */
-  async allocateAsbaFormNo(ipo: any, appId: string, existing: string | null): Promise<string | null> {
+  static payloadBid(a: any): { amount: number; applicantType: string } {
+    return {
+      amount: Number(a?.amount ?? 0),
+      applicantType:
+        a?.category === 'Shareholder' ? 'shareholder'
+        : a?.category === 'Employee' ? 'employee' : 'individual',
+    };
+  }
+
+  /**
+   * Allocate the ASBA print-form number from the IPO's "PDF Printing" series.
+   *
+   * THREE SERIES PER PARTNER (operator, 16 Oct 2026) — Physical Resident,
+   * Syndicate ASBA and Shareholders. `extra.pdfSeriesMember` picks which
+   * partner's three ranges are live and is the swap switch; `docType` decides
+   * which of that partner's three the number comes from, with Resident as the
+   * default for anything not entered. `resolveSeriesRange` owns all of that,
+   * and is the SAME module that chose the blank — so a Syndicate form cannot
+   * be numbered out of the Resident range.
+   *
+   * Reuses the already-assigned number on reprint, deliberately: if a partner
+   * resends a corrected amount that crosses ₹5L the form type flips, but
+   * renumbering a form already in a client's hands is worse than the mismatch
+   * (operator's call). Returns null if no series is configured, or the chosen
+   * range is exhausted — a blank number beats a wrong one.
+   */
+  async allocateAsbaFormNo(
+    ipo: any,
+    appId: string,
+    existing: string | null,
+    docType?: AsbaDocType | null,
+  ): Promise<string | null> {
     if (existing) return existing;
-    const series: Array<{ member: string; from: string; to: string; active: boolean }> =
-      Array.isArray(ipo.extra?.pdfSeries) ? ipo.extra.pdfSeries : [];
-    const active = series.find((s) => s.active) ?? series[0];
+    const { row: active } = resolveSeriesRange(ipo.extra, docType);
     const from = Number(active?.from), to = Number(active?.to);
     if (!Number.isFinite(from)) return null;
     // next = max assigned within this IPO's range + 1 (or `from` if none yet)
