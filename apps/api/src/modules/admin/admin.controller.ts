@@ -147,6 +147,16 @@ class TenantIdentityDto {
   @IsOptional() @IsString() @MaxLength(30) gstin?: string;
   @IsOptional() @IsString() @MaxLength(600) registeredAddress?: string;
 }
+/* Brand assets only. `customDomain` is deliberately NOT here — it is not
+   branding, it feeds the API's CORS allow-list, and it stays on UpdateTenantDto
+   where only a superadmin can set it. */
+class TenantBrandingDto {
+  @IsOptional() @IsString() @MaxLength(32) brandColor?: string;
+  @IsOptional() @IsString() @MaxLength(32) goldColor?: string;
+  @IsOptional() @IsString() @MaxLength(600) logoUrl?: string;
+  @IsOptional() @IsString() @MaxLength(600) footerLogoUrl?: string;
+  @IsOptional() @IsString() @MaxLength(600) faviconUrl?: string;
+}
 class TenantContactDto {
   /* Not @IsEmail: the field may be CLEARED, and '' is not an email. An address
      that fails to deliver is the operator's to notice; refusing the save of
@@ -396,12 +406,29 @@ export class AdminController {
    * whitelist is the only thing standing between a posted key and a public
    * response. Superadmin is enforced in the service, with the reason.
    */
+  /**
+   * BRAND ASSETS — the one part of "Branding & domain" a white-label partner
+   * owns. Split off `updateTenant` so that a single guard decorator answers
+   * the access question for every site-editing route, rather than this one
+   * growing a hand-written copy of the permission rule. The custom domain
+   * stays on `PATCH tenants/:slug`, superadmin-only: it feeds the API's CORS
+   * allow-list and needs DNS plus a TLS binding here, which a partner has no
+   * way to complete.
+   */
+  @Patch('tenants/:slug/branding')
+  @RequirePermissions('tenant.site.manage')
+  updateTenantBranding(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantBrandingDto) {
+    return this.admin.updateTenantBranding(req.user.sub, slug, dto as any);
+  }
+
   @Patch('tenants/:slug/content/identity')
+  @RequirePermissions('tenant.site.manage')
   updateTenantIdentity(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantIdentityDto) {
     return this.admin.updateTenantContent(req.user.sub, slug, 'identity', dto as any);
   }
 
   @Patch('tenants/:slug/content/contact')
+  @RequirePermissions('tenant.site.manage')
   updateTenantContact(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantContactDto) {
     return this.admin.updateTenantContent(req.user.sub, slug, 'contact', dto as any);
   }
@@ -417,6 +444,7 @@ export class AdminController {
    * service before anything reaches the store.
    */
   @Patch('tenants/:slug/page/:key')
+  @RequirePermissions('tenant.site.manage')
   updateTenantPage(
     @Req() req: any,
     @Param('slug') slug: string,

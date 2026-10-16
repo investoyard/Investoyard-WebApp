@@ -25,6 +25,7 @@ import {
   TenantPageKey,
   contentGaps,
   mergeContentPatch,
+  stripOperatorOnlyIdentity,
 } from '@investoyard/shared-types';
 
 /**
@@ -596,8 +597,18 @@ export class AdminService {
     'users.view', 'users.manage', 'roles.view', 'audit.view',
     'providers.manage', 'templates.manage', 'messages.view', 'chatbot.manage',
     'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+    /* Their own published site — brand assets, identity/contact, legal pages.
+       A white-label partner publishes a site to their own clients, so keeping
+       it correct cannot require an email to us: a grievance officer who leaves
+       takes the escalation route with them until someone here edits it. The
+       legal name and the registrations stay operator-only (the approval
+       record), and the custom domain stays operator-only because it feeds the
+       API's CORS allow-list — see OPERATOR_ONLY_IDENTITY_FIELDS. */
+    'tenant.site.manage',
   ];
   // Branch — a slimmer role. No user/role management (parent partner handles it).
+  // NOTE: deliberately NO `tenant.site.manage` — a branch does not publish an
+  // identity of its own; its parent partner edits it (operator's call).
   private static BRANCH_ADMIN_PERMS = [
     'dashboard.view', 'ipos.view',
     'bids.view', 'bids.manage', 'bidding.report.view',
@@ -1010,8 +1021,16 @@ export class AdminService {
       // domain, commission, partner API operator controls) stays
       // superadmin-only. Silently drop rather than 403 so the
       // My Organisation client doesn't need to know the field list.
+      /* THE BRAND ASSETS ARE NOT HERE ANY MORE — they moved to
+         `updateTenantBranding` (PATCH /tenants/:slug/branding), so that a
+         white-label partner can edit their own without this route having to
+         decide field-by-field who may touch what. ONE writer for those five
+         columns, used by the operator screen and the partner screen alike.
+         `customDomain` deliberately did NOT move: it feeds the API's CORS
+         allow-list, so a self-service domain field would let any tenant admin
+         add an arbitrary origin to it. */
       if (scope.superadmin) {
-        for (const k of ['name', 'status', 'brandColor', 'goldColor', 'logoUrl', 'footerLogoUrl', 'faviconUrl'] as const) if (dto[k] !== undefined) data[k] = dto[k];
+        for (const k of ['name', 'status'] as const) if (dto[k] !== undefined) data[k] = dto[k];
         if (dto.customDomain !== undefined) data.customDomain = normaliseCustomDomain(dto.customDomain);
         if (dto.commissionRate !== undefined) data.commissionRate = dto.commissionRate;
         if (dto.partnerMaxApplicantsPerCall !== undefined) data.partnerMaxApplicantsPerCall = dto.partnerMaxApplicantsPerCall;
@@ -1124,9 +1143,60 @@ export class AdminService {
    * later tightening of the allow-list would protect new pages and leave every
    * stored one exactly as it was.
    */
+  /**
+   * Brand assets for one channel — colours, logo, footer logo, favicon.
+   *
+   * ITS OWN ROUTE rather than five more fields on `updateTenant`, because the
+   * two have different answers to "who may do this": `updateTenant` carries
+   * name / status / custom domain / commission / partner-API controls, all
+   * operator-only, while a white-label partner must be able to change their
+   * own logo. Splitting the route lets ONE guard decorator answer the access
+   * question for all four site-editing routes, instead of this method growing
+   * a second, hand-written copy of the permission rule.
+   *
+   * `customDomain` is NOT here. It is not branding: setting it puts that host
+   * into the API's CORS allow-list (`main.ts`, 60s TTL), so a self-service
+   * field would let any tenant admin add an arbitrary origin. It also needs a
+   * DNS record and a TLS binding on this box, neither of which a partner can
+   * do — so it stays an operator step on `updateTenant`.
+   */
+  async updateTenantBranding(callerId: string, slug: string, dto: {
+    brandColor?: string | null; goldColor?: string | null;
+    logoUrl?: string | null; footerLogoUrl?: string | null; faviconUrl?: string | null;
+  }) {
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      const data: any = {};
+      for (const k of ['brandColor', 'goldColor', 'logoUrl', 'footerLogoUrl', 'faviconUrl'] as const) {
+        if (dto[k] !== undefined) data[k] = dto[k] === '' ? null : dto[k];
+      }
+      if (!Object.keys(data).length) return { ok: true, changed: [] as string[] };
+      await this.prisma.tenant.update({ where: { id: t.id }, data });
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'tenant.branding.update',
+          actorId: callerId,
+          targetType: 'tenant',
+          targetId: t.id,
+          targetLabel: `${t.name} (${t.slug})`,
+          tenantSlug: t.slug,
+          /* The field NAMES, never the values — a logo URL is not a secret but
+             an audit row that restates the whole payload is unreadable. */
+          detail: { fields: Object.keys(data) },
+        },
+      });
+      return { ok: true, changed: Object.keys(data) };
+    });
+  }
+
   async updateTenantPage(callerId: string, slug: string, key: TenantPageKey, html: string) {
-    const scope = await this.callerScope(callerId);
-    if (!scope.superadmin) throw new ForbiddenException("Only a superadmin may edit a channel's published pages.");
+    /* Access is the guard's — `@RequirePermissions('tenant.site.manage')`.
+       There is no field split here: About, Terms, Privacy and Disclaimer are
+       the PARTNER's own contract with their own clients, published under their
+       brand on their domain. We cannot write a broker's Terms, so requiring us
+       to publish them is backwards. The HTML is sanitised on READ, so nothing
+       a partner writes here can carry script onto their page. */
     if (!(TENANT_PAGE_KEYS as readonly string[]).includes(key)) {
       throw new BadRequestException(`Unknown page '${key}'.`);
     }
@@ -1192,8 +1262,12 @@ export class AdminService {
     key: TenantContentKey,
     patch: Record<string, unknown>,
   ) {
+    /* ACCESS is the guard's job — `@RequirePermissions('tenant.site.manage')`
+       on the route, which already resolves the :slug tenant and honours role
+       scope (all / subtree / own). Repeating that rule here would be a second
+       reader of it, and this codebase has paid for that four times over.
+       What the guard CANNOT do is the field split, so that is all this does. */
     const scope = await this.callerScope(callerId);
-    if (!scope.superadmin) throw new ForbiddenException("Only a superadmin may edit a channel's published identity.");
     if (!(TENANT_CONTENT_KEYS as readonly string[]).includes(key)) {
       throw new BadRequestException(`Unknown content key '${key}'.`);
     }
@@ -1207,7 +1281,16 @@ export class AdminService {
       const t = await this.prisma.tenant.findUnique({ where: { slug } });
       if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
       const existing = await table.findUnique({ where: { tenantId_key: { tenantId: t.id, key } } });
-      const value = mergeContentPatch((existing?.value as any) ?? undefined, patch);
+      /* THE FIELD SPLIT. A partner may keep their own site correct; they may
+         not restate the legal entity their empanelment was approved against.
+         STRIPPED, not refused — the panel posts every box it renders, so a
+         partner saving a trade name sends the unchanged legal name back with
+         it, and refusing there would make the panel unusable for the fields
+         they ARE allowed to edit. A stripped key is ABSENT rather than empty,
+         which matters: `mergeContentPatch` DELETES on '' and leaves a key it
+         never sees alone. */
+      const safe = key === 'identity' && !scope.superadmin ? stripOperatorOnlyIdentity(patch) : patch;
+      const value = mergeContentPatch((existing?.value as any) ?? undefined, safe);
       await table.upsert({
         where: { tenantId_key: { tenantId: t.id, key } },
         create: { tenantId: t.id, key, value },

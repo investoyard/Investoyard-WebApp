@@ -8,6 +8,7 @@ import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import { EmpanelmentFields } from '@/components/EmpanelmentFields';
 import * as api from '@/lib/tenants-admin';
+import { BrandingPanel, ContentPanel, PagesPanel } from '@/components/admin/TenantSitePanels';
 
 /**
  * My Organisation — a partner (or branch) admin's view + edit of their own
@@ -81,6 +82,31 @@ export default function MyOrganisationPage() {
   // via the `updateTenant` allowlist, so this is UI matching the wire.
   const canEdit = operatorCan(me, 'users.manage');
 
+  /* THE PUBLISHED SITE — branding, identity & contact, legal pages.
+   *
+   * These three panels used to exist ONLY on Tenants → Partners & Branches,
+   * which needs `tenants.manage` (the platform-wide tenant tree) and which a
+   * partner correctly lacks. So a white-label partner could not change their
+   * own logo, could not fix their own grievance officer, and could not publish
+   * their own Terms — every one of those was an email to us. Same components
+   * as the operator screen, so the two cannot drift.
+   *
+   * `tenant.site.manage` is on the white-label partner Admin role and NOT on a
+   * BRANCH role: a branch does not publish an identity of its own, its parent
+   * partner does. The server enforces the same via the route guard.
+   *
+   * TWO THINGS STAY OURS whatever this screen shows, and the server strips
+   * them rather than trusting the UI: the CUSTOM DOMAIN (it feeds the API's
+   * CORS allow-list, and needs DNS plus a TLS binding on our box) and the
+   * LEGAL ENTITY FIELDS (the record the empanelment was approved against).
+   */
+  const canEditSite = operatorCan(me, 'tenant.site.manage');
+  const isOperator = !!me.isSuperAdmin;
+  // A tenant with nothing published and no site of its own would get three
+  // panels of inert controls — the same reasoning that hides them for a
+  // Standard partner on the operator screen.
+  const publishesASite = !!(data.whitelabel || data.customDomain);
+
   return (
     <div style={{ maxWidth: 1200 }}>
       <PageHead
@@ -138,6 +164,22 @@ export default function MyOrganisationPage() {
           )
         )}
       </div>
+
+      {canEditSite && publishesASite ? (
+        <div style={{ marginTop: 26 }}>
+          <div className="fs-head" style={{ marginBottom: 12 }}>
+            <div className="t">Your published site</div>
+          </div>
+          <p className="hint" style={{ marginTop: 0, marginBottom: 14, maxWidth: '72ch' }}>
+            What your clients see on your own domain. Nothing here is inherited from Investoyard —
+            a field left blank is simply not published, and a legal page left empty says so on your
+            site rather than showing ours.
+          </p>
+          <BrandingPanel slug={slug!} tenant={data} onSaved={load} canEditDomain={isOperator} />
+          <ContentPanel slug={slug!} tenant={data} onSaved={load} canEditLegal={isOperator} />
+          <PagesPanel slug={slug!} tenant={data} onSaved={load} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -128,6 +128,35 @@ async function main() {
   }
   if (trimmed) console.log(`trimmed tenants.manage + settings.manage / added split Partner API perms on ${trimmed} partner/branch Admin role(s)`);
 
+  /* Grant `tenant.site.manage` to the Admin role of every WHITE-LABEL PARTNER
+     tenant — their own branding, published identity/contact and legal pages.
+     Until this existed those three panels were superadmin-only, so a partner
+     could not fix their own grievance officer without emailing us.
+     TWO CONDITIONS, and both matter:
+       • type === 'partner'  — a BRANCH does not publish an identity of its
+         own; its parent partner edits it (operator's call, 16 Oct 2026).
+       • flags.whitelabel    — an ordinary distribution partner has no site of
+         ours to publish, so the permission would gate nothing for them. */
+  const wlTenants = await prisma.tenant.findMany({
+    where: { type: 'partner', flags: { path: ['whitelabel'], equals: true } },
+    select: { id: true, slug: true },
+  });
+  let sited = 0;
+  for (const t of wlTenants) {
+    const roles = await prisma.role.findMany({
+      where: { tenantId: t.id, name: 'Admin', NOT: { permissions: { has: 'tenant.site.manage' } } },
+      select: { id: true, permissions: true },
+    });
+    for (const r of roles) {
+      await prisma.role.update({
+        where: { id: r.id },
+        data: { permissions: Array.from(new Set([...r.permissions, 'tenant.site.manage'])) },
+      });
+      sited++;
+    }
+  }
+  if (sited) console.log(`granted tenant.site.manage to ${sited} white-label partner Admin role(s)`);
+
   // Expand every legacy broad perm on EVERY role — Admin, Staff, custom.
   // ADMIN_PERMS above already carries the granular set for platform Admin,
   // so this only rewrites custom or partner roles that predate the split.

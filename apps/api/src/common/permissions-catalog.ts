@@ -49,6 +49,13 @@ export const PERMISSION_CATALOG = [
   // Partners / Branches (one per child)
   { key: 'tenants.manage',                 label: 'Partners & Branches',                                                                          group: 'Partners / Branches' },
   { key: 'tenants.applications.review',    label: 'Partner Applications (review · approve · reject)',                                             group: 'Partners / Branches' },
+  /* A white-label partner editing THEIR OWN published site: brand assets, the
+     identity and contact block, and the four legal pages. Deliberately NOT
+     `tenants.manage`, which opens the platform-wide partner tree — and
+     deliberately NOT granted to a BRANCH role, so a branch cannot publish an
+     identity of its own; its parent partner does that. The custom domain is
+     excluded and stays superadmin: it feeds the API's CORS allow-list. */
+  { key: 'tenant.site.manage',             label: 'Own published site (branding · identity · legal pages)',                                       group: 'Partners / Branches' },
 
   // Reports
   { key: 'reports.view',                   label: 'Reports',                                                                                      group: 'Reports' },

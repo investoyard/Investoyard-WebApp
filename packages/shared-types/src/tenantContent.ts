@@ -326,3 +326,42 @@ export function contentReady(
 ): boolean {
   return !contentGaps(input).some((g) => g.severity === 'blocking');
 }
+
+/* ------------------------------------------------------------------ who may
+ * edit which identity field
+ *
+ * A white-label partner publishes their own site, so they must be able to keep
+ * it correct — a grievance officer leaves the company and their clients lose
+ * the escalation route until someone emails the operator. But the LEGAL ENTITY
+ * and its REGISTRATIONS are what the empanelment was approved against: a
+ * partner rewriting those is not an edit, it is a different company, the same
+ * reason `updateTenant` freezes PAN / GSTIN / entityType after approval.
+ *
+ * So the split is by KIND, not by panel: anything that IDENTIFIES the entity or
+ * its registrations is operator-only; anything that says HOW TO REACH THEM is
+ * the partner's. `contact` is wholly theirs.
+ *
+ * ONE LIST, exported, because the server strips these from a partner's patch
+ * and the admin screen renders them read-only — and two copies of that rule
+ * would eventually disagree about which fields a partner may touch.
+ */
+export const OPERATOR_ONLY_IDENTITY_FIELDS = ['legalName', 'sebiRegistration', 'cin', 'gstin'] as const;
+export type OperatorOnlyIdentityField = (typeof OPERATOR_ONLY_IDENTITY_FIELDS)[number];
+
+export const isOperatorOnlyIdentityField = (k: string): k is OperatorOnlyIdentityField =>
+  (OPERATOR_ONLY_IDENTITY_FIELDS as readonly string[]).includes(k);
+
+/**
+ * Drop the operator-only fields from an identity patch.
+ *
+ * DROP, never refuse: the panel posts every box it renders (which is what makes
+ * a cleared field DELETE rather than linger — see `mergeContentPatch`), so a
+ * partner saving a contact change would otherwise be rejected for sending back
+ * the legal name it had just shown them, unchanged. Dropping leaves the stored
+ * value untouched, because a key the patch does not mention is left alone.
+ */
+export function stripOperatorOnlyIdentity<T extends Record<string, unknown>>(patch: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch ?? {})) if (!isOperatorOnlyIdentityField(k)) out[k] = v;
+  return out as Partial<T>;
+}

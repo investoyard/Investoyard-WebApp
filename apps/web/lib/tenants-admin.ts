@@ -321,6 +321,22 @@ export const updateTenant = (slug: string, body: Partial<{
 }>) =>
   authed<{ ok: boolean }>(`${API}/admin/tenants/${slug}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+/**
+ * Brand assets for one channel — needs `tenant.site.manage`, which a
+ * white-label partner holds for their own tenant. Separate from `updateTenant`
+ * because that route is operator-only (name, status, custom domain, commission,
+ * partner-API controls) and these five columns are not.
+ *
+ * `customDomain` is NOT here on purpose: it feeds the API's CORS allow-list and
+ * needs DNS plus a TLS binding on the server, so it stays on `updateTenant`.
+ */
+export const updateTenantBranding = (slug: string, body: Partial<{
+  brandColor: string; goldColor: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string;
+}>) =>
+  authed<{ ok: boolean; changed: string[] }>(`${API}/admin/tenants/${slug}/branding`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+
 /** Which layer of a partner's custom domain is not done yet. Superadmin only. */
 export interface DomainCheck {
   host: string | null;

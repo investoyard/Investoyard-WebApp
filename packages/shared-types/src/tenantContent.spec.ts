@@ -1,4 +1,7 @@
 import {
+  OPERATOR_ONLY_IDENTITY_FIELDS,
+  isOperatorOnlyIdentityField,
+  stripOperatorOnlyIdentity,
   resolveIdentity,
   resolveContact,
   displayName,
@@ -312,5 +315,52 @@ describe('the two key lists are deliberately separate', () => {
 
   it('every page key has a label', () => {
     for (const k of TENANT_PAGE_KEYS) expect(PAGE_LABEL[k]).toBeTruthy();
+  });
+});
+
+describe('who may edit which identity field', () => {
+  it('names the four that identify the entity or its registrations', () => {
+    expect([...OPERATOR_ONLY_IDENTITY_FIELDS]).toEqual(['legalName', 'sebiRegistration', 'cin', 'gstin']);
+  });
+
+  it('leaves trade name and address to the partner — those are not the approval record', () => {
+    expect(isOperatorOnlyIdentityField('tradeName')).toBe(false);
+    expect(isOperatorOnlyIdentityField('registeredAddress')).toBe(false);
+  });
+
+  it('strips the operator-only fields and keeps the rest', () => {
+    const patch = {
+      legalName: 'Someone Else Pvt Ltd', sebiRegistration: 'INZ999', cin: 'X', gstin: 'Y',
+      tradeName: 'Broker', registeredAddress: '12 Main St',
+    };
+    expect(stripOperatorOnlyIdentity(patch)).toEqual({ tradeName: 'Broker', registeredAddress: '12 Main St' });
+  });
+
+  // DROP rather than refuse: the panel posts every box it renders, so a partner
+  // saving a trade name sends the legal name back unchanged. Refusing that save
+  // would make the panel unusable for the fields they ARE allowed to edit.
+  it('drops an UNCHANGED operator-only field without refusing the save', () => {
+    const out = stripOperatorOnlyIdentity({ legalName: 'Acme Ltd', tradeName: 'Acme' });
+    expect(out).toEqual({ tradeName: 'Acme' });
+    expect('legalName' in out).toBe(false);
+  });
+
+  // A dropped key is not the same as an empty one: mergeContentPatch DELETES on
+  // '' and leaves a key it never sees alone. Stripping must produce the latter,
+  // or a partner's save would wipe the legal name off their own footer.
+  it('a stripped field is ABSENT, so mergeContentPatch cannot delete it', () => {
+    const stored = { legalName: 'Acme Ltd', tradeName: 'Old' };
+    const merged = mergeContentPatch(stored, stripOperatorOnlyIdentity({ legalName: '', tradeName: 'New' }));
+    expect(merged).toEqual({ legalName: 'Acme Ltd', tradeName: 'New' });
+  });
+
+  it('a superadmin patch is untouched — the caller decides whether to strip', () => {
+    const patch = { legalName: 'Acme Ltd', tradeName: 'Acme' };
+    expect(mergeContentPatch({}, patch)).toEqual(patch);
+  });
+
+  it('survives an empty or junk patch', () => {
+    expect(stripOperatorOnlyIdentity({})).toEqual({});
+    expect(stripOperatorOnlyIdentity(undefined as any)).toEqual({});
   });
 });
