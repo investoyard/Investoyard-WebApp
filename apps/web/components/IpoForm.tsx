@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -1652,19 +1652,23 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
     const smeLike = form.type !== 'mainboard' || /ncd|debt/i.test(form.issueType);
     // SME and NCD print one blank at any amount, so one range serves. Three
     // slots with two greyed out would be noise on 804 of the 1,304 records.
+    // Order comes from ASBA_SERIES_KINDS so the panel cannot disagree with the
+    // resolver about which range leads — the default kind is first.
     const kinds: AsbaSeriesKind[] = smeLike
-      ? ['resident']
-      : form.allowShareholder ? ['resident', 'syndicate', 'shareholder'] : ['resident', 'syndicate'];
+      ? [ASBA_SERIES_FALLBACK]
+      : ASBA_SERIES_KINDS.filter((k) => k !== 'shareholder' || form.allowShareholder);
     const issues = seriesIssues(rows);
     const eq = (a?: string | null, b?: string | null) =>
       String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
     // Same precedence the server applies, so the screen cannot claim a
     // different partner is live than the one numbers will come from.
     const live = (form.pdfSeriesMember || '').trim() || activeSeriesMember(rows) || partnerMembers[0] || '';
-    // A legacy row carries no `kind`; it belongs in the Resident slot, which is
-    // also the fallback the server gives it. Editing it stamps the kind.
+    // A legacy row carries no `kind`, and it is the one range that has been
+    // serving every form type on that IPO — so it belongs in the DEFAULT slot,
+    // which is exactly what keeps serving every type once editing stamps it.
+    // Putting it anywhere else would relabel it as something it never was.
     const idxOf = (m: string, k: AsbaSeriesKind) =>
-      rows.findIndex((r) => eq(r.member, m) && (normSeriesKind(r.kind) ?? 'resident') === k);
+      rows.findIndex((r) => eq(r.member, m) && (normSeriesKind(r.kind) ?? ASBA_SERIES_FALLBACK) === k);
     const rowOf = (m: string, k: AsbaSeriesKind) => { const i = idxOf(m, k); return i >= 0 ? rows[i] : null; };
     const setPdf = (m: string, k: AsbaSeriesKind, part: Partial<Series>) => {
       const i = idxOf(m, k);
@@ -1735,7 +1739,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
               );
             })}
             <div className="muted" style={{ fontSize: 12 }}>
-              Any type left blank draws from <b>Physical Resident</b>, and a reprint keeps the number it was first given.
+              Any type left blank draws from <b>{ASBA_SERIES_LABEL[ASBA_SERIES_FALLBACK]}</b>, and a reprint keeps the number it was first given.
               {!smeLike && !form.allowShareholder && <> The Shareholders slot appears once this issue offers that quota.</>}
             </div>
           </>

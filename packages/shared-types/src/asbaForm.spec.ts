@@ -7,7 +7,7 @@
 import {
   asbaDocOrder, intendedAsbaDoc, seriesKindForDoc, normSeriesKind,
   activeSeriesMember, pickSeriesRow, resolveSeriesRange, seriesIssues,
-  seriesFallbackNote, seriesRowFilled, ASBA_SERIES_KINDS,
+  seriesFallbackNote, seriesRowFilled, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK,
   type PdfSeriesRow,
 } from './asbaForm';
 
@@ -86,8 +86,8 @@ describe('which series the printed form draws from', () => {
     expect(seriesKindForDoc('asba_form_shareholder')).toBe('shareholder');
   });
 
-  it('SME single draws from RESIDENT — the operator default, not a fourth series', () => {
-    expect(seriesKindForDoc('asba_form_single')).toBe('resident');
+  it('SME single draws from the DEFAULT range, not a fourth series', () => {
+    expect(seriesKindForDoc('asba_form_single')).toBe(ASBA_SERIES_FALLBACK);
     expect(ASBA_SERIES_KINDS).not.toContain('single' as never);
   });
 
@@ -98,9 +98,9 @@ describe('which series the printed form draws from', () => {
     expect(seriesKindForDoc(printed)).toBe('resident');
   });
 
-  it('an unknown or missing doc type falls back to resident rather than throwing', () => {
-    expect(seriesKindForDoc(null)).toBe('resident');
-    expect(seriesKindForDoc(undefined)).toBe('resident');
+  it('an unknown or missing doc type takes the default rather than throwing', () => {
+    expect(seriesKindForDoc(null)).toBe(ASBA_SERIES_FALLBACK);
+    expect(seriesKindForDoc(undefined)).toBe(ASBA_SERIES_FALLBACK);
   });
 });
 
@@ -110,8 +110,8 @@ describe('normSeriesKind', () => {
     expect(normSeriesKind('asba_form_syndicate')).toBe('syndicate');
     expect(normSeriesKind('  Shareholder ')).toBe('shareholder');
   });
-  it('maps single onto resident, the same way seriesKindForDoc does', () => {
-    expect(normSeriesKind('single')).toBe('resident');
+  it('maps single onto the default, the same way seriesKindForDoc does', () => {
+    expect(normSeriesKind('single')).toBe(ASBA_SERIES_FALLBACK);
   });
   it('returns null for a legacy row with no kind', () => {
     expect(normSeriesKind(undefined)).toBeNull();
@@ -176,13 +176,38 @@ describe('which range', () => {
   });
 
   it('never borrows another partner\'s range', () => {
-    expect(pickSeriesRow(TWO_MEMBERS, 'Nuvama', 'shareholder')?.from).toBe('81200001');
+    // Nuvama has no shareholder range, so it takes NUVAMA's default — never
+    // Axis Capital's shareholder one, which is the whole point of this test.
+    expect(pickSeriesRow(TWO_MEMBERS, 'Nuvama', 'shareholder')?.from).toBe('81300001');
     expect(pickSeriesRow(TWO_MEMBERS, 'Nuvama', 'shareholder')?.member).toBe('Nuvama');
   });
 
   it('returns null when the partner has nothing', () => {
     expect(pickSeriesRow(THREE, 'JM Financial', 'resident')).toBeNull();
     expect(pickSeriesRow(THREE, null, 'resident')).toBeNull();
+  });
+});
+
+describe('the DEFAULT range (sir, 16 Oct 2026: Syndicate, was Resident)', () => {
+  it('is Syndicate', () => {
+    expect(ASBA_SERIES_FALLBACK).toBe('syndicate');
+  });
+
+  it('leads the display order, because the first row is the one that serves the rest', () => {
+    expect(ASBA_SERIES_KINDS[0]).toBe(ASBA_SERIES_FALLBACK);
+    expect(ASBA_SERIES_KINDS).toEqual(['syndicate', 'resident', 'shareholder']);
+  });
+
+  it('does NOT swallow a type that has its own range — Resident still wins for a Resident form', () => {
+    // The whole risk of moving the default: a ≤5L bid must keep using the
+    // Resident range when one is entered, not the Syndicate one.
+    expect(pickSeriesRow(THREE, 'Axis Capital', 'resident')?.from).toBe('78043401');
+    expect(resolveSeriesRange({ pdfSeries: THREE }, 'asba_form_resident').row?.from).toBe('78043401');
+  });
+
+  it('is what every un-entered type falls to', () => {
+    const only: PdfSeriesRow[] = [{ member: 'Axis Capital', kind: 'syndicate', from: '900', to: '999' }];
+    for (const k of ASBA_SERIES_KINDS) expect(pickSeriesRow(only, 'Axis Capital', k)?.from).toBe('900');
   });
 });
 
@@ -217,9 +242,9 @@ describe('resolveSeriesRange, end to end', () => {
     expect([got.member, got.kind, got.row?.from]).toEqual(['Nuvama', 'syndicate', '81300001']);
   });
 
-  it('a shareholder bid under Nuvama falls to Nuvama\'s resident range, not Axis\'s shareholder one', () => {
+  it('a shareholder bid under Nuvama falls to Nuvama\'s DEFAULT range, not Axis\'s shareholder one', () => {
     const got = resolveSeriesRange(extra, 'asba_form_shareholder');
-    expect([got.member, got.kind, got.row?.from]).toEqual(['Nuvama', 'shareholder', '81200001']);
+    expect([got.member, got.kind, got.row?.from]).toEqual(['Nuvama', 'shareholder', '81300001']);
   });
 
   it('swapping the partner swaps all three ranges together', () => {
@@ -227,9 +252,9 @@ describe('resolveSeriesRange, end to end', () => {
     expect(axis.row?.from).toBe('78103401');
   });
 
-  it('an SME issue under Nuvama draws from resident', () => {
+  it('an SME issue under Nuvama draws from the DEFAULT range', () => {
     const doc = intendedAsbaDoc({ board: 'sme', amount: 268_800 });
-    expect(resolveSeriesRange(extra, doc).row?.from).toBe('81200001');
+    expect(resolveSeriesRange(extra, doc).row?.from).toBe('81300001');
   });
 });
 

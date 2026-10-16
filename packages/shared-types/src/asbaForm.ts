@@ -17,7 +17,8 @@
  *
  * Operator's model (16 Oct 2026): THREE series per IPO *partner*. You pick the
  * partner and can swap it; that partner's three ranges go live together.
- * `resident` is the DEFAULT — any type you have not entered draws from it.
+ * ASBA_SERIES_FALLBACK is the DEFAULT range — any type you have not entered
+ * draws from it. It was `resident` until 16 Oct 2026 and is now `syndicate`.
  */
 import { ASBA_SYNDICATE_ABOVE } from './issueRules';
 
@@ -32,12 +33,28 @@ export type AsbaDocType =
  * The three number series an operator enters per partner.
  *
  * There is deliberately NO `single`: an SME issue prints the `asba_form_single`
- * blank and draws its number from the `resident` range, which is the operator's
- * stated default. A fourth slot nobody fills is a fourth thing to keep in step.
+ * blank and draws its number from ASBA_SERIES_FALLBACK, the default range.
+ * A fourth slot nobody fills is a fourth thing to keep in step.
  */
 export type AsbaSeriesKind = 'resident' | 'syndicate' | 'shareholder';
 
-export const ASBA_SERIES_KINDS: readonly AsbaSeriesKind[] = ['resident', 'syndicate', 'shareholder'] as const;
+/**
+ * Display order, AND the order the operator reads them in on the admin panel.
+ * The fallback kind leads, because the first row is the one that serves
+ * everything else when nothing more specific has been entered.
+ */
+export const ASBA_SERIES_KINDS: readonly AsbaSeriesKind[] = ['syndicate', 'resident', 'shareholder'] as const;
+
+/**
+ * THE DEFAULT RANGE — what any form type draws from when it has no range of
+ * its own, and where a single-range issue (SME, NCD) puts its one entry.
+ *
+ * Changed from `resident` to `syndicate` on 16 Oct 2026 on sir's instruction.
+ * It is a single constant rather than a value repeated at each decision point
+ * precisely so that this is one edit: the resolver, the SME slot, the legacy
+ * row's home and the panel's ordering all read it.
+ */
+export const ASBA_SERIES_FALLBACK: AsbaSeriesKind = 'syndicate';
 
 /** Customer-facing names — the operator's words, used on the admin panel. */
 export const ASBA_SERIES_LABEL: Record<AsbaSeriesKind, string> = {
@@ -83,14 +100,14 @@ export const seriesRowFilled = (r?: PdfSeriesRow | null): boolean => num(r?.from
 
 /**
  * Normalise a stored `kind`. Tolerates the `asba_form_` prefix in case a row
- * was written with the document-type string, and maps `single` onto `resident`
+ * was written with the document-type string, and maps `single` onto the default
  * — the same mapping `seriesKindForDoc` makes, so the two cannot disagree.
  * Anything unrecognised (including a legacy row with no kind at all) → null.
  */
 export function normSeriesKind(k: unknown): AsbaSeriesKind | null {
   const s = norm(k).replace(/^asba_form_/, '');
   if (s === 'resident' || s === 'syndicate' || s === 'shareholder') return s;
-  if (s === 'single') return 'resident';
+  if (s === 'single') return ASBA_SERIES_FALLBACK;
   return null;
 }
 
@@ -129,7 +146,9 @@ export const intendedAsbaDoc = (i: AsbaFormInput): AsbaDocType => asbaDocOrder(i
 export function seriesKindForDoc(doc?: AsbaDocType | null): AsbaSeriesKind {
   if (doc === 'asba_form_syndicate') return 'syndicate';
   if (doc === 'asba_form_shareholder') return 'shareholder';
-  return 'resident'; // resident AND single — resident is the operator's default
+  if (doc === 'asba_form_resident') return 'resident';
+  // The SME/NCD single blank, and anything unrecognised, take the default range.
+  return ASBA_SERIES_FALLBACK;
 }
 
 /**
@@ -150,7 +169,7 @@ export function activeSeriesMember(rows: PdfSeriesRow[] | null | undefined, expl
 }
 
 /**
- * The range to allocate from: the asked-for kind → `resident` → any row this
+ * The range to allocate from: the asked-for kind → the DEFAULT kind → any row this
  * partner has. That tail is the operator's rule verbatim — "if any one is
  * entered, use it for all three" — and it is also what makes a legacy row,
  * which carries no kind at all, keep working untouched.
@@ -170,7 +189,7 @@ export function pickSeriesRow(
   if (!mine.length) return null;
   return (
     mine.find((r) => normSeriesKind(r.kind) === kind) ??
-    mine.find((r) => normSeriesKind(r.kind) === 'resident') ??
+    mine.find((r) => normSeriesKind(r.kind) === ASBA_SERIES_FALLBACK) ??
     mine.find((r) => normSeriesKind(r.kind) === null) ?? // legacy row, no kind
     mine[0]
   );
