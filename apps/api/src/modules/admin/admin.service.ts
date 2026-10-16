@@ -457,10 +457,43 @@ export class AdminService {
     return { deleted: true, memberName: cred.memberName };
   }
 
-  /** All assignable roles (platform system templates + any custom). */
-  async listRoles() {
-    const roles = await this.prisma.role.findMany({ orderBy: { name: 'asc' } });
-    return roles.map((r) => ({ id: r.id, name: r.name, scope: r.scope, permissions: r.permissions, isSystem: r.isSystem }));
+  /**
+   * Assignable roles, SCOPED TO THE CALLER and each labelled with the tenant
+   * that owns it.
+   *
+   * IT RETURNED EVERY ROLE ON THE INSTANCE WITH NO TENANT ON IT, which is
+   * what made the operator's question unanswerable from the screen: every
+   * partner's Admin role is named 'Admin', so the list showed one 'Admin'
+   * row per partner with nothing to tell them apart. The name is not the
+   * identifier -- (tenantId, name) is -- and the API was dropping half of it.
+   *
+   * A partner also saw the whole instance's roles here, including every other
+   * partner's. Nothing could be ASSIGNED across tenants (resolveAssignableRole
+   * and isSuperAdminRole stop that), so this was disclosure rather than
+   * escalation -- but a partner reading a list of our other partners is a
+   * disclosure all the same.
+   */
+  async listRoles(callerId: string) {
+    const scope = await this.callerScope(callerId);
+    const roles = await tenantContext.runUnscoped(() =>
+      this.prisma.role.findMany({
+        where: scope.superadmin ? {} : { tenantId: { in: [...scope.tenantIds] } },
+        include: { tenant: { select: { slug: true, name: true, type: true } } },
+        orderBy: [{ tenant: { name: 'asc' } }, { name: 'asc' }],
+      }),
+    );
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      scope: r.scope,
+      permissions: r.permissions,
+      isSystem: r.isSystem,
+      // Which organisation's role this is. `platform` is OURS -- the internal
+      // Admin / Staff templates; anything else belongs to that partner.
+      tenantSlug: r.tenant?.slug,
+      tenantName: r.tenant?.name,
+      tenantType: r.tenant?.type,
+    }));
   }
 
   /** Permission catalog for the role editor. */
@@ -468,9 +501,32 @@ export class AdminService {
     return PERMISSION_CATALOG;
   }
 
-  /** Recent operator-mutation audit trail (platform governance). */
-  async listAudit(limit = 100) {
-    const rows = await this.prisma.auditLog.findMany({ orderBy: { at: 'desc' }, take: Math.min(limit, 500) });
+  /**
+   * Recent operator-mutation audit trail, SCOPED TO THE CALLER.
+   *
+   * It was a bare findMany, so a partner admin -- who holds audit.view --
+   * read the mutation history of every partner on the instance plus our own
+   * platform operations. Scoped by `tenantSlug`, the column the writer
+   * already stamps.
+   *
+   * A ROW WITH NO tenantSlug IS A PLATFORM-LEVEL ACTION and is now visible
+   * only to a superadmin. That is deliberate and it does cost a partner
+   * something: an unstamped row is ours by definition, and showing rows
+   * whose owner is unknown to a tenant-scoped reader is exactly the leak
+   * being closed.
+   */
+  async listAudit(callerId: string, limit = 100) {
+    const scope = await this.callerScope(callerId);
+    let where: any = {};
+    if (!scope.superadmin) {
+      const slugs = await tenantContext.runUnscoped(() =>
+        this.prisma.tenant.findMany({ where: { id: { in: [...scope.tenantIds] } }, select: { slug: true } }),
+      );
+      where = { tenantSlug: { in: slugs.map((t) => t.slug) } };
+    }
+    const rows = await tenantContext.runUnscoped(() =>
+      this.prisma.auditLog.findMany({ where, orderBy: { at: 'desc' }, take: Math.min(limit, 500) }),
+    );
     return rows.map((a) => ({
       id: a.id,
       at: a.at.toISOString(),
@@ -616,6 +672,54 @@ export class AdminService {
     'users.view',
     'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
   ];
+  /* TENANT Staff — the extra pair of hands on a partner or branch, and
+     DELIBERATELY SMALLER THAN OUR OWN Staff role, which is an INTERNAL
+     platform role carrying scope 'all', ipos.manage, ipos.import and seven
+     masters.* grants. A partner's staff see their own tenant and nothing
+     else (operator's call, 16 Oct 2026):
+       - scope 'own', not 'subtree' and never 'all'. Branches are the parent
+         partner's business, and a partner's staff have no reason to read
+         another tenant at all.
+       - READ-ONLY on everything that matters. No users.manage (that is what
+         separates Staff from Admin), no clients.manage, no partner-api.*,
+         and no masters.* -- a partner's staff must not write to OUR catalogue.
+     THIS ROLE HAS TO EXIST PER TENANT, which is the point rather than tidiness:
+     the Team screen offers 'Staff' as the default for a second operator, and
+     with no local role of that name the server resolved the PLATFORM Staff
+     role instead -- scope 'all', which callerScope reads as superadmin.
+     createOperator refused it (isSuperAdminRole), so a partner could not add
+     anyone at all; addMember had no such check and would have attached it.
+     One missing role: a dead end on one path and an escalation on the other. */
+  private static TENANT_STAFF_PERMS = [
+    'dashboard.view', 'ipos.view',
+    'bids.view', 'bidding.report.view',
+    'clients.view', 'reports.view',
+  ];
+
+  /**
+   * Resolve an assignable role BY NAME for a target tenant.
+   *
+   * THE TENANT'S OWN ROLE WINS, AND THE PLATFORM FALLBACK IS SUPERADMIN-ONLY.
+   * Every tenant owns an 'Admin' and a 'Staff' role of its own, so the two
+   * names the Team screen offers always resolve locally. The fallback stays
+   * for an operator deliberately assigning a platform custom role, and is
+   * closed to everyone else -- a platform role carries scope 'all' or
+   * 'subtree', and callerScope reads scope 'all' as SUPERADMIN, so resolving
+   * one for a partner's user is a cross-tenant grant however it was reached.
+   *
+   * It does NOT replace the isSuperAdminRole check at the call sites; it
+   * removes the easy route to one. Belt and braces, in that order.
+   */
+  private async resolveAssignableRole(tenantId: string, roleName: string, allowPlatformFallback: boolean) {
+    return tenantContext.runUnscoped(async () => {
+      const own = await this.prisma.role.findFirst({ where: { tenantId, name: roleName } });
+      if (own) return own;
+      if (!allowPlatformFallback) return null;
+      const platform = await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } });
+      if (!platform || platform.id === tenantId) return null;
+      return this.prisma.role.findFirst({ where: { tenantId: platform.id, name: roleName } });
+    });
+  }
 
   /** What tenants can the caller manage? superadmin → all; else the union of their subtree/own scopes. */
   private async callerScope(userId: string): Promise<{ superadmin: boolean; tenantIds: Set<string> }> {
@@ -696,6 +800,12 @@ export class AdminService {
           await this.prisma.tenantSetting.create({ data: { tenantId: tenant.id, featureKey: 'gmpEnabled', value: false, locked: true } });
         }
         const role = await this.prisma.role.create({ data: { tenantId: tenant.id, name: 'Admin', scope: roleScope, permissions: perms, isSystem: true } });
+        /* A 'Staff' role OF THIS TENANT, created alongside the Admin and
+           always scope 'own'. The Team screen offers Staff as the default
+           for a second operator, so without a local role of that name the
+           lookup used to reach the PLATFORM Staff role -- scope 'all', which
+           callerScope reads as superadmin. See TENANT_STAFF_PERMS. */
+        await this.prisma.role.create({ data: { tenantId: tenant.id, name: 'Staff', scope: 'own', permissions: AdminService.TENANT_STAFF_PERMS, isSystem: true } });
         const password = dto.adminPassword?.trim() || this.genPassword();
         const user = await this.prisma.user.create({
           data: { tenantId: tenant.id, username: adminUsername, name: dto.adminName.trim(), passwordHash: await hashPassword(password), status: 'active' },
@@ -1642,9 +1752,7 @@ export class AdminService {
     const tenant = await this.tenantBySlug(dto.tenantSlug);
     if (!scope.superadmin && !scope.tenantIds.has(tenant.id)) throw new ForbiddenException('Outside your scope.');
     if (dto.mobile && !/^\d{10}$/.test(dto.mobile)) throw new BadRequestException('Mobile must be 10 digits.');
-    const role = await tenantContext.runUnscoped(async () =>
-      this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [tenant.id, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } }),
-    );
+    const role = await this.resolveAssignableRole(tenant.id, dto.roleName, scope.superadmin);
     if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
 
     // Only a superadmin may assign a role that IS SuperAdmin (grants '*'
@@ -1722,7 +1830,7 @@ export class AdminService {
       }
 
       if (dto.roleName) {
-        const role = await this.prisma.role.findFirst({ where: { name: dto.roleName, tenantId: { in: [user.tenantId, (await this.prisma.tenant.findFirst({ where: { type: 'platform' }, select: { id: true } }))?.id ?? ''] } } });
+        const role = await this.resolveAssignableRole(user.tenantId, dto.roleName, scope.superadmin);
         if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found.`);
 
         // Only a superadmin may assign a SuperAdmin-equivalent role.
@@ -1808,12 +1916,36 @@ export class AdminService {
     return rows.map((m) => this.memberView(m));
   }
 
-  /** Add (or re-role) an operator on a tenant. Creates the user by mobile if new. */
-  async addMember(slug: string, dto: { mobile: string; name?: string; roleName: string }) {
+  /**
+   * Add (or re-role) an operator on a tenant, identified by MOBILE rather
+   * than username. Creates the user if that mobile is new.
+   *
+   * IT TAKES callerId NOW, AND THAT IS THE FIX RATHER THAN A SIGNATURE TIDY.
+   * This method used to take no caller at all and resolve the role with a
+   * bare `findFirst({ where: { name } })` -- no tenant filter and no
+   * isSuperAdminRole check, where createOperator has carried both for
+   * months. So the two paths that assign a role disagreed about who may
+   * assign which: 'Staff' resolved to the PLATFORM Staff role (scope
+   * 'all'), callerScope reads scope 'all' as superadmin, and the route is
+   * guarded by users.manage -- which every partner Admin holds. A partner
+   * admin could attach platform-wide authority to any mobile number on
+   * their own tenant. Nobody had; the shape was there.
+   *
+   * THREE CHECKS, each answering a different question: assertSlugScope (may
+   * the caller touch this tenant at all), resolveAssignableRole (is this
+   * role one of THIS tenant's), isSuperAdminRole (is the grant itself above
+   * the caller's station). createOperator asks all three; so does this now.
+   */
+  async addMember(callerId: string, slug: string, dto: { mobile: string; name?: string; roleName: string }) {
     if (!/^\d{10}$/.test(dto.mobile)) throw new BadRequestException('Invalid mobile');
+    await this.assertSlugScope(callerId, slug);
+    const scope = await this.callerScope(callerId);
     const tenant = await this.tenantBySlug(slug);
-    const role = await this.prisma.role.findFirst({ where: { name: dto.roleName } });
-    if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found`);
+    const role = await this.resolveAssignableRole(tenant.id, dto.roleName, scope.superadmin);
+    if (!role) throw new NotFoundException(`Role '${dto.roleName}' not found on this tenant.`);
+    if (this.isSuperAdminRole(role.scope, role.permissions)) {
+      await this.assertCanGrantSuperadmin(callerId);
+    }
 
     return tenantContext.runUnscoped(async () => {
       const user = await this.prisma.user.upsert({

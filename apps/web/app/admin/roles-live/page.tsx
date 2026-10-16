@@ -95,11 +95,20 @@ export default function AdminRolesLive() {
           <div className="card-head"><span className="t">Roles <span className="count-badge">{roles.length}</span></span></div>
           <div style={{ overflowX: 'auto' }}>
           <table className="table" style={{ width: '100%' }}>
-            <thead><tr><th>Role</th><th>Scope</th><th>Permissions</th><th></th></tr></thead>
+            {/* ORGANISATION, not decoration: every partner's admin role is
+                named 'Admin', so without this column the list reads as a
+                dozen identical rows and there is no way to tell whose is
+                whose -- which is exactly what the operator asked. */}
+            <thead><tr><th>Role</th><th>Organisation</th><th>Scope</th><th>Permissions</th><th></th></tr></thead>
             <tbody>
               {roles.map((r) => (
                 <tr key={r.id}>
                   <td><b>{r.name}</b>{r.isSystem && <span className="st mut" style={{ marginLeft: 8 }}>system</span>}</td>
+                  <td style={{ fontSize: 13 }}>
+                    {r.tenantType === 'platform'
+                      ? <span className="st lock" title="Our own internal role template">Investoyard</span>
+                      : <>{r.tenantName ?? '—'}{r.tenantSlug && <span className="muted mono" style={{ fontSize: 11.5, marginLeft: 6 }}>{r.tenantSlug}</span>}</>}
+                  </td>
                   <td className="mono" style={{ fontSize: 13 }}>{r.scope}</td>
                   <td className="muted" style={{ fontSize: 12.5 }}>{isSuper(r) ? 'All permissions' : `${r.permissions.length} permission${r.permissions.length === 1 ? '' : 's'}`}</td>
                   <td>

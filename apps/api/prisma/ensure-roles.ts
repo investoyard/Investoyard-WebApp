@@ -32,6 +32,11 @@ const ADMIN_PERMS = [
   // creating or editing a role is superadmin-only (see permissions-catalog).
   'users.view', 'users.manage', 'roles.view', 'audit.view',
   'providers.manage', 'templates.manage', 'messages.view', 'chatbot.manage',
+  // Editing a partner's branding / published identity / legal pages. Platform
+  // Admin manages partners, so it needs what the partner's own Admin got on
+  // 16 Oct 2026 -- otherwise adding the permission to the partner role QUIETLY
+  // LOCKED US OUT of the three panels we had been using all along.
+  'tenant.site.manage',
 ];
 
 const STAFF_PERMS = [
@@ -67,6 +72,18 @@ const PARTNER_TENANT_ADMIN_PERMS = [
   'reports.view',
   'users.view', 'users.manage', 'roles.view', 'audit.view',
   'partner-api.keys.manage', 'partner-api.calls.view', 'partner-api.prints.view',
+];
+
+/** Partner/branch-tenant Staff — the extra pair of hands on a tenant, and
+ *  deliberately SMALLER than the platform STAFF_PERMS above: that one is an
+ *  INTERNAL role with scope 'all', ipos.manage, ipos.import and seven
+ *  masters.* grants. A tenant's staff read their own tenant only (scope
+ *  'own'), and write nothing. Kept in step with
+ *  AdminService.TENANT_STAFF_PERMS. */
+const TENANT_STAFF_PERMS = [
+  'dashboard.view', 'ipos.view',
+  'bids.view', 'bidding.report.view',
+  'clients.view', 'reports.view',
 ];
 
 /** Expand any legacy broad perm on a role into its granular children.
@@ -156,6 +173,47 @@ async function main() {
     }
   }
   if (sited) console.log(`granted tenant.site.manage to ${sited} white-label partner Admin role(s)`);
+
+  /* EVERY NON-PLATFORM TENANT NEEDS A 'Staff' ROLE OF ITS OWN, and this
+     backfill is the security half of the change rather than a convenience.
+     The Team screen offers 'Staff' as the default for a second operator.
+     With no local role of that name, the server's lookup fell through to the
+     PLATFORM Staff role -- scope 'all', which callerScope reads as
+     SUPERADMIN. createOperator refused the grant (isSuperAdminRole), so a
+     partner admin simply could not add anyone; addMember carried no such
+     check and would have attached platform-wide authority to any mobile
+     number on their own tenant. Creating the role locally closes the
+     fallback on both paths at once.
+     Scope is ALWAYS 'own' -- never the Admin's 'subtree' and never 'all':
+     branches are the parent partner's business, and a tenant's staff have no
+     reason to read another tenant (operator's call, 16 Oct 2026). */
+  /* PARTNER AND BRANCH ONLY. The 'direct' channel tenant carries no roles
+     at all by design -- it is our own retail channel, not an organisation
+     anyone logs into -- so creating one there would be an unused role that
+     reads as an oversight later. */
+  const nonPlatform = await prisma.tenant.findMany({
+    where: { type: { in: ['partner', 'branch'] } },
+    select: { id: true, slug: true },
+  });
+  let staffMade = 0, staffFixed = 0;
+  for (const t of nonPlatform) {
+    const existing = await prisma.role.findFirst({ where: { tenantId: t.id, name: 'Staff' } });
+    if (!existing) {
+      await prisma.role.create({ data: { tenantId: t.id, name: 'Staff', scope: 'own', permissions: TENANT_STAFF_PERMS, isSystem: true } });
+      staffMade++;
+      continue;
+    }
+    // A tenant Staff role must never carry scope 'all' or the wildcard --
+    // either makes its holder a superadmin via callerScope.
+    const perms = existing.permissions.filter((p) => p !== '*');
+    const needs = existing.scope !== 'own' || perms.length !== existing.permissions.length;
+    if (needs) {
+      await prisma.role.update({ where: { id: existing.id }, data: { scope: 'own', permissions: perms.length ? perms : TENANT_STAFF_PERMS } });
+      staffFixed++;
+    }
+  }
+  if (staffMade) console.log(`created a tenant-local Staff role on ${staffMade} partner/branch tenant(s)`);
+  if (staffFixed) console.log(`narrowed scope/perms on ${staffFixed} existing tenant Staff role(s)`);
 
   // Expand every legacy broad perm on EVERY role — Admin, Staff, custom.
   // ADMIN_PERMS above already carries the granular set for platform Admin,

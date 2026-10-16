@@ -29,8 +29,23 @@ const blankNew = { username: '', name: '', email: '', mobile: '', password: '', 
  *  scope='all'. The catalog Role list carries that info; if the role
  *  isn't in the fetched list (e.g. partner admin without roles.view),
  *  fall back to the classic name "SuperAdmin". */
-function isSuperAdminRoleName(name: string, roles: import('@/lib/tenants-admin').Role[]): boolean {
-  const r = roles.find((x) => x.name === name);
+/**
+ * Would assigning this role NAME grant SuperAdmin-equivalent power?
+ *
+ * TENANT-AWARE BY NECESSITY, not for neatness: a role is identified by
+ * (tenant, name), and a bare find-by-name returns whichever row sorted
+ * first. For 'Staff' that used to be OUR platform template -- scope 'all' --
+ * so the Staff option was filtered out of the dropdown for every partner
+ * admin, who already had 'Admin' removed as taken. The dropdown came up with
+ * nothing selectable and a partner could not add a second operator at all.
+ */
+function isSuperAdminRoleName(
+  name: string,
+  roles: import('@/lib/tenants-admin').Role[],
+  tenantSlug?: string,
+): boolean {
+  const r = (tenantSlug && roles.find((x) => x.name === name && x.tenantSlug === tenantSlug))
+    ?? roles.find((x) => x.name === name);
   if (r) return r.permissions.includes('*') || r.scope === 'all';
   return name === 'SuperAdmin';
 }
@@ -301,7 +316,7 @@ export default function AdminUsers() {
                 // Only a superadmin may assign a SuperAdmin-equivalent role
                 // (server enforces same). Hide the option from the dropdown
                 // so nobody picks a value that would 403 on submit.
-                .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles));
+                .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles, form.tenantSlug));
               return (
                 <Field label="Role" hint={adminAlreadyExists ? `${targetTenant?.name} already has an Admin — only Staff can be added` : undefined}>
                   <select className="input" value={form.roleName} onChange={(e) => setForm({ ...form, roleName: e.target.value })}>
@@ -334,7 +349,7 @@ export default function AdminUsers() {
         const selfEdit = editOp.o.id === me?.id;
         const options = Array.from(new Set(['Admin', 'Staff', ...roles.map((r) => r.name)]))
           .filter((n) => !(otherAdminExists && n === 'Admin'))
-          .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles));
+          .filter((n) => me?.isSuperAdmin || !isSuperAdminRoleName(n, roles, targetSlug));
         return (
           <Modal title="Edit user" sub={`${editOp.o.username}${editOp.o.name ? ` — ${editOp.o.name}` : ''}`} onClose={() => setEditOp(null)}>
             {err && <div className="banner warn" style={{ marginBottom: 14 }}>{err}</div>}

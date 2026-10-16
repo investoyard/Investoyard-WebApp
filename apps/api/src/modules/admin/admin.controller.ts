@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res
 import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
-import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from '../applications/applications.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { SubscriptionService } from '../subscription/subscription.service';
@@ -391,6 +391,18 @@ export class AdminController {
    * change (name/status/brand/domain/commission/partner-API controls),
    * so the My Organisation client doesn't need to know the field list.
    */
+  /* ANY authenticated operator could reach this route, because PermissionsGuard
+     waves through a handler carrying no permission metadata. The service's
+     own checks held -- assertSlugScope for the tenant and a superadmin field
+     allowlist -- so a stranger could not edit a partner they had no
+     membership on. What was missing was the outer door.
+     TWO PERMISSIONS, EITHER WILL DO, because two different jobs arrive here:
+     `tenants.manage` is the operator managing someone else's partner (the
+     Tenants screen), `users.manage` is a partner admin editing their own
+     profile through My Organisation. Requiring tenants.manage alone would
+     lock every partner out of their own record; the allowlist inside still
+     decides WHICH fields each of them may set. */
+  @RequireAnyPermission('tenants.manage', 'users.manage')
   @Patch('tenants/:slug')
   updateTenant(@Req() req: any, @Param('slug') slug: string, @Body() dto: UpdateTenantDto) {
     return this.admin.updateTenant(req.user.sub, slug, dto as any);
@@ -527,8 +539,8 @@ export class AdminController {
 
   @Get('roles')
   @RequirePermissions('roles.view')
-  roles() {
-    return this.admin.listRoles();
+  roles(@Req() req: any) {
+    return this.admin.listRoles(req.user.sub);
   }
 
   @Get('permissions')
@@ -539,8 +551,8 @@ export class AdminController {
 
   @Get('audit')
   @RequirePermissions('audit.view')
-  audit() {
-    return this.admin.listAudit();
+  audit(@Req() req: any) {
+    return this.admin.listAudit(req.user.sub);
   }
 
   @Get('status')
@@ -675,8 +687,8 @@ export class AdminController {
 
   @Post('members/:slug')
   @RequirePermissions('users.manage')
-  addMember(@Param('slug') slug: string, @Body() dto: AddMemberDto) {
-    return this.admin.addMember(slug, dto);
+  addMember(@Req() req: any, @Param('slug') slug: string, @Body() dto: AddMemberDto) {
+    return this.admin.addMember(req.user.sub, slug, dto);
   }
 
   @Patch('members/:slug/:membershipId')

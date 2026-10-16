@@ -76,7 +76,14 @@ export const clearOverride = (slug: string, key: string) =>
   authed<Resolved>(`${API}/settings/${slug}/${key}`, { method: 'DELETE' });
 
 /* -------------------------------------------------- admin: roles & operators */
-export interface Role { id: string; name: string; scope: string; permissions: string[]; isSystem: boolean }
+/* A role is identified by (tenant, name), never by name alone -- every
+   partner's admin role is called 'Admin'. The server scopes this list to the
+   caller and labels each row with its owning tenant; `tenantType === 'platform'`
+   marks OUR internal templates. */
+export interface Role {
+  id: string; name: string; scope: string; permissions: string[]; isSystem: boolean;
+  tenantSlug?: string; tenantName?: string; tenantType?: string;
+}
 export interface Member {
   membershipId: string; userId: string; mobile: string; name?: string;
   userStatus: string; status: string; roleName: string; roleScope: string;
