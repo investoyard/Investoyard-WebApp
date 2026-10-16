@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-dev/
 out/
+out-staging/
 .next/
 .turbo/
 coverage/

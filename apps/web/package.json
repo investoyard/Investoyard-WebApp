@@ -7,7 +7,9 @@
     "dev": "next dev -p 4300",
     "build": "next build",
     "start": "npx --yes serve@latest out -l 4300",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "next build && node ../../scripts/publish-web.mjs",
+    "publish-only": "node ../../scripts/publish-web.mjs"
   },
   "dependencies": {
     "@investoyard/i18n": "*",
