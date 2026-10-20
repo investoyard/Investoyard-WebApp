@@ -288,6 +288,67 @@ export class WhatsappService {
     return this.sendText(to, text, cfg);
   }
 
+  /**
+   * Is a WhatsApp OTP actually deliverable?
+   *
+   * THE PROVIDER BEING ON IS NOT ENOUGH. WhatsApp refuses an unsolicited
+   * message outside the 24-hour customer-service window unless it is sent
+   * against an APPROVED template, and a one-time code to someone who has never
+   * messaged us is the definition of unsolicited. So the gate is the template
+   * NAME: configured means the operator has been through Meta approval, absent
+   * means every send would be rejected by the Graph API.
+   *
+   * Offering a channel that silently delivers nothing is worse than not
+   * offering it — the person waits for a code that was never coming, and the
+   * login screen has nothing to tell them.
+   *
+   * PLATFORM-WIDE, not per-tenant. `effective()` takes a tenantId, but nothing
+   * in this service has ever passed one, so WhatsApp is a platform integration
+   * here and this follows it rather than inventing a second scoping rule for one
+   * setting. It does mean a white-label partner cannot have its OWN template:
+   * turning WhatsApp codes on turns them on for every brand.
+   */
+  async otpTemplate(): Promise<string | null> {
+    const cfg = await this.providers.effective('whatsapp');
+    const name = String(cfg?.settings?.otpTemplateName ?? '').trim();
+    return cfg && name ? name : null;
+  }
+
+  /**
+   * Send a one-time code as a WhatsApp AUTHENTICATION template.
+   *
+   * `to` is a bare 10-digit Indian mobile, as the OTP store holds it — the 91
+   * is added here rather than by the caller, matching SmsService's own
+   * `91${mobile}`. Every other caller of this service passes a number that
+   * already carries its country code.
+   *
+   * META AUTHENTICATION TEMPLATES CARRY A BUTTON AND IT TAKES THE CODE TOO.
+   * The code goes in the body parameter AND again in the copy-code/one-tap
+   * button parameter; sending only the body is rejected for an authentication
+   * template, and sending a button to a template that has none is rejected the
+   * other way. `otpTemplateButton` exists for that second case (a plain utility
+   * template) and defaults to TRUE, because an authentication template — the
+   * only category Meta approves for codes — always has one.
+   */
+  async sendOtp(to: string, otp: string): Promise<{ sent: boolean; error?: string }> {
+    const cfg = await this.providers.effective('whatsapp');
+    const name = String(cfg?.settings?.otpTemplateName ?? '').trim();
+    if (!cfg || !name) return { sent: false, error: 'whatsapp otp template not configured' };
+    const lang = String(cfg.settings.otpTemplateLang ?? 'en').trim() || 'en';
+    const withButton = cfg.settings.otpTemplateButton !== false;
+    const param = [{ type: 'text', text: otp }];
+    return this.graphSend(cfg, `91${to.replace(/D/g, '').slice(-10)}`, {
+      type: 'template',
+      template: {
+        name,
+        language: { code: lang },
+        components: [
+          { type: 'body', parameters: param },
+          ...(withButton ? [{ type: 'button', sub_type: 'url', index: '0', parameters: param }] : []),
+        ],
+      },
+    });
+  }
   private sendText(to: string, text: string, cfg: EffectiveConfig): Promise<{ sent: boolean; error?: string }> {
     return this.graphSend(cfg, to, { type: 'text', text: { preview_url: false, body: text.slice(0, 4096) } });
   }

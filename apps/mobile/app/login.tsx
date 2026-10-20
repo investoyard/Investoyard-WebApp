@@ -13,7 +13,7 @@ import { setStatusBarStyle } from 'expo-status-bar';
 import { fonts, microLabel, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
-import { requestOtp, verifyOtp } from '../lib/api';
+import { requestOtp, verifyOtp, passwordLogin } from '../lib/api';
 import { tapSuccess } from '../lib/haptics';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/ui/Button';
@@ -34,6 +34,16 @@ export default function LoginScreen() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* Which door. BOTH are always offered: the only way to know whether THIS
+     number has a password is to ask about a specific account, which is the
+     question a login screen must not answer. A password attempt on an account
+     without one therefore fails like any wrong password, and the hint below the
+     field carries the way out. */
+  const [way, setWay] = useState<'otp' | 'password'>('otp');
+  const [password, setPassword] = useState('');
+  /* Which channel actually carried the code, as the server reports it — a
+     person watching the wrong app concludes it never arrived. */
+  const [sentVia, setSentVia] = useState<'sms' | 'whatsapp'>('sms');
   const [otpFocused, setOtpFocused] = useState(false);
   const otpRef = useRef<TextInput>(null);
 
@@ -58,9 +68,26 @@ export default function LoginScreen() {
     if (!/^\d{10}$/.test(mobile)) { setError('Enter a valid 10-digit mobile'); return; }
     setBusy(true); setError(null);
     try {
-      const { requestId } = await requestOtp(mobile);
+      const { requestId, channel } = await requestOtp(mobile);
       setRequestId(requestId);
+      setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
       setTimeout(() => otpRef.current?.focus(), 250);
+    } catch (e) {
+      setError(msg(e));
+    } finally { setBusy(false); }
+  };
+
+  const onPasswordSignIn = async () => {
+    if (!/^d{10}$/.test(mobile)) { setError('Enter a valid 10-digit mobile'); return; }
+    setBusy(true); setError(null);
+    try {
+      const res = await passwordLogin(mobile, password);
+      if (res.ok) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); return; }
+      if (res.reason === 'unreachable') { setError('Could not reach Investoyard. Check your connection.'); return; }
+      /* The server answers every password failure identically, so there is
+         nothing to branch on. Its own wording is used because it is the one
+         that names the way out. */
+      setError(res.message ?? 'Mobile number or password is incorrect.');
     } catch (e) {
       setError(msg(e));
     } finally { setBusy(false); }
@@ -94,8 +121,9 @@ export default function LoginScreen() {
     setOtp(''); setError(null);
     setBusy(true);
     try {
-      const { requestId } = await requestOtp(mobile);
+      const { requestId, channel } = await requestOtp(mobile);
       setRequestId(requestId);
+      setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
     } catch (e) {
       setError(msg(e));
     } finally { setBusy(false); }
@@ -145,12 +173,54 @@ export default function LoginScreen() {
                     autoFocus
                   />
                 </View>
-                <Button label="Continue" onPress={onGetOtp} busy={busy} style={styles.cta} />
+                {/* Shown only before a code is on its way: once it has been sent
+                    the choice is made, and a toggle there would discard it. */}
+                <View style={styles.wayRow}>
+                  {([
+                    ['otp', t('login.wayOtp')],
+                    ['password', t('login.wayPassword')],
+                  ] as const).map(([k, label]) => (
+                    <Pressable
+                      key={k}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: way === k }}
+                      onPress={() => { setWay(k); setError(null); }}
+                      style={[styles.wayBtn, way === k && styles.wayBtnOn]}
+                    >
+                      <Text style={[styles.wayTxt, way === k && styles.wayTxtOn]}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {way === 'password' && (
+                  <>
+                    <Text style={styles.micro}>{t('login.password').toUpperCase()}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoComplete="current-password"
+                      placeholderTextColor={ui.muted}
+                    />
+                    <Text style={styles.forgot}>{t('login.forgot')}</Text>
+                  </>
+                )}
+
+                {way === 'otp' ? (
+                  <Button label="Continue" onPress={onGetOtp} busy={busy} style={styles.cta} />
+                ) : (
+                  <Button label={t('login.signIn')} onPress={onPasswordSignIn} busy={busy}
+                    disabled={mobile.length < 10 || password.length < 1} style={styles.cta} />
+                )}
               </>
             ) : (
               <>
                 <Text style={styles.sheetTitle}>{t('login.enterOtp')}</Text>
-                <Text style={styles.sheetSub}>Sent to +91 {mobile}</Text>
+                <Text style={styles.sheetSub}>
+                  {sentVia === 'whatsapp' ? t('login.sentWhatsapp') : t('login.sentSms')} +91 {mobile}
+                </Text>
 
                 {/* 6-box OTP — one hidden input drives the boxes */}
                 <Pressable style={styles.otpRow} onPress={() => otpRef.current?.focus()}>
@@ -239,6 +309,14 @@ const styles = StyleSheet.create({
     fontSize: 17, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
     fontVariant: ['tabular-nums'],
   },
+  /* The sign-in-method toggle. Mirrors web’s `.lg-way` + `.seg`; kept in step
+     by hand, the same standing rule as the split UPI input and DematPanel. */
+  wayRow: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 12, padding: 3, marginTop: 20, gap: 2 },
+  wayBtn: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  wayBtnOn: { backgroundColor: '#ffffff' },
+  wayTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  wayTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
+  forgot: { marginTop: 10, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.muted },
   newUser: { marginTop: 18, padding: 14, borderRadius: 12, backgroundColor: ui.canvas },
   newUserTitle: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title },
   newUserSub: { marginTop: 4, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.muted },

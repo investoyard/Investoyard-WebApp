@@ -9,6 +9,7 @@ import { makeT, Lang } from '@investoyard/i18n';
 import { dematLabel } from '@investoyard/shared-types';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, addDemat, retireDemat, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
+  fetchSecurity, setPassword, clearPassword, setOtpChannel, type SecuritySettings,
   type ApiProfile, type ProfileInput, type Relationship, type Depository, type RelationshipOption,
 } from '@/lib/consumer-api';
 
@@ -177,6 +178,8 @@ export function Account() {
         <Icon name="users" size={16} /> {tr('profiles.add')}
       </button>
 
+      <SecurityPanel tr={tr} />
+
       {(adding || editing) && (
         <Modal
           title={editing ? `Edit — ${editing.fullName}` : 'Add applicant'}
@@ -194,6 +197,122 @@ export function Account() {
           />
         </Modal>
       )}
+    </div>
+  );
+}
+
+/**
+ * Sign-in & security — the customer's own choice of how they get in.
+ *
+ * WHY IT LIVES HERE AND NOT IN ADMIN: existing customers are not migrated onto
+ * a new sign-in method; they opt in. An operator flipping everyone to WhatsApp
+ * codes would lock out whoever does not use WhatsApp, and a password minted for
+ * someone is a password they never chose.
+ *
+ * THE PANEL RENDERS THE SERVER'S OWN VIEW OF WHAT IS AVAILABLE (`available`),
+ * never its own opinion of it — the same reasoning as the subscription
+ * readiness card calling `offeredFromIpo()` rather than re-testing its
+ * conditions. If the server would refuse a channel, the control is disabled
+ * here, so the two cannot drift into offering what the other rejects.
+ */
+function SecurityPanel({ tr }: { tr: (k: string) => string }) {
+  const [st, setSt] = useState<SecuritySettings | null>(null);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => { fetchSecurity().then(setSt).catch(() => {}); }, []);
+
+  /* Silent when it cannot be read: this panel is an extra, and a red banner
+     over the applicant list would read as something being wrong with the
+     applicants. */
+  if (!st) return null;
+
+  const pwOk = pw.length >= 8 && /\d/.test(pw) && /[A-Za-z]/.test(pw);
+
+  const pick = async (channel: 'sms' | 'whatsapp') => {
+    if (channel === st.otpChannel) return;
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await setOtpChannel(channel);
+      /* RE-READ rather than patching local state: the server is the authority
+         on what it accepted, and it may refuse a channel this screen thought
+         was available. */
+      setSt(await fetchSecurity());
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  const save = async () => {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await setPassword(pw);
+      setPw('');
+      setSt(await fetchSecurity());
+      setMsg(tr('security.saved'));
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await clearPassword();
+      setSt(await fetchSecurity());
+      setMsg(tr('security.removed'));
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <Icon name="shield" size={16} /> {tr('security.title')}
+      </h3>
+
+      <div className="field" style={{ marginTop: 14 }}>
+        <label>{tr('security.channel')}</label>
+        <div className="seg sec-way">
+          <button
+            type="button" className={st.otpChannel === 'sms' ? 'on' : ''}
+            disabled={busy} onClick={() => pick('sms')}
+          >{tr('security.channelSms')}</button>
+          <button
+            type="button" className={st.otpChannel === 'whatsapp' ? 'on' : ''}
+            /* Disabled, not hidden: "WhatsApp codes are not available yet" is a
+               thing worth knowing, where a missing option just looks like we
+               never thought of it. */
+            disabled={busy || !st.available.whatsapp} onClick={() => pick('whatsapp')}
+            title={st.available.whatsapp ? undefined : tr('security.channelWaOff')}
+          >{tr('security.channelWhatsapp')}</button>
+        </div>
+        {!st.available.whatsapp && <Help>{tr('security.channelWaOff')}</Help>}
+      </div>
+
+      <div className="field" style={{ marginTop: 6, marginBottom: 0 }}>
+        <label htmlFor="newpw">{tr('security.passwordTitle')}</label>
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+          {st.hasPassword ? tr('security.passwordSet') : tr('security.passwordNone')}
+        </p>
+        <div className="sec-pwrow">
+          <input
+            id="newpw" className="input" type="password" autoComplete="new-password"
+            placeholder={tr('security.newPassword')} value={pw}
+            onChange={(e) => setPw(e.target.value)}
+          />
+          <button className="btn btn-sm" disabled={!pwOk || busy} onClick={save}>{tr('security.save')}</button>
+        </div>
+        <Help>{tr('security.passwordRule')}</Help>
+        {st.hasPassword && (
+          <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} disabled={busy} onClick={remove}>
+            {tr('security.remove')}
+          </button>
+        )}
+      </div>
+
+      {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
+      {msg && <div className="banner ok" style={{ marginTop: 12 }}>{msg}</div>}
     </div>
   );
 }

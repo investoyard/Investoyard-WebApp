@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { store } from '@/lib/store';
-import { requestOtp, verifyOtp, setConsumerSession, isNoAccount } from '@/lib/consumer-api';
+import { requestOtp, verifyOtp, passwordLogin, setConsumerSession, isNoAccount } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
@@ -15,6 +15,16 @@ export function LoginForm() {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const next = sp.get('next') || `/account${q}`;
 
+  /* 'otp' | 'password' — which door. Both are always OFFERED, because the only
+     way to know whether THIS number has a password is to ask the server about
+     a specific account, which is exactly the question a login screen must not
+     answer. So a password attempt on an account without one fails like any
+     other wrong password, and the failure carries the way out (login.forgot). */
+  const [way, setWay] = useState<'otp' | 'password'>('otp');
+  const [password, setPassword] = useState('');
+  /* Which channel actually carried the code, as the server reports it. A person
+     watching the wrong app concludes the code never arrived. */
+  const [sentVia, setSentVia] = useState<'sms' | 'whatsapp'>('sms');
   const [step, setStep] = useState<'mobile' | 'otp'>('mobile');
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -33,8 +43,9 @@ export function LoginForm() {
   async function sendOtp() {
     setBusy(true); setErr(null);
     try {
-      const { requestId } = await requestOtp(mobile);
+      const { requestId, channel } = await requestOtp(mobile);
       setRequestId(requestId);
+      setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
       setOtp(['', '', '', '', '', '']);
       setStep('otp');
     } catch (e: any) { setErr(String(e?.message ?? e)); }
@@ -51,6 +62,21 @@ export function LoginForm() {
 
   function onKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace' && !otp[i] && i > 0) inputs.current[i - 1]?.focus();
+  }
+
+  async function signInWithPassword() {
+    setBusy(true); setErr(null); setNoAccount(false);
+    try {
+      const { accessToken, user } = await passwordLogin(mobile, password);
+      setConsumerSession(accessToken, user);
+      store.signIn(mobile);
+      router.push(next);
+    } catch (e: any) {
+      /* The server answers every failure identically on purpose, so there is
+         nothing here to branch on and nothing to reveal. What the banner adds
+         is the route out, which is the same route for all of them. */
+      setErr(String(e?.message ?? e));
+    } finally { setBusy(false); }
   }
 
   async function verify() {
@@ -74,6 +100,23 @@ export function LoginForm() {
       <h1 style={{ fontSize: 26 }}>{tr('login.title')}</h1>
       <p className="muted">{tr('login.subtitle')}</p>
 
+      {/* Shown only on the first step: once a code is on its way, the choice
+          has been made and a toggle there would just discard it. */}
+      {step === 'mobile' && (
+        <div className="seg lg-way" role="tablist" aria-label="Sign-in method">
+          <button
+            type="button" role="tab" aria-selected={way === 'otp'}
+            className={way === 'otp' ? 'on' : ''}
+            onClick={() => { setWay('otp'); setErr(null); }}
+          >{tr('login.wayOtp')}</button>
+          <button
+            type="button" role="tab" aria-selected={way === 'password'}
+            className={way === 'password' ? 'on' : ''}
+            onClick={() => { setWay('password'); setErr(null); }}
+          >{tr('login.wayPassword')}</button>
+        </div>
+      )}
+
       {step === 'mobile' ? (
         <div style={{ marginTop: 20 }}>
           <div className="field">
@@ -87,9 +130,29 @@ export function LoginForm() {
               />
             </div>
           </div>
-          <button className="btn btn-block btn-lg" disabled={!valid || busy} onClick={sendOtp}>
-            {busy ? '…' : tr('login.getOtp')}
-          </button>
+          {way === 'password' && (
+            <div className="field">
+              <label htmlFor="pw">{tr('login.password')}</label>
+              <input
+                id="pw" className="input" type="password" autoComplete="current-password"
+                value={password} onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && valid && password && !busy) signInWithPassword(); }}
+              />
+            </div>
+          )}
+          {way === 'otp' ? (
+            <button className="btn btn-block btn-lg" disabled={!valid || busy} onClick={sendOtp}>
+              {busy ? '…' : tr('login.getOtp')}
+            </button>
+          ) : (
+            <button className="btn btn-block btn-lg" disabled={!valid || !password || busy} onClick={signInWithPassword}>
+              {busy ? '…' : tr('login.signIn')}
+            </button>
+          )}
+          {/* The way out of EVERY password failure, and it is the same way out
+              for all of them — which is why it can be shown without the server
+              having told us which failure it was. */}
+          {way === 'password' && err && <p className="hint" style={{ marginTop: 10 }}>{tr('login.forgot')}</p>}
           {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
           {noAccount && (
             <div className="banner" style={{ marginTop: 12 }}>
@@ -113,7 +176,10 @@ export function LoginForm() {
                 />
               ))}
             </div>
-            <span className="hint">Sent to +91 {mobile} · <span className="linklike" onClick={() => setStep('mobile')}>change</span></span>
+            <span className="hint">
+              {sentVia === 'whatsapp' ? tr('login.sentWhatsapp') : tr('login.sentSms')} +91 {mobile}
+              {' · '}<span className="linklike" onClick={() => setStep('mobile')}>change</span>
+            </span>
           </div>
           <button className="btn btn-block btn-lg" disabled={!otpFull || busy} onClick={verify}>
             {busy ? '…' : tr('login.verify')}

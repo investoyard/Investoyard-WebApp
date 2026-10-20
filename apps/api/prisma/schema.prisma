@@ -13,6 +13,14 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+/// How a customer wants their one-time codes delivered. SMS is the default and
+/// the fallback: WhatsApp needs an APPROVED Meta authentication template, so a
+/// tenant without one must never be able to offer it (see authMethods()).
+enum OtpChannel {
+  sms
+  whatsapp
+}
+
 enum UserStatus {
   active
   suspended
@@ -679,6 +687,7 @@ model User {
   email            String?
   name             String?
   status           UserStatus @default(active)
+  otpChannel       OtpChannel @default(sms) // how this customer receives OTPs
   marketingConsent Boolean    @default(false)
   createdAt        DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime   @updatedAt @db.Timestamptz(3)

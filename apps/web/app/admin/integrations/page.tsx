@@ -63,6 +63,15 @@ const SPECS = [
       { name: 'businessAccountId', label: 'WABA ID', placeholder: '1234567890' },
       { name: 'apiUrl', label: 'Graph API base (optional)', placeholder: 'https://graph.facebook.com/v20.0' },
       { name: 'webhookVerifyToken', label: 'Webhook verify token', placeholder: 'a-random-secret' },
+      /*
+       * THE OTP TEMPLATE NAME IS THE SWITCH FOR WHATSAPP SIGN-IN. Customers
+       * can only choose WhatsApp for their one-time codes once this is filled
+       * in, because WhatsApp refuses an unsolicited message without an
+       * APPROVED authentication template — so offering the channel before
+       * then would leave people waiting for a code Meta rejected.
+       */
+      { name: 'otpTemplateName', label: 'OTP template name (enables WhatsApp sign-in)', placeholder: 'investoyard_login_code' },
+      { name: 'otpTemplateLang', label: 'OTP template language', placeholder: 'en' },
     ],
     secretFields: [
       { name: 'accessToken', label: 'Permanent access token' },
@@ -78,6 +87,7 @@ const SPECS = [
         'Open WhatsApp → API Setup. Copy the "Phone number ID" and the "WhatsApp Business Account ID (WABA)" into the fields above.',
         'Get an access token. For a quick test, copy the temporary token shown on API Setup (valid ~24h). For production, create a System User (Business Settings → Users → System Users → Add), give it the WhatsApp app with full control, then Generate a permanent token with the whatsapp_business_messaging and whatsapp_business_management permissions. Paste it into "Permanent access token".',
         'Get the App secret: App dashboard → App settings → Basic → App secret → Show. Paste it into "App secret" (used to verify Meta\'s webhook signature).',
+        'OPTIONAL — to let customers receive their login code on WhatsApp: in Meta Business Manager → WhatsApp Manager → Message templates, create a template with category AUTHENTICATION (not Utility or Marketing — Meta only approves codes under that one). Keep the default body, which supplies the code, and include the copy-code button. Once Meta APPROVES it, put its exact name in "OTP template name" above. Until then the WhatsApp option stays greyed out on the login screen and in every customer profile, and codes keep going by SMS.',
         'Set a "Webhook verify token": type any random secret string of your choice into the field above, then click Save on this card first — the server must know the token before Meta verifies it.',
         'Configure the webhook in Meta: WhatsApp → Configuration → Edit. Set the Callback URL to the URL shown below, and the Verify token to the exact same random string. Click "Verify and save".',
         'Still in Configuration → Webhook fields, subscribe to the "messages" field (this is what delivers incoming chats to us).',

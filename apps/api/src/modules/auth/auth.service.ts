@@ -4,13 +4,25 @@ import { randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MessagingService } from '../../common/messaging.service';
 import { RedisService } from '../../common/redis.service';
-import { verifyPassword } from '../../common/password';
+import { hashPassword, verifyPassword } from '../../common/password';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { tenantContext } from '../../common/tenant-context';
 
 const DEV_OTP = '123456';      // accepted only when SMS delivery is not configured
 const OTP_TTL = 5 * 60;        // seconds
 const RL_MAX = 5;              // max OTP requests per mobile per hour
 const RL_COOLDOWN = 30;        // seconds between requests for a mobile
+const PW_MAX_FAILURES = 5;     // wrong passwords before the password door closes
+const PW_LOCKOUT_SEC = 15 * 60;
+
+/**
+ * ONE ANSWER FOR EVERY PASSWORD FAILURE — no account, no password set, wrong
+ * password, suspended. Telling them apart would turn this endpoint into a way
+ * of asking "is this number registered with you", which on an IPO platform is
+ * a question about a stranger's finances. The OTP door is always open, so
+ * nobody is stranded by the vagueness.
+ */
+const BAD_LOGIN = 'Mobile number or password is incorrect.';
 
 interface OtpRec { mobile: string; otp: string; exp: number }
 
@@ -51,6 +63,7 @@ export class AuthService {
     private jwt: JwtService,
     private messaging: MessagingService,
     private redis: RedisService,
+    private whatsapp: WhatsappService,
   ) {}
 
   /**
@@ -98,16 +111,56 @@ export class AuthService {
     if (n > RL_MAX) throw new HttpException('Too many OTP requests. Try again later.', HttpStatus.TOO_MANY_REQUESTS);
   }
 
-  async requestOtp(mobile: string, ip?: string): Promise<{ requestId: string }> {
+  /**
+   * Request a one-time code. Returns WHICH CHANNEL carried it, so the screen
+   * can say "check WhatsApp" instead of "check your messages" — a person who
+   * is watching the wrong app assumes the code never came.
+   *
+   * Reporting the channel does narrow a number to "registered, and prefers
+   * WhatsApp", but account existence is ALREADY answerable here by design:
+   * verify returns NO_ACCOUNT precisely so an unknown mobile can be walked to
+   * Sign up. This adds nothing an attacker could not already learn.
+   */
+  async requestOtp(mobile: string, ip?: string): Promise<{ requestId: string; channel: string }> {
     if (!/^\d{10}$/.test(mobile)) throw new BadRequestException('Invalid mobile');
     await this.rateLimit(mobile);
     const requestId = randomBytes(16).toString('hex');
     const otp = String(randomInt(100000, 1000000)); // real 6-digit code
     await this.storeOtp(requestId, { mobile, otp, exp: Date.now() + OTP_TTL * 1000 });
-    // Resolves the inbound tenant's SMS provider + 'otp' template (white-label uses its own).
-    await this.messaging.sendSms('otp', mobile, { tenantId: tenantContext.tenantId() ?? undefined, vars: { otp } });
-    this.audit('auth.otp.request', { mobile, detail: { requestId, ip, tenantId: tenantContext.tenantId() ?? undefined } });
-    return { requestId };
+    /*
+     * WHERE THE CODE GOES IS THE CUSTOMER’S CHOICE, AND SMS IS THE FALLBACK
+     * FOR EVERY DOUBT. WhatsApp is only used when this person asked for it AND
+     * the tenant has an approved template; an UNKNOWN mobile always gets SMS,
+     * because there is no preference to read and because asking the database
+     * "does this number exist" and then behaving differently is how a login
+     * screen leaks who its customers are.
+     *
+     * A FAILED WHATSAPP SEND FALLS BACK TO SMS rather than failing the request.
+     * The code is already stored and valid; refusing here would strand someone
+     * over a template Meta happened to reject this minute.
+     */
+    const tid = tenantContext.tenantId() ?? undefined;
+    let channel: string = 'sms';
+    /* A STALE TENANT GUC ON A POOLED CONNECTION CAN HIDE THIS ROW, and that is
+       deliberately left alone: RLS filtering it out yields null, which falls
+       through to SMS — the channel that always works. Do NOT "harden" this
+       into the explicit set_config transaction (see printDetail) unless the
+       failure is made safe first; the only thing at stake here is a preference,
+       and getting a code by SMS when you wanted WhatsApp is not a failure worth
+       risking a harder one for. */
+    const pref = await tenantContext.runUnscoped(async () =>
+      this.prisma.user.findUnique({ where: { mobile }, select: { otpChannel: true } }),
+    );
+    if (pref?.otpChannel === 'whatsapp' && (await this.whatsapp.otpTemplate())) {
+      const res = await this.whatsapp.sendOtp(mobile, otp);
+      if (res.sent) channel = 'whatsapp';
+    }
+    if (channel === 'sms') {
+      // Resolves the inbound tenant's SMS provider + 'otp' template (white-label uses its own).
+      await this.messaging.sendSms('otp', mobile, { tenantId: tid, vars: { otp } });
+    }
+    this.audit('auth.otp.request', { mobile, detail: { requestId, ip, tenantId: tid, channel } });
+    return { requestId, channel };
   }
 
   async verifyOtp(requestId: string, otp: string, ip?: string, name?: string) {
@@ -260,5 +313,176 @@ export class AuthService {
         })),
       };
     });
+  }
+
+  /* ==================================================================== *
+   *  Phase 5 — the other ways in
+   * ==================================================================== */
+
+  /**
+   * Which sign-in methods this site can actually honour.
+   *
+   * Public and unauthenticated: it describes the SITE, never an account. The
+   * login screen reads it so it only ever offers doors that open — see
+   * WhatsappService.otpTemplate() for why WhatsApp is gated on a template name
+   * rather than on the provider being switched on.
+   */
+  async authMethods(): Promise<{ sms: boolean; whatsapp: boolean; password: boolean }> {
+    let whatsapp = false;
+    try {
+      whatsapp = !!(await this.whatsapp.otpTemplate());
+    } catch {
+      /* provider unreadable — the channel simply is not offered */
+    }
+    return { sms: true, whatsapp, password: true };
+  }
+
+  /**
+   * Sign in with mobile + password.
+   *
+   * The password is OPT-IN and set from the customer's own profile AFTER an OTP
+   * sign-in, so no account anywhere carries a password nobody chose — and the
+   * mobile behind every password was proved by an OTP before the password
+   * existed.
+   */
+  async passwordLogin(mobile: string, password: string, ip?: string) {
+    const m = (mobile ?? '').trim();
+    if (!/^\d{10}$/.test(m)) throw new UnauthorizedException(BAD_LOGIN);
+    await this.passwordRateLimit(m);
+
+    const user = await tenantContext.runUnscoped(async () =>
+      this.prisma.user.findUnique({ where: { mobile: m } }),
+    );
+    /*
+     * `status` IS CHECKED HERE TOO. It is the same hole Phase 1 closed on the
+     * OTP path and in the guard: a suspended or deleted customer must not be
+     * able to come back in through a door that was added later.
+     */
+    /*
+     * OPERATORS ARE REFUSED HERE, AND THEY MUST BE.
+     *
+     * `createOperator` sets a passwordHash, so FOUR accounts already carried
+     * one before this endpoint existed — every one of them an operator with a
+     * mobile on their row. Without this clause their OPERATOR password would
+     * sign in through the customer door.
+     *
+     * It is not an escalation (same user, same password, same permissions),
+     * but it MOVES THE ATTACK FROM "guess the username" TO "know the phone
+     * number", and a mobile is far more discoverable than a username. It also
+     * falsifies what this feature claims: a customer password is OPT-IN, chosen
+     * by them after an OTP sign-in — these were set by an admin creating a
+     * colleague, and nobody chose them for this purpose.
+     *
+     * `username` is the test because that is what `operatorLogin` identifies by;
+     * a customer never has one. Operators keep their own door at
+     * /auth/operator/login, unchanged.
+     */
+    const ok = !!user
+      && !user.username
+      && user.status === 'active'
+      && !!user.passwordHash
+      && (await verifyPassword(password, user.passwordHash));
+
+    if (!ok) {
+      await this.notePasswordFailure(m);
+      this.audit('auth.password.fail', { mobile: m, detail: { ip } });
+      throw new UnauthorizedException(BAD_LOGIN);
+    }
+    await this.clearPasswordFailures(m);
+
+    const accessToken = await this.jwt.signAsync(
+      { sub: user!.id, mobile: user!.mobile, tenant: user!.tenantId ?? undefined },
+      { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN ?? '30d' },
+    );
+    this.audit('auth.password.login', { actorId: user!.id, mobile: user!.mobile, detail: { ip } });
+    return { accessToken, user: { id: user!.id, mobile: user!.mobile, name: user!.name, tenantId: user!.tenantId } };
+  }
+
+  /**
+   * Set or replace this customer's password. Requires a live session, which can
+   * only have come from an OTP.
+   *
+   * THAT IS ALSO THE WHOLE PASSWORD-RESET STORY. Someone who has forgotten
+   * theirs signs in with a one-time code — which always works — and sets a new
+   * one here. No reset tokens, no reset links, no second recovery path to
+   * attack or to get wrong: the recovery route is the door that was already
+   * there.
+   */
+  async setPassword(userId: string, password: string) {
+    const pw = String(password ?? '');
+    if (pw.length < 8) throw new BadRequestException('Use at least 8 characters.');
+    if (pw.length > 128) throw new BadRequestException('That is longer than 128 characters.');
+    if (!/\d/.test(pw) || !/[A-Za-z]/.test(pw)) throw new BadRequestException('Use letters and at least one number.');
+    await tenantContext.runUnscoped(async () =>
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(pw) } }),
+    );
+    this.audit('auth.password.set', { actorId: userId });
+    return { ok: true, hasPassword: true };
+  }
+
+  /** Remove the password — back to one-time codes only. */
+  async clearPassword(userId: string) {
+    await tenantContext.runUnscoped(async () =>
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash: null } }),
+    );
+    this.audit('auth.password.cleared', { actorId: userId });
+    return { ok: true, hasPassword: false };
+  }
+
+  /** This customer's own security settings, for their profile screen. */
+  async securitySettings(userId: string) {
+    const u = await tenantContext.runUnscoped(async () =>
+      this.prisma.user.findUnique({ where: { id: userId }, select: { otpChannel: true, passwordHash: true } }),
+    );
+    if (!u) throw new NotFoundException();
+    return { otpChannel: u.otpChannel, hasPassword: !!u.passwordHash, available: await this.authMethods() };
+  }
+
+  /**
+   * Choose where one-time codes are sent.
+   *
+   * REFUSED when the tenant cannot honour the channel — the same gate
+   * authMethods() applies to the login screen, enforced again here because a
+   * crafted request must not be able to park someone on a channel that
+   * delivers nothing. They would then be locked out of their own account by
+   * their own setting.
+   */
+  async setOtpChannel(userId: string, channel: string) {
+    if (channel !== 'sms' && channel !== 'whatsapp') throw new BadRequestException('Unknown channel');
+    if (channel === 'whatsapp' && !(await this.authMethods()).whatsapp) {
+      throw new BadRequestException('WhatsApp codes are not available yet.');
+    }
+    await tenantContext.runUnscoped(async () =>
+      this.prisma.user.update({ where: { id: userId }, data: { otpChannel: channel as any } }),
+    );
+    this.audit('auth.otp_channel.set', { actorId: userId, detail: { channel } });
+    return { ok: true, otpChannel: channel };
+  }
+
+  /* ---- password attempt throttling -----------------------------------
+   * The OTP door already had one (rateLimit above); a password door needs its
+   * own, because an attacker can try passwords as fast as the network allows
+   * where an OTP costs them an SMS.
+   *
+   * KEYED ON THE MOBILE, NOT THE IP. The thing being protected is one account,
+   * and an attacker changes IP far more easily than they change target. The
+   * cost is that someone sharing a number's lockout cannot brute-force past
+   * it either, which is the point; the message sends them to the OTP door,
+   * which is unaffected.
+   */
+  private async passwordRateLimit(mobile: string) {
+    if (!this.redis.client) return;
+    const n = Number((await this.redis.client.get(`pw:fail:${mobile}`)) ?? 0);
+    if (n >= PW_MAX_FAILURES) {
+      throw new HttpException('Too many attempts. Use a one-time code instead.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+  private async notePasswordFailure(mobile: string) {
+    if (!this.redis.client) return;
+    const n = await this.redis.client.incr(`pw:fail:${mobile}`);
+    if (n === 1) await this.redis.client.expire(`pw:fail:${mobile}`, PW_LOCKOUT_SEC);
+  }
+  private async clearPasswordFailures(mobile: string) {
+    if (this.redis.client) await this.redis.client.del(`pw:fail:${mobile}`);
   }
 }

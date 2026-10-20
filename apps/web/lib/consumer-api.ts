@@ -105,7 +105,38 @@ export async function checkConsumerSession(): Promise<'ok' | 'gone' | 'unknown'>
   }
 }
 
-export const requestOtp = (mobile: string) => post<{ requestId: string }>('/auth/otp/request', { mobile });
+/**
+ * Which sign-in methods this site can honour. Public — it describes the SITE,
+ * not an account. The login screen reads it so it never offers a door that
+ * cannot open: WhatsApp needs a Meta-approved template, and without one every
+ * send is rejected, leaving someone waiting for a code that was never coming.
+ */
+export interface AuthMethods { sms: boolean; whatsapp: boolean; password: boolean }
+export const fetchAuthMethods = () => req<AuthMethods>('/auth/methods', { method: 'GET' });
+
+/**
+ * Request an OTP. The reply says WHICH channel carried it, so the next screen
+ * can name the app to look in rather than saying "check your messages".
+ */
+export const requestOtp = (mobile: string) => post<{ requestId: string; channel?: string }>('/auth/otp/request', { mobile });
+
+/** Sign in with mobile + password. Opt-in; set from the customer’s own profile. */
+export const passwordLogin = (mobile: string, password: string) =>
+  post<{ accessToken: string; user: ConsumerUser }>('/auth/password/login', { mobile, password });
+
+// ---- the customer’s own security settings ----
+export interface SecuritySettings {
+  otpChannel: 'sms' | 'whatsapp';
+  hasPassword: boolean;
+  available: AuthMethods;
+}
+export const fetchSecurity = () => authedConsumer<SecuritySettings>('/auth/security', { method: 'GET' });
+export const setPassword = (password: string) =>
+  authedConsumer<{ ok: boolean; hasPassword: boolean }>('/auth/security/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+export const clearPassword = () =>
+  authedConsumer<{ ok: boolean; hasPassword: boolean }>('/auth/security/password', { method: 'DELETE' });
+export const setOtpChannel = (channel: 'sms' | 'whatsapp') =>
+  authedConsumer<{ ok: boolean; otpChannel: string }>('/auth/security/otp-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel }) });
 /**
  * Verify the OTP. `name` is sent ONLY when this is a signup: the same
  * endpoint serves both doors, and an unknown mobile without a name is

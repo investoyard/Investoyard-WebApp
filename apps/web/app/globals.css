@@ -5211,3 +5211,23 @@ html[data-foreign-host] [data-own-only] { display: none; }
 
 /* The error REPLACES the help rather than stacking under it — see Help(). */
 .hint-bad { color: var(--neg); }
+
+/* ---- login: which door (one-time code | password) -------------------------
+ * LAYOUT ONLY. `.seg` supplies the look, and note it is declared TWICE in this
+ * sheet (around 1040 and 2991) — the LATER one wins, so this toggle renders as
+ * the rounded-rect/surface variant, not the pill. Prefixed `lg-` and grepped
+ * clear before adding, per the standing collision rule.
+ */
+.lg-way { display: flex; width: 100%; margin-top: 18px; }
+.lg-way button { flex: 1; text-align: center; }
+
+/* ---- account: sign-in & security panel ------------------------------------
+ * `.sec-pwrow` is NOT `.auth-pair`, deliberately. That one is inline-flex with
+ * `white-space: nowrap` and was built for a label + ghost-button pair; an input
+ * row borrowed into it overflows on a phone. Same lesson as `.resv-total` and
+ * `.steps` — grep the name, then check the rule actually fits.
+ */
+.sec-way { display: inline-flex; }
+.sec-way button[disabled] { opacity: .45; cursor: not-allowed; }
+.sec-pwrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sec-pwrow .input { flex: 1; min-width: 180px; }

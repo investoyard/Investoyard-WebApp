@@ -250,6 +250,45 @@ opt in rather than being migrated.
 
 ---
 
+## Phase 5 — SHIPPED 2026-10-20 (items 2–11; item 1 is the operator’s)
+
+Everything except the Meta application is built, typechecked and proved. What
+changed against the plan above, and why:
+
+- **Item 7, password reset, was NOT built as its own flow — deliberately.**
+  Setting a password already requires a live session, which can only have come
+  from an OTP. So the reset *is* the existing door: sign in with a code, set a
+  new password. A separate reset flow would be a second recovery path to
+  attack, and reset tokens to expire, leak and get wrong — for no capability
+  the customer does not already have.
+- **Item 2 is a TEMPLATE NAME, not a checkbox.** `otpTemplateName` on the
+  WhatsApp provider is the switch, because the thing that actually determines
+  whether a WhatsApp code can be delivered is whether Meta approved a template.
+  A separate enable flag could be on while every send was rejected.
+- **Item 2 says "tenant-level" and what shipped is PLATFORM-LEVEL.** Worth
+  saying plainly: `ProviderConfigService.effective()` does take a tenantId, but
+  `WhatsappService` has never passed one — the whole WhatsApp integration is
+  platform-global in this codebase — so `otpTemplate()` follows it rather than
+  introducing a second, inconsistent scoping rule for one setting. **Consequence:
+  a white-label partner cannot have its own OTP template; enabling WhatsApp
+  codes enables them for every brand.** Making it per-tenant means threading a
+  tenantId through the whole WhatsApp service, not changing this one call.
+- **Item 8 is keyed on the MOBILE, not the IP** — 5 failures, 15 minutes. The
+  thing being protected is one account, and an attacker changes IP far more
+  easily than target. The lockout message points at the OTP door, which is
+  unaffected.
+
+### Still the operator’s to do
+
+1. **Apply to Meta for the AUTHENTICATION template** (the original item 1).
+   Until it is approved and its name is entered at admin → Integrations →
+   WhatsApp, the WhatsApp option is greyed out everywhere and codes go by SMS.
+   Nothing else is blocked on it.
+2. Nothing for the password half — it works as soon as the pool restarts.
+
+
+---
+
 ## Open actions for the operator
 
 1. **Supply or confirm the source files** for the IFSC and pincode masters —

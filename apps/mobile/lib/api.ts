@@ -66,7 +66,7 @@ export async function getConsentNotices(): Promise<ConsentNotice[]> {
   return [];
 }
 
-export async function requestOtp(mobile: string): Promise<{ requestId: string }> {
+export async function requestOtp(mobile: string): Promise<{ requestId: string; channel?: string }> {
   try {
     const res = await fetch(`${API_BASE}/auth/otp/request`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile }),
@@ -120,6 +120,103 @@ export async function verifyOtp(requestId: string, otp: string, name?: string): 
   return { ok: false, reason: 'bad_otp', message: typeof body?.message === 'string' ? body.message : undefined };
 }
 
+
+/**
+ * Which sign-in methods this site can honour. Public — it describes the SITE,
+ * not an account. The login screen reads it so it never offers a door that
+ * cannot open.
+ *
+ * UNREACHABLE FALLS BACK TO "SMS AND PASSWORD", not to nothing: the login
+ * screen must still work on a flaky connection, and those two are what the
+ * server always supports. WhatsApp is the one that needs confirming, so it is
+ * the one left off.
+ */
+export interface AuthMethods { sms: boolean; whatsapp: boolean; password: boolean }
+export async function getAuthMethods(): Promise<AuthMethods> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/methods`);
+    if (res.ok) return await res.json();
+  } catch {}
+  return { sms: true, whatsapp: false, password: true };
+}
+
+/**
+ * Sign in with mobile + password.
+ *
+ * Same three-way result as verifyOtp, and for the same reason — but WITHOUT a
+ * `no_account` case, because the server deliberately will not say. Every
+ * password failure is one `bad_password` carrying the server’s own wording,
+ * which already names the way out (sign in with a code, set one in profile).
+ */
+export type PasswordResult =
+  | { ok: true; accessToken: string }
+  | { ok: false; reason: 'bad_password' | 'rate_limited' | 'unreachable'; message?: string };
+export async function passwordLogin(mobile: string, password: string): Promise<PasswordResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/password/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile, password }),
+    });
+  } catch {
+    return { ok: false, reason: 'unreachable' };
+  }
+  if (res.ok) {
+    const j = await res.json().catch(() => null);
+    return j?.accessToken ? { ok: true, accessToken: j.accessToken } : { ok: false, reason: 'bad_password' };
+  }
+  const body = await res.json().catch(() => null);
+  const message = typeof body?.message === 'string' ? body.message : undefined;
+  return { ok: false, reason: res.status === 429 ? 'rate_limited' : 'bad_password', message };
+}
+
+// ---- the customer’s own security settings ----
+export interface SecuritySettings {
+  otpChannel: 'sms' | 'whatsapp';
+  hasPassword: boolean;
+  available: AuthMethods;
+}
+export async function getSecurity(token: string): Promise<SecuritySettings | null> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/security`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+/** Returns the server’s message on refusal, so a rejected channel says why. */
+export async function setOtpChannel(token: string, channel: 'sms' | 'whatsapp'): Promise<{ ok: boolean; message?: string }> {
+  return authedPost(token, '/auth/security/otp-channel', { channel });
+}
+export async function setPassword(token: string, password: string): Promise<{ ok: boolean; message?: string }> {
+  return authedPost(token, '/auth/security/password', { password });
+}
+export async function clearPassword(token: string): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/security/password`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) return { ok: true };
+    const b = await res.json().catch(() => null);
+    return { ok: false, message: typeof b?.message === 'string' ? b.message : undefined };
+  } catch {
+    return { ok: false, message: 'Could not reach Investoyard.' };
+  }
+}
+async function authedPost(token: string, path: string, body: any): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return { ok: true };
+    const b = await res.json().catch(() => null);
+    const m = Array.isArray(b?.message) ? b.message.join(', ') : b?.message;
+    return { ok: false, message: typeof m === 'string' ? m : undefined };
+  } catch {
+    return { ok: false, message: 'Could not reach Investoyard.' };
+  }
+}
 
 export async function createApplication(token: string, input: CreateApplicationInput): Promise<ApplicationView> {
   try {
