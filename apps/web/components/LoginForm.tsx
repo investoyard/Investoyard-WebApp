@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { store } from '@/lib/store';
-import { requestOtp, verifyOtp, setConsumerSession } from '@/lib/consumer-api';
+import { requestOtp, verifyOtp, setConsumerSession, isNoAccount } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
@@ -22,6 +22,10 @@ export function LoginForm() {
   const [requestId, setRequestId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Set when the server says this mobile has no account. Kept apart from
+  // `err` because it is not really an error — it is the wrong door, and the
+  // answer is a link rather than a red banner.
+  const [noAccount, setNoAccount] = useState(false);
 
   const valid = /^[6-9]\d{9}$/.test(mobile);
   const otpFull = otp.every((d) => d !== '');
@@ -50,13 +54,18 @@ export function LoginForm() {
   }
 
   async function verify() {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setNoAccount(false);
     try {
       const { accessToken, user } = await verifyOtp(requestId, otp.join(''));
       setConsumerSession(accessToken, user);
       store.signIn(mobile);
       router.push(next);
-    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    } catch (e: any) {
+      // No account on this number: send them to Sign up with it already
+      // filled in, rather than making them read an error and retype it.
+      if (isNoAccount(e)) setNoAccount(true);
+      else setErr(String(e?.message ?? e));
+    }
     finally { setBusy(false); }
   }
 
@@ -82,6 +91,12 @@ export function LoginForm() {
             {busy ? '…' : tr('login.getOtp')}
           </button>
           {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
+          {noAccount && (
+            <div className="banner" style={{ marginTop: 12 }}>
+              <b>No account on +91 {mobile}.</b>{' '}
+              <a href={`/signup${q ? q + '&' : '?'}mobile=${mobile}`}>Create one</a> — it takes a minute.
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ marginTop: 20 }}>
@@ -104,6 +119,12 @@ export function LoginForm() {
             {busy ? '…' : tr('login.verify')}
           </button>
           {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
+          {noAccount && (
+            <div className="banner" style={{ marginTop: 12 }}>
+              <b>No account on +91 {mobile}.</b>{' '}
+              <a href={`/signup${q ? q + '&' : '?'}mobile=${mobile}`}>Create one</a> — it takes a minute.
+            </div>
+          )}
           <p style={{ textAlign: 'center', marginTop: 14 }}>
             <span className="linklike" onClick={() => { if (!busy) sendOtp(); }}>{tr('login.resend')}</span>
           </p>

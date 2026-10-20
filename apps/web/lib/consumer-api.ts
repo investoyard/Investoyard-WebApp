@@ -24,13 +24,32 @@ export function clearConsumerSession() {
   try { localStorage.removeItem(TKEY); localStorage.removeItem(UKEY); } catch { /* ignore */ }
 }
 
+/** An error from the API, carrying what the UI needs to branch on. */
+export interface ApiError extends Error { status?: number; code?: string }
+
+/** The server's reply when the mobile has no account yet — route to signup. */
+export const isNoAccount = (e: unknown): boolean =>
+  (e as ApiError)?.code === 'NO_ACCOUNT' || (e as ApiError)?.status === 404;
+
 async function req<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, init);
   const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
-    throw new Error(msg);
+    let code: string | undefined;
+    try {
+      const b = JSON.parse(body);
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message;
+      if (typeof b?.code === 'string') code = b.code;
+    } catch { /* ignore */ }
+    /* The STATUS and any server code ride along on the error. Callers used to
+       get a bare string, so the only way to tell "no such account" from "the
+       OTP was wrong" was to match on wording — which breaks the moment the
+       wording is edited or translated. */
+    const err = new Error(msg) as ApiError;
+    err.status = res.status;
+    if (code) err.code = code;
+    throw err;
   }
   // Nest sends an EMPTY body when a handler returns null (and for 204) — not the
   // string "null" — so res.json() threw "Unexpected end of JSON input" on the
@@ -87,8 +106,14 @@ export async function checkConsumerSession(): Promise<'ok' | 'gone' | 'unknown'>
 }
 
 export const requestOtp = (mobile: string) => post<{ requestId: string }>('/auth/otp/request', { mobile });
-export const verifyOtp = (requestId: string, otp: string) =>
-  post<{ accessToken: string; user: ConsumerUser }>('/auth/otp/verify', { requestId, otp });
+/**
+ * Verify the OTP. `name` is sent ONLY when this is a signup: the same
+ * endpoint serves both doors, and an unknown mobile without a name is
+ * refused with NO_ACCOUNT rather than silently becoming an account, which is
+ * what it used to do.
+ */
+export const verifyOtp = (requestId: string, otp: string, name?: string) =>
+  post<{ accessToken: string; user: ConsumerUser }>('/auth/otp/verify', name ? { requestId, otp, name } : { requestId, otp });
 
 // ---- investor profiles (self + family) ----
 /** Admin-managed via Masters → Relationships; stored/compared lowercase. */

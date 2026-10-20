@@ -43,7 +43,13 @@ export function SiteHeader() {
               {initials || '★'}
             </a>
           ) : (
-            <a href={`/login${q}`} className="btn btn-sm">Sign in</a>
+            /* Sign up is the primary of the two: the site had only a Sign in
+               button, and signing in with an unknown number used to create the
+               account silently — so new visitors had no door of their own. */
+            <span className="auth-pair">
+              <a href={`/login${q}`} className="btn btn-ghost btn-sm">Sign in</a>
+              <a href={`/signup${q}`} className="btn btn-sm">Sign up</a>
+            </span>
           )}
         </div>
       </div>

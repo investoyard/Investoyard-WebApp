@@ -5151,3 +5151,42 @@ html[data-foreign-host] [data-own-only] { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .hb-biggest::after { animation: none; left: -70%; }
 }
+
+/* ---- signup: the form, and what to bring with you ----
+   TWO COLUMNS ON A DESKTOP, form first on a phone. The "keep handy" panel is
+   not an aside in the editorial sense — it is the reason someone can finish
+   the next screen, so it sits level with the form rather than under it, and on
+   a narrow screen it follows the form instead of pushing it below the fold. */
+.su-wrap { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 360px);
+  gap: 20px; align-items: start; justify-content: center; margin: 12px auto 0; }
+@media (max-width: 860px) { .su-wrap { grid-template-columns: minmax(0, 440px); } }
+
+.su-form { margin: 0; }
+
+.su-consent { align-items: flex-start; margin: 4px 0 16px; font-size: 13px; line-height: 1.55; }
+.su-consent input { margin-top: 2px; flex: none; }
+.su-consent a { text-decoration: underline; }
+
+.su-handy { margin: 0; background: var(--bg-2, #f7f6fb); }
+.su-handy h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.2px; }
+.su-handy > .muted { margin: 6px 0 10px; font-size: 13px; }
+
+.su-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.su-list li { position: relative; padding-left: 20px; font-size: 13px; line-height: 1.5; color: var(--text); }
+/* A gold tick rather than a bullet: this is a checklist someone works through,
+   not a list of features. */
+.su-list li::before { content: ""; position: absolute; left: 0; top: 6px; width: 10px; height: 6px;
+  border-left: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
+  transform: rotate(-45deg); }
+.su-list b { font-weight: 700; }
+
+.su-extra { margin-top: 14px; padding: 11px 13px; border-radius: 10px;
+  background: rgba(255, 203, 50, .13); border: 1px solid rgba(255, 203, 50, .40);
+  font-size: 12.5px; line-height: 1.55; }
+.su-extra b { font-weight: 700; }
+
+.su-fine { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted, #6d6690); }
+
+/* Sign in / Sign up sit together in the header; the pair must not wrap apart. */
+.auth-pair { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+@media (max-width: 420px) { .auth-pair .btn-ghost { display: none; } }

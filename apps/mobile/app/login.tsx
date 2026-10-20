@@ -29,6 +29,9 @@ export default function LoginScreen() {
   const [mobile, setMobile] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
   const [otp, setOtp] = useState('');
+  // Revealed only when the server says this mobile has no account yet.
+  const [needName, setNeedName] = useState(false);
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [otpFocused, setOtpFocused] = useState(false);
@@ -67,9 +70,20 @@ export default function LoginScreen() {
     if (!requestId) return;
     setBusy(true); setError(null);
     try {
-      const res = await verifyOtp(requestId, otp);
-      if (res?.accessToken) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); }
-      else setError('Invalid code');
+      /* The name is sent only once the server has told us this number has no
+         account — so an existing user is never asked for it, and a new one is
+         asked exactly once, on the screen they are already on. A separate
+         signup route would be a second thing to navigate on a phone for a
+         difference of one field. */
+      const res = await verifyOtp(requestId, otp, needName ? name.trim() : undefined);
+      if (res.ok) { tapSuccess(); signIn(res.accessToken, mobile); router.back(); return; }
+      if (res.reason === 'no_account') {
+        setNeedName(true);
+        setError(needName ? 'Please enter your name to create the account' : null);
+        return;
+      }
+      if (res.reason === 'unreachable') { setError('Could not reach Investoyard. Check your connection.'); return; }
+      setError(res.message ?? 'Invalid code');
     } catch (e) {
       setError(msg(e));
     } finally { setBusy(false); }
@@ -160,7 +174,28 @@ export default function LoginScreen() {
                   maxLength={OTP_LEN}
                   autoFocus
                 />
-                <Button label={t('login.verify')} onPress={onVerify} busy={busy} disabled={otp.length < OTP_LEN} style={styles.cta} />
+                {/* Shown only after the server reports NO_ACCOUNT, so an
+                    existing user never sees it and a new one is asked once. */}
+                {needName && (
+                  <View style={styles.newUser}>
+                    <Text style={styles.newUserTitle}>Welcome — let’s create your account</Text>
+                    <Text style={styles.newUserSub}>
+                      There’s no account on +91 {mobile} yet. Tell us your name and we’ll set one up.
+                    </Text>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Full name"
+                      placeholderTextColor={ui.muted}
+                      autoCapitalize="words"
+                      maxLength={60}
+                      autoFocus
+                    />
+                  </View>
+                )}
+                <Button label={needName ? 'Create account' : t('login.verify')} onPress={onVerify} busy={busy}
+                  disabled={otp.length < OTP_LEN || (needName && name.trim().length < 2)} style={styles.cta} />
                 <Pressable onPress={onResend} hitSlop={8} style={({ pressed }) => [styles.resend, pressed && { opacity: 0.6 }]}>
                   <Text style={styles.resendTxt}>{t('login.resend')}</Text>
                 </Pressable>
@@ -203,6 +238,13 @@ const styles = StyleSheet.create({
     flex: 1, height: 52, borderRadius: 12, paddingHorizontal: 14,
     fontSize: 17, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title, backgroundColor: ui.canvas,
     fontVariant: ['tabular-nums'],
+  },
+  newUser: { marginTop: 18, padding: 14, borderRadius: 12, backgroundColor: ui.canvas },
+  newUserTitle: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title },
+  newUserSub: { marginTop: 4, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.muted },
+  nameInput: {
+    marginTop: 10, height: 52, borderRadius: 12, paddingHorizontal: 14,
+    fontSize: 17, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title, backgroundColor: '#ffffff',
   },
   cta: { marginTop: 20, height: 52, borderRadius: 14 },
   otpRow: { flexDirection: 'row', gap: 8, marginTop: 22, justifyContent: 'center' },

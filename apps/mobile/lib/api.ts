@@ -79,19 +79,47 @@ export async function requestOtp(mobile: string): Promise<{ requestId: string }>
   throw new Error('Could not reach Investoyard. Check your connection and try again.');
 }
 
-export async function verifyOtp(requestId: string, otp: string): Promise<{ accessToken: string } | null> {
+/**
+ * The outcome of verifying an OTP, as three different things rather than one
+ * null.
+ *
+ * It used to return `null` for every failure, so the screen said "Invalid
+ * code" whether the code was wrong, the server was unreachable, or — once
+ * signup became explicit — the number simply had no account yet. Telling a
+ * NEW user that their correct OTP was invalid is the worst of those three.
+ */
+export type VerifyResult =
+  | { ok: true; accessToken: string }
+  | { ok: false; reason: 'no_account' | 'bad_otp' | 'unreachable'; message?: string };
+
+/**
+ * `name` is sent only when signing UP; an unknown mobile without it is refused.
+ *
+ * NO client-side `123456`. The server decides, and in production only the real
+ * OTP is accepted (`SmsService`); an earlier version minted a `mock-token`
+ * whenever the API was merely unreachable, so every authed screen then failed
+ * one by one instead of the login saying what was wrong.
+ */
+export async function verifyOtp(requestId: string, otp: string, name?: string): Promise<VerifyResult> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE}/auth/otp/verify`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId, otp }),
+    res = await fetch(`${API_BASE}/auth/otp/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(name ? { requestId, otp, name } : { requestId, otp }),
     });
-    if (res.ok) return res.json();
-  } catch {}
-  /* NO client-side '123456'. The server decides, and in production only the real
-     OTP is accepted (`SmsService`); this branch minted a `mock-token` whenever the
-     API was merely unreachable, so every authed screen then failed one by one
-     instead of the login saying what was wrong. */
-  return null;
+  } catch {
+    return { ok: false, reason: 'unreachable' };
+  }
+  if (res.ok) {
+    const j = await res.json().catch(() => null);
+    return j?.accessToken ? { ok: true, accessToken: j.accessToken } : { ok: false, reason: 'bad_otp' };
+  }
+  const body = await res.json().catch(() => null);
+  if (res.status === 404 || body?.code === 'NO_ACCOUNT') return { ok: false, reason: 'no_account' };
+  return { ok: false, reason: 'bad_otp', message: typeof body?.message === 'string' ? body.message : undefined };
 }
+
 
 export async function createApplication(token: string, input: CreateApplicationInput): Promise<ApplicationView> {
   try {

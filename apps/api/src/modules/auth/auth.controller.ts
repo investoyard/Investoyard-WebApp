@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { AuthService } from './auth.service';
 
@@ -9,6 +9,13 @@ class RequestOtpDto {
 class VerifyOtpDto {
   @IsString() requestId!: string;
   @Length(4, 8) otp!: string;
+  /*
+   * PRESENT ONLY ON SIGNUP. The same endpoint serves both doors: a known
+   * mobile signs in and this is ignored, an unknown one needs it or the call
+   * is refused with NO_ACCOUNT. One OTP pair rather than a second, duplicate
+   * request/verify path that would drift from this one.
+   */
+  @IsOptional() @IsString() @Length(2, 60) name?: string;
 }
 class OperatorLoginDto {
   @IsString() @Length(2, 40) username!: string;
@@ -30,7 +37,7 @@ export class AuthController {
 
   @Post('otp/verify')
   verify(@Body() dto: VerifyOtpDto, @Req() req: any) {
-    return this.auth.verifyOtp(dto.requestId, dto.otp, clientIp(req));
+    return this.auth.verifyOtp(dto.requestId, dto.otp, clientIp(req), dto.name);
   }
 
   /** Operator login (superadmin / partner / branch) — username + password. */

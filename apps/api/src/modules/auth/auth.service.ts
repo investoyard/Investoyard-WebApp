@@ -20,6 +20,28 @@ interface OtpRec { mobile: string; otp: string; exp: number }
  * store and request rate-limits live in Redis (survive restarts, work across API
  * instances); without REDIS_URL they fall back to in-memory (dev, single instance).
  */
+/**
+ * What a person agrees to when they sign up. Versioned like every other
+ * notice here (gmp-v2, ds-rail-v1): BUMP IT when the wording changes, so a
+ * stored consent still says which text it was given against.
+ */
+export const SIGNUP_NOTICE_VERSION = 'service-v1';
+
+/**
+ * The name a new account is created with, or null if it is not one.
+ *
+ * Deliberately forgiving about SHAPE and strict about EMPTINESS: a single
+ * mononym is a real Indian name, so no two-word rule, but a string of digits
+ * or punctuation is someone defeating a required field rather than giving a
+ * name. Collapses inner whitespace so "  Ravi   Kumar " stores once, one way.
+ */
+export function cleanSignupName(raw?: string | null): string | null {
+  const n = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (n.length < 2 || n.length > 60) return null;
+  if (!/\p{L}/u.test(n)) return null;   // must contain an actual letter
+  return n;
+}
+
 @Injectable()
 export class AuthService {
   private mem = new Map<string, OtpRec>(); // fallback when Redis is absent
@@ -88,7 +110,7 @@ export class AuthService {
     return { requestId };
   }
 
-  async verifyOtp(requestId: string, otp: string, ip?: string) {
+  async verifyOtp(requestId: string, otp: string, ip?: string, name?: string) {
     const rec = await this.readOtp(requestId);
     if (!rec || rec.exp < Date.now()) {
       this.audit('auth.otp.expired', { mobile: rec?.mobile ?? null, detail: { requestId, ip } });
@@ -123,20 +145,64 @@ export class AuthService {
       this.audit('auth.otp.blocked', { mobile: rec.mobile, detail: { requestId, ip, status: known.status } });
       throw new UnauthorizedException('This account is no longer active. Please contact support.');
     }
-    const user = await tenantContext.runUnscoped(async () => {
-      const u = await this.prisma.user.upsert({
-        where: { mobile: rec.mobile },
-        update: {},
-        create: { mobile: rec.mobile, tenantId: inboundTenant },
+    /*
+     * SIGNING IN NO LONGER CREATES AN ACCOUNT. This was an `upsert`, so an
+     * unknown mobile silently became a user — which is why the product had no
+     * Sign up button and why `User.name` was null on every customer ever
+     * created. Now the two cases are told apart:
+     *
+     *   known mobile  -> sign in, exactly as before
+     *   unknown + name -> this is a SIGNUP; create the account and record the
+     *                     consent that went with it
+     *   unknown, no name -> refuse, and say so in a way the client can route on
+     *
+     * The refusal is a 404 carrying `code: NO_ACCOUNT` so a client can send the
+     * person to Sign up with their number already filled in, rather than
+     * showing them a dead end they have to interpret.
+     */
+    const signupName = cleanSignupName(name);
+    if (!known && !signupName) {
+      this.audit('auth.otp.no_account', { mobile: rec.mobile, detail: { requestId, ip } });
+      throw new NotFoundException({
+        code: 'NO_ACCOUNT',
+        message: 'No account found for this mobile number. Please sign up first.',
       });
-      return u.tenantId ? u : this.prisma.user.update({ where: { id: u.id }, data: { tenantId: inboundTenant } });
+    }
+
+    const user = await tenantContext.runUnscoped(async () => {
+      if (known) {
+        const u = await this.prisma.user.findUnique({ where: { mobile: rec.mobile } });
+        if (!u) throw new NotFoundException({ code: 'NO_ACCOUNT', message: 'No account found for this mobile number.' });
+        return u.tenantId ? u : this.prisma.user.update({ where: { id: u.id }, data: { tenantId: inboundTenant } });
+      }
+      /*
+       * THE ACCOUNT AND ITS CONSENT ARE WRITTEN TOGETHER. DPDP wants explicit,
+       * just-in-time consent, and a user row that exists without the record of
+       * what they agreed to is exactly the gap an audit would find. One
+       * transaction, so there is no state where one exists without the other.
+       */
+      return this.prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: { mobile: rec.mobile, tenantId: inboundTenant, name: signupName! },
+        });
+        await tx.consent.create({
+          data: {
+            tenantId: inboundTenant,
+            userId: u.id,
+            type: 'service',
+            noticeVersion: SIGNUP_NOTICE_VERSION,
+            channel: 'signup',
+          },
+        });
+        return u;
+      });
     });
 
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, mobile: user.mobile, tenant: user.tenantId ?? undefined },
       { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN ?? '30d' },
     );
-    this.audit('auth.otp.verify', { actorId: user.id, mobile: user.mobile, detail: { requestId, ip, devBypass: devBypass || undefined } });
+    this.audit(known ? 'auth.otp.verify' : 'auth.signup', { actorId: user.id, mobile: user.mobile, detail: { requestId, ip, devBypass: devBypass || undefined } });
     return { accessToken, user: { id: user.id, mobile: user.mobile, name: user.name, tenantId: user.tenantId } };
   }
 
