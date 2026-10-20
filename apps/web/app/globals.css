@@ -5190,3 +5190,24 @@ html[data-foreign-host] [data-own-only] { display: none; }
 /* Sign in / Sign up sit together in the header; the pair must not wrap apart. */
 .auth-pair { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 @media (max-width: 420px) { .auth-pair .btn-ghost { display: none; } }
+
+/* ---- applicant form: sections and per-field help ----
+   The form carries sixteen fields and used to run them together under one
+   "Bank & contact" heading, so a first-time applicant met a wall. Numbered
+   sections say how far through they are; the optional block says so on its
+   own heading rather than only on the checkbox inside it. */
+.fsec-head { display: flex; align-items: center; gap: 9px; margin: 22px 0 12px;
+  font-size: 14px; font-weight: 800; letter-spacing: -.2px; color: var(--text); }
+.fsec-head:first-child { margin-top: 4px; }
+.fsec-n { display: inline-flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; flex: none; border-radius: 50%;
+  background: var(--brand-700, #3c2e7e); color: #fff;
+  font-size: 11.5px; font-weight: 800; }
+.fsec-sub, .fsec-opt { font-size: 12px; font-weight: 500; color: var(--text-muted, #6d6690); }
+.fsec-sub::before { content: "· "; }
+.fsec-opt { margin-left: auto; padding: 2px 9px; border-radius: 999px;
+  background: var(--bg-2, #f1eefb); font-weight: 600; font-size: 11px;
+  letter-spacing: .04em; text-transform: uppercase; }
+
+/* The error REPLACES the help rather than stacking under it — see Help(). */
+.hint-bad { color: var(--neg); }

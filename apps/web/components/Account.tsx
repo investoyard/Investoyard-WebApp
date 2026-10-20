@@ -359,6 +359,72 @@ function ProfileCard({ p, tr, onEdit, onDelete, onChanged }: { p: ApiProfile; tr
   );
 }
 
+/**
+ * Every word of help and every error on the applicant form, in ONE place.
+ *
+ * KEPT TOGETHER SO THE WORDING CAN BE EDITED WITHOUT READING JSX. This screen
+ * is mostly copy — sixteen fields of which only four said anything at all
+ * before — and copy gets revised far more often than the markup around it.
+ *
+ * TWO RULES THE WORDING FOLLOWS:
+ *   HELP says where to FIND the thing, not what it is. "Bank account number"
+ *   does not need defining; what people do not know is which of their numbers
+ *   it is and where their broker hides it.
+ *   ERRORS say what to DO. "Invalid IFSC" names a verdict; "An IFSC is 11
+ *   characters — four letters, a zero, then six more" names the fix.
+ *
+ * MARKED [P3] = PROVISIONAL: these fields become pickers when the bank/branch
+ * and pincode masters land, and their wording will change with them. They are
+ * written for the free-text form that exists today.
+ */
+export const HELP = {
+  relationship: 'Self, spouse, mother and father can each be added once. Add anyone else as “other”.',
+  fullName: 'Exactly as printed on the PAN card — the registrar matches it letter for letter.',
+  pan: 'Ten characters: five letters, four digits, one letter.',
+  panLocked: 'Locked — this applicant already has IPO applications, so the PAN cannot change.',
+  depository: 'Not sure? Your demat number tells you: one starting 12… is CDSL, one starting IN is NSDL.',
+  dpId: 'The first half of an NSDL demat number — IN and six digits.',
+  clientId: 'The last eight digits of the same NSDL number.',
+  cdsl: 'All sixteen digits, no spaces. CDSL has no separate DP ID.',
+  upi: 'The UPI ID the application money is blocked from. It must belong to the applicant.',
+
+  bankToggle: 'Add bank & contact details — this is what lets us pre-fill your printed application form',
+  mobile: 'Where the registrar sends allotment updates. Leave blank to use your account’s number.',
+  email: 'Where the allotment advice is sent.',
+  bankName: 'The bank holding the account the money is blocked in.',                    // [P3]
+  branchName: 'The branch on your cheque book or passbook.',                             // [P3]
+  bankAccount: 'The account the money is blocked in. It must be in the applicant’s own name.',
+  ifsc: 'On your cheque book, beside the account number.',                               // [P3] — hidden once branches are a picker
+  address: 'As registered with your bank.',
+  city: 'As on your bank record.',
+  state: 'As on your bank record.',
+  pincode: 'Six digits.',                                                                // [P3] — will fill city and state
+} as const;
+
+export const ERR = {
+  fullName: 'Enter the applicant’s name, exactly as on the PAN card.',
+  pan: 'Check the PAN — ten characters, like ABCDE1234F.',
+  dpId: 'A DP ID is IN followed by six digits.',
+  clientId: 'An NSDL Client ID is eight digits.',
+  cdsl: 'A CDSL demat number is sixteen digits.',
+  upiFormat: 'A UPI ID looks like yourname@bank.',
+  upiHandle: 'Pick the handle that follows @.',
+  upiName: 'Type the name that goes before @.',
+  mobile: 'A mobile number is ten digits.',
+  ifsc: 'An IFSC is eleven characters — four letters, a zero, then six more.',           // [P3]
+} as const;
+
+/**
+ * The line under a field: its help, or its error when there is one.
+ *
+ * THE ERROR REPLACES THE HELP rather than stacking under it. Two lines of
+ * competing advice under one input is worse than either alone — the help has
+ * already been read by the time it is wrong, and what is wanted then is the fix.
+ */
+function Help({ children, error }: { children?: React.ReactNode; error?: string | null }) {
+  if (error) return <span className="hint hint-bad">{error}</span>;
+  return children ? <span className="hint">{children}</span> : null;
+}
 function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { tr: (k: string) => string; defaultRel: Relationship; options: Relationship[]; editing?: ApiProfile; onCancel: () => void; onSaved: () => void }) {
   const [f, setF] = useState<ProfileInput>(() => editing ? {
     relationship: String(editing.relationship).toLowerCase(),
@@ -371,7 +437,9 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   } : blankForm(defaultRel));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [relInfo, setRelInfo] = useState(false); // ⓘ tap-toggle (hover uses the title tooltip)
+  /* Set on the first save attempt. Inline errors wait for it, so nobody is
+     told their half-typed PAN is wrong while they are still typing it. */
+  const [tried, setTried] = useState(false);
   // Optional bank/contact block — open by default when the profile already has any
   // of it, so nothing the user saved earlier looks lost behind a collapsed section.
   const [bankOpen, setBankOpen] = useState(() => !!(editing && (
@@ -402,7 +470,14 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   const panLocked = !!editing?.hasApplications; // self-PAN integrity once applications exist
   // Functional update: browser autofill fires many onChange events in one tick;
   // a plain {...f, ...patch} merge would clobber all but the last field.
-  const upd = (patch: Partial<ProfileInput>) => setF((prev) => ({ ...prev, ...patch }));
+  const upd = (patch: Partial<ProfileInput>) => {
+    /* Clear the summary banner on any edit. It is a snapshot of one save
+       attempt, and switching NSDL -> CDSL left it naming DP ID and Client ID
+       — fields that no longer exist on the form. The inline errors under each
+       field are live, so nothing is lost by dropping the stale summary. */
+    setErr(null);
+    setF((prev) => ({ ...prev, ...patch }));
+  };
 
   // Allowed UPI handles (admin master) — a UPI ID is accepted only on a listed handle.
   const [upiHandles, setUpiHandles] = useState<string[]>([]);
@@ -424,20 +499,28 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   async function save() {
     // Validate on click (not via a silently-disabled button) so the user always
     // sees exactly which field is blocking the save.
+    setTried(true);
+    /* The banner names the FIELDS; each field now carries its own fix
+       underneath. Listing every instruction up here as well would be the same
+       advice twice, and the long version is the one next to the input. */
     const problems: string[] = [];
     if (!f.fullName.trim()) problems.push('Full name');
-    if (!panOk) problems.push('PAN (format ABCDE1234F)');
+    if (!panOk) problems.push('PAN');
     if (isCdsl) {
-      if (!/^\d{16}$/.test(f.clientId)) problems.push('CDSL demat number (16 digits)');
+      if (!/^\d{16}$/.test(f.clientId)) problems.push('Demat number');
     } else {
-      if (!/^IN\d{6}$/.test(f.dpId)) problems.push('DP ID (IN + 6 digits)');
-      if (!/^\d{8}$/.test(f.clientId)) problems.push('Client ID (8 digits)');
+      if (!/^IN\d{6}$/.test(f.dpId)) problems.push('DP ID');
+      if (!/^\d{8}$/.test(f.clientId)) problems.push('Client ID');
     }
     if (!ifscOk) problems.push('IFSC');
-    if (!upiOk) problems.push('UPI ID');
-    if (upiPartial) problems.push(upiName ? 'UPI ID — pick the handle after @' : 'UPI ID — type the name before @');
-    if (!mobOk) problems.push('Mobile (10 digits)');
-    if (problems.length) { setErr(`Please check: ${problems.join(', ')}`); return; }
+    if (!upiOk || upiPartial) problems.push('UPI ID');
+    if (!mobOk) problems.push('Mobile');
+    if (problems.length) {
+      setErr(problems.length === 1
+        ? `${problems[0]} needs attention — see the note under it.`
+        : `${problems.length} fields need attention: ${problems.join(', ')}.`);
+      return;
+    }
     setBusy(true); setErr(null);
     try {
       // strip empty optionals so validators don't reject blank strings
@@ -454,41 +537,37 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
 
   return (
     <div>
+      {/* ---------------- 1. who is applying ---------------- */}
+      <div className="fsec-head"><span className="fsec-n">1</span>Who is applying</div>
       <div className="cols-2">
         <div className="field">
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {tr('profile.relationship')}
-            <span
-              title="Self, spouse, mother and father can be added once each; already-added ones are hidden."
-              onClick={() => setRelInfo((v) => !v)}
-              style={{ cursor: 'pointer', display: 'inline-flex', color: 'var(--text-muted)' }}
-              aria-label="Relationship rules"
-            ><Icon name="help" size={14} /></span>
-          </label>
+          <label>{tr('profile.relationship')}</label>
           <select className="input" value={f.relationship} onChange={(e) => upd({ relationship: e.target.value as Relationship })}>
             {options.map((r) => <option key={r} value={r}>{relLabel(tr, r)}</option>)}
           </select>
-          {relInfo && <span className="hint">Self, spouse, mother and father can be added once each; already-added ones are hidden.</span>}
+          <Help>{HELP.relationship}</Help>
         </div>
         <div className="field">
           <label>{tr('profile.fullName')}</label>
           <input className="input" value={f.fullName} onChange={(e) => upd({ fullName: e.target.value })} placeholder="As printed on PAN" />
+          <Help error={tried && !f.fullName.trim() ? ERR.fullName : null}>{HELP.fullName}</Help>
         </div>
       </div>
+
       <div className="cols-2">
         <div className="field">
           <label>{tr('profile.pan')}</label>
           {panLocked ? (
             <>
               <input className="input mono" value={editing?.pan ?? ''} disabled />
-              <span className="hint">PAN is locked — this applicant already has IPO applications.</span>
+              <Help>{HELP.panLocked}</Help>
             </>
           ) : (
             <>
               <input className="input mono" value={f.pan} maxLength={10}
                 onChange={(e) => upd({ pan: e.target.value.toUpperCase().slice(0, 10) })}
                 placeholder={editing ? `${editing.pan} — type to change` : 'ABCDE1234F'} />
-              {f.pan && !panOk && <span className="hint" style={{ color: 'var(--neg)' }}>Format: ABCDE1234F</span>}
+              <Help error={(f.pan && !panOk) || (tried && !panOk) ? ERR.pan : null}>{HELP.pan}</Help>
             </>
           )}
         </div>
@@ -499,8 +578,12 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
               <button key={d} type="button" className={f.depository === d ? 'on' : ''} style={{ flex: 1 }} onClick={() => upd({ depository: d, dpId: '', clientId: '' })}>{d}</button>
             ))}
           </div>
+          <Help>{HELP.depository}</Help>
         </div>
       </div>
+
+      {/* ---------------- 2. demat ---------------- */}
+      <div className="fsec-head"><span className="fsec-n">2</span>Demat account<span className="fsec-sub">where the shares are credited</span></div>
       {/* CDSL gets ONE field, not a disabled companion. A greyed box saying
           "not needed" still reads as something the user failed to fill; the
           16-digit number is the whole identifier, so it takes the full row. */}
@@ -508,13 +591,12 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
         {!isCdsl && (
         <div className="field">
           <label>{tr('profile.dpId')}</label>
-          {(
-            <div className="row" style={{ gap: 0, flexWrap: 'nowrap' }}>
-              <span className="input mono" style={{ width: 44, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>IN</span>
-              <input className="input mono" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }} value={f.dpId.replace(/^IN/, '')} maxLength={6}
-                onChange={(e) => upd({ dpId: 'IN' + e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="301234" />
-            </div>
-          )}
+          <div className="row" style={{ gap: 0, flexWrap: 'nowrap' }}>
+            <span className="input mono" style={{ width: 44, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>IN</span>
+            <input className="input mono" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }} value={f.dpId.replace(/^IN/, '')} maxLength={6}
+              onChange={(e) => upd({ dpId: 'IN' + e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="301234" />
+          </div>
+          <Help error={tried && !/^IN\d{6}$/.test(f.dpId) ? ERR.dpId : null}>{HELP.dpId}</Help>
         </div>
         )}
         <div className="field">
@@ -522,6 +604,9 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
           <input className="input mono" value={f.clientId} maxLength={isCdsl ? 16 : 8} inputMode="numeric"
             onChange={(e) => upd({ clientId: e.target.value.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8) })}
             placeholder={isCdsl ? '16-digit demat number' : '8-digit client ID'} />
+          <Help error={tried && !(isCdsl ? /^\d{16}$/ : /^\d{8}$/).test(f.clientId) ? (isCdsl ? ERR.cdsl : ERR.clientId) : null}>
+            {isCdsl ? HELP.cdsl : HELP.clientId}
+          </Help>
         </div>
       </div>
       {/* Plain-language explainer — most applicants don't know which one they hold. */}
@@ -532,6 +617,9 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
         {' '}Find it in your broker&apos;s app under Demat. Starts <span className="mono">12…</span> → CDSL,
         starts <span className="mono">IN</span> → NSDL.
       </p>
+
+      {/* ---------------- 3. payment ---------------- */}
+      <div className="fsec-head"><span className="fsec-n">3</span>Payment<span className="fsec-sub">how the money is blocked</span></div>
       {/* UPI is split: type the name, PICK the handle from the admin master, so an
           unsupported handle can't be entered in the first place. */}
       <div className="field">
@@ -550,49 +638,82 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
             />
           </div>
         </div>
-        <span className="hint">
-          {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : tr('apply.selfPan')}
-        </span>
-        {upiName && !upiHandle && <span className="hint" style={{ color: 'var(--neg)' }}>Pick the handle that follows @</span>}
-        {f.upiId && !upiFormatOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid UPI id</span>}
+        <Help error={
+          (f.upiId && !upiFormatOk) ? ERR.upiFormat
+          : (upiName && !upiHandle) ? ERR.upiHandle
+          : (!upiName && upiHandle) ? ERR.upiName
+          : null
+        }>
+          {upiName && upiHandle ? `Will be saved as ${upiName}@${upiHandle}` : HELP.upi}
+        </Help>
       </div>
 
-      <div className="section-title" style={{ fontSize: 13, marginTop: 14 }}>Bank &amp; contact</div>
+      {/* ---------------- 4. bank & contact (optional) ---------------- */}
+      <div className="fsec-head"><span className="fsec-n">4</span>Bank &amp; contact<span className="fsec-opt">optional</span></div>
       <label className="opt-toggle">
         <input type="checkbox" checked={bankOpen} onChange={(e) => setBankOpen(e.target.checked)} />
-        <span>Add bank &amp; contact details — pre-fills the printed ASBA form</span>
+        <span>{HELP.bankToggle}</span>
       </label>
       {bankOpen && (<>
       <div className="cols-2">
         <div className="field">
           <label>Mobile</label>
           <input className="input mono" value={f.mobile ?? ''} maxLength={10} inputMode="numeric" onChange={(e) => upd({ mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="98XXXXXXXX" />
-          {f.mobile && !mobOk && <span className="hint" style={{ color: 'var(--neg)' }}>10 digits</span>}
+          <Help error={f.mobile && !mobOk ? ERR.mobile : null}>{HELP.mobile}</Help>
         </div>
-        <div className="field"><label>Email</label><input className="input" value={f.email ?? ''} onChange={(e) => upd({ email: e.target.value })} placeholder="you@example.com" /></div>
+        <div className="field">
+          <label>Email</label>
+          <input className="input" value={f.email ?? ''} onChange={(e) => upd({ email: e.target.value })} placeholder="you@example.com" />
+          <Help>{HELP.email}</Help>
+        </div>
       </div>
       <div className="cols-2">
-        <div className="field"><label>Bank name</label><input className="input" value={f.bankName ?? ''} onChange={(e) => upd({ bankName: e.target.value })} placeholder="HDFC Bank" /></div>
-        <div className="field"><label>Branch name</label><input className="input" value={f.branchName ?? ''} onChange={(e) => upd({ branchName: e.target.value })} placeholder="MG Road" /></div>
+        <div className="field">
+          <label>Bank name</label>
+          <input className="input" value={f.bankName ?? ''} onChange={(e) => upd({ bankName: e.target.value })} placeholder="HDFC Bank" />
+          <Help>{HELP.bankName}</Help>
+        </div>
+        <div className="field">
+          <label>Branch name</label>
+          <input className="input" value={f.branchName ?? ''} onChange={(e) => upd({ branchName: e.target.value })} placeholder="MG Road" />
+          <Help>{HELP.branchName}</Help>
+        </div>
       </div>
       <div className="cols-2">
         <div className="field">
           <label>Bank account no.</label>
           <input className="input mono" value={f.bankAccount ?? ''} onChange={(e) => upd({ bankAccount: e.target.value })}
             placeholder={editing?.hasBank ? 'saved ✓ — type to replace' : '0000 0000 0000'} />
+          <Help>{HELP.bankAccount}</Help>
         </div>
         <div className="field">
           <label>IFSC</label>
           <input className="input mono" value={f.ifsc ?? ''} onChange={(e) => upd({ ifsc: e.target.value.toUpperCase() })} placeholder="HDFC0001234" />
-          {f.ifsc && !ifscOk && <span className="hint" style={{ color: 'var(--neg)' }}>Invalid IFSC</span>}
+          <Help error={f.ifsc && !ifscOk ? ERR.ifsc : null}>{HELP.ifsc}</Help>
         </div>
       </div>
-      <div className="field"><label>Address</label><input className="input" value={f.address ?? ''} onChange={(e) => upd({ address: e.target.value })} placeholder="Flat / building / street" /></div>
-      <div className="cols-2">
-        <div className="field"><label>City</label><input className="input" value={f.city ?? ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Pune" /></div>
-        <div className="field"><label>State</label><input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" /></div>
+      <div className="field">
+        <label>Address</label>
+        <input className="input" value={f.address ?? ''} onChange={(e) => upd({ address: e.target.value })} placeholder="Flat / building / street" />
+        <Help>{HELP.address}</Help>
       </div>
-      <div className="field" style={{ maxWidth: 220 }}><label>Pincode</label><input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" /></div>
+      <div className="cols-2">
+        <div className="field">
+          <label>City</label>
+          <input className="input" value={f.city ?? ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Pune" />
+          <Help>{HELP.city}</Help>
+        </div>
+        <div className="field">
+          <label>State</label>
+          <input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" />
+          <Help>{HELP.state}</Help>
+        </div>
+      </div>
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label>Pincode</label>
+        <input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" />
+        <Help>{HELP.pincode}</Help>
+      </div>
       </>)}
 
       {err && <div className="banner warn" style={{ marginTop: 10 }}>{err}</div>}
