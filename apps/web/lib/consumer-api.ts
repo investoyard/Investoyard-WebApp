@@ -57,6 +57,35 @@ export const grantConsent = (type: string, noticeVersion: string) =>
   });
 
 // ---- auth (OTP) ----
+/**
+ * Is this stored session still backed by a real, active account?
+ *
+ * THE SESSION USED TO BE WHATEVER localStorage SAID. Nothing ever asked the
+ * server, so an account deleted or suspended in admin went on rendering every
+ * signed-in option until the token expired — up to 30 days (operator report,
+ * 2026-10-20). The server half of that is fixed in JwtAuthGuard; this is what
+ * makes the browser notice.
+ *
+ * IT REPORTS THREE STATES, NOT TWO, AND THAT IS THE WHOLE POINT. Only an
+ * explicit rejection from the server means the account is gone. A timeout, a
+ * dropped connection or a 5xx must leave the session exactly as it was —
+ * signing someone out because their train went into a tunnel would be a worse
+ * bug than the one being fixed.
+ */
+export async function checkConsumerSession(): Promise<'ok' | 'gone' | 'unknown'> {
+  const t = getConsumerToken();
+  if (!t) return 'ok'; // nothing to validate
+  try {
+    const res = await fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${t}` } });
+    if (res.ok) return 'ok';
+    // 401 the guard refused it · 404 the user row is gone · 403 not active
+    if (res.status === 401 || res.status === 403 || res.status === 404) return 'gone';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 export const requestOtp = (mobile: string) => post<{ requestId: string }>('/auth/otp/request', { mobile });
 export const verifyOtp = (requestId: string, otp: string) =>
   post<{ accessToken: string; user: ConsumerUser }>('/auth/otp/verify', { requestId, otp });

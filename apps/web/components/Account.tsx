@@ -377,10 +377,28 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   const [bankOpen, setBankOpen] = useState(() => !!(editing && (
     editing.bankName || editing.ifsc || editing.address || editing.email || editing.mobile || editing.hasBank
   )));
-  // UPI is edited as two parts; f.upiId stays the single source of truth.
-  const upiName = (f.upiId ?? '').split('@')[0] ?? '';
-  const upiHandle = (f.upiId ?? '').split('@')[1] ?? '';
-  const setUpi = (name: string, handle: string) => upd({ upiId: name && handle ? `${name}@${handle}` : name });
+  /*
+   * UPI IS EDITED AS TWO PARTS, AND THEY ARE STATE — not slices of f.upiId.
+   *
+   * They used to be derived straight back out of that one string, which
+   * cannot represent "a handle picked, no name typed yet": the setter stored
+   * `name && handle ? name@handle : name`, so PICKING THE HANDLE FIRST wrote
+   * an empty string and the dropdown then re-derived itself from it and came
+   * up blank. That is the operator report of 2026-10-20 — "select any UPI Id
+   * but in textbox nothing shown". Mobile never had the bug: it has always
+   * kept the two halves separate and joined them only on save.
+   *
+   * f.upiId stays the thing that gets SAVED, and is only written when both
+   * halves are present — a half-built UPI ID is not a UPI ID. Leaving one
+   * half filled is caught by upiPartial below rather than silently dropped.
+   */
+  const [upiName, setUpiName] = useState('');
+  const [upiHandle, setUpiHandle] = useState('');
+  const setUpi = (name: string, handle: string) => {
+    setUpiName(name);
+    setUpiHandle(handle);
+    upd({ upiId: name && handle ? `${name}@${handle}` : '' });
+  };
   const panLocked = !!editing?.hasApplications; // self-PAN integrity once applications exist
   // Functional update: browser autofill fires many onChange events in one tick;
   // a plain {...f, ...patch} merge would clobber all but the last field.
@@ -396,6 +414,10 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   const upiHandleOk = !f.upiId || !upiHandles.length ||
     upiHandles.includes((f.upiId.split('@')[1] ?? '').toLowerCase());
   const upiOk = upiFormatOk && upiHandleOk;
+  // One half without the other: f.upiId is empty so the format checks above
+  // pass and the save would go through having quietly thrown away what was
+  // typed. Say so instead.
+  const upiPartial = !!upiName !== !!upiHandle;
   const mobOk = !f.mobile || /^\d{10}$/.test(f.mobile);
   const isCdsl = f.depository === 'CDSL';
 
@@ -413,6 +435,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
     }
     if (!ifscOk) problems.push('IFSC');
     if (!upiOk) problems.push('UPI ID');
+    if (upiPartial) problems.push(upiName ? 'UPI ID — pick the handle after @' : 'UPI ID — type the name before @');
     if (!mobOk) problems.push('Mobile (10 digits)');
     if (problems.length) { setErr(`Please check: ${problems.join(', ')}`); return; }
     setBusy(true); setErr(null);
@@ -478,12 +501,14 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
           </div>
         </div>
       </div>
-      <div className="cols-2">
+      {/* CDSL gets ONE field, not a disabled companion. A greyed box saying
+          "not needed" still reads as something the user failed to fill; the
+          16-digit number is the whole identifier, so it takes the full row. */}
+      <div className={isCdsl ? '' : 'cols-2'}>
+        {!isCdsl && (
         <div className="field">
           <label>{tr('profile.dpId')}</label>
-          {isCdsl ? (
-            <input className="input mono" value="" disabled placeholder="Not needed for CDSL" />
-          ) : (
+          {(
             <div className="row" style={{ gap: 0, flexWrap: 'nowrap' }}>
               <span className="input mono" style={{ width: 44, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>IN</span>
               <input className="input mono" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }} value={f.dpId.replace(/^IN/, '')} maxLength={6}
@@ -491,6 +516,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
             </div>
           )}
         </div>
+        )}
         <div className="field">
           <label>{isCdsl ? 'Demat number' : tr('profile.clientId')}</label>
           <input className="input mono" value={f.clientId} maxLength={isCdsl ? 16 : 8} inputMode="numeric"

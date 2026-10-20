@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { registerDevice } from '../lib/api';
+import { checkSession, registerDevice } from '../lib/api';
 
 const TOKEN_KEY = 'iy_token';
 const MOBILE_KEY = 'iy_mobile';
@@ -32,7 +32,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     Promise.all([SecureStore.getItemAsync(TOKEN_KEY), SecureStore.getItemAsync(MOBILE_KEY)])
-      .then(([t, m]) => { setToken(t ?? null); setMobile(m ?? null); })
+      .then(async ([t, m]) => {
+        setToken(t ?? null); setMobile(m ?? null);
+        // A STORED TOKEN IS NOT A SESSION. Ask the server whether the account
+        // behind it still exists and is active, and drop it when it does not —
+        // see checkSession. Deliberately AFTER the state is set and outside the
+        // loading gate, so a cold start still paints at its usual speed and a
+        // dead session is corrected a moment later instead of holding the app.
+        if (!t) return;
+        if ((await checkSession(t)) !== 'gone') return;
+        setToken(null); setMobile(null);
+        void SecureStore.deleteItemAsync(TOKEN_KEY);
+        void SecureStore.deleteItemAsync(MOBILE_KEY);
+      })
       .finally(() => setLoading(false));
   }, []);
 

@@ -7,6 +7,7 @@ import { InstallPrompt } from '@/components/InstallPrompt';
 import { TenantProvider } from '@/components/TenantProvider';
 import { TenantSchema } from '@/components/TenantSchema';
 import { TenantHead } from '@/components/TenantHead';
+import { SessionCheck } from '@/components/SessionCheck';
 
 /** Public site gets the header/footer + tenant branding; /admin is the operator shell. */
 export function ChromeWrapper({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,10 @@ export function ChromeWrapper({ children }: { children: React.ReactNode }) {
           and in the same place: the tab was the last part of the page still
           carrying our brand on a partner's domain. */}
       <TenantHead />
+      {/* Asks the server whether the stored session is still a real account and
+          signs the browser out when it is not. Renders nothing; never blocks
+          paint. Inside the provider only for tidiness — it needs no tenant. */}
+      <SessionCheck />
       <Suspense fallback={<div className="header" />}><SiteHeader /></Suspense>
       <main className="container">{children}</main>
       <SiteFooter />

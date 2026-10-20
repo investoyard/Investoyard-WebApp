@@ -109,7 +109,10 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
 
   // admin-managed promo slides (Banners page) — shown after the brand slide
   const [banners, setBanners] = useState<BannerView[]>([]);
-  useEffect(() => { getBanners().then(setBanners).catch(() => {}); }, []);
+  const [bannersSettled, setBannersSettled] = useState(false);
+  useEffect(() => {
+    getBanners().then(setBanners).catch(() => {}).finally(() => setBannersSettled(true));
+  }, []);
 
   const featured = useMemo(() => {
     const open = ipos.filter((i) => i.status === 'open')
@@ -119,7 +122,19 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
       const d = daysUntil(i.openDate);
       return d != null && d >= 0 && d <= 7;
     }).sort((a, b) => String(a.openDate ?? '9') < String(b.openDate ?? '9') ? -1 : 1);
-    return [...open, ...soon].slice(0, 6);
+    const all = [...open, ...soon];
+
+    /* THE FEATURED ISSUE LEADS, AND THE CAP MUST NOT EAT IT. This list is
+       sliced to six, and on 17 Oct 2026 five issues were already bidding while
+       a seventh shared Jio's open date and sorted ahead of it — so the biggest
+       IPO in the catalogue had NO SLIDE AT ALL. Hoisting before the slice is
+       what guarantees it is in the banner; jumping the rotation to it only
+       decides which slide is seen first. */
+    if (FEATURED_SYMBOL && today() <= FEATURED_UNTIL) {
+      const k = all.findIndex((i) => String(i.symbol ?? '').toUpperCase() === FEATURED_SYMBOL);
+      if (k > 0) all.unshift(...all.splice(k, 1));
+    }
+    return all.slice(0, 6);
   }, [ipos]);
 
   /** The leading brand slides hold the screen longer than the data slides so the
@@ -174,6 +189,34 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
   }, [idx]);
 
   const go = (n: number) => setIdx(((n % slideCount) + slideCount) % slideCount);
+
+  /* ---- OPEN ON THE FEATURED ISSUE, not on the brand slide ----
+     For the one issue big enough to be why someone opened the site, four brand
+     slides at 9s each is 36 seconds before the catalogue appears at all.
+
+     It JUMPS the rotation rather than reordering the DOM, and that is the whole
+     point: LIGHT_BRAND_SLIDES, dwellMs and lightNow are all keyed on the slide
+     INDEX, so moving a slide to the front would silently flip the chrome to
+     light on the wrong slides and give the brand slides the 5s data dwell.
+
+     It waits for the admin banner fetch to settle, because those sit between
+     the brand slides and the IPO slides and would shift the target underneath
+     the jump. It fires ONCE (the ref) so it can never fight a reader who has
+     already pressed an arrow. Past FEATURED_UNTIL it does nothing at all. */
+  const jumped = useRef(false);
+  const featuredIdx = useMemo(() => {
+    if (!FEATURED_SYMBOL || today() > FEATURED_UNTIL) return -1;
+    const i = ipoSlides.findIndex((s) => !s.pastel
+      && String(s.ipo.symbol ?? '').toUpperCase() === FEATURED_SYMBOL);
+    return i < 0 ? -1 : BRAND_SLIDES + banners.length + i;
+  }, [ipoSlides, banners.length]);
+
+  useEffect(() => {
+    if (jumped.current || !bannersSettled || featuredIdx < 0) return;
+    jumped.current = true;
+    setIdx(featuredIdx);
+    setElapsed(0);
+  }, [bannersSettled, featuredIdx]);
 
   // The arrows, dots and progress bar are white — on a light slide they would
   // vanish, so the whole carousel flips to dark chrome while one is on screen.
@@ -431,6 +474,22 @@ function PromiseSlide({ q, focus }: { q: string; focus: number }) {
 /** Brand slides rendered on a LIGHT ground — the carousel chrome (arrows, dots,
  *  progress) inverts while one of these is showing, or it would disappear.
  *  Keep in step with the slide order in the track when slides change. */
+/** The issue the banner opens on, and the last day it does so. Empty symbol
+ *  disables it; past the date the banner opens on the brand slide as before,
+ *  with nothing to remember to undo. */
+const FEATURED_SYMBOL = 'JPL';
+const FEATURED_UNTIL = '2026-10-23';
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+
+/** The superlative, carried on BOTH treatments of the featured slide. It is a
+ *  claim about SIZE, which is checkable — Jio's 30,213 Cr is the largest issue
+ *  in a catalogue of 1,300+ — and never a claim about merit, which we are not
+ *  registered to make. */
+const FEATURED_LINE = 'India Ka Sabse Bada IPO';
+const isFeatured = (ipo: { symbol?: string | null }) => !!FEATURED_SYMBOL
+  && String(ipo.symbol ?? '').toUpperCase() === FEATURED_SYMBOL
+  && today() <= FEATURED_UNTIL;
+
 const LIGHT_BRAND_SLIDES = new Set([2, 3]);
 
 /** Shared pastel atmosphere: soft colour blobs and the dotted texture, in place
@@ -634,6 +693,10 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
           </div>
         </div>
 
+        {/* One gold pill serves BOTH treatments: gold on indigo text reads at
+            6.9:1 either way, where gold text would vanish on this light slide. */}
+        {isFeatured(ipo) && <div className="hb-biggest">{FEATURED_LINE}</div>}
+
         {/* Two headline figures at equal weight: the price band and the lot
             size. Min Application is derived from both and still sits on the
             card, so it does not earn banner space. */}
@@ -725,6 +788,8 @@ function IpoSlide({ ipo, q, active }: { ipo: IpoFull; q: string; active: boolean
             </div>
           </div>
         </div>
+
+        {isFeatured(ipo) && <div className="hb-biggest">{FEATURED_LINE}</div>}
 
         {/* the decision numbers, in the product's vocabulary */}
         <div className="hb-specs">

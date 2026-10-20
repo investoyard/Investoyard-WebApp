@@ -458,3 +458,28 @@ export async function removeWatchlist(token: string, ipoId: string): Promise<boo
     return res.ok;
   } catch { return false; }
 }
+
+/**
+ * Is this stored session still backed by a real, active account?
+ *
+ * MIRRORS `checkConsumerSession` ON WEB, and exists for the same reason: the
+ * token was hydrated out of SecureStore on launch and trusted, so an account
+ * deleted or suspended in admin kept the app looking signed in until the token
+ * expired — up to 30 days. The enforcement is in the API (JwtAuthGuard resolves
+ * the subject and requires it to be active); this is what makes the app notice.
+ *
+ * THREE STATES, NOT TWO. Only an explicit rejection means the account is gone.
+ * A phone that is out of signal must keep its session — signing someone out on
+ * a dropped request would be worse than the bug being fixed, and a phone loses
+ * signal far more often than a browser does.
+ */
+export async function checkSession(token: string): Promise<'ok' | 'gone' | 'unknown'> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return 'ok';
+    if (res.status === 401 || res.status === 403 || res.status === 404) return 'gone';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}

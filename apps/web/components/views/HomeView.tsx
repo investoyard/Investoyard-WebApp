@@ -3,6 +3,7 @@ import { HomeNews } from '@/components/HomeNews';
 import { IpoExplorer } from '@/components/IpoExplorer';
 import { IpoExplorer2 } from '@/components/IpoExplorer2';
 import { HeroBanner } from '@/components/HeroBanner';
+import { FeaturedIpoModal } from '@/components/FeaturedIpoModal';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
 import { AllotmentChecker } from '@/components/AllotmentChecker';
@@ -18,6 +19,11 @@ export async function HomeView({ lang, v2 = false }: { lang: Lang; v2?: boolean 
 
   return (
     <>
+      {/* ---------- featured-issue welcome panel ----------
+           Renders nothing unless the featured symbol is in the live list and
+           still open; see FeaturedIpoModal for the gate it reads. */}
+      <FeaturedIpoModal ipos={ipos as any} />
+
       {/* ---------- compact dynamic banner (auto IPO slides + brand slide) ---------- */}
       <HeroBanner ipos={ipos as any} lang={lang} />
 

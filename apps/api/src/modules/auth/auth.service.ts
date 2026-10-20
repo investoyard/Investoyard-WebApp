@@ -107,6 +107,22 @@ export class AuthService {
     // tenant differs — e.g. an operator admin signing in from the default door).
     // New users are stamped with the inbound tenant (resolved by TenantMiddleware).
     const inboundTenant = tenantContext.requireTenantId();
+    /*
+     * A SUSPENDED OR DELETED ACCOUNT MUST NOT BE ABLE TO SIGN BACK IN. `status`
+     * has carried `active | suspended | deleted` since the schema was written
+     * and only `operatorLogin` ever read it, so suspending a CUSTOMER did
+     * nothing at all: they passed OTP and were handed a fresh 30-day token.
+     * Checked before the upsert below, which would otherwise happily revive
+     * them. An unknown mobile is untouched by this and still signs up (that is
+     * what Phase 2 replaces).
+     */
+    const known = await tenantContext.runUnscoped(async () =>
+      this.prisma.user.findUnique({ where: { mobile: rec.mobile }, select: { status: true } }),
+    );
+    if (known && known.status !== 'active') {
+      this.audit('auth.otp.blocked', { mobile: rec.mobile, detail: { requestId, ip, status: known.status } });
+      throw new UnauthorizedException('This account is no longer active. Please contact support.');
+    }
     const user = await tenantContext.runUnscoped(async () => {
       const u = await this.prisma.user.upsert({
         where: { mobile: rec.mobile },

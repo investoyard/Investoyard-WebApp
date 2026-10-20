@@ -87,6 +87,17 @@ async function bootstrap() {
         },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    /*
+     * WITHOUT THIS THE PRINTED FORM DOWNLOADS AS `asba-form.pdf`, and the cause
+     * is not the filename. `Content-Disposition` is not a CORS-safelisted
+     * response header, so a cross-origin `fetch` — which every consumer call is,
+     * investoyard.com reading newipoapi.finwave.co — gets `null` back from
+     * `res.headers.get('Content-Disposition')` however correctly the server set
+     * it. `downloadPdf` in the web client then falls through to its default
+     * name. The API has always named these `SYMBOL_formNo.pdf`; the browser was
+     * simply never allowed to read it. (Operator report, 2026-10-20.)
+     */
+    exposedHeaders: ['Content-Disposition'],
     maxAge: 86400, // cache preflight 24h
   });
   // Pass PORT through verbatim: a number/numeric-string for standalone runs, or a
