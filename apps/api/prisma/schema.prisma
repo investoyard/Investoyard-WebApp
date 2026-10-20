@@ -431,6 +431,122 @@ model SectorMaster {
 /// Its own master (operator ask, 2026-09-22) — was previously a plain text
 /// input on the IPO form; now a picker with inline "+ Add new". A row here
 /// can optionally name its rolling-up sector for reports.
+/// States and union territories — a CLOSED set, which is why this is a real
+/// table and a real dropdown where city is only a suggestion.
+///
+/// Free text here produces "Maharastra", "MH" and "maharashtra" in one column,
+/// and a registrar matching on it cannot tell them apart. There are 36 of
+/// these and the list changes about once a decade, so a closed dropdown costs
+/// an applicant nothing and can never make a valid application unfillable —
+/// the argument that keeps CITY open.
+///
+/// SEEDED FROM THE PINCODE DIRECTORY rather than typed from memory, so the
+/// spellings match what the auto-fill will put in the field. Operator-editable
+/// afterwards, and deliberately NOT re-derived on every refresh: a correction
+/// made here must survive the next import.
+model StateMaster {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  /// Census/ISO two-letter code where one exists — not unique, because a few
+  /// UTs share or lack one and a unique constraint would reject the real list.
+  code      String?
+  sortOrder Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+/// Banks, for the branch picker on the applicant form.
+///
+/// GLOBAL REFERENCE DATA, NOT TENANT-SCOPED. `setup-rls.sql` enables RLS on an
+/// explicit six-table array (User · InvestorProfile · Consent · Application ·
+/// WatchlistItem · DeviceToken), so a new table is unscoped by default — which
+/// is what this wants: every tenant picks from the same IFSC directory. Checked
+/// in that file rather than assumed.
+///
+/// NO `ifscPrefix` COLUMN, DELIBERATELY. The first four characters of an IFSC
+/// are the bank code and it is tempting to store them here as a second natural
+/// key — but a bank can hold SEVERAL prefixes (mergers leave the acquired
+/// bank's codes in service for years), so a unique one-per-bank column would be
+/// wrong and a non-unique one adds nothing a `LIKE 'XXXX%'` on BankBranch.ifsc
+/// cannot answer. The import maps branch → bank by the directory's own bank
+/// name.
+model BankMaster {
+  id        String       @id @default(uuid())
+  name      String       @unique
+  /// False hides it from the picker without deleting branches that reference it
+  /// — a merged or wound-up bank still has to render on an old application.
+  active    Boolean      @default(true)
+  branches  BankBranch[]
+  createdAt DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(3)
+}
+
+/// One row per IFSC — ~1.7 lakh of them, which is what shapes every decision
+/// here.
+///
+/// `ifsc` IS THE NATURAL KEY and is what makes the import idempotent: a
+/// re-run upserts on it rather than duplicating. It is also why the branch
+/// search can accept a pasted IFSC and answer in one indexed hit instead of
+/// scanning names.
+///
+/// `onDelete: Restrict` on the bank, for the same reason every other reference
+/// relation here restricts: a stored profile may name a branch, and losing
+/// which branch it was would rewrite what a real application said.
+model BankBranch {
+  id        String     @id @default(uuid())
+  bankId    String
+  bank      BankMaster @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  ifsc      String     @unique
+  branch    String
+  city      String?
+  /// The directory carries a district separately from the city and they often
+  /// differ; both are kept because the applicant's own city is what goes on the
+  /// ASBA form and a reader needs to recognise their branch.
+  district  String?
+  state     String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(3)
+
+  /// The picker is ALWAYS scoped to a chosen bank, so every search is
+  /// (bankId, …) — a bare index on `branch` would be useless to it. SBI alone
+  /// has ~22k branches, so this is the index that makes the screen usable.
+  @@index([bankId, branch])
+  @@index([bankId, city])
+}
+
+/// One row per PINCODE, so that entering one fills city and state.
+///
+/// THE COLLAPSE IS THE WHOLE DESIGN PROBLEM. India Post publishes one row per
+/// POST OFFICE, and a pincode carries several; they almost always agree on
+/// district and state, but not invariably. `pincode` is unique here, so the
+/// import has to choose — it takes the most frequent district/state for each
+/// pincode and REPORTS every pincode where its post offices disagreed, rather
+/// than silently picking one. A disagreement is a data question for the
+/// operator, not something a script should decide quietly.
+///
+/// `city` holds the DISTRICT, which is what a bank form means by city for all
+/// but the metros. It is auto-fill, never a constraint: both fields stay
+/// editable on the form because the applicant's own records may differ from the
+/// directory, and theirs is the one the registrar matches against.
+model PincodeMaster {
+  id        String   @id @default(uuid())
+  pincode   String   @unique
+  city      String?
+  state     String?
+  /// How many post offices this row was collapsed from, and whether they
+  /// disagreed. Kept so the admin screen can show which rows are worth a human
+  /// look without re-reading the source file.
+  sources   Int      @default(1)
+  ambiguous Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([state, city])
+}
+
+
 model IndustryMaster {
   id        String   @id @default(uuid())
   name      String   @unique

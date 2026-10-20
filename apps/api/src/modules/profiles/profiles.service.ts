@@ -58,6 +58,143 @@ export class ProfilesService {
     return (await this.upiHandleRows()).filter((r) => r.active).map((r) => r.name);
   }
 
+/* ------------------------------------------------------------------ *
+   *  Bank / branch / pincode reference data (Phase 3)
+   *
+   *  PUBLIC, like `relationships()` and `upiHandles()` above and for the same
+   *  reason: it is a published directory, not anybody's data. Nothing here
+   *  reads or returns a profile.
+   * ------------------------------------------------------------------ */
+
+  /** Every bank that has at least one branch, for the first picker. ~170 rows. */
+  async banks() {
+    const rows = await this.prisma.bankMaster.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return rows;
+  }
+
+  /**
+   * Branch search — ALWAYS scoped to one bank, paginated, and never a full list.
+   *
+   * THE SCOPING IS NOT A CONVENIENCE, IT IS WHAT MAKES THE SCREEN POSSIBLE.
+   * There are ~1.7 lakh branches; the `(bankId, branch)` index exists for this
+   * query and an unscoped search could not use it. `SearchSelect` loads every
+   * option into memory, which is why this needed `AsyncSearchSelect` on the web
+   * side rather than a bigger fetch.
+   *
+   * A PASTED IFSC IS ANSWERED EXACTLY AND WITHOUT A BANK, because someone who
+   * has the code in front of them should not have to find their bank in a
+   * dropdown first. It is checked before the name search and short-circuits:
+   * an 11-character IFSC has exactly one answer, so returning a list of
+   * near-misses would be noise.
+   */
+  async branches(opts: { bankId?: string; q?: string; take?: number }) {
+    const q = (opts.q ?? '').trim();
+    const take = Math.min(Math.max(Number(opts.take) || 20, 1), 50);
+
+    /* An exact IFSC wins over everything, bank or no bank. */
+    if (/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(q)) {
+      const hit = await this.prisma.bankBranch.findUnique({
+        where: { ifsc: q.toUpperCase() },
+        select: { id: true, ifsc: true, branch: true, city: true, district: true, state: true, bank: { select: { id: true, name: true } } },
+      });
+      return hit ? [hit] : [];
+    }
+
+    /* Otherwise a bank is REQUIRED. Returning an empty list rather than
+       throwing: the picker renders before a bank is chosen, and a 400 there
+       would be an error the reader caused by doing nothing wrong. */
+    if (!opts.bankId) return [];
+
+    /* `contains` cannot use the btree, so it scans this bank's rows — a few
+       thousand for most banks, ~22k for the largest. Measured after import
+       rather than assumed; if it ever reads slow the fix is a trigram index,
+       not a narrower search, because people search by the middle of a branch
+       name ("fort", "andheri") far more than by its first word. */
+    return this.prisma.bankBranch.findMany({
+      where: {
+        bankId: opts.bankId,
+        active: true,
+        ...(q ? { OR: [{ branch: { contains: q, mode: 'insensitive' } }, { city: { contains: q, mode: 'insensitive' } }] } : {}),
+      },
+      select: { id: true, ifsc: true, branch: true, city: true, district: true, state: true, bank: { select: { id: true, name: true } } },
+      orderBy: { branch: 'asc' },
+      take,
+    });
+  }
+
+  /**
+   * States and union territories — a CLOSED list, so this one IS a dropdown.
+   *
+   * 36 rows, operator-editable, and seeded from the pincode directory so the
+   * spellings match what the auto-fill puts in the field. Two corrections the
+   * import cannot make for you: GeoNames omits LADAKH (a UT since 2019, still
+   * filed under Jammu & Kashmir) and spells Puducherry the pre-2006
+   * "Pondicherry". Both are why this is a table and not a derived list.
+   */
+  async states() {
+    return this.prisma.stateMaster.findMany({
+      where: { active: true },
+      select: { name: true, code: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /**
+   * City SUGGESTIONS — derived from the pincode directory, never a table.
+   *
+   * NOT A SEPARATE MASTER, and that is the design rather than a shortcut: a
+   * `CityMaster` would be a second opinion about city names, and the moment it
+   * drifted from `PincodeMaster` the dropdown would stop offering what the
+   * pincode auto-fills. One source, so they cannot disagree. (Same reasoning as
+   * the readiness card calling `offeredFromIpo()` rather than re-testing its
+   * conditions.)
+   *
+   * AND IT SUGGESTS WITHOUT CONSTRAINING. The field still accepts a typed value
+   * the directory has never heard of, because the registrar matches what the
+   * applicant’s BANK holds, not what we imported — a closed list here could
+   * make a valid application unfillable, which is the one failure worth
+   * designing against. Contrast `states()` above, where the set really is closed.
+   */
+  async cities(opts: { q?: string; state?: string; take?: number }) {
+    const q = (opts.q ?? '').trim();
+    const take = Math.min(Math.max(Number(opts.take) || 20, 1), 50);
+    const rows = await this.prisma.pincodeMaster.findMany({
+      where: {
+        active: true,
+        city: q ? { contains: q, mode: 'insensitive' } : { not: null },
+        ...(opts.state ? { state: opts.state } : {}),
+      },
+      select: { city: true, state: true },
+      /* DISTINCT on the pair, because the same city name exists in more than
+         one state and collapsing on city alone would hide one of them. */
+      distinct: ['city', 'state'],
+      orderBy: { city: 'asc' },
+      take,
+    });
+    return rows.filter((r) => r.city).map((r) => ({ city: r.city as string, state: r.state }));
+  }
+  /**
+   * Pincode → city + state.
+   *
+   * Returns `null` for an unknown pincode rather than throwing, because the
+   * form calls this on every sixth keystroke and a 404 in the console on the
+   * way to a valid pincode is noise. `ambiguous` rides along so the caller can
+   * decide how much to trust it — the directory's own post offices disagreed on
+   * those, and the form must not present a guess as a fact.
+   */
+  async pincode(pin: string) {
+    const p = String(pin ?? '').replace(/\D/g, '');
+    if (!/^\d{6}$/.test(p)) return null;
+    return this.prisma.pincodeMaster.findUnique({
+      where: { pincode: p },
+      select: { pincode: true, city: true, state: true, ambiguous: true },
+    });
+  }
+
   /** A UPI ID is accepted only when its handle is on the admin-managed master. */
   private async assertUpiAllowed(upiId: string) {
     const m = /^[a-zA-Z0-9.\-_]{2,}@([a-zA-Z0-9]{2,})$/.exec(upiId.trim());

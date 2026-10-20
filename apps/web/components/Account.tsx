@@ -1,15 +1,17 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useStore, store } from '@/lib/store';
 import { Icon } from '@/components/Icon';
 import { Modal } from '@/components/ui/Modal';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { AsyncSearchSelect } from '@/components/ui/AsyncSearchSelect';
 import { makeT, Lang } from '@investoyard/i18n';
 import { dematLabel } from '@investoyard/shared-types';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, addDemat, retireDemat, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
   fetchSecurity, setPassword, clearPassword, setOtpChannel, type SecuritySettings,
+  fetchBanks, searchBranches, lookupPincode, fetchStates, searchCities, type BankOption, type BranchRow,
   type ApiProfile, type ProfileInput, type Relationship, type Depository, type RelationshipOption,
 } from '@/lib/consumer-api';
 
@@ -136,7 +138,13 @@ export function Account() {
           const shown = filtered.slice(cur * PAGE, cur * PAGE + PAGE);
           return (
             <>
-              {filtered.length === 0 && <div className="muted" style={{ padding: 12 }}>No applicant matches “{qy}”.</div>}
+              {filtered.length === 0 && (
+                <div className="muted" style={{ padding: 12 }}>
+                  {qy.trim()
+                    ? <>No applicant matches “{qy}”.</>
+                    : 'No applicants yet — add the first one below.'}
+                </div>
+              )}
               {shown.map((p) => (
                 <ProfileCard
                   key={p.id} p={p} tr={tr}
@@ -515,9 +523,14 @@ export const HELP = {
   bankAccount: 'The account the money is blocked in. It must be in the applicant’s own name.',
   ifsc: 'On your cheque book, beside the account number.',                               // [P3] — hidden once branches are a picker
   address: 'As registered with your bank.',
-  city: 'As on your bank record.',
-  state: 'As on your bank record.',
-  pincode: 'Six digits.',                                                                // [P3] — will fill city and state
+  city: 'Filled in from your pincode — change it if your bank has something different.',
+  state: 'Filled in from your pincode.',
+  pincode: 'Six digits — we’ll fill in your city and state.',
+  pincodeAmbiguous: 'This pincode covers more than one district — check the city and state we filled in.',
+  bankPick: 'Pick your bank, then its branch. We take the IFSC from the branch so you never have to type it.',
+  branchPick: 'Search by branch name or by city.',
+  branchPicked: (ifsc: string) => `IFSC ${ifsc} — taken from this branch.`,
+  ifscFromBranch: 'Filled in from the branch you picked.',                                                                // [P3] — will fill city and state
 } as const;
 
 export const ERR = {
@@ -530,7 +543,8 @@ export const ERR = {
   upiHandle: 'Pick the handle that follows @.',
   upiName: 'Type the name that goes before @.',
   mobile: 'A mobile number is ten digits.',
-  ifsc: 'An IFSC is eleven characters — four letters, a zero, then six more.',           // [P3]
+  ifsc: 'An IFSC is eleven characters — four letters, a zero, then six more.',
+  pincodeUnknown: 'We don’t have that pincode — type your city and state yourself.',           // [P3]
 } as const;
 
 /**
@@ -559,6 +573,89 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
   /* Set on the first save attempt. Inline errors wait for it, so nobody is
      told their half-typed PAN is wrong while they are still typing it. */
   const [tried, setTried] = useState(false);
+
+  /* ---- the bank / branch / pincode directory -------------------------
+   * EVERY ONE OF THESE DEGRADES TO FREE TEXT WHEN THE DIRECTORY IS EMPTY,
+   * and that is not defensive polish: the masters are populated by a separate
+   * import, so between this deploy and that import `banks` is []. A picker
+   * with nothing in it would make the bank fields unfillable and break the
+   * one screen an applicant cannot avoid. `dirReady` is what decides, and it
+   * is derived from the SERVER’S answer rather than assumed either way.
+   */
+  const [banks, setBanks] = useState<BankOption[] | null>(null);
+  /* The state list. A closed set, so a real dropdown — and it falls back to a
+     plain text input when the master is empty, exactly like the bank picker. */
+  const [states, setStates] = useState<{ name: string; code: string | null }[]>([]);
+  useEffect(() => { fetchStates().then(setStates).catch(() => setStates([])); }, []);
+  /**
+   * The options the state dropdown actually offers.
+   *
+   * A CLOSED LIST MUST STILL RENDER WHAT IS ALREADY STORED, or it silently
+   * blanks it. `SearchSelect` resolves its label by exact value, and existing
+   * profiles hold free text from before this master existed — measured across
+   * 525 of them: five are Indian states in UPPERCASE ("GUJARAT"), which no
+   * exact match finds, and two are ARIZONA and MICHIGAN, which no Indian list
+   * will ever contain. Both would have shown an empty-looking dropdown over a
+   * value that was really set, and a save would then have dropped it.
+   *
+   * So: match the stored value case-insensitively and adopt the master’s
+   * spelling when it is the same state; otherwise keep it as its own option,
+   * labelled, rather than losing it. The data-safety rule for this phase is
+   * that an untouched profile keeps what it has.
+   */
+  const stateOptions = useMemo(() => {
+    const opts = states.map((x) => ({ value: x.name, label: x.name }));
+    const cur = String(f.state ?? '').trim();
+    if (!cur) return opts;
+    const same = opts.find((o) => o.value.toLowerCase() === cur.toLowerCase());
+    if (same) return opts;
+    return [{ value: cur, label: `${cur} (not in our list)` }, ...opts];
+  }, [states, f.state]);
+  /* And the VALUE handed to the control has to be the master’s spelling when
+     they are the same state, or an uppercase stored value still finds nothing. */
+  const stateValue = useMemo(() => {
+    const cur = String(f.state ?? '').trim();
+    const same = states.find((x) => x.name.toLowerCase() === cur.toLowerCase());
+    return same ? same.name : cur;
+  }, [states, f.state]);
+  useEffect(() => { fetchBanks().then(setBanks).catch(() => setBanks([])); }, []);
+  const dirReady = !!banks && banks.length > 0;
+  /* The chosen bank, which scopes the branch search. Seeded by NAME from a
+     saved profile, because that is all the old free-text column holds — so an
+     existing applicant lands on their bank if the directory happens to spell
+     it the same way, and on no bank if it does not. Either way their stored
+     text is left alone (data-safety rule: a new pick overwrites, an untouched
+     profile keeps what it has). */
+  const [bankId, setBankId] = useState<string>('');
+  useEffect(() => {
+    if (!banks || bankId || !f.bankName) return;
+    const hit = banks.find((b) => b.name.trim().toLowerCase() === String(f.bankName).trim().toLowerCase());
+    if (hit) setBankId(hit.id);
+  }, [banks]);
+
+  /* Pincode -> city + state. Aborted per keystroke, and the LAST request wins
+     — the same race AsyncSearchSelect guards against, for the same reason. */
+  const pinSeq = useRef(0);
+  const [pinNote, setPinNote] = useState<string | null>(null);
+  useEffect(() => {
+    const pin = String(f.pincode ?? '');
+    if (!/^\d{6}$/.test(pin)) { setPinNote(null); return; }
+    const mine = ++pinSeq.current;
+    const ac = new AbortController();
+    lookupPincode(pin, ac.signal).then((r) => {
+      if (mine !== pinSeq.current) return;
+      if (!r) { setPinNote(ERR.pincodeUnknown); return; }
+      /* AUTO-FILL ONLY WHAT IS EMPTY. Overwriting a city the applicant typed
+         would be the form correcting their own records against a directory,
+         and theirs is what the registrar matches on. */
+      const patch: Partial<typeof f> = {};
+      if (!String(f.city ?? '').trim() && r.city) patch.city = r.city;
+      if (!String(f.state ?? '').trim() && r.state) patch.state = r.state;
+      if (Object.keys(patch).length) upd(patch);
+      setPinNote(r.ambiguous ? HELP.pincodeAmbiguous : null);
+    }).catch(() => {});
+    return () => ac.abort();
+  }, [f.pincode]);
   // Optional bank/contact block — open by default when the profile already has any
   // of it, so nothing the user saved earlier looks lost behind a collapsed section.
   const [bankOpen, setBankOpen] = useState(() => !!(editing && (
@@ -786,6 +883,57 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
           <Help>{HELP.email}</Help>
         </div>
       </div>
+      {/* THE DIRECTORY BRANCH, when there is a directory. Picking a branch
+          writes the bank name, the branch name AND the IFSC in one act, which
+          is the whole point of #7: the IFSC is the field people get wrong and
+          nobody can check, so it is filled from the chosen branch and never
+          typed. */}
+      {dirReady ? (<>
+      <div className="cols-2">
+        <div className="field">
+          <label>Bank name</label>
+          <SearchSelect
+            options={banks!.map((b) => ({ value: b.id, label: b.name }))}
+            value={bankId}
+            onChange={(v) => {
+              const b = banks!.find((x) => x.id === v);
+              setBankId(v);
+              /* Changing the bank invalidates the branch and the IFSC under it.
+                 Leaving either behind would pair a new bank with the old
+                 branch’s routing code — a plausible-looking IFSC that sends the
+                 money to the wrong institution. */
+              upd({ bankName: b?.name ?? '', branchName: '', ifsc: '' });
+            }}
+            placeholder="Search your bank…"
+          />
+          <Help>{HELP.bankPick}</Help>
+        </div>
+        <div className="field">
+          <label>Branch</label>
+          <AsyncSearchSelect
+            value={f.ifsc ?? ''}
+            selectedLabel={f.branchName ?? ''}
+            disabled={!bankId}
+            minChars={0}
+            emptyHint={bankId ? 'Start typing a branch or city.' : 'Choose your bank first.'}
+            search={async (q, signal) => {
+              const rows = await searchBranches(bankId || undefined, q, signal);
+              return rows.map((r: BranchRow) => ({
+                value: r.ifsc,
+                label: r.branch,
+                sub: [r.city, r.state].filter(Boolean).join(
+) || r.ifsc,
+              }));
+            }}
+            onChange={(ifsc, opt) => upd({ ifsc, branchName: opt?.label ?? '' })}
+            placeholder="Search your branch…"
+          />
+          <Help>{f.ifsc ? HELP.branchPicked(f.ifsc) : HELP.branchPick}</Help>
+        </div>
+      </div>
+      </>) : (<>
+      {/* NO DIRECTORY YET — the original free-text fields, unchanged, so the
+          form is never less usable than it was before this phase. */}
       <div className="cols-2">
         <div className="field">
           <label>Bank name</label>
@@ -798,6 +946,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
           <Help>{HELP.branchName}</Help>
         </div>
       </div>
+      </>)}
       <div className="cols-2">
         <div className="field">
           <label>Bank account no.</label>
@@ -805,33 +954,75 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
             placeholder={editing?.hasBank ? 'saved ✓ — type to replace' : '0000 0000 0000'} />
           <Help>{HELP.bankAccount}</Help>
         </div>
-        <div className="field">
-          <label>IFSC</label>
-          <input className="input mono" value={f.ifsc ?? ''} onChange={(e) => upd({ ifsc: e.target.value.toUpperCase() })} placeholder="HDFC0001234" />
-          <Help error={f.ifsc && !ifscOk ? ERR.ifsc : null}>{HELP.ifsc}</Help>
-        </div>
+        {/* #7 — HIDDEN, NOT REMOVED, and only when a branch supplied it. The
+            value still saves and still prints on the ASBA form; what goes away
+            is asking the applicant to type eleven characters they cannot
+            verify. With no directory the field stays exactly as it was, because
+            then it is the only way the IFSC can be known at all. */}
+        {dirReady ? (
+          <div className="field" aria-hidden={!f.ifsc}>
+            {f.ifsc ? <><label>IFSC</label><div className="ifsc-shown mono">{f.ifsc}</div><Help>{HELP.ifscFromBranch}</Help></> : null}
+          </div>
+        ) : (
+          <div className="field">
+            <label>IFSC</label>
+            <input className="input mono" value={f.ifsc ?? ''} onChange={(e) => upd({ ifsc: e.target.value.toUpperCase() })} placeholder="HDFC0001234" />
+            <Help error={f.ifsc && !ifscOk ? ERR.ifsc : null}>{HELP.ifsc}</Help>
+          </div>
+        )}
       </div>
       <div className="field">
         <label>Address</label>
         <input className="input" value={f.address ?? ''} onChange={(e) => upd({ address: e.target.value })} placeholder="Flat / building / street" />
         <Help>{HELP.address}</Help>
       </div>
+      {/* PINCODE FIRST, because it fills the two fields under it (operator ask,
+          2026-10-20). Asking for the city and then overwriting it a moment later
+          is the form arguing with the person filling it in. */}
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label>Pincode</label>
+        <input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" />
+        <Help error={pinNote === ERR.pincodeUnknown ? pinNote : null}>{pinNote ?? HELP.pincode}</Help>
+      </div>
       <div className="cols-2">
         <div className="field">
           <label>City</label>
-          <input className="input" value={f.city ?? ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Pune" />
+          {/* SUGGESTS, NEVER CONSTRAINS — `freeText`. India has far more place
+              names than any directory we import, and the registrar matches what
+              the applicant’s BANK holds, so a closed list here could make a
+              valid application unfillable. The suggestions come from the pincode
+              table itself, so they can never disagree with the auto-fill above. */}
+          <AsyncSearchSelect
+            freeText
+            value={f.city ?? ''}
+            minChars={2}
+            emptyHint="Type two letters to see suggestions."
+            search={async (q, signal) => {
+              const rows = await searchCities(q, f.state || undefined, signal);
+              return rows.map((r) => ({ value: r.city, label: r.city, sub: r.state ?? undefined }));
+            }}
+            onChange={(v) => upd({ city: v })}
+            placeholder="Pune"
+          />
           <Help>{HELP.city}</Help>
         </div>
         <div className="field">
           <label>State</label>
-          <input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" />
+          {/* A CLOSED SET, so a real dropdown — free text here gives you
+              "Maharastra", "MH" and "maharashtra" in one column. Falls back to a
+              text input when the master is empty, like the bank picker. */}
+          {states.length > 0 ? (
+            <SearchSelect
+              options={stateOptions}
+              value={stateValue}
+              onChange={(v) => upd({ state: v })}
+              placeholder="Select your state…"
+            />
+          ) : (
+            <input className="input" value={f.state ?? ''} onChange={(e) => upd({ state: e.target.value })} placeholder="Maharashtra" />
+          )}
           <Help>{HELP.state}</Help>
         </div>
-      </div>
-      <div className="field" style={{ maxWidth: 220 }}>
-        <label>Pincode</label>
-        <input className="input mono" value={f.pincode ?? ''} onChange={(e) => upd({ pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="411001" />
-        <Help>{HELP.pincode}</Help>
       </div>
       </>)}
 

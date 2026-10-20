@@ -155,6 +155,50 @@ export const fetchRelationships = () => req<RelationshipOption[]>('/profiles/rel
 /** Public list of allowed UPI handles — the part after '@' (no auth needed). */
 export const fetchUpiHandles = () => req<string[]>('/profiles/upi-handles', { method: 'GET' });
 
+// ---- bank / branch / pincode directory (public reference data) ----
+export interface BankOption { id: string; name: string }
+export interface BranchRow {
+  id: string; ifsc: string; branch: string;
+  city: string | null; district: string | null; state: string | null;
+  bank: { id: string; name: string };
+}
+export interface PincodeRow { pincode: string; city: string | null; state: string | null; ambiguous: boolean }
+
+/** ~170 rows, so this one IS loaded whole and fed to the in-memory SearchSelect. */
+export const fetchBanks = () => req<BankOption[]>('/profiles/banks', { method: 'GET' });
+
+/**
+ * Branch search — bank-scoped and capped server-side, and it takes an
+ * AbortSignal because AsyncSearchSelect cancels the request a keystroke
+ * superseded. An aborted fetch rejects; the caller treats that as "no result
+ * for a query nobody is waiting for any more" rather than an error.
+ */
+export const searchBranches = (bankId: string | undefined, q: string, signal?: AbortSignal) => {
+  const qs = new URLSearchParams();
+  if (bankId) qs.set('bankId', bankId);
+  if (q) qs.set('q', q);
+  return req<BranchRow[]>(`/profiles/bank-branches?${qs.toString()}`, { method: 'GET', signal });
+};
+
+/** States and UTs — a closed set, so the form renders this as a real dropdown. */
+export const fetchStates = () => req<{ name: string; code: string | null }[]>('/profiles/states', { method: 'GET' });
+
+/**
+ * City SUGGESTIONS, derived from the pincode directory rather than a master of
+ * their own, so they can never disagree with what a pincode auto-fills. The
+ * field still accepts a typed value the directory has never heard of.
+ */
+export const searchCities = (q: string, state?: string, signal?: AbortSignal) => {
+  const qs = new URLSearchParams();
+  if (q) qs.set('q', q);
+  if (state) qs.set('state', state);
+  return req<{ city: string; state: string | null }[]>(`/profiles/cities?${qs.toString()}`, { method: 'GET', signal });
+};
+
+/** Null for an unknown pincode — not an error; the form calls this while typing. */
+export const lookupPincode = (pin: string, signal?: AbortSignal) =>
+  req<PincodeRow | null>(`/profiles/pincode/${encodeURIComponent(pin)}`, { method: 'GET', signal });
+
 /* ---- public allotment check (registrar-style PAN lookup) ---- */
 export interface AllotmentResult {
   applicant: string; category: string; applicantType?: string; lots: number;

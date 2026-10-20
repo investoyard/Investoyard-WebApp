@@ -5231,3 +5231,17 @@ html[data-foreign-host] [data-own-only] { display: none; }
 .sec-way button[disabled] { opacity: .45; cursor: not-allowed; }
 .sec-pwrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sec-pwrow .input { flex: 1; min-width: 180px; }
+
+/* ---- applicant form: the IFSC the branch supplied -------------------------
+ * A READ-ONLY DISPLAY, not a disabled input. A greyed box still reads as
+ * something the user failed to fill — the same reason the CDSL "Not needed"
+ * box was removed in Phase 1 — whereas this reads as a value that is already
+ * known. Prefixed and grepped clear (0 prior `ifsc-shown`, and the existing
+ * `.upi-*` family taught that lesson).
+ */
+.ifsc-shown {
+  display: flex; align-items: center; min-height: 44px;
+  padding: 0 14px; border-radius: 10px;
+  background: var(--bg-2); border: 1px dashed var(--border-2);
+  color: var(--text); font-size: 15px; letter-spacing: .04em;
+}

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { ProfilesService } from './profiles.service';
 import { AddDematDto, CreateProfileDto, UpdateProfileDto } from './profiles.dto';
@@ -13,6 +13,39 @@ export class ProfilesPublicController {
     return this.profiles.relationships();
   }
 
+  /* ---- bank / branch / pincode directory (Phase 3) ------------------
+   * PUBLIC, like the two above: a published directory, not anybody data.
+   * The branch search is the one that matters — 1.7 lakh rows, so it is
+   * bank-scoped and capped server-side, never a full list.
+   */
+  @Get('banks')
+  banks() {
+    return this.profiles.banks();
+  }
+
+  @Get('bank-branches')
+  branches(@Query('bankId') bankId?: string, @Query('q') q?: string, @Query('take') take?: string) {
+    return this.profiles.branches({ bankId, q, take: take ? Number(take) : undefined });
+  }
+
+  /* The pincode is a PATH segment, but a plain 6-digit one — nothing like the
+     UUID-in-path shape Cloudflare intercepted under /prints/. */
+  @Get('states')
+  states() {
+    return this.profiles.states();
+  }
+
+  /* City SUGGESTIONS, derived from the pincode directory — see the service note
+     on why this is not a master of its own and why it does not constrain. */
+  @Get('cities')
+  cities(@Query('q') q?: string, @Query('state') state?: string, @Query('take') take?: string) {
+    return this.profiles.cities({ q, state, take: take ? Number(take) : undefined });
+  }
+
+  @Get('pincode/:pin')
+  pincode(@Param('pin') pin: string) {
+    return this.profiles.pincode(pin);
+  }
   /** Public: allowed UPI handles (after '@') — drives UPI-ID entry validation. */
   @Get('upi-handles')
   upiHandles() {
