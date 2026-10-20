@@ -159,3 +159,62 @@ describe('DOVE SOFT RHP — the SME individual minimum holds at two lots', () =>
     for (const n of [QIB, NII, INDIVIDUAL, 3_30_000]) expect(n % 1200).toBe(0);
   });
 });
+
+/**
+ * Minimum ALLOTMENT — the divisor behind "applications required for 1×".
+ *
+ * Distinct from the minimum BID above and tested against the one property that
+ * can falsify it: a mainboard issue reserves 10% to bHNI and 5% to sHNI, so
+ * the two counts must come out exactly 2:1. They only can if both bands divide
+ * by the same parcel (operator ruling, 2026-10-20).
+ */
+import { minAllotmentLots, minAllotmentShares } from './minApplication';
+
+/** Jio Platforms — mainboard, lot 12, cap ₹1,119. Real stored record. */
+const JPL = { lotSize: 12, priceCap: 1119, sme: false };
+const JPL_BHNI_BOOK = 2_42_96_379;
+const JPL_SHNI_BOOK = 1_21_48_189;
+
+describe('minimum allotment — the two NII bands share one parcel', () => {
+  it('gives bHNI the sHNI minimum, not its own ₹10 L one', () => {
+    expect(minApplicationLots('hni', JPL)).toBe(75);        // the minimum BID is unchanged
+    expect(minAllotmentLots('hni', JPL)).toBe(15);          // the minimum ALLOTMENT is sHNI's
+    expect(minAllotmentLots('hni2', JPL)).toBe(15);
+    expect(minAllotmentShares('hni', JPL)).toBe(180);
+  });
+
+  it('leaves every other category exactly where the minimum bid left it', () => {
+    for (const cat of ['retail', 'qib', 'employee', 'shareholder', 'policyholder', 'other']) {
+      expect(minAllotmentLots(cat, JPL)).toBe(minApplicationLots(cat, JPL));
+    }
+  });
+
+  it('puts the bHNI count at exactly double sHNI, because the books are 10:5', () => {
+    const apps = (book: number, cat: string) => Math.ceil(book / minAllotmentShares(cat, JPL));
+    expect(JPL_BHNI_BOOK).toBe(JPL_SHNI_BOOK * 2 + 1);      // 2:1 to the share, bar a rounding unit
+    expect(apps(JPL_BHNI_BOOK, 'hni')).toBe(1_34_980);
+    expect(apps(JPL_SHNI_BOOK, 'hni2')).toBe(67_490);
+    expect(apps(JPL_BHNI_BOOK, 'hni')).toBe(apps(JPL_SHNI_BOOK, 'hni2') * 2);
+  });
+
+  it('inverted the ordering on the minimum-BID basis — the shape that was reported', () => {
+    const old = (book: number, cat: string) => Math.ceil(book / minApplicationShares(cat, JPL));
+    expect(old(JPL_BHNI_BOOK, 'hni')).toBe(26_996);
+    expect(old(JPL_SHNI_BOOK, 'hni2')).toBe(67_490);
+    // twice the book, a quarter of the count
+    expect(old(JPL_BHNI_BOOK, 'hni')).toBeLessThan(old(JPL_SHNI_BOOK, 'hni2'));
+  });
+
+  it('holds on SME, where the ₹2 L figure is derived from the fixed 2-lot bid', () => {
+    expect(minAllotmentLots('hni', SAI_URJA)).toBe(3);      // was 8 on the bid basis
+    expect(minAllotmentShares('hni', SAI_URJA)).toBe(3_600);
+    // Sai Urja's published bHNI column reads 21 on the bid basis; this is the
+    // other question and answers 56. Recorded so the divergence is deliberate.
+    expect(Math.ceil(2_01_600 / minApplicationShares('hni', SAI_URJA))).toBe(21);
+    expect(Math.ceil(2_01_600 / minAllotmentShares('hni', SAI_URJA))).toBe(56);
+  });
+
+  it('still refuses to guess for QIB', () => {
+    expect(minAllotmentShares('qib', JPL)).toBe(0);
+  });
+});

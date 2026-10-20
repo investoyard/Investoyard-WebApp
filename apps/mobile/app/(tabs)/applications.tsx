@@ -235,6 +235,22 @@ export default function ApplicationsScreen() {
                   <Text style={styles.amountV}>{inr(a.amount || a.amountBlocked)}</Text>
                 </View>
 
+                {/* Sir's point 5 — the depository confirmed this applicant's
+                    demat and PAN. The signal is the EXCHANGE's and only the
+                    exchange's: `/appdpstatus`. It reads a timestamp rather than
+                    the status, because `status` holds only the current value and
+                    an application that has moved on no longer says dp_verified.
+                    Kept in step with the web `VerifiedMark` by hand. */}
+                {a.dpVerifiedAt ? (
+                  <View style={styles.vfyRow}>
+                    <Text style={styles.vfyTick}>✓</Text>
+                    <Text style={styles.vfyTxt}>
+                      Demat and PAN verified by the depository
+                      <Text style={styles.vfyWhen}> · {fmtDateTime(a.dpVerifiedAt)}</Text>
+                    </Text>
+                  </View>
+                ) : null}
+
                 {line ? <Text style={styles.result}>{line}</Text> : null}
 
                 {/* The exchange's own UPI sentence, BESIDE our line and never
@@ -431,6 +447,16 @@ const styles = StyleSheet.create({
   amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, flex: 1 },
   amountV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   result: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
+  /* The positive fill with an INK-weight label, matching the web chip: the
+     lighter green on this tint measures 3.50:1 and fails AA for text. */
+  vfyRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    marginTop: 9, paddingVertical: 7, paddingHorizontal: 10,
+    borderRadius: 9, backgroundColor: 'rgba(18, 146, 90, .10)',
+  },
+  vfyTick: { fontSize: 13, fontWeight: '800', color: '#0c6b41' },
+  vfyTxt: { flex: 1, fontSize: 12.5, lineHeight: 17, color: '#0c6b41', fontWeight: '600' },
+  vfyWhen: { fontWeight: '400', color: '#0c6b41', opacity: .75 },
   upiRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 9,
     backgroundColor: ui.canvas, borderRadius: 12, paddingVertical: 9, paddingHorizontal: 11,

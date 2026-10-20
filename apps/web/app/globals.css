@@ -2863,6 +2863,14 @@ html[data-admin-theme="dark"] .admin-shell select.input, html[data-admin-theme="
 .sselect-opt { display: block; width: 100%; text-align: left; padding: 9px 12px; font-size: 13.5px; border: 0; background: none; color: var(--text); cursor: pointer; font-family: inherit; }
 .sselect-opt:hover, .sselect-opt.hl { background: var(--brand-50); }
 .sselect-opt .sub { display: block; font-size: 11.5px; color: var(--text-faint); }
+/* A heading over a run of options. Sticky, because the list scrolls and the
+   heading is what explains why the order is what it is. Not focusable and not
+   a button — see the note on SearchOption.group. */
+.sselect-group { position: sticky; top: 0; z-index: 1;
+  padding: 7px 12px 5px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-faint);
+  background: var(--surface, #fff); border-bottom: 1px solid var(--border); }
+.sselect-group + .sselect-opt { padding-top: 10px; }
 .sselect-empty { padding: 12px; font-size: 13px; color: var(--text-faint); text-align: center; }
 /* "+ Add …" — separated from the matches by a rule so it reads as a different
    kind of action, not one more option in the list. */
@@ -3025,6 +3033,12 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .st.mut { background: var(--bg-2); color: var(--text-faint); }
 .st.brand { background: var(--brand-50); color: var(--brand); }
 .st.warn { background: var(--warn-soft); color: #7a5800; }
+/* The depository confirmed the applicant's demat and PAN. `--pos-ink` rather
+   than `--pos`, because `--pos` on `--pos-soft` measures 3.50:1 and fails WCAG
+   AA for text — the pairing `--pos-ink` exists for (see the note on that token).
+   `.st.ok` above still has that pairing; changing it reaches every admin report
+   chip and is its own job. */
+.st.vfy { background: var(--pos-soft); color: var(--pos-ink); }
 .st.lock { background: var(--brand-50); color: var(--brand); font-weight: 700; text-transform: none; padding: 4px 12px; border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent); cursor: default; }
 .st.lock .st-key { color: var(--text-muted); font-weight: 600; }
 
@@ -4494,7 +4508,22 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    a single column, tables tighten */
 @media (max-width: 700px) {
   .subv2-filters { flex-direction: column; align-items: stretch; }
-  .subv2-seg { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 3px; scrollbar-width: none; }
+  /* `max-width: 100%` is what makes the `overflow-x` above do anything, and
+     this was MEASURED rather than reasoned about — the obvious `min-width: 0`
+     changes nothing here.
+
+     The row is a flex ITEM of a column flex container (`.subv2-filters`), so
+     its width is the CROSS axis: `flex-shrink` does not apply to it, and
+     `align-items: stretch` does not shrink a scroll container below its content
+     either (tried in the live DOM: still 382px). So at 375px it sat 382px wide
+     inside a 327px parent with scrollWidth === clientWidth — it had GROWN
+     rather than scrolled — and pushed /subscription 31px past the right edge of
+     the phone. With the clamp it is 327px and scrolls internally, which is what
+     the overflow rule was written for.
+
+     `max-width`, not `width`: on a wider phone the pills may be narrower than
+     the row, and 100% would stretch them to fill it. */
+  .subv2-seg { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 3px; scrollbar-width: none; max-width: 100%; }
   .subv2-seg::-webkit-scrollbar { display: none; }
   .subv2-seg button { flex: none; white-space: nowrap; padding: 6px 12px; font-size: 12px; }
   .subv2-viewseg { align-self: stretch; }
@@ -5186,6 +5215,23 @@ html[data-foreign-host] [data-own-only] { display: none; }
 .su-extra b { font-weight: 700; }
 
 .su-fine { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted, #6d6690); }
+
+/* ---- signup confirmation (point 4) ----
+   The tick is drawn in the positive family rather than the brand indigo: this
+   is a result, and the colour code reserves green for exactly that. `--pos-ink`
+   on `--pos-soft`, per the note on that token — `--pos` on the same fill is
+   3.50:1 and fails AA. */
+.su-tick { width: 62px; height: 62px; margin: 0 auto; border-radius: 50%;
+  background: var(--pos-soft); color: var(--pos-ink);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 31px; line-height: 1; font-weight: 700; }
+
+/* What to do next, stated once. Gold rather than green so it reads as the
+   next step and not as a second confirmation. */
+.su-next { margin-top: 16px; padding: 12px 14px; border-radius: 10px; text-align: left;
+  background: rgba(255, 203, 50, .13); border: 1px solid rgba(255, 203, 50, .40);
+  font-size: 13px; line-height: 1.55; }
+.su-next b { font-weight: 700; }
 
 /* Sign in / Sign up sit together in the header; the pair must not wrap apart. */
 .auth-pair { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

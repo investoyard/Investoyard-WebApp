@@ -1,8 +1,20 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-export interface SearchOption { value: string; label: string; sub?: string }
+export interface SearchOption {
+  value: string; label: string; sub?: string;
+  /**
+   * Optional heading this option sits under. A heading is drawn whenever the
+   * group CHANGES, so the caller controls grouping purely by the order it
+   * passes options in — nothing here sorts or regroups them.
+   *
+   * It exists for the bank picker, whose list is deliberately not alphabetical
+   * (the banks people use first, then the long tail A–Z). Without a heading the
+   * jump back to "A" at the boundary reads as the list having restarted.
+   */
+  group?: string;
+}
 
 /**
  * Searchable combobox styled like `.input` — type to filter, ↑/↓ + Enter to pick,
@@ -122,8 +134,14 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
         <div className="sselect-list" ref={listRef} style={{ top: rect.top, left: rect.left, width: rect.width }}>
           {filtered.length === 0 && !canCreate && <div className="sselect-empty">No match.</div>}
           {filtered.map((o, i) => (
+            /* The heading is a sibling, not a wrapper, and is NOT focusable —
+               `hl` indexes `filtered`, so anything that consumed an index here
+               would break keyboard navigation. */
+            <Fragment key={o.value}>
+            {o.group && o.group !== filtered[i - 1]?.group && (
+              <div className="sselect-group">{o.group}</div>
+            )}
             <button
-              key={o.value}
               type="button"
               className={`sselect-opt${i === hl ? ' hl' : ''}`}
               onMouseEnter={() => setHl(i)}
@@ -133,6 +151,7 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
               {o.label}
               {o.sub && <span className="sub">{o.sub}</span>}
             </button>
+            </Fragment>
           ))}
           {canCreate && (
             <button

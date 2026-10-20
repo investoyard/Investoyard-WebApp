@@ -8,8 +8,8 @@ import { dematLabel } from '@investoyard/shared-types';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
-import { useStore, store, Application, InvestorCategory, Profile } from '@/lib/store';
-import { getConsumerToken, listProfiles, createApplication, type ApiProfile } from '@/lib/consumer-api';
+import { useStore, store, mapApiProfile, Application, InvestorCategory, Profile } from '@/lib/store';
+import { getConsumerToken, listProfiles, listApplications, createApplication, type ApiProfile } from '@/lib/consumer-api';
 import { makeBidEngine, type BidQuote } from '@investoyard/shared-types';
 import { makeT, Lang } from '@investoyard/i18n';
 
@@ -47,28 +47,6 @@ function missingBits(p: Profile): string {
   return bits.join(' & ') || 'details';
 }
 
-/** Map a masked API profile into the local Profile shape the wizard already renders. */
-function mapApiProfile(p: ApiProfile): Profile {
-  return {
-    id: p.id,
-    relationship: p.relationship as any,
-    fullName: p.fullName,
-    pan: p.pan,
-    depository: p.depository as any,
-    dpId: p.dpId,
-    clientId: p.clientId,
-    /* Carried through so the picker reads the same list the profile screen
-       shows. Without this the type would compile and the picker would never
-       appear — a field on the type that nothing populates. */
-    demats: p.demats,
-    upiId: p.hasUpi ? 'upi-verified' : undefined,
-    bankAccount: p.hasBank ? 'set' : undefined,
-    ifsc: p.ifsc,
-    kycStatus: (p.kycStatus as any) ?? 'unverified',
-    consent: true,
-  };
-}
-
 export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang }) {
   const sp = useSearchParams();
   const L = (CODES.includes(sp.get('lang') ?? '') ? sp.get('lang') : lang) as Lang;
@@ -77,12 +55,18 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
 
   const tenant = useTenant();
   const mobile = useStore((s) => s.mobile);
-  const storeProfiles = useStore((s) => s.profiles);
-  const applications = useStore((s) => s.applications);
+  /* Applicants and applications come from the API only. They used to fall back
+     to a localStorage mock, which is how a failed fetch could end in a fake
+     "application placed" screen — see the note on lib/store.ts. */
   const relL = (r: string) => { const k = `rel.${r}`; const v = tr(k); return v === k ? String(r).charAt(0).toUpperCase() + String(r).slice(1) : v; };
 
   // Live mode: a real logged-in session + a real catalog IPO (server UUID id) → submit to the API.
   const [apiProfiles, setApiProfiles] = useState<Profile[] | null>(null);
+  /** This user's existing applications — only to grey out an applicant who
+   *  already holds one on this IPO. Best-effort: if the call fails the hint is
+   *  simply absent and the SERVER refuses the duplicate, which is where the
+   *  self-PAN rule actually lives. */
+  const [myApps, setMyApps] = useState<{ ipoSymbol: string; profileId?: string }[]>([]);
   const [liveId, setLiveId] = useState<string | null>(null);
   const [liveDetail, setLiveDetail] = useState<IpoDetail | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -92,7 +76,12 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   const [gates, setGates] = useState<{ bid: boolean; print: boolean } | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (getConsumerToken()) listProfiles().then((rows) => setApiProfiles(rows.map(mapApiProfile))).catch(() => setApiProfiles([]));
+    if (getConsumerToken()) {
+      listProfiles().then((rows) => setApiProfiles(rows.map(mapApiProfile))).catch(() => setApiProfiles([]));
+      listApplications()
+        .then((rows) => setMyApps(rows.map((a) => ({ ipoSymbol: a.ipoSymbol, profileId: a.investorProfileId }))))
+        .catch(() => { /* the hint goes missing; the server still refuses a duplicate */ });
+    }
     // Fetch the live catalog detail client-side to get the real server id (the baked prop may be MOCK).
     getIpoDetail(ipo.symbol).then((d) => {
       if (d?.live && d.id) { setLiveId(d.id); setLiveDetail(d); }
@@ -106,7 +95,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   }, []);
   const canPrint = gates?.print === true;
   const liveMode = !!liveId && hasToken;
-  const profiles = liveMode ? (apiProfiles ?? []) : storeProfiles;
+  const profiles = apiProfiles ?? [];
   const eff = liveDetail ?? ipo;
 
   // The shared bid engine, with the operator's UPI cap (admin setting via tenant flags).
@@ -253,18 +242,17 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
       return;
     }
 
-    // DEMO: no live IPO / not signed in against the API → walk the flow on the local store.
-    const apps = selected.map((p) => {
-      const c = choiceFor(p)!;
-      return store.placeApplication({
-        ipoSymbol: ipo.symbol, ipoName: ipo.name, profileId: p.id, profileName: p.fullName || tr('rel.self'),
-        pan: p.pan, depository: p.depository, dpId: p.dpId, clientId: p.clientId, upiId: p.upiId,
-        lots: c.q.lots, shares: c.q.shares, pricePerShare: bandMax, atCutoff: c.tab !== 'hni',
-        category: tabCat(c), amount: c.q.amount, method: 'upi',
-      });
-    });
-    setPlaced(apps);
-    setStep(3);
+    /* NOT LIVE — refuse, and say which half is missing.
+
+       This branch used to fabricate the applications in localStorage and show
+       the same green "Application placed" screen as a real one. An investor
+       whose session had expired, or whose detail fetch had merely failed, was
+       told their bid was in and it existed nowhere. That is the identical
+       fault removed from the mobile app on 2026-10-09, and the reason the
+       standing rule is that an empty state is honest. */
+    setPlaceErr(!hasToken
+      ? 'Please sign in before applying — an application has to be placed against your own account.'
+      : 'This IPO is not open for applications through us yet. Nothing has been submitted.');
   }
 
   // Ticking the combined consent sends an OTP to the registered mobile.
@@ -440,7 +428,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                   {profiles.map((p) => {
                     if (upiReady(p)) {
                       const isSel = selectedIds.includes(p.id);
-                      const alreadyApplied = applications.some((a) => a.ipoSymbol === ipo.symbol && a.profileId === p.id);
+                      const alreadyApplied = myApps.some((a) => a.ipoSymbol === ipo.symbol && a.profileId === p.id);
                       const panClash = !isSel && selected.some((s) => s.pan && s.pan === p.pan);
                       const blocked = alreadyApplied || panClash;
                       return (
@@ -473,9 +461,11 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
                           <span className="s">{reason}</span>
                         </span>
                         {!applyReady(p) ? (
-                          liveMode
-                            ? <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
-                            : <button type="button" className="btn btn-secondary btn-sm" onClick={() => store.fillSample(p.id)}>Use sample details</button>
+                          /* There was a "Use sample details" button here when the
+                             session was not live, which wrote a fake PAN and demat
+                             onto a real applicant. The only honest action is the
+                             one that fills them in properly. */
+                          <a className="btn btn-secondary btn-sm" href={`/account${q}`}>Complete details</a>
                         ) : (
                           <a className="btn btn-secondary btn-sm" href={`/print/${ipo.symbol}${q}`}>Print Forms</a>
                         )}

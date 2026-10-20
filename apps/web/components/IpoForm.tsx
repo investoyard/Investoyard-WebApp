@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, minAllotmentShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -1320,12 +1320,14 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
    * largest quota — so the rupee figure disagreed with the share count printed
    * beside it, and on PRIORITY, where only the QIB row is entered, residual
    * absorption handed QIB the whole net offer and the cell read ₹250 Cr for a
-   * 50% quota. Forms-for-1× goes through `minApplicationShares()`, the one
-   * minimum-bid definition, so the three other readers of it cannot drift.
+   * 50% quota. Forms-for-1× goes through `minAllotmentShares()` — the minimum
+   * ALLOTMENT, not the minimum bid, because the column counts applicants the
+   * quota can serve. The two NII bands share one parcel there, so a 10% bHNI
+   * quota reads exactly double a 5% sHNI one.
    */
   const shownRow = (key: string) => {
     const count = shownCount(key, 'sharesUpper', offerTotals.cap);
-    const minApp = minApplicationShares(key, {
+    const minApp = minAllotmentShares(key, {
       lotSize: fnum(form.lotSize), priceCap: resvPrice, sme: form.type === 'sme',
     });
     return {

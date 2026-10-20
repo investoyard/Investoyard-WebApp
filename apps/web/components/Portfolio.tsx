@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { inr, priceBand } from '@/lib/format';
-import { mockIpoBySymbol, type IpoDetail } from '@/lib/api';
+import { getIpos, type IpoListItem } from '@/lib/api';
 import { CompanyMark } from '@/components/CompanyMark';
 import { Icon } from '@/components/Icon';
-import { useStore, store, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
-import { changeApplicationUpi, getConsumerToken, listApplications, requestUnblock, type ApiApplication } from '@/lib/consumer-api';
+import { useStore, store, mapApiProfile, Application, AppStatus, InvestorCategory, Profile } from '@/lib/store';
+import { changeApplicationUpi, getConsumerToken, listApplications, listProfiles, requestUnblock, type ApiApplication } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 import { titleCase, fmtDateTime } from '@investoyard/shared-types';
 
@@ -36,6 +36,9 @@ function mapApiApp(v: ApiApplication): Application {
     listingGainPct: v.listingGainPct,
     categorySubscribedTimes: v.categorySubscribedTimes,
     allotmentOddsPct: v.allotmentOddsPct,
+    dpVerifiedAt: v.dpVerifiedAt,
+    allotmentDate: v.allotmentDate,
+    listingDate: v.listingDate,
     missingDetails: v.missingDetails,
     upiStatusText: v.upiStatusText,
     unblockAvailable: v.unblockAvailable,
@@ -221,10 +224,31 @@ const STAGES = ['Sent to exchange', 'DP & PAN verified', 'Funds blocked', 'Allot
 const catShort = (c: Application['category']) =>
   c === 'Retail' ? 'Retail' : c === 'sNII' ? 'Small-NII' : 'Big-NII';
 
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
+/**
+ * "Verified" beside the applied PAN and demat — sir's point 5.
+ *
+ * THE SIGNAL IS THE EXCHANGE'S, and only the exchange's. `/appdpstatus` is the
+ * depository confirming that this PAN owns this demat account; nothing else on
+ * the platform establishes that. In particular `InvestorProfile.kycStatus` is
+ * NOT it: that column has only ever been written 'unverified', so rendering it
+ * would have been a tick with nothing behind it.
+ *
+ * IT READS A TIMESTAMP, NOT THE STATUS. `status` holds only the CURRENT value,
+ * so an application that has moved on to mandate_pending or allotted no longer
+ * says dp_verified — while the verification plainly did happen. `dpVerifiedAt`
+ * comes from the status-event log, which records when.
+ *
+ * ONE CHIP FOR BOTH, because it is one event: the depository verified the pair.
+ * Two separate ticks would imply two separate confirmations.
+ */
+function VerifiedMark({ a }: { a: Application }) {
+  if (!a.dpVerifiedAt) return null;
+  return (
+    <span className="st vfy" style={{ marginLeft: 8, verticalAlign: 'middle' }}
+          title={`Demat and PAN confirmed by the depository on ${fmtDateTime(a.dpVerifiedAt)}`}>
+      <Icon name="check" size={12} strokeWidth={3} /> Verified
+    </span>
+  );
 }
 
 /** Applied PAN · Demat · UPI for cross-check (snapshot on the application, profile as fallback). */
@@ -240,33 +264,6 @@ function applicantLine(a: Application, profiles: Profile[]): string {
   if (dep && dp) parts.push(`${dep} ${dp}${cl ? `/${cl}` : ''}`);
   if (upi) parts.push(upi);
   return parts.join('  ·  ');
-}
-
-/** Live status derived from the IPO's real dates + time since bid (no manual buttons). */
-function deriveLifecycle(a: Application, ipo?: IpoDetail): Application {
-  const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
-  const created = Date.parse(a.createdAt) || now;
-  const age = (now - created) / 1000; // seconds since bid placed
-  const allotted = hashStr(a.id) % 2 === 0;            // demo "draw of lots" (deterministic)
-  const gain = (hashStr(a.id + 'L') % 41) - 12;        // demo listing gain
-  const { closeDate, allotmentDate, listingDate } = ipo ?? {};
-
-  // After allotment date → registrar result (file/API)
-  if (allotmentDate && today >= allotmentDate) {
-    if (allotted) {
-      return { ...a, status: 'allotted', allottedShares: a.shares, amountBlocked: a.amount, amountReleased: 0,
-        listingGainPct: listingDate && today >= listingDate ? gain : undefined };
-    }
-    return { ...a, status: 'not_allotted', allottedShares: 0, amountBlocked: 0, amountReleased: a.amount };
-  }
-  // Closed, awaiting allotment → funds blocked
-  if (closeDate && today >= closeDate) return { ...a, status: 'upi_blocked', amountBlocked: a.amount };
-  // Still open → early pipeline by time-since-bid (sent → DP verified → mandate → blocked)
-  if (age < 20) return { ...a, status: 'submitted' };
-  if (age < 45) return { ...a, status: 'dp_verified' };
-  if (age < 75 && a.method === 'upi') return { ...a, status: 'mandate_pending' };
-  return { ...a, status: 'upi_blocked', amountBlocked: a.amount };
 }
 
 function stageOf(a: Application): number {
@@ -302,8 +299,21 @@ export function Portfolio() {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
 
   const mobile = useStore((s) => s.mobile);
-  const storeApps = useStore((s) => s.applications);
-  const profiles = useStore((s) => s.profiles);
+  /* Applications and applicants come from the API. They used to fall back to a
+     localStorage mock whose lifecycle was walked by `deriveLifecycle` — a
+     coin-flip allotment and an invented listing gain, keyed on a hash of the
+     application id, shown in the same cards as real registrar results. */
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  /**
+   * The catalogue, for the Watchlist tab.
+   *
+   * WHY IT IS FETCHED. That tab looked up each starred symbol with
+   * `mockIpoBySymbol()`, which has returned `undefined` unconditionally since
+   * the mock catalogue was deleted — so every card hit `if (!ipo) return null`
+   * and the tab was EMPTY for everyone who had ever starred anything, while the
+   * server held their list perfectly well. One list call fills it.
+   */
+  const [catalog, setCatalog] = useState<Map<string, IpoListItem> | null>(null);
   const watchlist = useStore((s) => s.watchlist);
   const [tab, setTab] = useState<'apps' | 'check' | 'watch'>('apps');
 
@@ -317,10 +327,25 @@ export function Portfolio() {
   useEffect(() => {
     if (!useApi) return;
     reloadApps();
+    /* The applicants are needed for the PAN cross-check line under each card
+       and for the PAN lookup on the Check-status tab. */
+    listProfiles()
+      .then((rows) => setProfiles(rows.map(mapApiProfile)))
+      .catch(() => setProfiles([]));
     store.syncWatchlist();
   }, [useApi]);
+
+  /* Only when the tab is actually opened — the catalogue is a large payload and
+     most visits never look at the watchlist. */
+  useEffect(() => {
+    if (tab !== 'watch' || catalog) return;
+    getIpos()
+      .then((rows) => setCatalog(new Map(rows.map((r) => [r.symbol, r]))))
+      .catch(() => setCatalog(new Map()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const loadingApps = useApi && apiApps === null;
-  const applications = useApi ? (apiApps ?? []) : storeApps;
+  const applications = apiApps ?? [];
 
   // My Applications filters + paging
   const [fIpo, setFIpo] = useState('all');
@@ -331,12 +356,10 @@ export function Portfolio() {
   const PAGE_SIZE = 5;
   const resetPage = () => setPage(1);
 
-  // gentle tick so the early pipeline (sent → DP verified → mandate → blocked) advances live
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 12000);
-    return () => clearInterval(id);
-  }, []);
+  /* There was a 12-second tick here, whose only job was to advance the
+     simulated pipeline so a demo application appeared to progress. Real status
+     changes arrive from the exchange and are read on load. */
+
 
   if (!mobile) {
     return (
@@ -348,11 +371,8 @@ export function Portfolio() {
     );
   }
 
-  const live = applications.map((a) => {
-    const ipo = mockIpoBySymbol(a.ipoSymbol);
-    // API mode: status is server-driven (rail/registrar). Demo mode: simulate the lifecycle.
-    return { d: useApi ? a : deriveLifecycle(a, ipo), ipo, raw: a };
-  });
+  /* Status is the server's, from the rail and the registrar. Nothing is derived. */
+  const live = applications.map((a) => ({ d: a, raw: a }));
   const blocked = live.reduce((s, { d }) => s + (d.amountBlocked ?? 0), 0);
   const allottedN = live.filter(({ d }) => d.status === 'allotted').length;
   const notN = live.filter(({ d }) => d.status === 'not_allotted').length;
@@ -440,7 +460,7 @@ export function Portfolio() {
             </p>
 
             <div style={{ marginTop: 10 }}>
-              {pageItems.map(({ d, ipo }) => <AppCard key={d.id} a={d} ipo={ipo} detail={applicantLine(d, profiles)} q={q} tr={tr} onSaved={reloadApps} />)}
+              {pageItems.map(({ d }) => <AppCard key={d.id} a={d} detail={applicantLine(d, profiles)} q={q} tr={tr} onSaved={reloadApps} />)}
             </div>
 
             {totalPages > 1 && (
@@ -462,8 +482,28 @@ export function Portfolio() {
         ) : (
           <div className="grid-cards" style={{ marginTop: 16 }}>
             {watchlist.map((sym) => {
-              const ipo = mockIpoBySymbol(sym);
-              if (!ipo) return null;
+              const ipo = catalog?.get(sym);
+              /* Still loading, or an IPO we no longer carry. Name the symbol
+                 either way: a starred row that renders nothing reads as the
+                 star having been lost. */
+              if (!ipo) return (
+                <div className="card" key={sym}>
+                  <div className="card-head">
+                    <div className="row" style={{ gap: 13, flexWrap: 'nowrap' }}>
+                      <CompanyMark name={sym} symbol={sym} size="md" />
+                      <div>
+                        <a className="linklike" href={`/ipos/${sym}${q}`}><h3>{sym}</h3></a>
+                        <div className="meta" style={{ marginTop: 5 }}>
+                          <span className="muted">{catalog ? 'Not in the current list' : 'Loading…'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row" style={{ marginTop: 14, justifyContent: 'space-between' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => store.toggleWatch(sym)}>Remove</button>
+                  </div>
+                </div>
+              );
               return (
                 <div className="card" key={sym}>
                   <div className="card-head">
@@ -495,7 +535,7 @@ export function Portfolio() {
   );
 }
 
-function AppCard({ a, ipo, detail, q, tr, onSaved }: { a: Application; ipo?: IpoDetail; detail?: string; q: string; tr: (k: string) => string; onSaved?: () => void }) {
+function AppCard({ a, detail, q, tr, onSaved }: { a: Application; detail?: string; q: string; tr: (k: string) => string; onSaved?: () => void }) {
   const stage = stageOf(a);
   return (
     <div className="panel" style={{ marginBottom: 14 }}>
@@ -522,9 +562,12 @@ function AppCard({ a, ipo, detail, q, tr, onSaved }: { a: Application; ipo?: Ipo
           </div>
         ))}
       </div>
-      {ipo && (
+      {/* The dates now ride on the application itself. They used to come from a
+          catalogue lookup that always returned undefined, so this line never
+          appeared; it is only rendered when at least one date is known. */}
+      {(a.allotmentDate || a.listingDate) && (
         <div className="muted mono" style={{ fontSize: 12, marginBottom: 10 }}>
-          Allotment {ipo.allotmentDate ?? '—'} · Listing {ipo.listingDate ?? '—'}
+          Allotment {a.allotmentDate ?? '—'} · Listing {a.listingDate ?? '—'}
         </div>
       )}
 
@@ -533,7 +576,7 @@ function AppCard({ a, ipo, detail, q, tr, onSaved }: { a: Application; ipo?: Ipo
           <span className="muted mono" style={{ fontSize: 13 }}>{a.applicationNumber} · {a.profileName}</span>
           <span className="mono" style={{ fontWeight: 700 }}>{inr(a.amount)}</span>
         </div>
-        {detail && <div className="faint mono" style={{ fontSize: 12, marginTop: 5 }}>{detail}</div>}
+        {detail && <div className="faint mono" style={{ fontSize: 12, marginTop: 5 }}>{detail}<VerifiedMark a={a} /></div>}
         <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
         <UpiStatusLine a={a} />
         <UpiChangeControl a={a} onSaved={onSaved} />
@@ -603,7 +646,7 @@ function Checker({ applications, profiles, q, tr }: {
           ) : (
             <div className="stack" style={{ marginTop: 16 }}>
               {results.map((raw) => {
-                const a = deriveLifecycle(raw, mockIpoBySymbol(raw.ipoSymbol));
+                const a = raw;   // the server's status, not a simulated one
                 return (
                   <div className="panel-sub" key={a.id}>
                     <div className="between">
@@ -616,7 +659,7 @@ function Checker({ applications, profiles, q, tr }: {
                       </div>
                       <span className={`appstatus ${STATUS_CLASS[a.status]}`}>{tr(`appStatus.${a.status}`)}</span>
                     </div>
-                    <div className="faint mono" style={{ fontSize: 12, marginTop: 8 }}>{applicantLine(a, profiles)}</div>
+                    <div className="faint mono" style={{ fontSize: 12, marginTop: 8 }}>{applicantLine(a, profiles)}<VerifiedMark a={a} /></div>
                     <div style={{ marginTop: 8, fontSize: 14 }}>{resultText(a)}</div>
                     <UpiStatusLine a={a} />
                     {(a.missingDetails ?? []).map((m) => (

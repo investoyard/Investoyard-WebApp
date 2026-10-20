@@ -54,11 +54,24 @@ export class ApplicationsService {
       include: {
         ipo: {
           select: {
-            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true, allotmentDate: true,
+            name: true, symbol: true, status: true, listingGainPct: true, lotSize: true, allotmentDate: true, listingDate: true,
             subscriptions: { select: { category: true, timesSubscribed: true, applicationsSubscribed: true } },
           },
         },
         profile: { select: { fullName: true, relationship: true, depository: true, dpId: true, clientId: true, upiTokenRef: true } },
+        /* The depository's own confirmation of this applicant's demat and PAN.
+           Narrowed to the one event rather than the whole log, because `status`
+           only ever holds the CURRENT value — an application that has moved on
+           to mandate_pending no longer says dp_verified, but the verification
+           did happen, and that is what the detail screen marks. `status` is
+           selected too so toView can read it the same way for getOne(), which
+           includes every event. */
+        events: {
+          where: { status: 'dp_verified' },
+          orderBy: { at: 'asc' },
+          take: 1,
+          select: { status: true, at: true },
+        },
       },
     });
     return rows.map(toView);
@@ -67,7 +80,7 @@ export class ApplicationsService {
   async getOne(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({
       where: { id, userId },
-      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true, allotmentDate: true } }, events: { orderBy: { at: 'asc' } } },
+      include: { ipo: { select: { name: true, symbol: true, status: true, listingGainPct: true, allotmentDate: true, listingDate: true } }, events: { orderBy: { at: 'asc' } } },
     });
     if (!app) throw new NotFoundException();
     return { ...toView(app), events: app.events };
@@ -1100,6 +1113,19 @@ export class ApplicationsService {
 const DATA_SHARING_NOTICE = CONSENT_NOTICES.data_sharing_rail.version;
 
 /** Prisma Application (+ ipo) → the shared ApplicationView (Decimals → numbers, + allotment). */
+/**
+ * NOT EVERY CALLER INCLUDES `events`, and that is why `dpVerifiedAt` reads
+ * `(a.events ?? [])`.
+ *
+ * `list()` and `getOne()` do. `recordAllotment()` and `withdraw()` build their
+ * return value from the Prisma `update()` result with `ipo` attached by hand,
+ * so they carry no events and report `dpVerifiedAt: undefined` — i.e. "not
+ * verified" for an application that may well be. It cannot be SEEN today:
+ * mobile discards both responses and re-fetches the list, and web never calls
+ * withdraw at all. It is recorded here rather than papered over, because a
+ * field on a view type that only some paths populate is the trap that gets
+ * read as "nothing populates it" by the next person.
+ */
 function toView(a: any) {
   const allottedAmount = a.allottedAmount != null ? Number(a.allottedAmount) : undefined;
   const ipoStatus = a.ipo?.status;
@@ -1141,6 +1167,12 @@ function toView(a: any) {
     ipoId: a.ipoId,
     ipoSymbol: a.ipo?.symbol,
     ipoName: a.ipo?.name,
+    /* The two dates an investor is waiting on. The application card has had a
+       line for these since it was written; it read them from a catalogue
+       lookup that returns undefined unconditionally, so it never rendered.
+       Date-only columns — sliced, not toISOString'd in full. */
+    allotmentDate: a.ipo?.allotmentDate ? a.ipo.allotmentDate.toISOString().slice(0, 10) : undefined,
+    listingDate: a.ipo?.listingDate ? a.ipo.listingDate.toISOString().slice(0, 10) : undefined,
     status: a.status,
     missingDetails: missingDetails.length ? missingDetails : undefined,
     applyMethod: a.applyMethod,
@@ -1149,7 +1181,17 @@ function toView(a: any) {
     lots: a.lots ?? undefined,
     shares: a.lots != null ? a.lots * lotSize : undefined,
     profileName: a.profile?.fullName ?? undefined,
+    /* Which applicant this is. The apply screen needs it to grey out an
+       applicant who already holds an application on this IPO; it used to key
+       that off a local mock store, so the real list never carried it. The
+       server is still the authority — the self-PAN rule is enforced on
+       panHash, which also catches two profiles sharing one PAN. */
+    investorProfileId: a.investorProfileId ?? undefined,
     relationship: a.profile?.relationship ?? undefined,
+    /* When the depository confirmed the demat and PAN, if it ever did. Read
+       from the event log rather than from `status`, which holds only the
+       current value. */
+    dpVerifiedAt: (a.events ?? []).find((e: any) => e.status === 'dp_verified')?.at?.toISOString(),
     createdAt: a.createdAt ? a.createdAt.toISOString() : undefined,
     amount: Number(a.amount),
     applicationNumber: a.applicationNumber ?? undefined,

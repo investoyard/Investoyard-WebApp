@@ -3,7 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { EXCHANGES, exchangeLabels, minApplicationShares } from '@investoyard/shared-types';
+import { EXCHANGES, exchangeLabels, minAllotmentShares } from '@investoyard/shared-types';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -251,7 +251,7 @@ function enrich(ipo: IpoDetail): IpoFull {
        ₹2 L divisor for BOTH HNI bands and a single lot for retail, so bHNI ran
        ~4.8× high on every issue and SME retail 2× high (2026-09-29). */
     const minApp = (cat: string): number =>
-      minApplicationShares(cat, { lotSize: lot, priceCap: upper, sme: ipo.type === 'sme' });
+      minAllotmentShares(cat, { lotSize: lot, priceCap: upper, sme: ipo.type === 'sme' });
     const bookOf = (k: string): number => {
       const row = resv?.[k];
       if (!row) return 0;
@@ -339,11 +339,6 @@ function enrich(ipo: IpoDetail): IpoFull {
   return f;
 }
 
-// MOCK is empty (front-site demo data removed on 2026-09-16), so FULL is [].
-// Kept as a named constant only so mockIpos()'s type signature stays stable
-// for any external caller — never populated.
-const FULL: IpoFull[] = MOCK.map(enrich);
-void FULL; // silence unused-var lint
 
 /** Published news posts (public; empty on failure). */
 export interface PostView {
@@ -411,11 +406,15 @@ export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined>
   return undefined;
 }
 
-/** Kept as no-ops so existing callers (Portfolio watchlist / lifecycle deriver)
- *  compile — they already handle undefined / empty. Real detail lookups go
- *  through getIpoDetail against the live API. */
-export function mockIpoBySymbol(_symbol: string): IpoFull | undefined { return undefined; }
-export function mockIpos(): IpoFull[] { return []; }
+/* `mockIpoBySymbol()` and `mockIpos()` were here, kept as no-ops after the mock
+   catalogue was deleted so their callers would still compile. That cost more
+   than it saved: the Portfolio watchlist looked each starred symbol up through
+   the first one, got `undefined` every time, and rendered NOTHING — an empty
+   tab for everyone who had ever starred an IPO, with the server holding their
+   list perfectly well. The application card's allotment/listing line died the
+   same way. A stub that silently answers "nothing" is worse than a missing
+   function, which the compiler would have named. Both callers now read real
+   data; use getIpos() or getIpoDetail(). */
 
 /** Symbols to statically generate — the live DB list at build time.
  *  `output: export` rejects a dynamic route with zero params, so when the

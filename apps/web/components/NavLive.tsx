@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { getIpos, type IpoFull } from '@/lib/api';
 import { IpoLogo } from '@/components/IpoLogo';
@@ -61,6 +62,12 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
   const [sig, setSig] = useState<Signals | null>(null);
   const [panel, setPanel] = useState(false);
   const [sheet, setSheet] = useState(false);
+  /* The export is static, so the first paint is a server render with no
+     `document` to portal into. `sheet` can only be true after a tap, but the
+     guard is kept explicit because that is a property of this component today
+     rather than of portals in general. */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -187,7 +194,21 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
         <Icon name="menu" size={19} />
         {sig && sig.liveCount > 0 && <span className="nv-sig live"><span className="nv-dot" />{sig.liveCount}</span>}
       </button>
-      {sheet && (
+      {/* PORTALLED TO `body`, and that is the whole fix rather than styling.
+          `.header` carries `backdrop-filter: saturate(1.8) blur(18px)`, and a
+          backdrop-filter makes an element the CONTAINING BLOCK for every
+          `position: fixed` descendant. Rendered in place, the scrim's
+          `inset: 0` therefore resolved against the header's 375x63 box
+          instead of the viewport, and `align-items: flex-end` hung the 565px
+          sheet at top -502 — 502px above the screen, with only its last two
+          links visible under the header. Measured at 375x812 on the published
+          export, 2026-10-20.
+
+          Same reason `Tooltip`, `SearchSelect` and `Modal` all portal out,
+          and the same class of fault: the CSS was correct and its position in
+          the DOM was not. Nothing here can be fixed by a rule in globals.css,
+          because no rule can undo a containing block. */}
+      {sheet && mounted && createPortal(
         <div className="nv-sheetwrap" onClick={() => setSheet(false)}>
           <div className="nv-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="nv-grab" />
@@ -210,7 +231,8 @@ export function NavLive({ langQuery = '' }: { langQuery?: string }) {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

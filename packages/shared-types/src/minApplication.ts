@@ -94,3 +94,49 @@ export function minApplicationShares(category: string, inp: MinApplicationInputs
   const lots = minApplicationLots(category, inp);
   return lots > 0 ? lots * (Number(inp.lotSize) || 0) : 0;
 }
+
+/**
+ * Minimum ALLOTMENT in LOTS — a different question from the minimum BID above,
+ * and the two must not be conflated.
+ *
+ * `minApplicationLots` answers "what is the smallest legal bid in this
+ * category", which is what the LOT LADDER shows a reader: a bHNI bid really
+ * must exceed ₹10 L. This answers "what is the smallest parcel an applicant in
+ * this category can be allotted", which is what "applications required for 1×"
+ * is actually counting — how many applicants the quota can serve.
+ *
+ * THE TWO NII BANDS SHARE ONE MINIMUM, and that is the whole substance of this
+ * function (operator ruling, 2026-10-20). The ₹10 L line SPLITS the NII quota
+ * into its two sub-buckets — two thirds to bHNI, one third to sHNI — it is not
+ * a second allotment unit. Under ICDR the minimum allotment to an NII is the
+ * NII minimum APPLICATION size, which is the ₹2 L + one lot figure for both
+ * bands. So a bHNI applicant and an sHNI applicant can be allotted the same
+ * smallest parcel.
+ *
+ * THE TEST THAT SETTLES IT IS THE QUOTA RATIO. A mainboard issue reserves 10%
+ * to bHNI and 5% to sHNI — exactly 2:1 — so with one divisor the bHNI count
+ * must come out at exactly double the sHNI count. It does: JPL reads
+ * 1,34,980 against 67,490. Dividing bHNI by its own ₹10 L minimum instead
+ * produced 26,996 — a QUARTER of sHNI's figure, from a book twice the size,
+ * which is the shape that made the operator look.
+ *
+ * KNOWN DISAGREEMENT, worth stating rather than burying: an RHP's own
+ * "applications" column is derived on the minimum-BID basis. Sai Urja's
+ * published table reads bHNI 21 · sHNI 28 · Retail 296, and this function
+ * gives bHNI 56. The document and this column are answering two different
+ * questions; 56 is "how many bHNI applicants can be allotted", 21 is "how many
+ * ₹10 L bids fill the quota". Reverting is one line — see `minApplicationLots`.
+ */
+export function minAllotmentLots(category: string, inp: MinApplicationInputs): number {
+  /* bHNI borrows sHNI's minimum verbatim. Writing it as a delegation rather
+     than a second copy of the arithmetic is deliberate: the ₹2 L figure is
+     derived differently on SME (at least one lot above the fixed individual
+     bid) and a duplicate would drift from it the first time that changed. */
+  return minApplicationLots(category === 'hni' ? 'hni2' : category, inp);
+}
+
+/** Minimum allotment in SHARES. Zero where no minimum is derivable (QIB). */
+export function minAllotmentShares(category: string, inp: MinApplicationInputs): number {
+  const lots = minAllotmentLots(category, inp);
+  return lots > 0 ? lots * (Number(inp.lotSize) || 0) : 0;
+}

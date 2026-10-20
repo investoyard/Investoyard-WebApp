@@ -16,10 +16,14 @@ export function SiteHeader() {
 
   const tenant = useTenant();
   const mobile = useStore((s) => s.mobile);
-  const profiles = useStore((s) => s.profiles);
-  const self = profiles.find((p) => p.relationship === 'self');
-  const initials = self?.fullName
-    ? self.fullName.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+  /* The ACCOUNT HOLDER's initials, never an applicant's. This read the first
+     profile whose relationship was 'self', and until 2026-10-20 the store minted
+     a demo "Rahul Sharma" into every browser on sign-in — so the avatar read
+     "RS" for every customer on the site. The name is the one the server issued
+     with the session. */
+  const name = useStore((s) => s.name);
+  const initials = name?.trim()
+    ? name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
     : (mobile ? mobile.slice(-2) : '');
 
   return (

@@ -32,7 +32,7 @@
 import { computeIssue, type IssueInputs } from './computeIssue';
 import { rulePackFor, inferRegulationBasis } from './issueRules';
 import { carveoutAt, CARVEOUT_KEYS } from './carveouts';
-import { minApplicationShares, minApplicationLots } from './minApplication';
+import { minApplicationShares, minApplicationLots, minAllotmentShares } from './minApplication';
 import { issueInputsFrom, parseIssueSizeRupees, type IssueInputSource } from './issueInputs';
 /* TYPE-only, and from the barrel on purpose: `SubscriptionRow` is declared in
    index.ts, which re-exports this file. A value import would be a cycle; a type
@@ -504,13 +504,22 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   // 2026-09-21, matching what other IPO information sources show).
   const lot = ipo.lotSize ?? 0;
   const priceMax = up(ipo);
-  /* One definition, shared with `lotLadder()` and the card's `formsFor1x`.
-     This used to hand the ₹2 L figure to BOTH HNI bands and a single lot to
-     retail, so bHNI "applications for 1×" ran ~4.8× high on every issue and
-     SME retail ran 2× high — `lotLadder` ten lines away had it right the whole
-     time and nothing compared them (2026-09-29). */
+  /* THE MINIMUM ALLOTMENT, NOT THE MINIMUM BID — and the distinction is the
+     whole point of this column (operator ruling, 2026-10-20). "Applications
+     required for 1x" counts APPLICANTS the quota can serve, so it divides by
+     the smallest parcel one of them can be allotted. The two NII bands share
+     that parcel: the ₹10 L line splits the NII quota two-thirds / one-third,
+     it is not a second allotment unit.
+
+     Dividing bHNI by its own ₹10 L minimum instead put a quota TWICE the size
+     of sHNI at a QUARTER of its count (JPL: 26,996 against 67,490), which is
+     the shape that got this reported. One divisor and the 10:5 reservation
+     comes through as 2:1, which is the property the test pins.
+
+     `lotLadder()` deliberately still reads `minApplicationShares` — what it
+     shows is the smallest legal BID, and a bHNI bid really must clear ₹10 L. */
   const minApp = (cat: string): number =>
-    minApplicationShares(cat, { lotSize: lot, priceCap: priceMax, sme: ipo.type === 'sme' });
+    minAllotmentShares(cat, { lotSize: lot, priceCap: priceMax, sme: ipo.type === 'sme' });
   const sharesPerApp = (cat: string): number => minApp(cat);
   // Anchor-share deduction — QIB rows are stored GROSS (matching how the
   // reservation table reads: "QIB (Anchor Included) 50% of the offer, N

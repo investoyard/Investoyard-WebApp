@@ -67,13 +67,54 @@ export class ProfilesService {
    * ------------------------------------------------------------------ */
 
   /** Every bank that has at least one branch, for the first picker. ~170 rows. */
-  async banks() {
-    const rows = await this.prisma.bankMaster.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    return rows;
+  /**
+   * The bank picker's options — sir's point 7, "bank master shown on indian
+   * bank, not out of India bank".
+   *
+   * IT WAS AN ORDERING PROBLEM, NOT A CONTENTS PROBLEM, and that distinction
+   * decided the fix. The directory is RBI's own IFSC list, so every bank in it
+   * HAS Indian branches — including the foreign ones, which operate here
+   * (AB Bank, Citi, Standard Chartered, DBS India are real ASBA banks and an
+   * applicant who banks with one has to be enterable). Removing anything would
+   * have made a valid application impossible to fill in.
+   *
+   * What the operator was actually looking at: ordered by name, the first twelve
+   * options were an army credit co-operative and eleven district co-operative
+   * banks, while STATE BANK OF INDIA sat at #1163 of 1348. Measured: 1,068 of
+   * the 1,348 banks have exactly ONE branch, and 46 have over 500 — so an
+   * alphabetical list is almost entirely the long tail, with everything anyone
+   * banks with buried in it.
+   *
+   * TWO TIERS, because the two groups are reached differently. The banks people
+   * use are reached by LOOKING — they have to be in the first screenful — so
+   * they are ordered by branch count, biggest first. The tail is reached by
+   * TYPING, where order does not matter, so it stays alphabetical and browsable.
+   * A single size-ordered list would have left a co-operative bank's position
+   * meaningless; a single alphabetical one is the bug.
+   *
+   * THE THRESHOLD IS CALIBRATED AGAINST THE DISTRIBUTION, not picked: 100
+   * branches puts 72 banks in the first tier (46 over 500, 26 between 101 and
+   * 500) and leaves a clean break — the next bucket down is 136 banks with
+   * between 11 and 100.
+   *
+   * `major` is returned so the picker can draw a divider. Without it the
+   * ordering looks arbitrary, which is its own kind of wrong.
+   *
+   * ONE GROUP BY rather than a count per bank: 1.7 lakh branch rows, and this
+   * is on the critical path of the one screen an applicant cannot avoid.
+   */
+  async banks(): Promise<{ id: string; name: string; major: boolean }[]> {
+    const MAJOR_MIN_BRANCHES = 100;
+    const rows = await this.prisma.$queryRaw<{ id: string; name: string; n: number }[]>`
+      SELECT b.id, b.name, COUNT(br.id)::int AS n
+        FROM "BankMaster" b
+        LEFT JOIN "BankBranch" br ON br."bankId" = b.id
+       WHERE b.active = true
+    GROUP BY b.id, b.name
+    ORDER BY (COUNT(br.id) >= ${MAJOR_MIN_BRANCHES}) DESC,
+             CASE WHEN COUNT(br.id) >= ${MAJOR_MIN_BRANCHES} THEN COUNT(br.id) END DESC,
+             lower(b.name) ASC`;
+    return rows.map((r) => ({ id: r.id, name: r.name, major: Number(r.n) >= MAJOR_MIN_BRANCHES }));
   }
 
   /**

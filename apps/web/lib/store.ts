@@ -1,25 +1,47 @@
 'use client';
 import type { DematAccountView } from '@investoyard/shared-types';
 /**
- * Investoyard web — client-side mock store (localStorage-backed).
- * Stands in for the live API until it's hosted: auth (OTP), investor profiles
- * (self + family), applications, and the watchlist. One source of truth for the
- * apply / account / portfolio screens. Replace with real API calls for production.
+ * Investoyard web — the small amount of client state the API cannot hold.
+ *
+ * WHAT THIS IS NOT ANY MORE. Until 2026-10-20 this file was a localStorage
+ * MOCK of the whole product: `signIn()` minted three fake applicants ("Rahul
+ * Sharma", PAN ABCDE1234F, a fake NSDL demat, kycStatus verified) into every
+ * browser that logged in, `placeApplication()` fabricated an application with
+ * a real-looking IY… number, and the portfolio walked a fake lifecycle with a
+ * fake allotment and a fake listing gain. It caused three of sir's eight
+ * reports in one round:
+ *
+ *   • the header avatar read "RS" for every customer for ever, because it was
+ *     reading Rahul Sharma while the account page read the real API;
+ *   • a signed-in customer whose `getIpoDetail()` call merely FAILED fell
+ *     through to the fabricated path, was told the application was placed, and
+ *     it existed nowhere — the identical fault removed from mobile 2026-10-09;
+ *   • nothing could honestly be marked verified while a demo profile claimed
+ *     to be already.
+ *
+ * So the standing rule is now true of this surface too: no mock fallbacks, no
+ * synthesised data, an empty state is honest. The API owns applicants and
+ * applications. What is left here is the two things a browser legitimately
+ * keeps for itself.
  */
 import { useSyncExternalStore } from 'react';
 import type { Depository } from '@investoyard/shared-types';
-import { getConsumerToken, listWatchlist, addWatchlist, removeWatchlist } from './consumer-api';
+import { getConsumerToken, listWatchlist, addWatchlist, removeWatchlist, type ApiProfile } from './consumer-api';
 import { getIpoDetail } from './api';
 
 export type Relationship = 'self' | 'spouse' | 'child' | 'parent' | 'sibling' | 'other';
 
 export type KycStatus = 'unverified' | 'verified';
 
+/**
+ * An applicant as the screens use it — the shape `mapApiProfile` maps the API
+ * row into. There is no local writer any more.
+ */
 export interface Profile {
   id: string;
   relationship: Relationship;
   fullName: string;
-  pan: string;            // stored masked-ish for demo
+  pan: string;
   depository: Depository;
   dpId: string;
   clientId: string;
@@ -30,8 +52,36 @@ export interface Profile {
   bankAccount?: string;
   ifsc?: string;
   nominee?: string;
-  kycStatus?: KycStatus;  // demo KYC state (PAN + demat verification)
+  kycStatus?: KycStatus;
   consent: boolean;
+}
+
+/**
+ * Map a masked API applicant into the `Profile` shape the screens render.
+ *
+ * It lives here, beside the type it produces, because TWO surfaces need it —
+ * the apply wizard and the portfolio's PAN cross-check — and a copy in each
+ * is how two readings of one API row drift apart.
+ */
+export function mapApiProfile(p: ApiProfile): Profile {
+  return {
+    id: p.id,
+    relationship: p.relationship as Relationship,
+    fullName: p.fullName,
+    pan: p.pan,
+    depository: p.depository as Depository,
+    dpId: p.dpId,
+    clientId: p.clientId,
+    /* Carried through so the picker reads the same list the profile screen
+       shows. Without this the type would compile and the picker would never
+       appear — a field on the type that nothing populates. */
+    demats: p.demats,
+    upiId: p.hasUpi ? 'upi-verified' : undefined,
+    bankAccount: p.hasBank ? 'set' : undefined,
+    ifsc: p.ifsc,
+    kycStatus: (p.kycStatus as KycStatus) ?? 'unverified',
+    consent: true,
+  };
 }
 
 export type AppStatus =
@@ -41,6 +91,7 @@ export type AppStatus =
 
 export type InvestorCategory = 'Retail' | 'sNII' | 'bNII';
 
+/** An application as the screens use it — again, mapped from the API. */
 export interface Application {
   id: string;
   ipoSymbol: string;
@@ -63,20 +114,24 @@ export interface Application {
   status: AppStatus;
   applicationNumber: string;
   createdAt: string;
-  // lifecycle / allotment outcome (filled as the application progresses)
+  // lifecycle / allotment outcome, as the rail and the registrar report it
   amountBlocked?: number;
   amountReleased?: number;
   allottedShares?: number;
   listingGainPct?: number;
-  // live subscription for this application's category (while the IPO is open)
   categorySubscribedTimes?: number;
   allotmentOddsPct?: number;
-  /** While 'submitted': applicant details still blocking the exchange bid (from the API). */
+  /** The two dates the investor is waiting on (YYYY-MM-DD). */
+  allotmentDate?: string;
+  listingDate?: string;
+  /** While 'submitted': applicant details still blocking the exchange bid. */
   missingDetails?: string[];
-  /** The exchange's own UPI sentence + when it was observed (from the API). */
+  /** The exchange's own UPI sentence + when it was observed. */
   upiStatusText?: string;
   upiStatusAt?: string;
-  /** Sponsor-bank unblock request state (from the API; see mayRequestUnblock). */
+  /** When the depository confirmed this applicant's demat and PAN. */
+  dpVerifiedAt?: string;
+  /** Sponsor-bank unblock request state (see mayRequestUnblock). */
   unblockAvailable?: boolean;
   unblockReason?: string;
   unblockStuckAmount?: number;
@@ -84,14 +139,24 @@ export interface Application {
 }
 
 interface State {
-  mobile: string | null;          // null = signed out
-  profiles: Profile[];
-  applications: Application[];
-  watchlist: string[];            // ipo symbols
+  /** null = signed out. The reactive "is anyone here" signal for the chrome. */
+  mobile: string | null;
+  /**
+   * The ACCOUNT HOLDER's own name, for the header avatar.
+   *
+   * It lives here rather than being read from `getConsumerUser()` because the
+   * header has to re-render when it changes and a bare localStorage read does
+   * not notify. It is the account's name and never an applicant's: the avatar
+   * used to take the initials of the first applicant profile, which is how a
+   * demo person's initials ended up on every signed-in header.
+   */
+  name: string | null;
+  /** IPO symbols. Optimistic locally, authoritative on the server. */
+  watchlist: string[];
 }
 
 const KEY = 'investoyard.web.v1';
-const empty: State = { mobile: null, profiles: [], applications: [], watchlist: [] };
+const empty: State = { mobile: null, name: null, watchlist: [] };
 
 let state: State = empty;
 let loaded = false;
@@ -102,6 +167,9 @@ function load(): State {
   if (loaded) return state;
   try {
     const raw = window.localStorage.getItem(KEY);
+    /* Spreading over `empty` DROPS keys this version no longer has, which is
+       what retires the demo applicants and fabricated applications still sitting
+       in the localStorage of anyone who signed in before today. */
     if (raw) state = { ...empty, ...JSON.parse(raw) };
   } catch { /* ignore */ }
   loaded = true;
@@ -118,53 +186,27 @@ function set(next: Partial<State>) {
   persist();
 }
 
-const rid = () => Math.random().toString(36).slice(2, 9);
-const appNo = () => 'IY' + Math.floor(100000000 + Math.random() * 899999999);
-
 /* ----------------------------------------------------------- actions */
 export const store = {
   load,
-  signIn(mobile: string) {
+  /** Records who is signed in. Creates nothing — the API owns applicants. */
+  signIn(mobile: string, name?: string | null) {
     load();
-    // Fresh users get ready-to-use demo applicants so the apply flow is walkable immediately.
-    const profiles = state.profiles.length ? state.profiles : demoProfiles();
-    set({ mobile, profiles });
-    void store.syncWatchlist(); // pull the server watchlist for this user
+    set({ mobile, name: name ?? null });
+    void store.syncWatchlist();
   },
-  /** Fill an incomplete profile with realistic sample details (demo) so it becomes selectable. */
-  fillSample(id: string) {
+  signOut() { set({ mobile: null, name: null }); },
+  /**
+   * Takes the account holder's name from the server (SessionCheck, once per
+   * page load). The server is authoritative, so this OVERWRITES rather than
+   * filling a gap: a name corrected in admin must win over what a browser
+   * wrote down at sign-in. No-op when signed out, so a stale name cannot
+   * reappear beside an empty session.
+   */
+  adoptName(name: string | null) {
     load();
-    set({
-      profiles: state.profiles.map((p) =>
-        p.id === id ? { ...p, ...sampleFor(p.relationship, p.fullName) } : p,
-      ),
-    });
-  },
-  signOut() { set({ mobile: null }); },
-  addProfile(p: Omit<Profile, 'id'>) {
-    load();
-    set({ profiles: [...state.profiles, { ...p, id: rid() }] });
-  },
-  updateProfile(id: string, patch: Partial<Profile>) {
-    load();
-    set({ profiles: state.profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
-  },
-  verifyKyc(id: string) {
-    load();
-    set({ profiles: state.profiles.map((p) => (p.id === id ? { ...p, kycStatus: 'verified' } : p)) });
-  },
-  removeProfile(id: string) {
-    load();
-    set({ profiles: state.profiles.filter((p) => p.id !== id) });
-  },
-  placeApplication(a: Omit<Application, 'id' | 'applicationNumber' | 'createdAt' | 'status'>) {
-    load();
-    const app: Application = {
-      ...a, id: rid(), applicationNumber: appNo(),
-      createdAt: new Date().toISOString(), status: 'mandate_pending',
-    };
-    set({ applications: [app, ...state.applications] });
-    return app;
+    if (!state.mobile || state.name === name) return;
+    set({ name });
   },
   toggleWatch(symbol: string) {
     load();
@@ -187,21 +229,6 @@ export const store = {
       set({ watchlist: symbols });
     } catch { /* keep local */ }
   },
-  /** Demo: walk an application through its lifecycle (block → allotment → listing). */
-  advanceApplication(id: string) {
-    load();
-    set({ applications: state.applications.map((a) => (a.id === id ? advanceApp(a) : a)) });
-  },
-  resetApplication(id: string) {
-    load();
-    set({
-      applications: state.applications.map((a) =>
-        a.id === id
-          ? { ...a, status: 'mandate_pending', amountBlocked: undefined, amountReleased: undefined, allottedShares: undefined, listingGainPct: undefined }
-          : a,
-      ),
-    });
-  },
   subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
   snapshot() { return load(); },
 };
@@ -215,66 +242,7 @@ export function useStore<T>(selector: (s: State) => T): T {
   );
 }
 
+/** Everything an applicant needs before a bid can be built from them. */
 export function profileReady(p: Profile): boolean {
   return Boolean(p.fullName && p.pan && p.dpId && p.clientId && p.upiId && p.consent);
-}
-
-/* ----------------------------------------------------------- demo / sample data */
-const SAMPLES: Record<string, Omit<Profile, 'id' | 'relationship' | 'consent'>> = {
-  self:   { fullName: 'Rahul Sharma',  pan: 'ABCDE1234F', depository: 'NSDL', dpId: 'IN300484', clientId: '10293847', upiId: 'rahul@okhdfc',  bankAccount: '5012 3456 7890', ifsc: 'HDFC0001234', nominee: 'Anjali Sharma', kycStatus: 'verified' },
-  spouse: { fullName: 'Anjali Sharma', pan: 'FGHIJ5678K', depository: 'CDSL', dpId: '12081600', clientId: '56473829', upiId: 'anjali@okaxis', bankAccount: '9120 8845 1102', ifsc: 'UTIB0000456', nominee: 'Rahul Sharma',  kycStatus: 'verified' },
-  child:  { fullName: 'Aarav Sharma',  pan: 'KLMNO9012P', depository: 'NSDL', dpId: 'IN302902', clientId: '88776655', upiId: 'aarav@okicici', bankAccount: '0337 1209 6634', ifsc: 'ICIC0000789', nominee: 'Rahul Sharma',  kycStatus: 'verified' },
-  parent: { fullName: 'Suresh Sharma', pan: 'PQRST3456U', depository: 'CDSL', dpId: '12033200', clientId: '44332211', upiId: 'suresh@oksbi',  bankAccount: '2271 0098 4523', ifsc: 'SBIN0001122', nominee: 'Rahul Sharma',  kycStatus: 'verified' },
-};
-
-function sampleFor(rel: Relationship, keepName?: string): Omit<Profile, 'id' | 'relationship'> {
-  const s = SAMPLES[rel] ?? SAMPLES.self;
-  return { ...s, fullName: keepName || s.fullName, consent: true };
-}
-
-function demoProfiles(): Profile[] {
-  return [
-    { id: rid(), relationship: 'self', consent: true, ...SAMPLES.self },
-    { id: rid(), relationship: 'spouse', consent: true, ...SAMPLES.spouse },
-    { id: rid(), relationship: 'child', consent: true, ...SAMPLES.child },
-  ];
-}
-
-/* ----------------------------------------------------------- application lifecycle (demo) */
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-}
-
-/** Lifecycle stage index for a status: 1 submitted · 2 blocked · 3 allotment · 4 listing. */
-export function appStage(a: Application): number {
-  switch (a.status) {
-    case 'mandate_pending': return 1;
-    case 'upi_blocked': return 2;
-    case 'allotted': return a.listingGainPct != null ? 4 : 3;
-    case 'not_allotted': return 3;
-    default: return 1;
-  }
-}
-
-/** Returns the next state in the demo lifecycle. */
-function advanceApp(a: Application): Application {
-  switch (a.status) {
-    case 'mandate_pending':
-      // mandate approved / ASBA submitted → funds blocked
-      return { ...a, status: 'upi_blocked', amountBlocked: a.amount };
-    case 'upi_blocked': {
-      // basis of allotment — demo "lottery" (deterministic by id)
-      const allotted = hashStr(a.id) % 2 === 0;
-      return allotted
-        ? { ...a, status: 'allotted', allottedShares: a.shares, amountBlocked: a.amount, amountReleased: 0 }
-        : { ...a, status: 'not_allotted', allottedShares: 0, amountBlocked: 0, amountReleased: a.amount };
-    }
-    case 'allotted':
-      // listing day — demo gain between roughly -12% and +28%
-      return a.listingGainPct != null ? a : { ...a, listingGainPct: (hashStr(a.id + 'L') % 41) - 12 };
-    default:
-      return a;
-  }
 }

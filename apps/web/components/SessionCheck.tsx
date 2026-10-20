@@ -19,6 +19,11 @@ import { store } from '@/lib/store';
  * the page nothing, and a session that is not is corrected a tick later rather
  * than holding the whole site behind a round trip.
  *
+ * IT ALSO ADOPTS THE ACCOUNT HOLDER'S NAME, which the same /auth/me reply
+ * already carries. That is what the header avatar renders, and taking it from
+ * the server rather than from localStorage means a name corrected in admin is
+ * right on the next page load.
+ *
  * IT ONLY ACTS ON AN EXPLICIT REJECTION. `checkConsumerSession` separates "the
  * server says this account is gone" from "I could not reach the server", and
  * only the first signs anyone out — see the note on that function.
@@ -30,9 +35,13 @@ export function SessionCheck() {
   useEffect(() => {
     let cancelled = false;
     void checkConsumerSession().then((r) => {
-      if (cancelled || r !== 'gone') return;
-      clearConsumerSession();
-      store.signOut();
+      if (cancelled) return;
+      if (r.state === 'gone') { clearConsumerSession(); store.signOut(); return; }
+      /* Take the account holder's name from the SERVER while we are here. It
+         also backfills everyone who signed in before the name was kept at all
+         — their avatar would otherwise show the last two digits of their
+         mobile until they signed in again. */
+      if (r.state === 'ok' && r.name !== undefined) store.adoptName(r.name);
     });
     return () => { cancelled = true; };
   }, []);

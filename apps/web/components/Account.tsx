@@ -201,7 +201,28 @@ export function Account() {
             options={editing ? Array.from(new Set([String(editing.relationship).toLowerCase(), ...available])) : available}
             editing={editing ?? undefined}
             onCancel={() => { setAdding(false); setEditing(null); }}
-            onSaved={() => { setAdding(false); setEditing(null); load(); }}
+            /* Sir's point 8 — "after save show success msg and page scroll up".
+
+               The form lives in a modal, so saving used to close it and leave
+               the reader looking at the same list with nothing having said that
+               anything happened — and on a phone, often scrolled to wherever
+               the Add button was rather than to the list that just changed.
+
+               The message reuses the page's existing `msg` banner, which sits
+               under the heading and is what the delete path already writes to.
+               A second mechanism (a toast) would mean two places a result can
+               appear, and the scroll is pointless if the message is elsewhere. */
+            onSaved={(name) => {
+              const wasEdit = !!editing;
+              setAdding(false); setEditing(null); setErr(null);
+              load();
+              setMsg(name
+                ? `${name} ${wasEdit ? 'updated' : 'added'}.`
+                : wasEdit ? 'Applicant updated.' : 'Applicant added.');
+              /* The banner is at the top of the page. Smooth, so it reads as the
+                 page moving to the result rather than as a reload. */
+              if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         </Modal>
       )}
@@ -558,7 +579,7 @@ function Help({ children, error }: { children?: React.ReactNode; error?: string 
   if (error) return <span className="hint hint-bad">{error}</span>;
   return children ? <span className="hint">{children}</span> : null;
 }
-function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { tr: (k: string) => string; defaultRel: Relationship; options: Relationship[]; editing?: ApiProfile; onCancel: () => void; onSaved: () => void }) {
+function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { tr: (k: string) => string; defaultRel: Relationship; options: Relationship[]; editing?: ApiProfile; onCancel: () => void; onSaved: (name: string) => void }) {
   const [f, setF] = useState<ProfileInput>(() => editing ? {
     relationship: String(editing.relationship).toLowerCase(),
     fullName: editing.fullName, pan: '', // masked on server — type a new PAN only to change it
@@ -746,7 +767,9 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
       }
       if (editing) await updateProfile(editing.id, payload);
       else await createProfile(payload as ProfileInput);
-      onSaved();
+      /* The name goes back up so the page can name them in the confirmation.
+         `f.fullName` is what was actually saved, not what was loaded. */
+      onSaved(f.fullName.trim());
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -893,7 +916,7 @@ function AddProfile({ tr, defaultRel, options, editing, onCancel, onSaved }: { t
         <div className="field">
           <label>Bank name</label>
           <SearchSelect
-            options={banks!.map((b) => ({ value: b.id, label: b.name }))}
+            options={banks!.map((b) => ({ value: b.id, label: b.name, group: b.major ? 'Commonly used' : 'All other banks' }))}
             value={bankId}
             onChange={(v) => {
               const b = banks!.find((x) => x.id === v);

@@ -78,7 +78,7 @@ export function LoginForm() {
     try {
       const { accessToken, user } = await passwordLogin(mobile, password);
       setConsumerSession(accessToken, user);
-      store.signIn(mobile);
+      store.signIn(mobile, user.name);
       router.push(next);
     } catch (e: any) {
       /* The server answers every failure identically on purpose, so there is
@@ -93,7 +93,7 @@ export function LoginForm() {
     try {
       const { accessToken, user } = await verifyOtp(requestId, otp.join(''));
       setConsumerSession(accessToken, user);
-      store.signIn(mobile);
+      store.signIn(mobile, user.name);
       router.push(next);
     } catch (e: any) {
       // No account on this number: send them to Sign up with it already
@@ -168,6 +168,25 @@ export function LoginForm() {
               <b>No account on +91 {mobile}.</b>{' '}
               <a href={`/signup${q ? q + '&' : '?'}mobile=${mobile}`}>Create one</a> — it takes a minute.
             </div>
+          )}
+          {/* Sir's point 6. Signing up was reachable only through the banner
+              above — i.e. only by someone who had already tried to sign in on a
+              number with no account and been turned away. Until there was a
+              signup at all that was nearly true of the product, because an
+              unknown mobile was silently registered; now it is a door, and a
+              door has to be visible before you need it. The number is carried
+              over so nobody retypes it.
+
+              Hidden once the banner is up, which says the same thing with the
+              number in it — two offers to sign up, one under the other, reads
+              as a mistake. */}
+          {!noAccount && (
+            <p style={{ textAlign: 'center', marginTop: 16 }} className="muted">
+              New to Investoyard?{' '}
+              <a href={mobile.length === 10 ? `/signup${q ? q + '&' : '?'}mobile=${mobile}` : `/signup${q}`}>
+                Create an account
+              </a>
+            </p>
           )}
         </div>
       ) : (

@@ -34,7 +34,19 @@ export function SignupForm() {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const next = sp.get('next') || `/account${q}`;
 
-  const [step, setStep] = useState<'details' | 'otp'>('details');
+  /**
+   * 'done' is sir's point 4 — "user can't know his registration success or not".
+   *
+   * Verifying used to call router.push() in the same tick, so the account was
+   * created and the person was simply somewhere else, with nothing on screen
+   * having said so. The confirmation is a STEP rather than a toast on the next
+   * page: a toast on /account competes with a form, and this is the one moment
+   * in the flow where there is nothing to do but read.
+   *
+   * It does NOT auto-advance. A timed redirect puts the reader back where they
+   * started — wondering whether that worked — which is the whole complaint.
+   */
+  const [step, setStep] = useState<'details' | 'otp' | 'done'>('details');
   const [name, setName] = useState('');
   // Carried over when Sign in sent them here, so nobody retypes the number they
   // just entered on the other screen.
@@ -93,8 +105,10 @@ export function SignupForm() {
       // sign-in; without it an unknown mobile is refused.
       const { accessToken, user } = await verifyOtp(requestId, otp.join(''), name.trim());
       setConsumerSession(accessToken, user);
-      store.signIn(mobile);
-      router.push(next);
+      store.signIn(mobile, user.name);
+      /* Signed in already — the confirmation is a screen, not a gate. Anything
+         they click from here works because the session is live. */
+      setStep('done');
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -102,8 +116,10 @@ export function SignupForm() {
   return (
     <div className="su-wrap">
       <div className="panel su-form">
-        <h1 style={{ fontSize: 26 }}>Create your account</h1>
-        <p className="muted">Apply for IPOs with your own PAN, demat and bank account.</p>
+        {step !== 'done' && <>
+          <h1 style={{ fontSize: 26 }}>Create your account</h1>
+          <p className="muted">Apply for IPOs with your own PAN, demat and bank account.</p>
+        </>}
 
         {step === 'details' ? (
           <div style={{ marginTop: 20 }}>
@@ -153,7 +169,7 @@ export function SignupForm() {
               Already have an account? <a href={`/login${q}`}>Sign in</a>
             </p>
           </div>
-        ) : (
+        ) : step === 'otp' ? (
           <div style={{ marginTop: 20 }}>
             <div className="field">
               <label>{tr('login.enterOtp')}</label>
@@ -180,6 +196,23 @@ export function SignupForm() {
               <span className="linklike" onClick={() => { if (!busy) sendOtp(); }}>{tr('login.resend')}</span>
             </p>
           </div>
+        ) : (
+          <div style={{ marginTop: 20, textAlign: 'center' }}>
+            <div className="su-tick" aria-hidden>✓</div>
+            <h2 style={{ fontSize: 21, margin: '14px 0 0' }}>Your account is ready</h2>
+            <p className="muted" style={{ marginTop: 6 }}>
+              {name.trim() ? <>Welcome, <b>{name.trim()}</b>. </> : null}
+              Signed in as <span className="mono">+91 {mobile}</span>.
+            </p>
+            <div className="su-next">
+              <b>Next:</b> add the person who will apply — their own PAN, demat and
+              bank account. You can add family members too, each with their own PAN.
+            </div>
+            <a className="btn btn-block btn-lg" href={next} style={{ marginTop: 16 }}>Add an applicant</a>
+            <p style={{ textAlign: 'center', marginTop: 12 }}>
+              <a className="linklike" href={`/${q}`}>Browse IPOs first</a>
+            </p>
+          </div>
         )}
       </div>
 
@@ -202,10 +235,14 @@ export function SignupForm() {
           address and email as well, and we’ll fill the form for you to print
           and sign — instead of writing it out by hand.
         </div>
-        <p className="su-fine">
-          You can add these later. Nothing is needed to create the account except
-          your name and mobile number.
-        </p>
+        {/* Stale the moment the account exists — the checklist above is still
+            what they need, this sentence is not. */}
+        {step !== 'done' && (
+          <p className="su-fine">
+            You can add these later. Nothing is needed to create the account except
+            your name and mobile number.
+          </p>
+        )}
       </aside>
     </div>
   );

@@ -95,17 +95,34 @@ export const grantConsent = (type: string, noticeVersion: string) =>
  * signing someone out because their train went into a tunnel would be a worse
  * bug than the one being fixed.
  */
-export async function checkConsumerSession(): Promise<'ok' | 'gone' | 'unknown'> {
+/**
+ * The answer, plus the account holder's own name when the server gave one.
+ *
+ * The name rides along because this call is already being made on every page
+ * load and /auth/me already returns it — so the header avatar can be driven by
+ * the SERVER's idea of who this is rather than by whatever a browser wrote
+ * down at sign-in. A name corrected in admin then shows up on the next load.
+ */
+export interface SessionCheckResult {
+  state: 'ok' | 'gone' | 'unknown';
+  /** Present only on 'ok'. null means the server holds no name for them. */
+  name?: string | null;
+}
+
+export async function checkConsumerSession(): Promise<SessionCheckResult> {
   const t = getConsumerToken();
-  if (!t) return 'ok'; // nothing to validate
+  if (!t) return { state: 'ok' }; // nothing to validate
   try {
     const res = await fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${t}` } });
-    if (res.ok) return 'ok';
+    if (res.ok) {
+      const me = await res.json().catch(() => null);
+      return { state: 'ok', name: typeof me?.name === 'string' ? me.name : null };
+    }
     // 401 the guard refused it · 404 the user row is gone · 403 not active
-    if (res.status === 401 || res.status === 403 || res.status === 404) return 'gone';
-    return 'unknown';
+    if (res.status === 401 || res.status === 403 || res.status === 404) return { state: 'gone' };
+    return { state: 'unknown' };
   } catch {
-    return 'unknown';
+    return { state: 'unknown' };
   }
 }
 
@@ -166,7 +183,17 @@ export const fetchRelationships = () => req<RelationshipOption[]>('/profiles/rel
 export const fetchUpiHandles = () => req<string[]>('/profiles/upi-handles', { method: 'GET' });
 
 // ---- bank / branch / pincode directory (public reference data) ----
-export interface BankOption { id: string; name: string }
+export interface BankOption {
+  id: string; name: string;
+  /**
+   * One of the 72 banks with 100+ branches. The endpoint returns those FIRST,
+   * biggest first, then everything else A–Z — because ordered by name alone
+   * the first dozen options were district co-operative banks and State Bank of
+   * India sat at #1163 of 1348. The flag is what lets the picker head the two
+   * groups, so the order reads as deliberate rather than random.
+   */
+  major?: boolean;
+}
 export interface BranchRow {
   id: string; ifsc: string; branch: string;
   city: string | null; district: string | null; state: string | null;
@@ -332,7 +359,11 @@ export interface ApiApplication {
   lots?: number;
   shares?: number;
   profileName?: string;
+  /** Which applicant placed it — the apply screen greys that applicant out. */
+  investorProfileId?: string;
   relationship?: string;
+  /** When the depository confirmed this applicant's demat and PAN. */
+  dpVerifiedAt?: string;
   createdAt?: string;
   amount: number;
   applicationNumber?: string;
@@ -347,6 +378,9 @@ export interface ApiApplication {
   listingGain?: number;
   categorySubscribedTimes?: number;
   allotmentOddsPct?: number;
+  /** The two dates the investor is waiting on (YYYY-MM-DD). */
+  allotmentDate?: string;
+  listingDate?: string;
   /** While 'submitted': applicant details still blocking the exchange bid. */
   missingDetails?: string[];
   /** The exchange's own sentence about the UPI mandate, and when it was observed. */

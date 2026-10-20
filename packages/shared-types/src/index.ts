@@ -207,6 +207,21 @@ export interface ApplicationView {
   categorySubscribedTimes?: number;
   /** Estimated retail allotment odds %, derived from by-applications subscription (retail only). */
   allotmentOddsPct?: number;
+  /**
+   * When the DEPOSITORY confirmed this applicant's demat account and PAN.
+   *
+   * It is read from the status-event log, not from `status`, because `status`
+   * holds only the CURRENT value: an application that has moved on to
+   * mandate_pending or allotted no longer says dp_verified while the
+   * verification plainly did happen. Absent until `/appdpstatus` has been
+   * received for it — nothing else on the platform establishes that a PAN owns
+   * a demat account, and `InvestorProfile.kycStatus` in particular does not
+   * (it has only ever been written 'unverified').
+   */
+  dpVerifiedAt?: string;
+  /** The two dates the investor is waiting on (YYYY-MM-DD). */
+  allotmentDate?: string;
+  listingDate?: string;
   /** While 'submitted': applicant details still blocking the exchange bid (UPI / demat). */
   missingDetails?: string[];
   /**
