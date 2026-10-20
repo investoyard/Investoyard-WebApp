@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +13,16 @@ const OTP_TTL = 5 * 60;        // seconds
 const RL_MAX = 5;              // max OTP requests per mobile per hour
 const RL_COOLDOWN = 30;        // seconds between requests for a mobile
 const PW_MAX_FAILURES = 5;     // wrong passwords before the password door closes
+/**
+ * How many times ONE IP may be told whether a mobile is registered, per hour.
+ *
+ * Generous on purpose — a household or office behind one NAT shares an address,
+ * and a real person may try a couple of numbers. It is not meant to stop a
+ * determined attacker, only to make BULK probing cost something: at 30/hour,
+ * sweeping ten thousand numbers from one address takes a fortnight.
+ */
+const PROBE_MAX_PER_IP = 30;
+const PROBE_WINDOW_SEC = 3600;
 const PW_LOCKOUT_SEC = 15 * 60;
 
 /**
@@ -121,8 +131,71 @@ export class AuthService {
    * verify returns NO_ACCOUNT precisely so an unknown mobile can be walked to
    * Sign up. This adds nothing an attacker could not already learn.
    */
-  async requestOtp(mobile: string, ip?: string): Promise<{ requestId: string; channel: string }> {
+  /**
+   * May THIS caller be told whether a mobile is registered?
+   *
+   * EXCEEDING THE LIMIT DEGRADES, IT NEVER BLOCKS. Over the limit we simply do
+   * not answer the question early — the OTP is sent and `verifyOtp` decides, as
+   * it always did. So a prober learns nothing extra and a real person behind a
+   * busy NAT still gets their code. Refusing the request instead would turn an
+   * anti-enumeration measure into an outage for whoever shares that address.
+   *
+   * A BLANK IP IS TREATED AS NOT ALLOWED. If we cannot tell callers apart we
+   * cannot limit them, and the safe failure is the non-disclosing one.
+   */
+  private async mayDiscloseExistence(ip?: string): Promise<boolean> {
+    const key = (ip ?? '').trim();
+    if (!key) return false;
+    if (!this.redis.client) return false;
+    const n = await this.redis.client.incr(`otp:probe:${key}`);
+    if (n === 1) await this.redis.client.expire(`otp:probe:${key}`, PROBE_WINDOW_SEC);
+    return n <= PROBE_MAX_PER_IP;
+  }
+
+  /**
+   * Request a one-time code.
+   *
+   * `intent` SAYS WHICH DOOR THE CALLER IS STANDING AT, and it is what lets the
+   * wrong-door answer arrive BEFORE an SMS is paid for. Until it existed, a
+   * person with no account typed their number, received a code, typed it, and
+   * only then learned they needed to sign up.
+   *
+   * It is OPTIONAL and omitting it keeps the old behaviour, which is what makes
+   * this safe to deploy before the clients are rebuilt: an older app that does
+   * not send it is unaffected.
+   *
+   * THE TRADE-OFF IS DELIBERATE AND WAS THE OPERATOR’S CALL. Answering here
+   * makes the customer list enumerable, where answering at verify did not —
+   * `verifyOtp` checks the OTP first, so only someone holding the phone ever
+   * learned whether the account existed. `mayDiscloseExistence` is the brake.
+   */
+  async requestOtp(mobile: string, ip?: string, intent?: 'signin' | 'signup'): Promise<{ requestId: string; channel: string }> {
     if (!/^\d{10}$/.test(mobile)) throw new BadRequestException('Invalid mobile');
+
+    /* The wrong-door answer, BEFORE the SMS. Both branches are gated on the
+       per-IP allowance; over it, we fall through and send, exactly as before. */
+    if (intent) {
+      const known = await tenantContext.runUnscoped(async () =>
+        this.prisma.user.findUnique({ where: { mobile }, select: { id: true, status: true } }),
+      );
+      if (await this.mayDiscloseExistence(ip)) {
+        if (intent === 'signin' && !known) {
+          this.audit('auth.otp.no_account', { mobile, detail: { ip, at: 'request' } });
+          throw new NotFoundException({
+            code: 'NO_ACCOUNT',
+            message: 'No account found for this mobile number. Please sign up first.',
+          });
+        }
+        if (intent === 'signup' && known) {
+          this.audit('auth.signup.exists', { mobile, detail: { ip } });
+          throw new ConflictException({
+            code: 'HAVE_ACCOUNT',
+            message: 'You already have an account on this number. Please sign in instead.',
+          });
+        }
+      }
+    }
+
     await this.rateLimit(mobile);
     const requestId = randomBytes(16).toString('hex');
     const otp = String(randomInt(100000, 1000000)); // real 6-digit code

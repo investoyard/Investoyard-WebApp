@@ -41,14 +41,23 @@ export function LoginForm() {
   const otpFull = otp.every((d) => d !== '');
 
   async function sendOtp() {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setNoAccount(false);
     try {
-      const { requestId, channel } = await requestOtp(mobile);
+      const { requestId, channel } = await requestOtp(mobile, 'signin');
       setRequestId(requestId);
       setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
       setOtp(['', '', '', '', '', '']);
       setStep('otp');
-    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    } catch (e: any) {
+      /* THE WRONG-DOOR ANSWER NOW ARRIVES HERE, before any SMS. It is not an
+         error — it is the wrong door — so it goes to the same banner the
+         post-OTP case used, with the number already filled into the sign-up
+         link. (The server only answers this early within its per-IP
+         allowance; over that it stays silent and the old flow applies, so
+         the post-verify handling below must stay.) */
+      if (isNoAccount(e)) setNoAccount(true);
+      else setErr(String(e?.message ?? e));
+    }
     finally { setBusy(false); }
   }
 
@@ -126,7 +135,7 @@ export function LoginForm() {
               <input
                 id="mob" className="input mono" inputMode="numeric" autoComplete="tel"
                 placeholder="98765 43210" value={mobile}
-                onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                onChange={(e) => { setMobile(e.target.value.replace(/\D/g, '').slice(0, 10)); setNoAccount(false); setErr(null); }}
               />
             </div>
           </div>

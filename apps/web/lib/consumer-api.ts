@@ -28,6 +28,10 @@ export function clearConsumerSession() {
 export interface ApiError extends Error { status?: number; code?: string }
 
 /** The server's reply when the mobile has no account yet — route to signup. */
+/** The mirror of isNoAccount: this number already has an account. */
+export const isHaveAccount = (e: unknown): boolean =>
+  (e as ApiError)?.code === 'HAVE_ACCOUNT' || (e as ApiError)?.status === 409;
+
 export const isNoAccount = (e: unknown): boolean =>
   (e as ApiError)?.code === 'NO_ACCOUNT' || (e as ApiError)?.status === 404;
 
@@ -118,7 +122,13 @@ export const fetchAuthMethods = () => req<AuthMethods>('/auth/methods', { method
  * Request an OTP. The reply says WHICH channel carried it, so the next screen
  * can name the app to look in rather than saying "check your messages".
  */
-export const requestOtp = (mobile: string) => post<{ requestId: string; channel?: string }>('/auth/otp/request', { mobile });
+/**
+ * `intent` lets the server answer the WRONG DOOR before it sends an SMS — an
+ * unknown mobile on sign-in, a known one on sign-up. Use `isNoAccount` /
+ * `isHaveAccount` on the rejection rather than matching the message text.
+ */
+export const requestOtp = (mobile: string, intent?: 'signin' | 'signup') =>
+  post<{ requestId: string; channel?: string }>('/auth/otp/request', intent ? { mobile, intent } : { mobile });
 
 /** Sign in with mobile + password. Opt-in; set from the customer’s own profile. */
 export const passwordLogin = (mobile: string, password: string) =>

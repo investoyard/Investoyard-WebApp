@@ -5,6 +5,9 @@ import { AuthService } from './auth.service';
 
 class RequestOtpDto {
   @Matches(/^\d{10}$/) mobile!: string;
+  /* Which door the caller is at, so the wrong-door answer can arrive before an
+     SMS is sent. Optional: an older client that omits it keeps the old flow. */
+  @IsOptional() @IsIn(['signin', 'signup']) intent?: 'signin' | 'signup';
 }
 class VerifyOtpDto {
   @IsString() requestId!: string;
@@ -50,7 +53,7 @@ export class AuthController {
 
   @Post('otp/request')
   request(@Body() dto: RequestOtpDto, @Req() req: any) {
-    return this.auth.requestOtp(dto.mobile, clientIp(req));
+    return this.auth.requestOtp(dto.mobile, clientIp(req), dto.intent);
   }
 
   @Post('otp/verify')

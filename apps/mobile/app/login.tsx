@@ -13,7 +13,7 @@ import { setStatusBarStyle } from 'expo-status-bar';
 import { fonts, microLabel, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
-import { requestOtp, verifyOtp, passwordLogin } from '../lib/api';
+import { requestOtp, requestOtpResult, verifyOtp, passwordLogin } from '../lib/api';
 import { tapSuccess } from '../lib/haptics';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/ui/Button';
@@ -66,15 +66,23 @@ export default function LoginScreen() {
 
   const onGetOtp = async () => {
     if (!/^\d{10}$/.test(mobile)) { setError('Enter a valid 10-digit mobile'); return; }
+    /* The name field appears on THIS step once the server says there is no
+       account, so a new customer gives their name before a code is sent
+       rather than after. Second press sends it as a signup. */
+    if (needName && name.trim().length < 2) { setError('Please enter your name to create the account'); return; }
     setBusy(true); setError(null);
-    try {
-      const { requestId, channel } = await requestOtp(mobile);
-      setRequestId(requestId);
-      setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
+    const r = await requestOtpResult(mobile, needName ? 'signup' : 'signin');
+    setBusy(false);
+    if (r.ok) {
+      setRequestId(r.requestId);
+      setSentVia(r.channel === 'whatsapp' ? 'whatsapp' : 'sms');
       setTimeout(() => otpRef.current?.focus(), 250);
-    } catch (e) {
-      setError(msg(e));
-    } finally { setBusy(false); }
+      return;
+    }
+    if (r.reason === 'no_account') { setNeedName(true); setError(null); return; }
+    if (r.reason === 'have_account') { setNeedName(false); setError(r.message ?? 'You already have an account \u2014 just continue.'); return; }
+    if (r.reason === 'unreachable') { setError('Could not reach Investoyard. Check your connection.'); return; }
+    setError(r.message ?? 'Could not send the code.');
   };
 
   const onPasswordSignIn = async () => {
@@ -121,7 +129,7 @@ export default function LoginScreen() {
     setOtp(''); setError(null);
     setBusy(true);
     try {
-      const { requestId, channel } = await requestOtp(mobile);
+      const { requestId, channel } = await requestOtp(mobile, needName ? 'signup' : 'signin');
       setRequestId(requestId);
       setSentVia(channel === 'whatsapp' ? 'whatsapp' : 'sms');
     } catch (e) {
@@ -165,7 +173,7 @@ export default function LoginScreen() {
                   <TextInput
                     style={styles.input}
                     value={mobile}
-                    onChangeText={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))}
+                    onChangeText={(v) => { setMobile(v.replace(/\D/g, '').slice(0, 10)); setNeedName(false); setError(null); }}
                     keyboardType="number-pad"
                     maxLength={10}
                     placeholder="98765 43210"
@@ -208,8 +216,33 @@ export default function LoginScreen() {
                   </>
                 )}
 
+                {/* THE NAME IS ASKED BEFORE A CODE IS SENT, not after. The server
+                    now answers the wrong door at this step, so a new customer gives
+                    their name here and the first SMS they receive is one that
+                    actually signs them up — rather than paying for a code, typing
+                    it, and only then being told to start again. */}
+                {needName && way === 'otp' && (
+                  <View style={styles.newUser}>
+                    <Text style={styles.newUserTitle}>Welcome — let’s create your account</Text>
+                    <Text style={styles.newUserSub}>
+                      There’s no account on +91 {mobile} yet. Tell us your name and we’ll set one up.
+                    </Text>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Full name"
+                      placeholderTextColor={ui.muted}
+                      autoCapitalize="words"
+                      maxLength={60}
+                      autoFocus
+                    />
+                  </View>
+                )}
+
                 {way === 'otp' ? (
-                  <Button label="Continue" onPress={onGetOtp} busy={busy} style={styles.cta} />
+                  <Button label={needName ? 'Create account' : 'Continue'} onPress={onGetOtp} busy={busy}
+                    disabled={needName && name.trim().length < 2} style={styles.cta} />
                 ) : (
                   <Button label={t('login.signIn')} onPress={onPasswordSignIn} busy={busy}
                     disabled={mobile.length < 10 || password.length < 1} style={styles.cta} />
@@ -244,28 +277,8 @@ export default function LoginScreen() {
                   maxLength={OTP_LEN}
                   autoFocus
                 />
-                {/* Shown only after the server reports NO_ACCOUNT, so an
-                    existing user never sees it and a new one is asked once. */}
-                {needName && (
-                  <View style={styles.newUser}>
-                    <Text style={styles.newUserTitle}>Welcome — let’s create your account</Text>
-                    <Text style={styles.newUserSub}>
-                      There’s no account on +91 {mobile} yet. Tell us your name and we’ll set one up.
-                    </Text>
-                    <TextInput
-                      style={styles.nameInput}
-                      value={name}
-                      onChangeText={setName}
-                      placeholder="Full name"
-                      placeholderTextColor={ui.muted}
-                      autoCapitalize="words"
-                      maxLength={60}
-                      autoFocus
-                    />
-                  </View>
-                )}
                 <Button label={needName ? 'Create account' : t('login.verify')} onPress={onVerify} busy={busy}
-                  disabled={otp.length < OTP_LEN || (needName && name.trim().length < 2)} style={styles.cta} />
+                  disabled={otp.length < OTP_LEN} style={styles.cta} />
                 <Pressable onPress={onResend} hitSlop={8} style={({ pressed }) => [styles.resend, pressed && { opacity: 0.6 }]}>
                   <Text style={styles.resendTxt}>{t('login.resend')}</Text>
                 </Pressable>

@@ -66,17 +66,52 @@ export async function getConsentNotices(): Promise<ConsentNotice[]> {
   return [];
 }
 
-export async function requestOtp(mobile: string): Promise<{ requestId: string; channel?: string }> {
+/**
+ * The outcome of asking for a code.
+ *
+ * `no_account` and `have_account` are the WRONG-DOOR answers, and they now
+ * arrive BEFORE an SMS is sent. Until this existed a new customer paid for a
+ * code, typed it, and only then learned they had to sign up.
+ */
+export type OtpRequestResult =
+  | { ok: true; requestId: string; channel?: string }
+  | { ok: false; reason: 'no_account' | 'have_account' | 'unreachable' | 'refused'; message?: string };
+
+/**
+ * `intent` tells the server which door we are at. It is optional server-side,
+ * so an older build that omits it keeps the old flow.
+ */
+export async function requestOtp(mobile: string, intent?: 'signin' | 'signup'): Promise<{ requestId: string; channel?: string }> {
+  const r = await requestOtpResult(mobile, intent);
+  if (r.ok) return { requestId: r.requestId, channel: r.channel };
+  if (r.reason === 'unreachable') {
+    /* No offline fallback. A `mock-` requestId opened the OTP screen on a
+       request the server never saw, and the code below then accepted 123456
+       against it — a login with no account behind it. */
+    throw new Error('Could not reach Investoyard. Check your connection and try again.');
+  }
+  throw new Error(r.message ?? 'Could not send the code.');
+}
+
+/** The three-way form, for the login screen which needs to branch on it. */
+export async function requestOtpResult(mobile: string, intent?: 'signin' | 'signup'): Promise<OtpRequestResult> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE}/auth/otp/request`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile }),
+    res = await fetch(`${API_BASE}/auth/otp/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(intent ? { mobile, intent } : { mobile }),
     });
-    if (res.ok) return res.json();
-  } catch {}
-  /* No offline fallback. A `mock-` requestId opened the OTP screen on a request
-     the server never saw, and the code below then accepted 123456 against it —
-     a login with no account behind it. Fail here so the screen can say so. */
-  throw new Error('Could not reach Investoyard. Check your connection and try again.');
+  } catch { return { ok: false, reason: 'unreachable' }; }
+  if (res.ok) {
+    const j = await res.json().catch(() => null);
+    return j?.requestId ? { ok: true, requestId: j.requestId, channel: j.channel } : { ok: false, reason: 'refused' };
+  }
+  const b = await res.json().catch(() => null);
+  const message = typeof b?.message === 'string' ? b.message : undefined;
+  if (res.status === 404 || b?.code === 'NO_ACCOUNT') return { ok: false, reason: 'no_account', message };
+  if (res.status === 409 || b?.code === 'HAVE_ACCOUNT') return { ok: false, reason: 'have_account', message };
+  return { ok: false, reason: 'refused', message };
 }
 
 /**

@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { store } from '@/lib/store';
-import { requestOtp, verifyOtp, setConsumerSession } from '@/lib/consumer-api';
+import { requestOtp, verifyOtp, setConsumerSession, isHaveAccount } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
@@ -45,6 +45,10 @@ export function SignupForm() {
   const [requestId, setRequestId] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /* Kept apart from `err` for the same reason the login screen keeps
+     `noAccount` apart: this is not a failure, it is the wrong door, and the
+     answer is a link rather than a red banner. */
+  const [haveAccount, setHaveAccount] = useState(false);
 
   // Mirrors cleanSignupName on the server: a mononym is a real name, so no
   // two-word rule — but it has to contain an actual letter.
@@ -54,13 +58,19 @@ export function SignupForm() {
   const otpFull = otp.every((d) => d !== '');
 
   async function sendOtp() {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setHaveAccount(false);
     try {
-      const { requestId } = await requestOtp(mobile);
+      const { requestId } = await requestOtp(mobile, 'signup');
       setRequestId(requestId);
       setOtp(['', '', '', '', '', '']);
       setStep('otp');
-    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    } catch (e: any) {
+      /* Already registered — answered before any SMS, within the server's
+         per-IP allowance. Over that allowance it stays silent and the code is
+         sent; verify then signs them in, which is a fine outcome either way. */
+      if (isHaveAccount(e)) setHaveAccount(true);
+      else setErr(String(e?.message ?? e));
+    }
     finally { setBusy(false); }
   }
 
@@ -132,6 +142,12 @@ export function SignupForm() {
               {busy ? '…' : tr('login.getOtp')}
             </button>
             {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
+            {haveAccount && (
+              <div className="banner" style={{ marginTop: 12 }}>
+                <b>+91 {mobile} already has an account.</b>{' '}
+                <a href={`/login${q ? q + '&' : '?'}mobile=${mobile}`}>Sign in instead</a>.
+              </div>
+            )}
 
             <p style={{ textAlign: 'center', marginTop: 14 }} className="muted">
               Already have an account? <a href={`/login${q}`}>Sign in</a>
