@@ -57,6 +57,18 @@ export default function TermsPage() {
           basis and can be delayed, incomplete or wrong. Grey-market premium is unofficial, unregulated market chatter.
           Verify critical facts against the issuer&apos;s offer documents before acting.
         </p>
+        <p>
+          <b>Reference data.</b> Bank and branch details, including IFSC codes, are derived from the open IFSC
+          directory published by{' '}
+          <a href="https://github.com/razorpay/ifsc" target="_blank" rel="noopener noreferrer">Razorpay</a>{' '}
+          under the MIT Licence. Pincode, city and state details are derived from the{' '}
+          <a href="https://www.geonames.org" target="_blank" rel="noopener noreferrer">GeoNames</a>{' '}
+          postal-code dataset, used under a{' '}
+          <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">Creative Commons Attribution 4.0</a>{' '}
+          licence. Both are third-party reference data provided as is. They are offered to save you typing, not to
+          replace your own records — confirm your bank, branch and address details against your bank&apos;s records
+          before you apply.
+        </p>
 
         <h2>6. Charges</h2>
         <p>
