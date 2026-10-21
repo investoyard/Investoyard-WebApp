@@ -264,10 +264,34 @@ export class AdminService {
   }
 
   /** Platform oversight: which white-label partner has set its own SMS/email + overridden which templates. */
+  /**
+   * WIDENED BEYOND WHITE-LABEL 2026-10-21, and not as a nicety.
+   *
+   * This listed `flags.whitelabel` tenants only, which was right while they
+   * were the only ones who COULD hold their own provider config. The moment
+   * `assertConfigurable` stopped requiring that flag, the same filter became
+   * a blind spot: an ordinary partner routing their clients’ OTPs and mail
+   * through their own gateway would not have appeared on the one screen that
+   * exists to show who is doing that.
+   *
+   * So it now lists every partner and branch that is white-label OR has
+   * actually configured something. Not simply every tenant — padding the
+   * page with partners who have configured nothing is how a page stops being
+   * read, and this one is the audit view.
+   */
   async integrationsOverview() {
+    const configured = await this.prisma.providerConfig.findMany({ select: { tenantId: true } });
+    const overridden = await this.prisma.messageTemplate.findMany({ select: { tenantId: true } });
+    const touched = new Set<string>([...configured, ...overridden].map((r) => r.tenantId).filter(Boolean) as string[]);
     const tenants = await this.prisma.tenant.findMany({
-      where: { flags: { path: ['whitelabel'], equals: true } },
-      select: { id: true, slug: true, name: true, code: true },
+      where: {
+        OR: [
+          { flags: { path: ['whitelabel'], equals: true } },
+          { id: { in: [...touched] } },
+        ],
+        type: { in: ['partner', 'branch'] },
+      },
+      select: { id: true, slug: true, name: true, code: true, flags: true },
       orderBy: { name: 'asc' },
     });
     const ids = tenants.map((t) => t.id);
@@ -280,6 +304,11 @@ export class AdminService {
       slug: t.slug,
       name: t.name,
       code: t.code ?? undefined,
+      /* The list used to be white-label by definition, so saying so would
+         have been noise. It now mixes both kinds, and whether a partner
+         sends under their OWN brand or under OURS is the first thing a
+         reader of this page needs to know about a row. */
+      whitelabel: !!(t.flags as any)?.whitelabel,
       providers: providers.filter((p) => p.tenantId === t.id).map((p) => p.provider),
       templates: templates.filter((tp) => tp.tenantId === t.id).map((tp) => `${tp.channel}:${tp.key}`),
     }));

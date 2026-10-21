@@ -692,7 +692,10 @@ export const deleteMaster = (kind: MasterKind, id: string) =>
   authed<{ deleted: boolean; name: string }>(`${API}/admin/masters/${kind}/${id}`, { method: 'DELETE' });
 
 /** Platform oversight: per-white-label-partner integration status. */
-export interface IntegrationStatus { slug: string; name: string; code?: string; providers: string[]; templates: string[] }
+/** One row of the integrations overview. `whitelabel` distinguishes a partner
+    sending under their OWN brand from one sending under ours — the list has
+    carried both since the provider gate was relaxed. */
+export interface IntegrationStatus { slug: string; name: string; code?: string; whitelabel?: boolean; providers: string[]; templates: string[] }
 export const fetchIntegrationsOverview = () => authed<IntegrationStatus[]>(`${API}/admin/integrations/overview`, { method: 'GET' });
 export const fetchTenantTemplates = (slug: string) =>
   authed<MessageTemplate[]>(`${API}/admin/tenants/${slug}/templates`, { method: 'GET' });

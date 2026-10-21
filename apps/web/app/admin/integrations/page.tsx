@@ -162,7 +162,18 @@ export default function AdminIntegrations() {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const curScope = scopes.find((s) => s.slug === scope);
 
-  // Scope list: platform admin → Platform default + white-label tenants; partner admin → own tenant.
+  /*
+   * Scope list: platform admin → Platform default + every partner; partner
+   * admin → own tenant.
+   *
+   * THIS LISTED WHITE-LABEL TENANTS ONLY, and that was right for exactly as
+   * long as they were the only ones `assertConfigurable` would let configure
+   * anything. When that gate was relaxed (2026-10-21, operator decision) this
+   * line became the operator’s inability to reach four of their six partners
+   * — the API would have accepted the write and the dropdown offered nowhere
+   * to make it. The third copy of one assumption, which is why the fix was
+   * never the one line it looked like.
+   */
   useEffect(() => {
     if (!me) return;
     (async () => {
@@ -170,7 +181,12 @@ export default function AdminIntegrations() {
       if (me.isSuperAdmin) {
         list.push({ slug: me.homeTenant.slug, label: 'Platform (default)', platform: true });
         const tenants = await api.fetchTenants().catch(() => []);
-        for (const t of tenants) if (t.whitelabel) list.push({ slug: t.slug, label: t.name, platform: false });
+        /* Marked rather than filtered: a non-white-label partner sends under
+           OUR brand through THEIR gateway, which is the one thing an operator
+           picking a scope here needs to know before they touch it. */
+        for (const t of tenants) {
+          list.push({ slug: t.slug, label: t.whitelabel ? t.name : `${t.name} (our brand)`, platform: false });
+        }
       } else {
         list.push({ slug: me.homeTenant.slug, label: me.homeTenant.name, platform: me.homeTenant.type === 'platform' });
       }

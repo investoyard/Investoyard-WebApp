@@ -190,14 +190,33 @@ export class ProviderConfigService {
     return this.view(provider, row);
   }
 
-  /** Platform tenant, or a tenant flagged white-label, may configure its own providers. */
+  /**
+   * ANY REAL TENANT MAY CONFIGURE ITS OWN PROVIDERS — operator decision,
+   * 2026-10-21, and a deliberate widening of what used to be a white-label
+   * privilege.
+   *
+   * It was `whitelabel`-only on the reasoning that a partner publishing under
+   * OUR brand should send under our accounts. The operator wants every
+   * partner able to run their own SMS and mail, so the flag no longer gates
+   * it. **What a partner may touch is still their OWN tenant and nothing
+   * else**, and that is enforced somewhere better than here: `PermissionsGuard`
+   * scopes `providers.manage` to the `:slug` in the route (measured: another
+   * partner’s providers answer 403), and the PLATFORM routes, which carry no
+   * slug for it to scope, carry `SuperadminGuard`.
+   *
+   * THE TENANT-EXISTS CHECK STAYS, and is now the whole of this method: it is
+   * what stops a config being written against an id that names nothing, which
+   * `effective()` would then never resolve and nobody would ever see.
+   *
+   * CONSEQUENCE WORTH KNOWING: a non-white-label partner’s clients receive
+   * mail under OUR brand sent through THEIR server. That is the operator’s
+   * call, not a side effect — and `integrationsOverview` was widened in the
+   * same change so such a configuration is visible rather than silent.
+   */
   private async assertConfigurable(tenantId: string): Promise<void> {
     if (tenantId === PLATFORM_TENANT) return;
-    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { flags: true } });
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
     if (!t) throw new NotFoundException('Tenant not found');
-    if (!(t.flags as any)?.whitelabel) {
-      throw new ForbiddenException('Only white-label tenants can configure their own provider keys.');
-    }
   }
 
   // ---------------------------------------------------------------- runtime (decrypted)
