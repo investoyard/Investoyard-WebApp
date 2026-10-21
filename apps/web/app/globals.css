@@ -4726,13 +4726,26 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 @media (max-width: 480px) {
   .subv2 { padding: 6px 10px 32px; }
   .subv2-ln { padding: 40px 12px 14px; }
-  .subv2-ln-r { grid-template-columns: 1fr 1fr; }
-  .subv2-ln-r > div:nth-child(3) { grid-column: 1 / span 2; }
-  /* v2 override — all three tiles in a single row (operator ask 2026-09-18). */
-  .subv2-solo .subv2-ln-r { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .subv2-solo .subv2-ln-r > div:nth-child(3) { grid-column: auto; }
-  .subv2-solo .subv2-ln-r .k { font-size: 9px; letter-spacing: .06em; }
-  .subv2-solo .subv2-ln-r .v { font-size: 11.5px; }
+  /* BOOK / SUBSCRIBED / APPLICATIONS IN ONE ROW, ON BOTH SURFACES.
+     Asked for on /subscription/v2 on 2026-09-18 and scoped to `.subv2-solo`;
+     the hub kept a two-column fallback at full type size, which pushed
+     Applications onto a second full-width row and made every hub card 51px
+     taller than the SAME card on v2 (346 against 295). The operator saw the
+     two pages disagree and asked for the hub to read like v2 (2026-10-21).
+
+     It fits because both rows are the same width: `.subv2-ln-r` measures
+     301px on BOTH pages — the hub's extra action rail is absolutely
+     positioned and takes nothing from the flow. So this is now ONE rule
+     rather than a v2 override sitting beside a hub fallback that contradicted
+     it; the smaller label/value type is what buys the third column and has
+     been carrying v2 since September.
+
+     `IpoRow` is rendered in exactly two places — NseIpoLanding and
+     SubscriptionHub — so nothing else is reached. The IPO detail page's Live
+     Subscription card has its own shell (`.subv2-ln-detail`). */
+  .subv2-ln-r { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .subv2-ln-r .k { font-size: 9px; letter-spacing: .06em; }
+  .subv2-ln-r .v { font-size: 11.5px; }
   .subv2-ln-name h3 { font-size: 13.5px; }
   .subv2-info-pill { font-size: 9.5px; padding: 2px 6px; }
   .subv2-updated { font-size: 9.5px; }
