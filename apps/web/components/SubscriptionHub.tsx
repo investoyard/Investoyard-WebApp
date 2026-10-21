@@ -554,7 +554,7 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
     return ai - bi;
   });
   return (
-    <section className="subv2-det-panel">
+    <section className="subv2-det-panel pnl-share">
       <header>
         <h4>Share-wise</h4>
         <span className="muted">by category</span>
@@ -618,7 +618,7 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
   if (appRows.length === 0) return null;
   const totalApps = appRows.reduce((s, r) => s + (r.bidCount ?? 0), 0);
   return (
-    <section className="subv2-det-panel">
+    <section className="subv2-det-panel pnl-app">
       <header>
         <h4>Application-wise</h4>
       </header>
@@ -714,7 +714,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
   const ordered = rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99));
   const cr = (v: number) => (v > 0 ? v.toFixed(2) : '—');
   return (
-    <section className="subv2-det-panel">
+    <section className="subv2-det-panel pnl-demand">
       <header>
         <h4>Subscription Demand</h4>
         <span className="muted">in ₹ crore</span>
@@ -801,7 +801,7 @@ export function LotLadderPanel({ ipo }: { ipo: IpoFull }) {
       bHNI: req('hni'),
     };
     return (
-      <section className="subv2-det-panel">
+      <section className="subv2-det-panel pnl-lot">
         <header>
           <h4>Lot ladder</h4>
           <span className="muted">SME</span>
@@ -865,7 +865,7 @@ export function LotLadderPanel({ ipo }: { ipo: IpoFull }) {
     },
   ];
   return (
-    <section className="subv2-det-panel">
+    <section className="subv2-det-panel pnl-lot">
       <header>
         <h4>Lot ladder</h4>
       </header>

@@ -4185,7 +4185,38 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
      to grid items so the four panels lay out as a true 2x2. */
   .subv2-det-stack { display: contents; }
 }
-@media (max-width: 700px) { .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .subv2-det-in { grid-template-columns: minmax(0, 1fr); }
+  /* THE STACKED ORDER IS THE OPERATOR'S, and it only applies where the grid
+     is actually ONE COLUMN - which is the view being ordered. Above this the
+     panels are a 2x2 or a 3-column row, where 'first' and 'last' mean
+     something else and the desktop arrangement is deliberate.
+
+     Share-wise, then Application-wise, then Subscription Demand, then the Lot
+     ladder: the live figures first, the reference table last (operator ask,
+     2026-10-21). In the DOM the ladder sits inside `.subv2-det-stack` next to
+     Application-wise, which is right for the desktop column but puts it ahead
+     of Demand when everything collapses into one column.
+
+     `order` works here only because the stack is already `display: contents`
+     below 1400px, so all four panels are real grid items rather than two
+     items and a wrapper.
+
+     AND THE SELECTORS ARE DESCENDANTS, NOT CHILDREN. `display: contents`
+     changes box generation, not the DOM: Application-wise and the Lot ladder
+     are still children of `.subv2-det-stack`, so `.subv2-det-in > .pnl-app`
+     matches nothing. Written that way first, it left those two on the default
+     `order: 0` and they sorted to the TOP - App, Lot, Share, Demand.
+
+     KNOWN LIMIT: this moves them visually, not in the DOM, so a screen reader
+     still meets the ladder before Demand. Four independent read-only tables,
+     so the cost is small - and the alternative, reordering the JSX, means
+     re-deriving the desktop layout, which this change is meant not to touch. */
+  .subv2-det-in .pnl-share { order: 1; }
+  .subv2-det-in .pnl-app { order: 2; }
+  .subv2-det-in .pnl-demand { order: 3; }
+  .subv2-det-in .pnl-lot { order: 4; }
+}
 
 /*
  * THE DETAIL PAGE GETS ITS OWN ARRANGEMENT, because its column is not the
@@ -4238,7 +4269,24 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    670px and nothing clips. The hub already behaves this way (it stays single
    column to 1024), so this aligns the two surfaces rather than inventing a
    number. Measured at 560 / 700 / 768 / 860 / 900 / 1024. */
-@media (max-width: 900px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); }
+  /* Same order as the 700px block, and BOTH surfaces need it here - not just
+     /subscription/v2. The hub's grid is single-column from 900 down too (the
+     tablet block further down sets `1fr`), so a solo-only rule left the hub
+     between 701 and 900 as one column in the OLD order: Share, App, Lot,
+     Demand. Measured, not assumed - the earlier comment here claimed the hub
+     kept a 2x2 in that band and it does not.
+
+     `:not(.subv2-detail)` excludes the IPO detail card, which is still TWO
+     columns at 701-900 and only collapses at 700, where the unscoped rules in
+     that block pick it up. Reordering a two-column grid is a different
+     question from stacking one, and the operator asked for the phone. */
+  .subv2:not(.subv2-detail) .subv2-det-in .pnl-share { order: 1; }
+  .subv2:not(.subv2-detail) .subv2-det-in .pnl-app { order: 2; }
+  .subv2:not(.subv2-detail) .subv2-det-in .pnl-demand { order: 3; }
+  .subv2:not(.subv2-detail) .subv2-det-in .pnl-lot { order: 4; }
+}
 
 /* v2 phone (< 480px) — share-wise 4-col table gets extra tight. Hide the
    ₹Cr subtitle under Book Size / Subscription AND tighten cell padding
@@ -4246,12 +4294,12 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    on 375px viewports. Category cell drops the subcat indent to 8px too. */
 @media (max-width: 480px) {
   .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .small { display: none; }
-  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) { font-size: 10.5px; }
-  .subv2-solo .subv2-tbl th { padding: 4px 2px; font-size: 8.5px; }
-  .subv2-solo .subv2-tbl td { padding: 5px 2px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) { font-size: 12px; }
+  .subv2-solo .subv2-tbl th { padding: 5px 3px; font-size: 9.5px; }
+  .subv2-solo .subv2-tbl td { padding: 7px 3px; }
   .subv2-solo .subv2-tbl td:first-child { padding-left: 4px; }
   .subv2-solo .subv2-tbl tr.subcat td:first-child { padding-left: 8px; }
-  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 10px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 12px; }
   .subv2-solo .subv2-tbl-wrap { margin: 0; }
   .subv2-solo .subv2-det-panel { padding: 8px 8px; }
 }
@@ -4279,6 +4327,22 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-tbl tr.tot td { background: var(--brand-100); border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); font-weight: 800; padding-top: 10px; padding-bottom: 10px; color: var(--brand); }
 .subv2-tbl tr.tot:hover td { background: var(--brand-100); }
 .subv2-tbl tr.tot td:first-child { color: var(--brand); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+
+/* Phone legibility for the three TABLE panels - Application-wise, Subscription
+   Demand and the Lot ladder. (Share-wise is not a table on a phone any more;
+   it has its own stacked rules below.)
+
+   Measured at 375px before picking a number: every one of them fits at 13px
+   with zero clipping, so 10.5px was costing legibility for nothing. 12px with
+   a little more vertical padding is comfortable on a phone and still leaves
+   headroom for a longer figure than JPL's. */
+@media (max-width: 480px) {
+  .subv2-tbl:not(.subv2-tbl-share) { font-size: 12px; }
+  .subv2-tbl:not(.subv2-tbl-share) th { font-size: 9.5px; padding-top: 5px; padding-bottom: 5px; }
+  .subv2-tbl:not(.subv2-tbl-share) td { padding-top: 7px; padding-bottom: 7px; }
+  .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 12px; }
+  .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .small { font-size: 10.5px; }
+}
 
 /* ── Share-wise on a phone: one block per category, not a sideways scroll ──
 
@@ -4574,8 +4638,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .subv2-filters { gap: 10px; }
   .subv2-sec-head { margin: 16px 0 10px; }
   .subv2-sec-head h3 { font-size: 14px; }
-  /* Detail area — already stacks to single col below 700px; between 700–900
-     let App-wise + Lot ladder pair up under the (wider) Share-wise. */
+  /* Detail area goes SINGLE COLUMN here, which is what `1fr` says - an earlier
+     comment claimed it paired App-wise with the Lot ladder under a wider
+     Share-wise, and it has not done that for some time. The panel order for
+     this band is set in the 900px block above. */
   .subv2-det-in { grid-template-columns: 1fr; padding: 12px 14px 14px; gap: 12px; }
 }
 
