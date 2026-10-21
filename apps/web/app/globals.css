@@ -1211,6 +1211,16 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .trust-page { max-width: 780px; padding: 32px 0 56px; }
 .trust-page h1 { font-family: var(--font-display); font-size: 28px; font-weight: 650; letter-spacing: -.02em; }
 .trust-page .lead-p { font-size: 15.5px; color: var(--text-muted); margin-top: 8px; }
+/* A licence notice reproduced VERBATIM, set apart so it reads as a quotation
+   rather than as our own prose. MIT requires the notice be included, so it
+   cannot be summarised or paraphrased into the paragraph above it.
+   SELECTOR CARRIES `.prose p` DELIBERATELY: `.trust-page .prose p` is (0,2,1)
+   AND sits later in this file, so a bare `.trust-page .attr-notice` (0,2,0)
+   loses on both counts and the block rendered at the body 14.5px. Measured,
+   not assumed — the same trap as `.fin-tab th:first-child`. */
+.trust-page .prose p.attr-notice { font-size: 12.5px; line-height: 1.6; color: var(--text-muted);
+  background: var(--surface-2, #f6f5fb); border-left: 3px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; margin: 12px 0 18px; }
 .trust-page .prose { margin-top: 18px; }
 .trust-page .prose h2 { font-family: var(--font-display); font-size: 17px; font-weight: 650; letter-spacing: -.01em; margin: 26px 0 8px; }
 .trust-page .prose p { font-size: 14.5px; line-height: 1.75; color: var(--text); margin: 10px 0; }

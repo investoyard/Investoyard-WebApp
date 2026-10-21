@@ -111,6 +111,12 @@ export function SiteFooter() {
             <a href="/privacy-policy" style={{ display: 'inline-block' }}>Privacy Policy</a>
             <a href="/terms" style={{ display: 'inline-block' }}>Terms &amp; Conditions</a>
             <a href="/disclaimer" style={{ display: 'inline-block' }}>Disclaimer</a>
+            {/* A LICENCE CONDITION, NOT A COURTESY, and deliberately in the
+                UNGATED legal row rather than behind `own`: the pincode
+                directory is CC BY 4.0 and a white-label publishes the same
+                rows from the same database, so hiding this on their domain
+                would leave them attributing nothing. */}
+            <a href="/attributions" style={{ display: 'inline-block' }}>Data attributions</a>
             <a href="https://scores.sebi.gov.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>SEBI SCORES (complaints)</a>
             <a href="https://smartodr.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>ODR Portal</a>
             <a href="https://www.sebi.gov.in" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block' }}>SEBI</a>

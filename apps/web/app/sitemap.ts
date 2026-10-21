@@ -48,6 +48,7 @@ const STATIC: Array<[path: string, priority: number, changeFrequency: Entry['cha
   ['/terms/', 0.2, 'yearly'],
   ['/disclaimer/', 0.2, 'yearly'],
   ['/privacy-policy/', 0.2, 'yearly'],
+  ['/attributions/', 0.2, 'yearly'],
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
