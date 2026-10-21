@@ -21,8 +21,20 @@ const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice
  */
 /* Add to this list whenever a background job starts writing a new `extra`
    key — the form PATCHes an object built from its own field state, so any key
-   it has never heard of is deleted on save. `qibSplit` joined 2026-10-14. */
-const SERVER_OWNED_EXTRA = ['subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit'] as const;
+   it has never heard of is deleted on save. `qibSplit` joined 2026-10-14.
+
+   `pollFromMin` / `pollToMin` joined 2026-10-21 and are the odd ones out: they
+   are set by an OPERATOR, not by a background job. They are here for the same
+   REASON the others are — the form does not know them and would delete them —
+   and the cost of getting that wrong is the one this poller cannot undo. JPL
+   (Jio) bid 09:00-19:00 against the SEBI default of 10:00-17:00; a save that
+   silently dropped its window would have cost two hours of bidding a day with
+   nothing on screen to show it had happened. Give them real form fields and
+   they can leave this list. */
+const SERVER_OWNED_EXTRA = [
+  'subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit',
+  'pollFromMin', 'pollToMin',
+] as const;
 
 const num = (d: any): number | undefined => (d == null ? undefined : Number(d));
 const day = (d: Date | null | undefined): string | undefined => (d ? d.toISOString().slice(0, 10) : undefined);

@@ -23,6 +23,22 @@ const DEFAULT_POLL_TO_MIN = 18 * 60;     // 18:00 IST — 1h grace past 17:00 bi
 // trigger (fast mode kicks in at 17:00 − fastWindowMin, e.g. 15:30 IST for
 // the default 90-min window). Fixed by regulation; NOT tunable.
 const BIDDING_CLOSE_MIN = 17 * 60;
+/**
+ * The gap between an issue's bidding close and the poller's cutoff, which is
+ * what the grace hour IS: the exchanges keep serving consolidated numbers for
+ * 30–60 min after bidding stops, and those are the figures most worth having.
+ * Globally that is 17:00 to 18:00; naming it lets a per-issue window derive its
+ * own close instead of being pinned to the regulatory default.
+ */
+const POLL_GRACE_MIN = DEFAULT_POLL_TO_MIN - BIDDING_CLOSE_MIN;
+/**
+ * The widest the poller will EVER call an exchange, whatever any per-issue
+ * window says. It exists so the 10s tick can rule out the small hours without
+ * loading anything — a per-issue window is read from the issues themselves, so
+ * some outer bound has to come first.
+ */
+const POLL_ENVELOPE_FROM_MIN = 7 * 60;   // 07:00 IST
+const POLL_ENVELOPE_TO_MIN = 22 * 60;    // 22:00 IST
 
 /**
  * The seven buckets that come out of merging NSE + BSE (matches the operator's
@@ -234,6 +250,8 @@ interface OpenIpo {
   lotSize: number | null;
   openDate: Date | null;
   closeDate: Date | null;
+  /** Carries `pollFromMin` / `pollToMin` — this issue's own bidding window. */
+  extra: unknown;
 }
 /** Active credentials for one poll sweep (either may be null). */
 interface SweepCreds {
@@ -316,6 +334,45 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * THIS ISSUE'S OWN BIDDING WINDOW, falling back to the operator's global one.
+   *
+   * WHY PER-ISSUE AT ALL. SEBI's 10:00-17:00 is the rule, not a guarantee: JPL
+   * (Jio, 2026-10-21) bid 09:00-19:00 by exception, and a global window either
+   * misses the first hour of it or drags every other issue into hours it is not
+   * trading in. A bidding hour that passes unpolled cannot be recovered — the
+   * usual rescue, `nseShares / timesSubscribed`, needs a row that was written.
+   *
+   * THE CLOSE IS DERIVED, NOT STORED SEPARATELY. Fast mode used to anchor on the
+   * fixed 17:00 constant, which on a 19:00 close would have switched to 5s two
+   * hours early and told the day-wise log the wrong story about which minutes
+   * mattered. `toMin - POLL_GRACE_MIN` reproduces 17:00 exactly for the global
+   * window and tracks any override, so there is ONE place a window is stated
+   * rather than two that can disagree.
+   *
+   * Both keys are in `SERVER_OWNED_EXTRA`, so saving the IPO form cannot delete
+   * them — the form PATCHes `extra` wholesale from its own field state and does
+   * not know these.
+   */
+  private windowFor(
+    ipo: OpenIpo,
+    t: { fromMin: number; toMin: number },
+  ): { fromMin: number; toMin: number; closeMin: number } {
+    const ex = (ipo.extra ?? {}) as Record<string, unknown>;
+    const pos = (v: unknown, def: number): number => {
+      const n = Number(v);
+      // Same contract as `tuning()`: a bad value must not stall or widen the
+      // poll, it falls back. 1440 = minutes in a day.
+      return Number.isFinite(n) && n > 0 && n <= 1440 ? n : def;
+    };
+    const fromMin = pos(ex.pollFromMin, t.fromMin);
+    const toMin = pos(ex.pollToMin, t.toMin);
+    // A window that does not open is a window that loses the day: refuse the
+    // override rather than honour an inverted one.
+    if (toMin <= fromMin) return { fromMin: t.fromMin, toMin: t.toMin, closeMin: t.toMin - POLL_GRACE_MIN };
+    return { fromMin, toMin, closeMin: toMin - POLL_GRACE_MIN };
+  }
+
   onModuleInit() {
     if (process.env.SUBSCRIPTION_POLL_DISABLED === 'true') return;
     this.timer = setInterval(() => this.tick().catch((e) => this.log.warn(e.message)), TICK_MS);
@@ -331,12 +388,11 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     if (!this.isTradingDay(ist)) return;                 // Sat/Sun (holiday check happens after cred)
     const t = await this.tuning();
     const mins = ist.hour * 60 + ist.minute;
-    if (mins < t.fromMin || mins >= t.toMin) return;     // outside operator-configured window
+    // The cheap outer bound. Per-issue windows are read from the issues, so
+    // something has to rule out the small hours before anything is loaded.
+    if (mins < POLL_ENVELOPE_FROM_MIN || mins >= POLL_ENVELOPE_TO_MIN) return;
 
     await tenantContext.runUnscoped(async () => {
-      const sweep = await this.resolveSweep();
-      if (!sweep.nse && !sweep.bse) return; // no rail configured → idle
-
       // holidays (once/day). If the calendar says today is a holiday, stop.
       const holidays = await this.ensureHolidays(ist.ymd);
       if (holidays.has(ist.ymd)) return;
@@ -344,9 +400,21 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       const ipos = await this.openAutoIpos(ist.ymd);
       if (ipos.length === 0) return;
 
+      // EACH ISSUE AGAINST ITS OWN WINDOW. One trading on an exceptional
+      // schedule no longer forces every other issue onto it.
       const now = Date.now();
-      const due = ipos.filter((i) => now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist, t));
+      const due = ipos.filter((i) => {
+        const w = this.windowFor(i, t);
+        if (mins < w.fromMin || mins >= w.toMin) return false;
+        return now - (this.lastFetchAt.get(i.id) ?? 0) >= this.intervalMs(i, ist, t, w.closeMin);
+      });
       if (due.length === 0) return;
+
+      // Credentials LAST, and only when something is actually due: resolving a
+      // sweep opens a BSE session, and the envelope above is deliberately wider
+      // than any real window, so most ticks inside it have nothing to do.
+      const sweep = await this.resolveSweep();
+      if (!sweep.nse && !sweep.bse) return; // no rail configured → idle
 
       for (const ipo of due) await this.refreshIpo(ipo, sweep);
     });
@@ -467,7 +535,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       if (!sweep.nse && !sweep.bse) return { ok: false, reason: 'no-credential' };
       const ipo = await this.prisma.ipo.findUnique({
         where: { id: ipoId },
-        select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true },
+        select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true, extra: true },
       });
       if (!ipo) return { ok: false, reason: 'not-found' };
       const changed = await this.refreshIpo(ipo, sweep);
@@ -703,22 +771,31 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         hidden: false,
         ...(ignoreAutoFlag ? {} : { autoPollSubscription: true }),
       },
-      select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true },
+      select: { id: true, symbol: true, lotSize: true, openDate: true, closeDate: true, extra: true },
     });
   }
 
-  /** Per-IPO cadence: tighten to FAST_MS in the last FAST_WINDOW_MIN minutes of the closing day. */
+  /**
+   * Per-IPO cadence: tighten to FAST_MS in the last FAST_WINDOW_MIN minutes of
+   * the closing day.
+   *
+   * `closeMin` is THIS issue's bidding close, from `windowFor`. It used to be
+   * the fixed 17:00 constant, which is right for every issue following the SEBI
+   * default and wrong for one that does not — an issue closing at 19:00 would
+   * have gone fast at 15:30, two hours before the minutes that matter.
+   */
   private intervalMs(
     ipo: OpenIpo,
     ist: IstParts,
     t: { normalMs: number; fastMs: number; fastWindowMin: number },
+    closeMin: number = BIDDING_CLOSE_MIN,
   ): number {
     if (ipo.closeDate) {
       const closeYmd = this.istYmd(ipo.closeDate);
       // Fast mode from BIDDING close − fastWindowMin (15:30 IST default)
       // and ALL THE WAY through the poller's post-bidding grace hour —
       // the final consolidated numbers are exactly what we want fast.
-      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= BIDDING_CLOSE_MIN - t.fastWindowMin) return t.fastMs;
+      if (ist.ymd === closeYmd && ist.hour * 60 + ist.minute >= closeMin - t.fastWindowMin) return t.fastMs;
     }
     return t.normalMs;
   }
