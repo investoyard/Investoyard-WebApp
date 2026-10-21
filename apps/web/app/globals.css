@@ -4232,20 +4232,26 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; overflow: hidden; }
 .subv2-solo .subv2-det-in .subv2-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 1400px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-@media (max-width: 700px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
+/* 900, not 700. At 768 - iPad portrait - the two tracks came out 329px each
+   against a Share-wise table that needs ~388, so it scrolled sideways there
+   too: the same complaint as the phone, one size up. Single column gives it
+   670px and nothing clips. The hub already behaves this way (it stays single
+   column to 1024), so this aligns the two surfaces rather than inventing a
+   number. Measured at 560 / 700 / 768 / 860 / 900 / 1024. */
+@media (max-width: 900px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr); } }
 
 /* v2 phone (< 480px) — share-wise 4-col table gets extra tight. Hide the
    ₹Cr subtitle under Book Size / Subscription AND tighten cell padding
    / font so the 4-col numeric table fits without any horizontal scroll
    on 375px viewports. Category cell drops the subcat indent to 8px too. */
 @media (max-width: 480px) {
-  .subv2-solo .subv2-tbl .subv2-2l .small { display: none; }
-  .subv2-solo .subv2-tbl { font-size: 10.5px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .small { display: none; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) { font-size: 10.5px; }
   .subv2-solo .subv2-tbl th { padding: 4px 2px; font-size: 8.5px; }
   .subv2-solo .subv2-tbl td { padding: 5px 2px; }
   .subv2-solo .subv2-tbl td:first-child { padding-left: 4px; }
   .subv2-solo .subv2-tbl tr.subcat td:first-child { padding-left: 8px; }
-  .subv2-solo .subv2-2l .big { font-size: 10px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 10px; }
   .subv2-solo .subv2-tbl-wrap { margin: 0; }
   .subv2-solo .subv2-det-panel { padding: 8px 8px; }
 }
@@ -4273,6 +4279,75 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-tbl tr.tot td { background: var(--brand-100); border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); font-weight: 800; padding-top: 10px; padding-bottom: 10px; color: var(--brand); }
 .subv2-tbl tr.tot:hover td { background: var(--brand-100); }
 .subv2-tbl tr.tot td:first-child { color: var(--brand); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+
+/* ── Share-wise on a phone: one block per category, not a sideways scroll ──
+
+   THE NUMBER PEOPLE COME FOR WAS THE ONE OFF-SCREEN. Four columns with two
+   long share counts need 313-331px; the panel gets 279-283px at 375px, so
+   `No. of Times` sat past the right edge and had to be scrolled to (operator,
+   2026-10-21). The previous answer was to squeeze - hide the ₹ Cr sub-line and
+   drop to 10.5px type - which cost the rupee figures AND still clipped 34px.
+   Measured on JPL, whose counts run to 19,75,25,967.
+
+   So below 480px each row becomes a block: category and the multiple on one
+   line, book and subscribed beneath it, each labelled from `data-l` now that
+   the header row is gone. Nothing scrolls sideways and the ₹ Cr figures come
+   back. Scoped to `.subv2-tbl-share`: the other three panels fit at 375px and
+   stay as tables.
+
+   It applies to BOTH surfaces - /subscription/v2 and the cards on
+   /subscription - because it keys off the table, not off `.subv2-solo`, which
+   only the standalone page carries. The hub was the worse of the two (48px
+   clipped, since it was not even getting the squeeze). */
+@media (max-width: 480px) {
+  .subv2-tbl.subv2-tbl-share thead { display: none; }
+  .subv2-tbl.subv2-tbl-share, .subv2-tbl.subv2-tbl-share tbody { display: block; }
+  .subv2-tbl.subv2-tbl-share tr {
+    display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
+    padding: 9px 2px 10px; border-top: 1px solid var(--border);
+  }
+  .subv2-tbl.subv2-tbl-share tr:first-child { border-top: 0; }
+  /* Cells stop being table cells, so their own borders and padding go. */
+  .subv2-tbl.subv2-tbl-share td { display: block; border: 0; padding: 0; white-space: nowrap; }
+  .subv2-tbl.subv2-tbl-share td:nth-child(1) { grid-area: 1 / 1; font-size: 12.5px; }
+  /* The multiple, top-right and big: the whole point of the change. */
+  .subv2-tbl.subv2-tbl-share td:nth-child(4) { grid-area: 1 / 2; text-align: right; font-size: 15px; }
+  .subv2-tbl.subv2-tbl-share td:nth-child(2) { grid-area: 2 / 1 / auto / span 2; }
+  .subv2-tbl.subv2-tbl-share td:nth-child(3) { grid-area: 3 / 1 / auto / span 2; }
+  /* Label on the left, figures on the right, on one line each. */
+  .subv2-tbl.subv2-tbl-share td:nth-child(2), .subv2-tbl.subv2-tbl-share td:nth-child(3) {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-top: 5px;
+  }
+  .subv2-tbl.subv2-tbl-share td[data-l]::before {
+    content: attr(data-l); flex: none;
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  /* The two-line cell lies down: shares, then ₹ Cr beside them. */
+  .subv2-tbl.subv2-tbl-share .subv2-2l { flex-direction: row; align-items: baseline; gap: 7px; }
+  .subv2-tbl.subv2-tbl-share .subv2-2l .small { display: inline; margin-top: 0; }
+  .subv2-tbl.subv2-tbl-share .subv2-2l .big { font-size: 12.5px; }
+  /* Indent the two HNI sub-rows the way the table version does. */
+  /* The sub-row tint moves to the BLOCK. `.subv2-tbl tr.subcat td` paints each
+     cell, and in a grid the 10px column gap is not a cell - so the fill came
+     out as stripes with a bare channel beside the multiple. Same move the
+     Total row needs, and for the same reason. */
+  .subv2-tbl.subv2-tbl-share tr.subcat { background: #F3F4F6; border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .subv2-tbl.subv2-tbl-share tr.subcat td { background: none; }
+  .subv2-tbl.subv2-tbl-share tr.subcat td:nth-child(1) { padding-left: 10px; }
+  /* Total keeps its brand fill, now over the whole block. */
+  .subv2-tbl.subv2-tbl-share tr.tot { background: var(--brand-100); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  /* The base rule gives every Total CELL a 2px top border and vertical
+     padding. In a grid those become three stubs with the column gap showing
+     between them, and a stray rule above the second and third lines. The
+     block carries the one border instead. */
+  .subv2-tbl.subv2-tbl-share tr.tot td { background: none; border-top: 0; padding-top: 0; padding-bottom: 0; }
+  .subv2-tbl.subv2-tbl-share tr.tot { border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); }
+  .subv2-tbl.subv2-tbl-share tr.tot td:nth-child(1) { font-size: 11px; }
+  /* Nothing to scroll any more. */
+  .subv2-det-panel .subv2-tbl-wrap:has(.subv2-tbl-share) { overflow-x: visible; }
+}
 
 /* two-line cells inside the 4-col Share-wise table (shares big, ₹ Cr small)
  * — also reused by the Lot ladder's Lot-&-Share and Amount cells (lots big,

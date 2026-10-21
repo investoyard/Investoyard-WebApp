@@ -560,7 +560,12 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
         <span className="muted">by category</span>
       </header>
       <div className="subv2-tbl-wrap">
-        <table className="subv2-tbl">
+        {/* `subv2-tbl-share` scopes the phone layout: under 480px this table
+            STACKS into one block per category instead of scrolling sideways.
+            The other three panels fit at 375px and are left as tables.
+            `data-l` supplies the row label the stacked layout prints, so the
+            figures are still named once the header row is gone. */}
+        <table className="subv2-tbl subv2-tbl-share">
           <thead><tr><th>Category</th><th>Book Size</th><th>Subscription</th><th>No. of Times</th></tr></thead>
           <tbody>
             {ordered.map((r) => {
@@ -577,16 +582,16 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
               return (
                 <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
                   <td><span className={`subv2-dot ${dotKey}`} /><b>{label}</b></td>
-                  <td>{cell(r.bookSize, r.price, r.bookAmount)}</td>
-                  <td>{cell(r.subscribed, r.price, r.subAmount)}</td>
+                  <td data-l="Book size">{cell(r.bookSize, r.price, r.bookAmount)}</td>
+                  <td data-l="Subscribed">{cell(r.subscribed, r.price, r.subAmount)}</td>
                   <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
                 </tr>
               );
             })}
             <tr className="tot">
               <td>Total</td>
-              <td>{cell(total.bookSize, undefined, total.bookAmount)}</td>
-              <td>{cell(total.subscribed, undefined, total.subAmount)}</td>
+              <td data-l="Book size">{cell(total.bookSize, undefined, total.bookAmount)}</td>
+              <td data-l="Subscribed">{cell(total.subscribed, undefined, total.subAmount)}</td>
               <td className={`tone-${tone(total.times)}`}><b>{total.times.toFixed(2)}×</b></td>
             </tr>
           </tbody>
