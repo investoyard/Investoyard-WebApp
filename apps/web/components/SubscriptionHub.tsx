@@ -8,6 +8,7 @@ import { statusChip } from '@/components/IpoCard';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
+import { VisitorBeacon } from '@/components/VisitorBeacon';
 import { titleCase, shortName, fmtDateTime, appWiseRows } from '@investoyard/shared-types';
 
 /**
@@ -29,9 +30,23 @@ import { titleCase, shortName, fmtDateTime, appWiseRows } from '@investoyard/sha
 type Filter = 'all' | 'closing' | 'mainboard' | 'sme';
 type ViewMode = 'full' | 'appwise';
 
-const tone = (t: number): 'hot' | 'warm' | 'cool' | 'cold' =>
+/*
+ * THE ONE SUBSCRIPTION-TONE LADDER, exported because the detail page kept
+ * its own and the two disagreed about the same issue (operator report,
+ * 2026-10-21). At JPL’s 3.00× this said **Oversubscribed** while
+ * `LiveSubscription` said **Heavily subscribed** — and worse, between 2×
+ * and 3× the COLOURS disagreed too, hot green here against warm amber
+ * there, so one issue was painted two ways. Same reasoning as
+ * `demandWord()` / `demandTier()` in format.ts: a vocabulary read by more
+ * than one surface belongs in exactly one place.
+ *
+ * This copy is canonical because three surfaces already read it — the hub
+ * cards, /subscription/v2 and the shared image — and only the detail page
+ * differed.
+ */
+export const tone = (t: number): 'hot' | 'warm' | 'cool' | 'cold' =>
   t >= 2 ? 'hot' : t >= 1 ? 'warm' : t > 0 ? 'cool' : 'cold';
-const toneLabel = (t: number) =>
+export const toneLabel = (t: number) =>
   t >= 2 ? 'Oversubscribed' : t >= 1 ? 'Fully subscribed' : t > 0 ? 'In progress' : 'Awaiting bids';
 
 const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
@@ -364,6 +379,9 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
         <span>Saved</span>
       </div>
       <SubscriptionDisclaimer />
+      {/* Below the content, as asked. The line renders nothing at all until
+          there is a real crowd — see SHOW_FROM in VisitorBeacon. */}
+      <VisitorBeacon path="/subscription" />
     </div>
   );
 }
@@ -705,9 +723,29 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
               );
             })}
           </tbody>
+          {/*
+            * A REAL TOTAL ROW, NOT A MUTED LINE UNDERNEATH (operator ask,
+            * 2026-10-21). It reuses `tr.tot` — the same class the Share-wise
+            * table's total already carries — so the two tables on one screen
+            * end the same way instead of one shouting and one whispering.
+            * `tfoot` deliberately, and the class is what carries the padding:
+            * `.subv2-tbl tbody td` is scoped to tbody, which is exactly how
+            * the partner-api total ended up with its figures out of line.
+            *
+            * The count sits under TOTAL, the column it is the total of. The
+            * two ratio columns are blank because neither sums: Req 1x is a
+            * per-category capacity and the multiples are ratios.
+            */}
+          <tfoot>
+            <tr className="tot">
+              <td>Total applications</td>
+              <td />
+              <td><b>{fmtIn(totalApps)}</b></td>
+              <td />
+            </tr>
+          </tfoot>
         </table>
       </div>
-      <p className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>Total applications: <b>{fmtIn(totalApps)}</b></p>
       {proRataNote(appRows) && (
         <p className="subv2-aw-note">{proRataNote(appRows)}</p>
       )}
@@ -1036,7 +1074,8 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
                 </tbody>
               </table>
             </div>
-            <p className="subv2-aw-total">Total applications: <b>{fmtIn(totalApps)}</b></p>
+            {/* The cards view's table ends the same way the panel's does. */}
+            <p className="subv2-aw-total"><span>Total applications</span><b>{fmtIn(totalApps)}</b></p>
             {proRataNote(appRows) && (
               <p className="subv2-aw-note">{proRataNote(appRows)}</p>
             )}
@@ -1100,18 +1139,31 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
 
         {table && (
           <section className="sc-section">
-            <h3>Share-Wise Subscription</h3>
+            <h3>Share-wise subscription</h3>
+            {/*
+              * FOUR COLUMNS, NOT SIX, AND THAT IS WHAT MAKES IT READABLE.
+              * The canvas is 1080px and the image is fitted to a phone when it
+              * is forwarded, so six columns at 16px arrive at about 6px. Two of
+              * the six were the same quantity twice — Shares/Book are the book
+              * size in shares and in rupees, Subs/Sub ₹ likewise — so dropping
+              * one unit per pair loses nothing and lets the type nearly double
+              * (operator's call, 2026-10-21: keep the rupee figures).
+              *
+              * SORTED BY `SHARE_ORDER`, which is the whole reason the operator
+              * reported this: `ShareWisePanel` and `DemandPanel` both sort,
+              * this rendered the API's raw order, so a shared image read
+              * Employee, HNI (2-10L), Retail... against QIB, NII, HNI (10L+)
+              * on the page it came from.
+              */}
             <table className="sc-tbl">
-              <thead><tr><th>Category</th><th>Shares</th><th>Book</th><th>Subs</th><th>Sub ₹</th><th>Times</th></tr></thead>
+              <thead><tr><th>Category</th><th>Book size</th><th>Subscription</th><th>Times</th></tr></thead>
               <tbody>
-                {table.rows.map((r) => {
+                {table.rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99)).map((r) => {
                   const key = dotClassFor(r.key ?? '');
                   return (
                     <tr key={r.key}>
                       <td><span className={`sc-cat-dot ${key}`} />{r.cat}</td>
-                      <td>{cellPair(r.bookSize)}</td>
                       <td>{cellCr(r.bookSize, r.bookAmount)}</td>
-                      <td>{cellPair(r.subscribed)}</td>
                       <td>{cellCr(r.subscribed, r.subAmount)}</td>
                       <td style={{ color: (tone(r.times) === 'hot' ? '#0f9d58' : tone(r.times) === 'warm' ? '#e6ad12' : tone(r.times) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{r.times.toFixed(2)}×</td>
                     </tr>
@@ -1119,9 +1171,7 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
                 })}
                 <tr className="sc-tot">
                   <td>Total</td>
-                  <td>{fmtIn(table.total.bookSize)}</td>
                   <td>{cellCr(table.total.bookSize, table.total.bookAmount)}</td>
-                  <td>{fmtIn(table.total.subscribed)}</td>
                   <td>{cellCr(table.total.subscribed, table.total.subAmount)}</td>
                   <td>{t.toFixed(2)}×</td>
                 </tr>
@@ -1132,26 +1182,45 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
 
         {appRows.length > 0 && (
           <section className="sc-section">
-            <h3>Application-Wise</h3>
+            {/* Sentence case, matching the Share-wise heading above it and the
+                page itself. The two headings read as one document now. */}
+            <h3>Application-wise subscription</h3>
             <table className="sc-tbl">
-              <thead><tr><th>Category</th><th>NSE</th><th>BSE</th><th>Total</th><th>Req 1×</th><th>Times</th></tr></thead>
+              {/* The page's own four columns, in the page's order. The NSE/BSE
+                  split was two more columns for a figure nobody quotes, and it
+                  was costing the type size that makes this legible at all. */}
+              <thead><tr><th>Category</th><th>Req 1×</th><th>Applications</th><th>Times</th></tr></thead>
               <tbody>
                 {appRows.map((r) => {
                   return (
                     <tr key={r.key}>
                       <td><span className={`sc-cat-dot ${dotClassFor(r.key ?? '')}`} />{r.cat}</td>
-                      <td>{r.nseBids != null ? fmtIn(r.nseBids) : '—'}</td>
-                      <td>{r.bseBids != null ? fmtIn(r.bseBids) : '—'}</td>
-                      <td style={{ fontWeight: 800 }}>{fmtIn(r.bidCount ?? 0)}</td>
                       <td>{appReq1xText(r)}</td>
+                      <td style={{ fontWeight: 800 }}>{fmtIn(r.bidCount ?? 0)}</td>
                       <td style={{ color: (r.proRata ? '#6b7280' : tone(r.applicationsTimes ?? 0) === 'hot' ? '#0f9d58' : tone(r.applicationsTimes ?? 0) === 'warm' ? '#e6ad12' : tone(r.applicationsTimes ?? 0) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{appTimesText(r)}</td>
                     </tr>
                   );
                 })}
+                <tr className="sc-tot">
+                  <td>Total applications</td>
+                  <td />
+                  <td>{fmtIn(appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0))}</td>
+                  <td />
+                </tr>
               </tbody>
             </table>
           </section>
         )}
+
+        {/* The disclaimer travels WITH the image (operator ask, 2026-10-21).
+            A forwarded screenshot leaves the page behind, so a figure that
+            carries a caveat on site must carry it here too — this is the same
+            text the page shows, cut to what fits. */}
+        <p className="sc-disclaimer">
+          Sourced from the NSE and BSE and subject to change in real time. For information only
+          — not an offer, a recommendation or investment advice. Verify against the exchange
+          before acting on it.
+        </p>
 
         <footer className="sc-foot">
           <span className="sc-time">Snapshot · {snapshotAt}</span>

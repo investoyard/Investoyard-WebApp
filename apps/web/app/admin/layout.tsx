@@ -52,7 +52,15 @@ const NAV: NavNode[] = [
   // top-right user dropdown (2026-09-08, operator decision) — it belongs
   // beside Dark mode / Sign out as "the current signed-in user's context",
   // not among the operational menus. See the drop-down block below.
-  { key: 'reports', label: 'Reports', icon: 'chart', href: '/admin/reports-live', perm: 'reports.view' },
+  /* Reports became a GROUP when the visitor report arrived (2026-10-21). The
+     group-level perm is deliberately dropped and moved onto the children: the
+     nav filter removes a group with no remaining children, so an operator who
+     holds only one of the two still sees exactly the one they can open, and
+     nobody gains access they did not have. */
+  { key: 'reports', label: 'Reports', icon: 'chart', children: [
+    { href: '/admin/reports-live', label: 'Business Reports', perm: 'reports.view' },
+    { href: '/admin/reports/visitors', label: 'Visitors', perm: 'dashboard.view' },
+  ] },
   // Banners and News are OPERATOR-GLOBAL site content — every reader of
   // the front site sees the same items. Gate on their own perms rather
   // than piggy-backing on ipos.view, which used to let any operator with

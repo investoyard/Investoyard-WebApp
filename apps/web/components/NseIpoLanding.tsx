@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getIpos, type IpoFull } from '@/lib/api';
 import { IpoRow } from '@/components/SubscriptionHub';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
+import { VisitorBeacon } from '@/components/VisitorBeacon';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Icon } from '@/components/Icon';
 import { titleCase } from '@investoyard/shared-types';
@@ -97,6 +98,7 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
           </p>
         </div>
         <SubscriptionDisclaimer />
+        <VisitorBeacon path="/subscription/v2" symbol={requested} />
       </div>
     );
   }
@@ -131,6 +133,7 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
         </div>
       )}
       <SubscriptionDisclaimer />
+      <VisitorBeacon path="/subscription/v2" symbol={ipo.symbol} />
     </div>
   );
 }

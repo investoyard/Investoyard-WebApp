@@ -1417,3 +1417,59 @@ model SponsorBank {
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 }
+
+/// VISITOR TRACKING FOR THE SUBSCRIPTION PAGES (operator ask, 2026-10-21).
+///
+/// ONE ROW PER (IST hour, page, symbol, visitor). A reader refreshing fifty
+/// times in an hour collapses to one row with `views = 50`, so the table
+/// answers both questions the operator asked without growing per page view:
+/// unique visitors is COUNT(DISTINCT visitorKey), traffic is SUM(views).
+/// Measured before building: the busiest day on these pages so far is 59
+/// distinct client IPs, so this is tens of rows a day, not thousands.
+///
+/// WHY THE BROWSER REPORTS IN AT ALL: the web is a static export served by
+/// IIS. There is no server render and no middleware, so nothing on our side
+/// sees a page view. The beacon is the only way, and it is public and
+/// unauthenticated because these pages are.
+model PageVisit {
+  id         String   @id @default(uuid())
+  /// Start of the IST hour the view fell in, stored as the true instant.
+  /// Bucketed in IST because a day boundary has to be the OPERATOR's day —
+  /// the same reason the partner-api summary groups AT TIME ZONE 'Asia/Kolkata'.
+  hourStart  DateTime @db.Timestamptz(3)
+  /// One of the whitelisted paths. The SERVER decides what a page is; see
+  /// TRACKED_PATHS. A client-supplied path would let a stranger write
+  /// unbounded distinct rows.
+  path       String
+  /// The IPO the page was showing. EMPTY STRING, never null: Postgres treats
+  /// NULLs as DISTINCT in a unique index, so a nullable column here would make
+  /// the upsert insert a fresh row on every beacon instead of incrementing.
+  symbol     String   @default("")
+  /// sha256(daily rotating salt + ip + user agent), truncated. The IP and
+  /// user agent are NEVER stored; this cannot be reversed to either once the
+  /// day's salt is gone, and the same person hashes differently tomorrow.
+  /// No identifier is placed on the visitor's device, so there is nothing to
+  /// ask consent for.
+  visitorKey String
+  /// The client IP, in full, at the operator request of 2026-10-21.
+  /// PERSONAL DATA UNDER DPDP, unlike everything else on this row, and the
+  /// reason the purge below exists: it is nulled after METRICS_PII_DAYS while
+  /// the counts survive, so the report keeps working and the personal column
+  /// does not accumulate forever. Empty string when the header gave us nothing.
+  ip         String   @default("")
+  /// The signed-in customer, when the beacon carried a valid token. Null for
+  /// the majority: these pages are public and most readers are not signed in.
+  /// Purged on the same schedule as the IP.
+  userId     String?
+  views      Int      @default(1)
+  /// Flagged, not dropped: a count that silently discards traffic cannot be
+  /// reconciled against the IIS log, and it will be. Excluded from the report
+  /// by default.
+  bot        Boolean  @default(false)
+  firstAt    DateTime @default(now()) @db.Timestamptz(3)
+  lastAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([hourStart, path, symbol, visitorKey])
+  @@index([hourStart])
+  @@index([path, hourStart])
+}

@@ -1470,3 +1470,52 @@ export const updateTenantPage = (slug: string, key: string, html: string) =>
     `${API}/admin/tenants/${slug}/page/${key}`,
     { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }) },
   );
+
+/* ------------------------------------------------------------------ metrics */
+
+export type VisitorsBy = 'day' | 'hour' | 'page' | 'symbol';
+export interface VisitorRow { bucket: string; label: string; visitors: number; views: number }
+export interface VisitorReport {
+  by: VisitorsBy; from: string; to: string; path: string | null; includeBots: boolean;
+  rows: VisitorRow[];
+  /** DISTINCT over the whole range, not the column sum — see the note in the UI. */
+  total: { visitors: number; views: number };
+}
+export interface VisitorQuery { from?: string; to?: string; by?: VisitorsBy; path?: string; bots?: string }
+
+/**
+ * One visit, as the Visitors tab lists it.
+ *
+ * `ip` is null once the retention window has passed and the server has
+ * cleared it — the counts above are unaffected, so a row older than that
+ * reads as a visit with no address rather than disappearing.
+ */
+export interface VisitRow {
+  at: string; path: string; symbol: string | null; views: number; bot: boolean;
+  ip: string | null; name: string | null; mobile4: string | null;
+}
+export interface VisitList {
+  from: string; to: string; path: string | null; includeBots: boolean;
+  page: number; pages: number; total: number;
+  rows: VisitRow[];
+}
+
+export const fetchVisitorPaths = () =>
+  authed<{ paths: string[] }>(`${API}/admin/metrics/paths`, { method: 'GET' });
+export const fetchVisits = (q: VisitorQuery & { page?: number }) =>
+  authed<VisitList>(`${API}/admin/metrics/visits?${qstr(q as any)}`, { method: 'GET' });
+export const fetchVisitors = (q: VisitorQuery) =>
+  authed<VisitorReport>(`${API}/admin/metrics/visitors?${qstr(q)}`, { method: 'GET' });
+
+/** The rows on screen, as a file — one filter builder, not a second opinion. */
+export async function exportVisitorsCsv(q: VisitorQuery) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/metrics/visitors.csv?${qstr(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `visitors-${q.by ?? 'day'}-${q.from ?? ''}-${q.to ?? ''}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

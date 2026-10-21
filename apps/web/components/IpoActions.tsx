@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useStore, store } from '@/lib/store';
+import { useLiveIpo } from '@/lib/useLiveIpo';
 import { Icon } from '@/components/Icon';
 import { RemindButton } from '@/components/RemindButton';
 import { inr } from '@/lib/format';
@@ -42,6 +43,12 @@ export function ApplyPanel({
   printOpen?: boolean;
   lang?: Lang; langQuery?: string;
 }) {
+  /* Same baked-at-build problem as the Live Subscription card, and the two sit
+     on ONE page: leaving this stale would put 2.71x in the sidebar beside
+     3.38x in the card. useLiveIpo caches per symbol, so both reading it is one
+     network call rather than two. */
+  const freshIpo = useLiveIpo(symbol);
+  const subscribedLive = (freshIpo as any)?.subscriptionTimes ?? subscribedX;
   const tr = makeT(lang);
   const inWindow = status === 'open' || status === 'upcoming';
   const canApply = inWindow && bidOpen === true;
@@ -62,8 +69,8 @@ export function ApplyPanel({
         <span className="eyebrow">Apply</span>
         <WatchButton symbol={symbol} />
       </div>
-      {status === 'open' && subscribedX != null && (
-        <div className="sub-live-line"><span className="live-dot" />{subscribedX}× subscribed <small>· live</small></div>
+      {status === 'open' && subscribedLive != null && (
+        <div className="sub-live-line"><span className="live-dot" />{subscribedLive}× subscribed <small>· live</small></div>
       )}
       <div className="kv" style={{ marginTop: 8 }}><span className="k">{LABEL.offerPrice}</span><span className="v mono">{priceLabel}</span></div>
 

@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { ShareWisePanel, AppWisePanel, DemandPanel, type QibSplit } from '@/components/SubscriptionHub';
+import { ShareWisePanel, AppWisePanel, DemandPanel, tone, toneLabel, type QibSplit } from '@/components/SubscriptionHub';
+import { subscriptionTable } from '@/lib/ipoCalc';
+import { useLiveIpo } from '@/lib/useLiveIpo';
 import { Icon } from '@/components/Icon';
 import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
 
@@ -48,15 +50,31 @@ export function LiveSubscription({
   ipoType?: string;
   symbol?: string;
 }) {
+  /*
+   * THE PROPS ARE BAKED AT BUILD TIME, so on an open issue they are stale by
+   * however long it has been since the last deploy. `useLiveIpo` re-fetches
+   * once on mount and the table is recomputed from THAT, which is what makes
+   * this card agree with /subscription instead of drifting from it. The
+   * server render stays untouched, so a crawler still sees a full page.
+   */
+  const fresh = useLiveIpo(symbol);
+  const freshT = fresh ? subscriptionTable(fresh as any) : null;
+  const rowsL = freshT?.rows ?? rows;
+  const totalL = freshT?.total ?? total;
+  const anchorDeductedL = freshT ? freshT.anchorDeducted : anchorDeducted;
+  const anchorBasisL = freshT ? freshT.anchorBasis : anchorBasis;
+  const asOfL = (fresh as any)?.subscriptionAsOf ?? asOf;
+  const totalAppsL = (fresh as any)?.totalApps ?? totalApps;
+  const qibSplitL = ((fresh as any)?.extra?.qibSplit as QibSplit | undefined) ?? qibSplit;
   const live = status === 'open';
   const hasBand = !!priceMin && !!priceMax && priceMin !== priceMax;
   const [band, setBand] = useState<'upper' | 'lower'>('upper');
   const price = (band === 'lower' ? (priceMin ?? priceMax) : (priceMax ?? priceMin)) ?? 0;
 
-  const t = total.times ?? 0;
+  const t = totalL.times ?? 0;
   const meterPct = Math.min(100, (t / 3) * 100);
-  const tc = t >= 3 ? 'hot' : t >= 1 ? 'warm' : t >= 0.5 ? 'cool' : 'cold';
-  const toneLabel = t >= 3 ? 'Heavily subscribed' : t >= 1 ? 'Fully subscribed' : t >= 0.5 ? 'Picking up' : 'In progress';
+  /* IMPORTED, not re-stated — see the note on `tone` in SubscriptionHub. */
+  const tc = tone(t);
 
   const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
   const fmtCr = (n: number) => (n >= 1000 ? `₹${Math.round(n).toLocaleString('en-IN')} Cr` : `₹${n.toFixed(2)} Cr`);
@@ -64,9 +82,12 @@ export function LiveSubscription({
   /* Summed from the rows by `subscriptionTable`, not shares x the band price:
      a discounted quota makes those disagree and the Total has no price of its
      own. See the note on SubRowT.bookAmount. */
-  const bookCr = (total.bookAmount ?? 0) / 1e7;
-  const subCr = (total.subAmount ?? 0) / 1e7;
-  const apps = totalApps ?? total.bidCount ?? 0;
+  const bookCr = (totalL.bookAmount ?? 0) / 1e7;
+  const subCr = (totalL.subAmount ?? 0) / 1e7;
+  /* The operator’s stated figure first, then the EXCHANGE’s own count — the
+     same `total.bidCount` the hub tile prints, so the two pages cannot
+     disagree. `enrich()` no longer derives a third answer; see lib/api.ts. */
+  const apps = totalAppsL ?? totalL.bidCount ?? 0;
 
   return (
     <div className="subv2 subv2-detail">
@@ -80,7 +101,7 @@ export function LiveSubscription({
             {live && <span className="pd" />}
             {live ? 'Live now' : 'Final'}
           </span>
-          {asOf && <span className="lsx-asof">Updated {asOf}</span>}
+          {asOfL && <span className="lsx-asof">Updated {asOfL}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {hasBand && (
@@ -112,7 +133,7 @@ export function LiveSubscription({
             <div className="lsx-meter-track"><span style={{ width: `${meterPct}%` }} /></div>
             <div className="lsx-meter-tk"><span>0×</span><span>1×</span><span>2×</span><span>3×+</span></div>
           </div>
-          <div className={`lsx-tone lsx-tone-${tc}`}>{toneLabel}</div>
+          <div className={`lsx-tone lsx-tone-${tc}`}>{toneLabel(t)}</div>
         </div>
         <div className="lsx-tiles">
           <div className="lsx-tile">
@@ -133,16 +154,16 @@ export function LiveSubscription({
       {/* Share-wise + Application-wise — same components /subscription/v2 uses. */}
       <div className="subv2-ln-detail" style={{ marginTop: 14 }}>
         <div className="subv2-det-in">
-          <ShareWisePanel rows={rows} total={total} price={price} anchorDeducted={anchorDeducted} anchorBasis={anchorBasis} />
+          <ShareWisePanel rows={rowsL} total={totalL} price={price} anchorDeducted={anchorDeductedL} anchorBasis={anchorBasisL} />
           {/* SME shows this too (operator ask, 2026-10-09) — the Lot Ladder's
               Reserved column is only the Req 1× figure, not the applications
               received or the by-applications multiple. See the longer note at
               the AppWisePanel mount in SubscriptionHub.tsx. The panel
               self-hides when no row carries a bid count. */}
-          <AppWisePanel rows={rows} />
+          <AppWisePanel rows={rowsL} />
           {/* The detail page carries no Lot ladder, so the Demand card takes
               the third column directly rather than stacking (2026-10-13). */}
-          <DemandPanel rows={rows} total={total} price={price} qibSplit={qibSplit} />
+          <DemandPanel rows={rowsL} total={totalL} price={price} qibSplit={qibSplitL} />
         </div>
       </div>
 

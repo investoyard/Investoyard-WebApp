@@ -27,7 +27,6 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
   /** Applications needed for 1× — derived from the operator's REAL reservation
    *  table + real lot size; a category is absent when we can't compute it. */
   formsFor1x?: { retail?: number; sHni?: number; bHni?: number };
-  appWise?: { key: string; label: string; formsFor1x: number; apps: number; times: number }[];
   totalApps?: number;
   financialYears?: string[];
   financialRows?: { metric: string; values: number[] }[];
@@ -278,28 +277,33 @@ function enrich(ipo: IpoDetail): IpoFull {
     const sHni = formsForCat('hni2');
     const bHni = formsForCat('hni');
     if (retail || sHni || bHni) f.formsFor1x = { retail, sHni, bHni };
-    // App-wise view: forms × the category's ACTUAL subscription. No fudge factors.
-    if (ipo.subscription?.length) {
-      const sub = Object.fromEntries(ipo.subscription.map((s) => [s.category, s.timesSubscribed]));
-      const rows = [
-        { key: 'retail', label: 'Retail', forms: retail, times: sub.retail },
-        { key: 'hniBt', label: 'S-HNI', forms: sHni, times: sub.snii ?? sub.nii ?? sub.hni },
-        { key: 'hniAt', label: 'B-HNI', forms: bHni, times: sub.bnii ?? sub.nii ?? sub.hni },
-      ].filter((r): r is { key: string; label: string; forms: number; times: number } =>
-        typeof r.forms === 'number' && typeof r.times === 'number');
-      if (rows.length) {
-        f.appWise = rows.map((r) => ({
-          key: r.key, label: r.label, formsFor1x: r.forms,
-          apps: Math.round(r.forms * r.times), times: r2(r.times),
-        }));
-        // the operator's own figure wins over anything derived
-        // `noOfApp` is the legacy name for the same operator observation
-        const entered = Number(String(exAll?.applicationsReceived ?? exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
-        f.totalApps = Number.isFinite(entered) && entered > 0
-          ? entered
-          : f.appWise.reduce((a, b) => a + b.apps, 0);
-      }
-    }
+    /*
+     * APPLICATIONS RECEIVED — THE OPERATOR’S OWN FIGURE AND NOTHING ELSE.
+     *
+     * This used to FALL BACK TO A DERIVATION, and the detail page published
+     * it under the same label the subscription pages use for the exchange’s
+     * real count. On JPL that read **50,63,770 against 29,21,732** — and the
+     * Application-wise table LOWER DOWN THE SAME PAGE said 29,16,171, so the
+     * page disagreed with itself by 21 lakh (operator report, 2026-10-21).
+     *
+     * THE DERIVATION WAS NEVER A COUNT OF APPLICATIONS. It was
+     * `forms-for-1x × the SHARE-wise multiple` — how many 1×-sized
+     * applications’ worth of SHARES were bid, which over-counts wherever
+     * anybody bids more than the minimum, i.e. always. It also read
+     * `sub.snii` / `sub.bnii`, keys this codebase has never stored, so both
+     * HNI bands silently fell through to the NII ROLL-UP and neither band’s
+     * own multiple was ever used.
+     *
+     * MEASURED BEFORE REMOVING IT: of 1,304 visible records, **0 lose a
+     * figure**. Every record the derivation could fire on also carries
+     * exchange bid counts, so it only ever spoke where it was wrong.
+     * `LiveSubscription` falls through to `total.bidCount` — the exact
+     * expression the hub tile uses — so the two pages print one number.
+     *
+     * `noOfApp` is the legacy name for the same operator observation.
+     */
+    const entered = Number(String(exAll?.applicationsReceived ?? exAll?.noOfApp ?? '').replace(/[^\d]/g, ''));
+    if (Number.isFinite(entered) && entered > 0) f.totalApps = entered;
   }
 
   // Financials / objects / strengths / strategies / promoters are OPERATOR-ENTERED

@@ -27,6 +27,7 @@ import { DevicesModule } from './modules/devices/devices.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { BiddingModule } from './modules/bidding/bidding.module';
 import { PartnerModule } from './modules/partner/partner.module';
@@ -65,6 +66,7 @@ import { MessageLogApiModule } from './modules/message-log/message-log.module';
     NotificationsModule,
     WhatsappModule,
     SubscriptionModule,
+    MetricsModule,
     MastersModule,
     BiddingModule,
     PartnerModule,

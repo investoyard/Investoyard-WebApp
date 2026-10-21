@@ -520,6 +520,10 @@ h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.012em; margin: 0; }
 .sc-bar .track { height: 8px; border-radius: var(--pill); background: var(--bg-2); overflow: hidden; }
 .sc-bar .track > i { display: block; height: 100%; border-radius: var(--pill); background: linear-gradient(90deg, var(--brand), var(--brand-400)); }
 .showcase .sc-foot { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--border); }
+/* The disclaimer travels with the image: a forwarded screenshot leaves the
+   page and its caveat behind. Sized to be legible when the image is fitted
+   to a chat window, which is the only place it will ever be read. */
+.sc-disclaimer { margin: 22px 0 0; padding: 16px 18px; border-radius: 10px; background: #f6f5fb; border-left: 4px solid #ffcb32; font-size: 15px; line-height: 1.55; color: #5b5470; }
 .sc-chip { position: absolute; background: var(--surface); box-shadow: var(--sh-md); border-radius: var(--r); padding: 10px 14px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .sc-chip.a { top: -16px; right: 8px; transform: rotate(2deg); }
 .sc-chip.b { bottom: -18px; left: -10px; transform: rotate(-2deg); }
@@ -4327,6 +4331,18 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-tbl tr.tot td { background: var(--brand-100); border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); font-weight: 800; padding-top: 10px; padding-bottom: 10px; color: var(--brand); }
 .subv2-tbl tr.tot:hover td { background: var(--brand-100); }
 .subv2-tbl tr.tot td:first-child { color: var(--brand); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+/* The total row lives in a TFOOT on the Application-wise table (the Share-wise
+   one keeps its row inside tbody). `.subv2-tbl tbody td` is scoped to tbody, so
+   a tfoot cell inherits NONE of its padding — the fault that put the
+   partner-api total out of line with its own columns. Mirror it explicitly. */
+.subv2-tbl tfoot td { padding: 10px 12px; border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); }
+.subv2-tbl tfoot tr.tot td { background: var(--brand-100); font-weight: 800; color: var(--brand); }
+.subv2-tbl tfoot tr.tot td:first-child { letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+.subv2-tbl tfoot tr.tot td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+/* The cards view has no table footer to borrow, so its line is given the same
+   weight by hand rather than left as the muted sentence it used to be. */
+.subv2-aw-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; padding: 9px 12px; border-radius: 8px; background: var(--brand-100); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 800; color: var(--brand); }
+.subv2-aw-total b { font-size: 14px; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
 
 /* Phone legibility for the three TABLE panels - Application-wise, Subscription
    Demand and the Lot ladder. (Share-wise is not a table on a phone any more;
@@ -4478,8 +4494,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-aw-head-title h3 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .subv2-aw-head-chips { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .subv2-aw-card .subv2-updated { top: 12px; right: 18px; }
-.subv2-aw-total { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); }
-.subv2-aw-total b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* .subv2-aw-total moved up beside the Application-wise total row it matches. */
 /* Why the pro-rata rows read NA. One size down from the total it sits under
    and lighter, because it explains the table rather than reporting from it;
    `line-height` is set because this one wraps to two lines on a phone where
@@ -4504,6 +4519,16 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    max-content. The fault exists only ABOVE that breakpoint, which is every
    desktop anybody actually uses. Measure a grid change at a real desktop
    width, not just at the pane's. */
+/* "N people viewing this page now", under the content on /subscription and
+   /subscription/v2. Muted and small on purpose: it is ambient, not a figure
+   anybody acts on, and it sits below a page whose whole job is numbers that
+   ARE acted on. The dot carries the colour rather than the text — `--pos` on
+   a tint measures 3.50:1 and fails AA, which is why `--pos-ink` exists. */
+.subv2-live { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
+.subv2-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); flex: none; }
+@media (prefers-reduced-motion: no-preference) { .subv2-live-dot { animation: subv2LivePulse 2.4s ease-in-out infinite; } }
+@keyframes subv2LivePulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
 .subv2-aw-note { width: 0; min-width: 100%; margin-top: 4px; font-size: 10.5px; line-height: 1.45; color: var(--text-muted); }
 
 /* empty state */
@@ -4532,16 +4557,16 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-canvas .sc-status { display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; }
 .subv2-canvas .sc-section { margin-bottom: 24px; }
 .subv2-canvas .sc-section:last-of-type { margin-bottom: 0; }
-.subv2-canvas .sc-section h3 { margin: 0 0 12px; font-size: 14px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; color: #3c2e7e; padding-bottom: 8px; border-bottom: 2px solid #ffcb32; display: inline-block; padding-right: 24px; }
+.subv2-canvas .sc-section h3 { margin: 0 0 14px; font-size: 19px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; color: #3c2e7e; padding-bottom: 8px; border-bottom: 2px solid #ffcb32; display: inline-block; padding-right: 24px; }
 .subv2-canvas .sc-tbl { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #ebe7f2; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px -8px rgba(14,11,30,.10); }
-.subv2-canvas .sc-tbl th { padding: 12px 14px; text-align: left; background: #f6f5fb; color: #3c2e7e; font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; border-bottom: 2px solid #ebe7f2; }
+.subv2-canvas .sc-tbl th { padding: 16px 18px; text-align: left; background: #f6f5fb; color: #3c2e7e; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; border-bottom: 2px solid #ebe7f2; }
 .subv2-canvas .sc-tbl th:not(:first-child) { text-align: right; }
-.subv2-canvas .sc-tbl td { padding: 14px 14px; border-bottom: 1px solid #ebe7f2; font-family: 'JetBrains Mono', monospace; font-size: 16px; color: #0e0b1e; }
+.subv2-canvas .sc-tbl td { padding: 18px 18px; border-bottom: 1px solid #ebe7f2; font-family: 'JetBrains Mono', monospace; font-size: 26px; color: #0e0b1e; }
 .subv2-canvas .sc-tbl td:not(:first-child) { text-align: right; }
 .subv2-canvas .sc-tbl tr:last-child td { border-bottom: none; }
-.subv2-canvas .sc-tbl td:first-child { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px; }
-.subv2-canvas .sc-tbl .sc-tot td { background: #3c2e7e; color: #ffffff; font-weight: 800; font-size: 17px; padding: 16px 14px; border-top: 3px solid #ffcb32; border-bottom: none; }
-.subv2-canvas .sc-tbl .sc-tot td:first-child { color: #ffcb32; font-family: 'Inter', sans-serif; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; }
+.subv2-canvas .sc-tbl td:first-child { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; }
+.subv2-canvas .sc-tbl .sc-tot td { background: #3c2e7e; color: #ffffff; font-weight: 800; font-size: 28px; padding: 20px 18px; border-top: 3px solid #ffcb32; border-bottom: none; }
+.subv2-canvas .sc-tbl .sc-tot td:first-child { color: #ffcb32; font-family: 'Inter', sans-serif; font-size: 19px; letter-spacing: .10em; text-transform: uppercase; }
 .subv2-canvas .sc-cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 9px; vertical-align: middle; }
 .subv2-canvas .sc-cat-dot.qib { background: #2f66d0; }
 .subv2-canvas .sc-cat-dot.hni { background: #e0a200; }
