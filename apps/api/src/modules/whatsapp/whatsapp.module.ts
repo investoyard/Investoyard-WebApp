@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
+import { SuperadminGuard } from '../../common/superadmin.guard';
 import { IpoModule } from '../ipo/ipo.module';
 import { ApplicationsModule } from '../applications/applications.module';
 import { WhatsappController } from './whatsapp.controller';
@@ -32,7 +33,7 @@ import { WhatsappJourneyService } from './whatsapp-journey.service';
   providers: [
     WhatsappService, WhatsappAiService, WhatsappFlowService,
     WhatsappSessionService, WhatsappJourneyService, // MessagingService from global MessagingModule
-    PrismaService, JwtAuthGuard, PermissionsGuard,
+    PrismaService, JwtAuthGuard, PermissionsGuard, SuperadminGuard,
   ],
   exports: [WhatsappService, WhatsappFlowService],
 })

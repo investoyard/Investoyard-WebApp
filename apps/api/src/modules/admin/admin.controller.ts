@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res
 import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
+import { SuperadminGuard } from '../../common/superadmin.guard';
 import { RequirePermissions, RequireAnyPermission } from '../../common/require-permissions.decorator';
 import { ApplicationsService } from '../applications/applications.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
@@ -233,14 +234,25 @@ export class AdminController {
     private readonly subscription: SubscriptionService,
   ) {}
 
-  /** Provider keys & integrations (SMS, push) — secrets vaulted, never returned. */
+  /**
+   * Provider keys & integrations (SMS, push) — secrets vaulted, never returned.
+   *
+   * THESE TWO ARE THE PLATFORM’S OWN CONFIG and carry NO `:slug`, so
+   * `PermissionsGuard` has nothing to scope `providers.manage` against and
+   * waves through any holder whatever their scope. Measured 2026-10-21: a
+   * partner Admin got 200 on both. `SuperadminGuard` is the missing half.
+   * A partner manages their OWN keys through the `tenants/:slug/providers`
+   * routes below, which the slug DOES scope — verified 403 across partners.
+   */
   @Get('providers')
+  @UseGuards(SuperadminGuard)
   @RequirePermissions('providers.manage')
   listProviders() {
     return this.providers.list();
   }
 
   @Put('providers/:provider')
+  @UseGuards(SuperadminGuard)
   @RequirePermissions('providers.manage')
   saveProvider(@Param('provider') provider: string, @Body() dto: ProviderConfigDto) {
     return this.providers.upsert(provider, dto);
@@ -305,8 +317,11 @@ export class AdminController {
     return this.admin.resolvePlatformTemplate(channel, key, locale);
   }
 
-  /** Platform view: which white-label partner set its own SMS/email + overrode which templates. */
+  /** Platform view: which white-label partner set its own SMS/email + overrode which templates.
+   *  Every partner at once, so it is ours to read and not theirs — slug-less,
+   *  hence the explicit guard. */
   @Get('integrations/overview')
+  @UseGuards(SuperadminGuard)
   @RequirePermissions('providers.manage')
   integrationsOverview() {
     return this.admin.integrationsOverview();
