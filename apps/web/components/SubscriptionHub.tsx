@@ -337,8 +337,12 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
   const tc = tone(t);
   const closingToday = ipo.closeDate === today;
   const price = ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
-  const bookCr = table ? (table.total.bookSize * price) / 1e7 : 0;
-  const subCr = table ? (table.total.subscribed * price) / 1e7 : 0;
+  /* The Total's rupees are SUMMED from the rows by `subscriptionTable`, never
+     shares x the band price: a discounted quota makes those two disagree, and
+     the Total is the one row with no price of its own. JPL read ₹22,103 Cr
+     over rows summing to ₹22,078 Cr before this. */
+  const bookCr = table ? (table.total.bookAmount ?? 0) / 1e7 : 0;
+  const subCr = table ? (table.total.subAmount ?? 0) / 1e7 : 0;
   const totalApps = table?.total.bidCount ?? 0;
   const meterPct = Math.min(100, (t / 3) * 100);
   const priceBand = ipo.priceBandMin && ipo.priceBandMax
@@ -529,12 +533,17 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
      shares cost ₹3.50 Cr at the discounted ₹291. `r.price` falls back to the
      band price for every category that has no discount, which is all of them
      except employee / shareholder / retail. */
-  const cell = (shares: number, rowPrice?: number) => {
+  /* `amount` is the row's own rupee value from `subscriptionTable`, already at
+     its own price. It is passed rather than recomputed because the TOTAL row
+     cannot be valued at any single price - see the note on SubRowT.bookAmount.
+     The shares x price path remains only for a row that carries no amount. */
+  const cell = (shares: number, rowPrice?: number, amount?: number) => {
     const px = rowPrice && rowPrice > 0 ? rowPrice : price;
+    const cr = amount != null ? amount / 1e7 : px > 0 ? (shares * px) / 1e7 : null;
     return (
       <div className="subv2-2l">
         <span className="big">{fmtIn(shares)}</span>
-        {px > 0 && <span className="small">{fmtCr((shares * px) / 1e7)}</span>}
+        {cr != null && <span className="small">{fmtCr(cr)}</span>}
       </div>
     );
   };
@@ -568,16 +577,16 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
               return (
                 <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
                   <td><span className={`subv2-dot ${dotKey}`} /><b>{label}</b></td>
-                  <td>{cell(r.bookSize, r.price)}</td>
-                  <td>{cell(r.subscribed, r.price)}</td>
+                  <td>{cell(r.bookSize, r.price, r.bookAmount)}</td>
+                  <td>{cell(r.subscribed, r.price, r.subAmount)}</td>
                   <td className={`tone-${tone(r.times)}`}><b>{r.times.toFixed(2)}×</b></td>
                 </tr>
               );
             })}
             <tr className="tot">
               <td>Total</td>
-              <td>{cell(total.bookSize)}</td>
-              <td>{cell(total.subscribed)}</td>
+              <td>{cell(total.bookSize, undefined, total.bookAmount)}</td>
+              <td>{cell(total.subscribed, undefined, total.subAmount)}</td>
               <td className={`tone-${tone(total.times)}`}><b>{total.times.toFixed(2)}×</b></td>
             </tr>
           </tbody>
@@ -689,7 +698,10 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
   const subRows = QIB_SUB_ROWS
     .map(([k, label]) => [label, qibSplit?.[k]?.sh ?? 0] as const)
     .filter(([, sh]) => sh > 0);
-  const at = (shares: number, rowPrice?: number) => {
+  /* Prefer the row's own summed amount; fall back to shares x price only for a
+     row that has none. The Total has no single price - see SubRowT.bookAmount. */
+  const at = (shares: number, rowPrice?: number, amount?: number) => {
+    if (amount != null) return amount / 1e7;
     const px = rowPrice && rowPrice > 0 ? rowPrice : price;
     return px > 0 ? (shares * px) / 1e7 : 0;
   };
@@ -723,7 +735,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
                 <Fragment key={r.key}>
                   <tr className={isSubcat ? 'subcat' : undefined}>
                     <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
-                    <td><b>{cr(at(r.subscribed, r.price))}</b></td>
+                    <td><b>{cr(at(r.subscribed, r.price, r.subAmount))}</b></td>
                   </tr>
                   {r.key === 'qib' && subRows.map(([label, sh]) => (
                     <tr key={label} className="subcat">
@@ -736,7 +748,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
             })}
             <tr className="tot">
               <td>Total</td>
-              <td><b>{cr(at(total.subscribed, total.price))}</b></td>
+              <td><b>{cr(at(total.subscribed, total.price, total.subAmount))}</b></td>
             </tr>
           </tbody>
         </table>
@@ -981,7 +993,12 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
   const snapshotAt = fmtDateTime(new Date().toISOString());
   const appRows = table ? table.rows.filter((r) => r.applicationsTimes != null && r.bidCount != null && (r.key === 'hni' || r.key === 'hni2' || r.key === 'retail' || r.key === 'employee')) : [];
   const cellPair = (shares: number) => price > 0 ? `${fmtIn(shares)}` : `${fmtIn(shares)}`;
-  const cellCr = (shares: number) => price > 0 ? fmtCr((shares * price) / 1e7) : '—';
+  /* The shared image valued EVERY row at the band price, so a discounted quota
+     read high here even though the page beside it did not - and the Total was
+     wrong for the same reason the page's was. `amount` is the row's own rupee
+     value from `subscriptionTable`; see the note on SubRowT.bookAmount. */
+  const cellCr = (shares: number, amount?: number) =>
+    amount != null ? fmtCr(amount / 1e7) : price > 0 ? fmtCr((shares * price) / 1e7) : '—';
   return (
     <div ref={localRef} className="subv2-canvas" aria-hidden="true">
       <div className="sc-inner">
@@ -1014,9 +1031,9 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
                     <tr key={r.key}>
                       <td><span className={`sc-cat-dot ${key}`} />{r.cat}</td>
                       <td>{cellPair(r.bookSize)}</td>
-                      <td>{cellCr(r.bookSize)}</td>
+                      <td>{cellCr(r.bookSize, r.bookAmount)}</td>
                       <td>{cellPair(r.subscribed)}</td>
-                      <td>{cellCr(r.subscribed)}</td>
+                      <td>{cellCr(r.subscribed, r.subAmount)}</td>
                       <td style={{ color: (tone(r.times) === 'hot' ? '#0f9d58' : tone(r.times) === 'warm' ? '#e6ad12' : tone(r.times) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{r.times.toFixed(2)}×</td>
                     </tr>
                   );
@@ -1024,9 +1041,9 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
                 <tr className="sc-tot">
                   <td>Total</td>
                   <td>{fmtIn(table.total.bookSize)}</td>
-                  <td>{cellCr(table.total.bookSize)}</td>
+                  <td>{cellCr(table.total.bookSize, table.total.bookAmount)}</td>
                   <td>{fmtIn(table.total.subscribed)}</td>
-                  <td>{cellCr(table.total.subscribed)}</td>
+                  <td>{cellCr(table.total.subscribed, table.total.subAmount)}</td>
                   <td>{t.toFixed(2)}×</td>
                 </tr>
               </tbody>

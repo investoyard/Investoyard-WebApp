@@ -61,8 +61,11 @@ export function LiveSubscription({
   const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
   const fmtCr = (n: number) => (n >= 1000 ? `₹${Math.round(n).toLocaleString('en-IN')} Cr` : `₹${n.toFixed(2)} Cr`);
 
-  const bookCr = total.bookSize > 0 && price > 0 ? (total.bookSize * price) / 1e7 : 0;
-  const subCr = total.subscribed > 0 && price > 0 ? (total.subscribed * price) / 1e7 : 0;
+  /* Summed from the rows by `subscriptionTable`, not shares x the band price:
+     a discounted quota makes those disagree and the Total has no price of its
+     own. See the note on SubRowT.bookAmount. */
+  const bookCr = (total.bookAmount ?? 0) / 1e7;
+  const subCr = (total.subAmount ?? 0) / 1e7;
   const apps = totalApps ?? total.bidCount ?? 0;
 
   return (

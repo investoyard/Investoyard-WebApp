@@ -327,6 +327,25 @@ export interface SubRowT {
    *  rather than the issue's price when valuing a row, or a discounted quota
    *  (employee / shareholder / retail) reads high. */
   price?: number;
+  /**
+   * This row in RUPEES, valued at its own `price`. Read these rather than
+   * multiplying `bookSize`/`subscribed` by a price at the render site.
+   *
+   * WHY THEY EXIST. The Total row has no single price and cannot be given one:
+   * it is a mix of categories, and the mix DIFFERS between the two columns, so
+   * one weighted average cannot serve both. Measured on JPL: the book-weighted
+   * price is 1117.72 and the subscribed-weighted price 1118.36 — using the
+   * former for both fixes a 25.35 Cr error in Book and introduces a 7.52 Cr one
+   * in Subscribed. Every render site used to fall back to the BAND price for the
+   * total, which is why /subscription/v2?symbol=JPL showed a book of ₹22,103 Cr
+   * over rows summing to ₹22,078 Cr — exactly JPL's 46,94,836 employee shares
+   * times their ₹54 discount.
+   *
+   * Summing rupees is the only thing that works, so the sum is done HERE, once,
+   * where each row's price is known.
+   */
+  bookAmount?: number;
+  subAmount?: number;
   /** Applications-wise times (bids ÷ max allottees) — drives the second
    * ipopremium-style breakup table under the shares grid. Overridden on the
    * front side using the correct per-bucket shares-per-app divisor so the
@@ -640,6 +659,9 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       price: categoryPrice(r.category),
       bookSize: Math.round(book),
       subscribed: actualBidShares,
+      // Valued at THIS row's price, so the Total can simply add them up.
+      bookAmount: Math.round(book) * categoryPrice(r.category),
+      subAmount: actualBidShares * categoryPrice(r.category),
       times: displayTimes,
       applicationsTimes: applicationsTimesVal,
       bidCount,
@@ -657,6 +679,11 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
   const summable = rows.filter((r) => r.key !== 'nii');
   const bookSum = summable.reduce((a, b) => a + b.bookSize, 0);
   const subSum = summable.reduce((a, b) => a + b.subscribed, 0);
+  // RUPEES are summed, never re-derived from the share total: see the note on
+  // `bookAmount`. A discounted quota makes the two disagree, and the Total is
+  // the one row with no price of its own to value it at.
+  const bookAmtSum = summable.reduce((a, b) => a + (b.bookAmount ?? 0), 0);
+  const subAmtSum = summable.reduce((a, b) => a + (b.subAmount ?? 0), 0);
   // Roll per-exchange totals across categories — used by the "NSE / BSE split"
   // footnote in <LiveSubscription>. Any category without the breakdown
   // (legacy row) contributes 0; the footnote hides itself when both are 0.
@@ -683,6 +710,8 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       cat: 'Total',
       bookSize: bookSum,
       subscribed: subSum,
+      bookAmount: bookAmtSum,
+      subAmount: subAmtSum,
       times: totalTimes,
       bidCount: bidSum > 0 ? bidSum : undefined,
       nseShares: nseSum > 0 ? nseSum : undefined,
