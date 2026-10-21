@@ -59,26 +59,44 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
       {rows.map((r) => {
         /* The bar is the same 15× ramp in both views so a reader switching
            between them is comparing like with like. */
+        /* A PRO-RATA ROW CARRIES NO APPLICATION-WISE RATIO (operator ask,
+           2026-10-21). Employee / shareholder / policyholder are allotted
+           proportionately, so there the SHARE-wise multiple decides an
+           allotment and the application count decides nothing. JPL is the
+           case: its employee quota is over-subscribed at 1.08x by shares
+           while this view read 0.16x.
+
+           The row keeps its COUNT, which is the one figure on it that means
+           something, and loses the BAR along with the number — a bar at its
+           4% floor would read as the 0x this exists to remove. Web prints NA
+           in a Req 1x column; a phone row has no such column, so the
+           sub-line stops claiming one and says why instead. Keep the two in
+           step by hand, as with the split UPI input and DematPanel. */
+        const noRatio = shown === 'apps' && r.proRata === true;
         const times = shown === 'apps' ? (r.applicationsTimes ?? 0) : r.times;
-        const under = times < 1;
+        const under = !noRatio && times < 1;
         const w = Math.max(4, Math.min(100, (times / 15) * 100));
         return (
           <View style={s.subRow} key={r.cat}>
             <Text style={s.subCat}>{r.cat}</Text>
             <View style={s.subMid}>
-              <View style={s.track}>
-                <View style={[s.fill, { width: `${w}%`, backgroundColor: catColor(r.cat) }]} />
-              </View>
+              {!noRatio && (
+                <View style={s.track}>
+                  <View style={[s.fill, { width: `${w}%`, backgroundColor: catColor(r.cat) }]} />
+                </View>
+              )}
               <Text style={s.subBook}>
                 {shown === 'apps'
                   /* Applications RECEIVED against those needed for 1× — the two
                      figures the Reserved column on an SME lot ladder does not
                      carry, which is why this view exists at all. */
-                  ? `need ${shC(r.req1x ?? 0)} for 1× · got ${shC(r.bidCount ?? 0)}`
+                  ? (noRatio
+                    ? `${shC(r.bidCount ?? 0)} applications · allotted pro-rata`
+                    : `need ${shC(r.req1x ?? 0)} for 1× · got ${shC(r.bidCount ?? 0)}`)
                   : `book ${shC(r.bookSize)} · applied ${shC(r.subscribed)}`}
               </Text>
             </View>
-            <Text style={[s.subX, under && s.subUnder]}>{times}×</Text>
+            <Text style={[s.subX, under && s.subUnder]}>{noRatio ? '\u2014' : `${times}\u00d7`}</Text>
           </View>
         );
       })}

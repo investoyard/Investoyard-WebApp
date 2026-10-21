@@ -4480,6 +4480,11 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-aw-card .subv2-updated { top: 12px; right: 18px; }
 .subv2-aw-total { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); }
 .subv2-aw-total b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Why the pro-rata rows read NA. One size down from the total it sits under
+   and lighter, because it explains the table rather than reporting from it;
+   `line-height` is set because this one wraps to two lines on a phone where
+   the total never does. */
+.subv2-aw-note { margin-top: 4px; font-size: 10.5px; line-height: 1.45; color: var(--text-muted); }
 
 /* empty state */
 .subv2-empty { padding: 44px 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-2); border-radius: 16px; background: var(--surface); }

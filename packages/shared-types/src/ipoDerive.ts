@@ -33,6 +33,7 @@ import { computeIssue, type IssueInputs } from './computeIssue';
 import { rulePackFor, inferRegulationBasis } from './issueRules';
 import { carveoutAt, CARVEOUT_KEYS } from './carveouts';
 import { minApplicationShares, minApplicationLots, minAllotmentShares } from './minApplication';
+import { isProRataAllotment } from './appWise';
 import { issueInputsFrom, parseIssueSizeRupees, type IssueInputSource } from './issueInputs';
 /* TYPE-only, and from the barrel on purpose: `SubscriptionRow` is declared in
    index.ts, which re-exports this file. A value import would be a cycle; a type
@@ -352,6 +353,17 @@ export interface SubRowT {
    * display updates without waiting for a pool cycle. */
   applicationsTimes?: number;
   bidCount?: number;
+  /**
+   * IS THIS CATEGORY ALLOTTED PRO-RATA, so that the two ratio columns above
+   * mean nothing for it? See `PRO_RATA_CATEGORIES` in appWise.ts for why.
+   *
+   * Decided HERE, once, rather than by each renderer testing the key: three
+   * surfaces read this row and the point of the flag is that they cannot
+   * disagree about it. When it is set, `req1x` and `applicationsTimes` are
+   * deliberately UNSET rather than zeroed — a value nothing may print should
+   * not be on the row at all, or it leaks into the fourth surface later.
+   */
+  proRata?: boolean;
   /** Applications-for-1× — `bookSize ÷ shares-per-app-for-this-bucket`.
    * shares-per-app = `lotSize` for Retail/Employee, `sHNI-min` for HNI/HNI2
    * (min shares for a ≥ ₹2 L bid). Computed here so all display sites read
@@ -632,7 +644,15 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
     // minimum-bid rule) we do NOT derive: req1x stays 0 and Times stays 0
     // on those rows, matching how other IPO information sources show
     // these categories (operator ask, 2026-09-21).
-    const spa = sharesPerApp(r.category);
+    /* PRO-RATA CATEGORIES DERIVE NOTHING HERE (operator, 2026-10-21). The
+       arithmetic would succeed — `book ÷ one lot` is a true capacity count —
+       which is exactly why this is a deliberate refusal rather than a bug
+       fix: in a category allotted proportionately the SHARE-wise multiple
+       decides an allotment and the application count decides nothing, so a
+       ratio there invites a reader to use the wrong number. JPL's employee
+       quota is 1.08x by shares and read 0.16x here, in a low-demand tone. */
+    const proRata = isProRataAllotment(r.category);
+    const spa = proRata ? 0 : sharesPerApp(r.category);
     const canDerive = spa > 0;
     const req1xVal = canDerive && book > 0 ? Math.round(book / spa) : 0;
     // applicationsTimes = bidCount ÷ req1x. Falls back to the API's value
@@ -663,9 +683,14 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
       bookAmount: Math.round(book) * categoryPrice(r.category),
       subAmount: actualBidShares * categoryPrice(r.category),
       times: displayTimes,
-      applicationsTimes: applicationsTimesVal,
+      /* UNSET on a pro-rata row, not zeroed: `0x` reads as a measurement of
+         no demand, which is the more misleading of the two (the same reason
+         the QIB application multiple was cleared rather than left at 0 on
+         2026-10-09). The renderers print 'NA' and a dash off `proRata`. */
+      applicationsTimes: proRata ? undefined : applicationsTimesVal,
       bidCount,
-      req1x: req1xVal,
+      req1x: proRata ? undefined : req1xVal,
+      proRata: proRata || undefined,
       nseShares: (r as any).nseShares,
       bseShares: (r as any).bseShares,
       nseBids: (r as any).nseBids,

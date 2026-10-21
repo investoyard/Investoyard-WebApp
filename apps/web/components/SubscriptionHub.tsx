@@ -73,6 +73,45 @@ const dotClassFor = (key: string): string =>
     ? key
     : key === 'employee' ? 'emp' : '';
 
+/**
+ * THE TWO RATIO COLUMNS OF THE APPLICATION-WISE TABLE, AND WHAT A PRO-RATA
+ * ROW PUTS IN THEM (operator ask, 2026-10-21).
+ *
+ * `Req 1x` and `Times` answer 'what are my chances', which is a question
+ * about a DRAW. Retail is drawn; employee, shareholder and policyholder are
+ * allotted proportionately, so there the share-wise multiple decides an
+ * allotment and the application count decides nothing. JPL showed the cost:
+ * its employee quota is OVER-subscribed at 1.08x by shares while this table
+ * read 0.16x in a low-demand tone, so the two panels on one screen pointed
+ * opposite ways with the colour on the misleading one.
+ *
+ * NA IS NOT A DASH, and the distinction is deliberate — it follows the `na`
+ * check state in `ipo-completeness`: 'not applicable' is a different
+ * statement from 'not known', and a dash alone in BOTH cells would read as a
+ * gap somebody forgot to fill. The operator asked for NA on the count and a
+ * dash on the multiple.
+ *
+ * These live here rather than inside one panel because this file renders the
+ * table THREE times — the live panel, the Application-wise cards view, and
+ * the share snapshot — and the share snapshot had already drifted its own
+ * copy of the row filter (see ShareCanvas).
+ */
+const appReq1xText = (r: SubRowT): string => (r.proRata ? 'NA' : fmtIn(r.req1x ?? 0));
+const appTimesText = (r: SubRowT): string => (r.proRata ? '\u2014' : `${(r.applicationsTimes ?? 0).toFixed(2)}\u00d7`);
+/** Tone class for the Times cell — none on a dash, which has no magnitude. */
+const appToneCls = (r: SubRowT): string => (r.proRata ? '' : `tone-${tone(r.applicationsTimes ?? 0)}`);
+/**
+ * The footnote, or NA is a mystery. It names the rows actually on screen
+ * rather than the category list, so it can never mention a quota this issue
+ * does not have.
+ */
+const proRataNote = (rows: readonly SubRowT[]): string | null => {
+  const names = rows.filter((r) => r.proRata).map((r) => r.cat);
+  if (!names.length) return null;
+  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return `${who} ${names.length > 1 ? 'are' : 'is'} allotted pro-rata, so an application-wise multiple does not apply \u2014 the share-wise figure is what decides an allotment there.`;
+};
+
 const isOpenLive = (i: IpoFull) =>
   i.status === 'open' && ((i.subscription?.length ?? 0) > 0 || i.subscriptionTimes != null);
 
@@ -656,13 +695,12 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
               // the reserved quotas ÷ one lot. Which categories reach this table
               // at all, and why QIB never does, is `APP_WISE_ORDER` in
               // shared-types/appWise.ts.
-              const req1x = r.req1x ?? 0;
               return (
                 <tr key={r.key}>
                   <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                  <td>{fmtIn(req1x)}</td>
+                  <td>{appReq1xText(r)}</td>
                   <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
-                  <td className={`tone-${tone(r.applicationsTimes ?? 0)}`}><b>{(r.applicationsTimes ?? 0).toFixed(2)}×</b></td>
+                  <td className={appToneCls(r)}><b>{appTimesText(r)}</b></td>
                 </tr>
               );
             })}
@@ -670,6 +708,9 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
         </table>
       </div>
       <p className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>Total applications: <b>{fmtIn(totalApps)}</b></p>
+      {proRataNote(appRows) && (
+        <p className="muted" style={{ fontSize: 10.5, marginTop: 4 }}>{proRataNote(appRows)}</p>
+      )}
     </section>
   );
 }
@@ -983,13 +1024,12 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
                 <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
                 <tbody>
                   {appRows.map((r) => {
-                    const req1x = r.req1x ?? 0;
                     return (
                       <tr key={r.key}>
                         <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                        <td>{fmtIn(req1x)}</td>
+                        <td>{appReq1xText(r)}</td>
                         <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
-                        <td className={`tone-${tone(r.applicationsTimes ?? 0)}`}><b>{(r.applicationsTimes ?? 0).toFixed(2)}×</b></td>
+                        <td className={appToneCls(r)}><b>{appTimesText(r)}</b></td>
                       </tr>
                     );
                   })}
@@ -997,6 +1037,9 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
               </table>
             </div>
             <p className="subv2-aw-total">Total applications: <b>{fmtIn(totalApps)}</b></p>
+            {proRataNote(appRows) && (
+              <p className="subv2-aw-note">{proRataNote(appRows)}</p>
+            )}
           </div>
         );
       })}
@@ -1021,7 +1064,13 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
   const tHex = tc === 'hot' ? '#0f9d58' : tc === 'warm' ? '#e6ad12' : tc === 'cool' ? '#c58a00' : '#d92d20';
   const tBg = tc === 'hot' ? '#e6f6ee' : tc === 'warm' ? '#fff7df' : tc === 'cool' ? '#fff5d9' : '#fdece9';
   const snapshotAt = fmtDateTime(new Date().toISOString());
-  const appRows = table ? table.rows.filter((r) => r.applicationsTimes != null && r.bidCount != null && (r.key === 'hni' || r.key === 'hni2' || r.key === 'retail' || r.key === 'employee')) : [];
+  /* `appWiseRows`, not a local list. This held a hand-written copy that had
+     drifted — it named `employee` but neither `shareholder` nor
+     `policyholder`, so JPL's shared image showed one reserved quota and
+     dropped the other — and its `applicationsTimes != null` test would now
+     drop every pro-rata row, Employee included. The shared image should be
+     the page, which is the whole argument for one selector. */
+  const appRows = appWiseRows(table?.rows ?? []);
   const cellPair = (shares: number) => price > 0 ? `${fmtIn(shares)}` : `${fmtIn(shares)}`;
   /* The shared image valued EVERY row at the band price, so a discounted quota
      read high here even though the page beside it did not - and the Total was
@@ -1088,15 +1137,14 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
               <thead><tr><th>Category</th><th>NSE</th><th>BSE</th><th>Total</th><th>Req 1×</th><th>Times</th></tr></thead>
               <tbody>
                 {appRows.map((r) => {
-                  const req1x = r.req1x ?? 0;
                   return (
                     <tr key={r.key}>
                       <td><span className={`sc-cat-dot ${dotClassFor(r.key ?? '')}`} />{r.cat}</td>
                       <td>{r.nseBids != null ? fmtIn(r.nseBids) : '—'}</td>
                       <td>{r.bseBids != null ? fmtIn(r.bseBids) : '—'}</td>
                       <td style={{ fontWeight: 800 }}>{fmtIn(r.bidCount ?? 0)}</td>
-                      <td>{fmtIn(req1x)}</td>
-                      <td style={{ color: (tone(r.applicationsTimes ?? 0) === 'hot' ? '#0f9d58' : tone(r.applicationsTimes ?? 0) === 'warm' ? '#e6ad12' : tone(r.applicationsTimes ?? 0) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{(r.applicationsTimes ?? 0).toFixed(2)}×</td>
+                      <td>{appReq1xText(r)}</td>
+                      <td style={{ color: (r.proRata ? '#6b7280' : tone(r.applicationsTimes ?? 0) === 'hot' ? '#0f9d58' : tone(r.applicationsTimes ?? 0) === 'warm' ? '#e6ad12' : tone(r.applicationsTimes ?? 0) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{appTimesText(r)}</td>
                     </tr>
                   );
                 })}
