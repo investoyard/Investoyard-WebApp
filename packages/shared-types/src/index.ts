@@ -274,6 +274,7 @@ export * from './unblockRules';
 export * from './sponsorBank';
 export * from './ipoDocs';
 export * from './appWise';
+export * from './pollWindow';
 export * from './tenantContent';
 export * from './richText';
 export * from './asbaForm';

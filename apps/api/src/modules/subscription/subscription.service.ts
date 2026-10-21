@@ -4,7 +4,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { tenantContext } from '../../common/tenant-context';
-import { tradingDaysBetween } from '@investoyard/shared-types';
+import {
+  tradingDaysBetween,
+  DEFAULT_POLL_FROM_MIN, DEFAULT_POLL_TO_MIN,
+  POLL_ENVELOPE_FROM_MIN, POLL_ENVELOPE_TO_MIN,
+  pollMinute,
+} from '@investoyard/shared-types';
 import { offeredFromIpo, type Bucket } from './offered';
 
 // ── tunables ─────────────────────────────────────────────────────────────────
@@ -17,8 +22,10 @@ const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;
 const DEFAULT_NORMAL_SEC = 60;   // refresh once a minute during the bidding window
 const DEFAULT_FAST_SEC = 5;      // closing rush: every 5s
 const DEFAULT_FAST_WINDOW_MIN = 90;
-const DEFAULT_POLL_FROM_MIN = 10 * 60;   // 10:00 IST — matches SEBI bidding open
-const DEFAULT_POLL_TO_MIN = 18 * 60;     // 18:00 IST — 1h grace past 17:00 bidding close
+/* DEFAULT_POLL_FROM_MIN / DEFAULT_POLL_TO_MIN / POLL_ENVELOPE_* and
+   `pollMinute` live in shared-types/pollWindow.ts, because the admin form now
+   offers a per-issue override and has to explain the bounds this file applies.
+   They were local literals until 2026-10-21. */
 // BIDDING cutoff (SEBI): 17:00 IST — drives the fast-cadence "closing rush"
 // trigger (fast mode kicks in at 17:00 − fastWindowMin, e.g. 15:30 IST for
 // the default 90-min window). Fixed by regulation; NOT tunable.
@@ -37,8 +44,7 @@ const POLL_GRACE_MIN = DEFAULT_POLL_TO_MIN - BIDDING_CLOSE_MIN;
  * loading anything — a per-issue window is read from the issues themselves, so
  * some outer bound has to come first.
  */
-const POLL_ENVELOPE_FROM_MIN = 7 * 60;   // 07:00 IST
-const POLL_ENVELOPE_TO_MIN = 22 * 60;    // 22:00 IST
+/* (both now imported — see the note above) */
 
 /**
  * The seven buckets that come out of merging NSE + BSE (matches the operator's
@@ -350,23 +356,23 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
    * window and tracks any override, so there is ONE place a window is stated
    * rather than two that can disagree.
    *
-   * Both keys are in `SERVER_OWNED_EXTRA`, so saving the IPO form cannot delete
-   * them — the form PATCHes `extra` wholesale from its own field state and does
-   * not know these.
+   * THE ADMIN FORM OWNS THESE KEYS NOW (2026-10-21). They were in
+   * `SERVER_OWNED_EXTRA` — unwritable by any form — because the form PATCHes
+   * `extra` wholesale and a save used to delete every key it had not heard of.
+   * They have moved to `OPERATOR_OWNED_EXTRA`, which keeps a stored value only
+   * when the payload does not MENTION the key: an older client that omits them
+   * still cannot wipe them, and the new boxes can both set and clear.
    */
   private windowFor(
     ipo: OpenIpo,
     t: { fromMin: number; toMin: number },
   ): { fromMin: number; toMin: number; closeMin: number } {
     const ex = (ipo.extra ?? {}) as Record<string, unknown>;
-    const pos = (v: unknown, def: number): number => {
-      const n = Number(v);
-      // Same contract as `tuning()`: a bad value must not stall or widen the
-      // poll, it falls back. 1440 = minutes in a day.
-      return Number.isFinite(n) && n > 0 && n <= 1440 ? n : def;
-    };
-    const fromMin = pos(ex.pollFromMin, t.fromMin);
-    const toMin = pos(ex.pollToMin, t.toMin);
+    /* `pollMinute` IS this test, moved to shared-types so the admin form
+       warns about exactly what this accepts. Same contract as `tuning()`: a
+       bad value must not stall or widen the poll, it falls back. */
+    const fromMin = pollMinute(ex.pollFromMin, t.fromMin);
+    const toMin = pollMinute(ex.pollToMin, t.toMin);
     // A window that does not open is a window that loses the day: refuse the
     // override rather than honour an inverted one.
     if (toMin <= fromMin) return { fromMin: t.fromMin, toMin: t.toMin, closeMin: t.toMin - POLL_GRACE_MIN };

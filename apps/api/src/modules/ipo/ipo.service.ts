@@ -31,10 +31,35 @@ const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice
    silently dropped its window would have cost two hours of bidding a day with
    nothing on screen to show it had happened. Give them real form fields and
    they can leave this list. */
+/**
+ * Keys a FORM MAY NEVER WRITE. A background job owns each of them and the
+ * admin form has never heard of any of them, so the only thing a save can do
+ * is destroy one — see the note in `update()` for what that cost.
+ */
 const SERVER_OWNED_EXTRA = [
   'subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit',
-  'pollFromMin', 'pollToMin',
 ] as const;
+
+/**
+ * KEYS THE OPERATOR OWNS BUT A SAVE MUST NOT DESTROY BY OMISSION.
+ *
+ * The per-issue poll window sat in the list above until 2026-10-21, which is
+ * why it had to: the poller has read `extra.pollFromMin` / `pollToMin` since
+ * they were added and the form had no boxes for them, so a save would have
+ * deleted JPL's 09:00-20:00 override. The moment the form DOES have boxes,
+ * that same protection makes them inert — the merge below re-applies the
+ * stored value over whatever was typed, so the operator would set a window,
+ * see no error, and the poller would keep the old one. A control that looks
+ * like it works is worse than no control.
+ *
+ * So the rule is MENTION, not presence: a payload that names the key wins
+ * (including naming it as null, which clears the override), and a payload
+ * that does not name it keeps what is stored. That is what removes the
+ * deploy-ordering hazard — either order of 'remove the protection' and 'ship
+ * the boxes' would otherwise leave a window in which one save wipes a live
+ * issue's override.
+ */
+const OPERATOR_OWNED_EXTRA = ['pollFromMin', 'pollToMin'] as const;
 
 const num = (d: any): number | undefined => (d == null ? undefined : Number(d));
 const day = (d: Date | null | undefined): string | undefined => (d ? d.toISOString().slice(0, 10) : undefined);
@@ -324,9 +349,26 @@ export class IpoService {
       // same way, and neither is recoverable.
       if (data.extra && typeof data.extra === 'object') {
         const prev: any = (existing.extra as any) ?? {};
-        const kept: any = {};
-        for (const k of SERVER_OWNED_EXTRA) if (prev[k] !== undefined) kept[k] = prev[k];
-        data.extra = { ...data.extra, ...kept };
+        const payload: any = data.extra as any;
+        const next: any = { ...payload };
+        for (const k of SERVER_OWNED_EXTRA) if (prev[k] !== undefined) next[k] = prev[k];
+        /*
+         * The operator's own keys: absent from the payload -> keep what is
+         * stored (which is what protects an older client). Mentioned but empty
+         * -> DELETE, never store null. A key present and falsy reads as SET to
+         * anything testing for presence, which is the trailing-"" tail
+         * `mergeContentPatch` exists to avoid; and `pollMinute` would treat a
+         * stored 0 as absent anyway, so writing one gains nothing and leaves
+         * something for a later reader to misread.
+         */
+        for (const k of OPERATOR_OWNED_EXTRA) {
+          if (!(k in payload)) {
+            if (prev[k] !== undefined) next[k] = prev[k];
+          } else if (next[k] == null || next[k] === '') {
+            delete next[k];
+          }
+        }
+        data.extra = next;
       }
       await this.prisma.ipo.update({ where: { id }, data });
     } catch (e: any) {

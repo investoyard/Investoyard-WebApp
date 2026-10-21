@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, minAllotmentShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { pollTimeToHhmm, pollHhmmToMin, pollWindowProblem, POLL_ENVELOPE_FROM_MIN, POLL_ENVELOPE_TO_MIN, computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, minAllotmentShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -160,6 +160,19 @@ interface FormState {
   tickSize: string; employeeDiscount: string; shareholderDiscount: string; policyholderDiscount: string; finalIssuePrice: string;
   /** anchor as a % of the QIB quota — the input B09 checks against the rule pack */
   anchorPct: string;
+  /**
+   * PER-ISSUE SUBSCRIPTION POLL WINDOW, as `HH:MM` wall-clock IST.
+   *
+   * Stored as minutes from midnight in `extra.pollFromMin` / `pollToMin`,
+   * which the poller has read since they were added — with no way to set them
+   * but a database write until these boxes existed. `540` is unreadable in a
+   * form box, so `pollWindow.ts` owns the conversion and nothing here ever
+   * sees the stored unit.
+   *
+   * BLANK IS NOT ZERO. An empty box means 'use the global window', and the
+   * API deletes the key rather than storing a falsy value for it.
+   */
+  pollFrom: string; pollTo: string;
   /** off-the-top reservations, taken before the category split */
   cvEmployee: string; cvShareholder: string; cvPolicyholder: string; cvMarketMaker: string;
   /**
@@ -247,6 +260,7 @@ const blankForm = (): FormState => ({
   mechanism: 'book_built', regulationBasis: '', freshBasis: 'none', freshValue: '', ofsBasis: 'none', ofsValue: '',
   exNse: true, exBse: true, issueSizeCr: '',
   tickSize: '', employeeDiscount: '', shareholderDiscount: '', policyholderDiscount: '', finalIssuePrice: '', anchorPct: '',
+  pollFrom: '', pollTo: '',
   cvEmployee: '', cvShareholder: '', cvPolicyholder: '', cvMarketMaker: '',
   // 'amount' is the back-compatible default — every legacy carve-out is ₹ Cr.
   cvEmployeeBasis: 'amount', cvShareholderBasis: 'amount', cvPolicyholderBasis: 'amount', cvMarketMakerBasis: 'amount',
@@ -482,6 +496,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
           tickSize: str(ex.tickSize), employeeDiscount: str(ex.employeeDiscount),
           shareholderDiscount: str(ex.shareholderDiscount), policyholderDiscount: str(ex.policyholderDiscount), finalIssuePrice: str(ex.finalIssuePrice),
           anchorPct: str(ex.anchorPct),
+          pollFrom: pollTimeToHhmm(ex.pollFromMin), pollTo: pollTimeToHhmm(ex.pollToMin),
           cvEmployeeBasis: str(ex.carveoutBasis?.employee) || 'amount',
           cvShareholderBasis: str(ex.carveoutBasis?.shareholder) || 'amount',
           cvPolicyholderBasis: str(ex.carveoutBasis?.policyholder) || 'amount',
@@ -666,6 +681,15 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       tickSize: form.tickSize, employeeDiscount: form.employeeDiscount,
       shareholderDiscount: form.shareholderDiscount, policyholderDiscount: form.policyholderDiscount, finalIssuePrice: form.finalIssuePrice,
       anchorPct: form.anchorPct,
+      /*
+       * ALWAYS SENT, even when blank, and that is the whole mechanism. The API
+       * keeps a stored window only when the payload does not MENTION the key
+       * (which is what stops an older client wiping one), so sending `null` is
+       * how a cleared box actually clears. Omitting the keys here would make
+       * both boxes read-only in effect.
+       */
+      pollFromMin: pollHhmmToMin(form.pollFrom),
+      pollToMin: pollHhmmToMin(form.pollTo),
       anchorMfPct: form.anchorMfPct, lockin1Pct: form.lockin1Pct,
       lockin1Days: form.lockin1Days, lockin2Days: form.lockin2Days,
       empMaxPerApplicant: form.empMaxPerApplicant, empInitialPerApplicant: form.empInitialPerApplicant,
@@ -1531,6 +1555,24 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
         blocking: false,
       });
     }
+    /*
+     * W-POLL — THE PER-ISSUE POLL WINDOW WILL NOT DO WHAT IT SAYS.
+     *
+     * Two ways to enter a window the poller then declines to use, and both
+     * fail SILENTLY without this: an inverted pair is discarded whole and the
+     * global window applies, and an hour outside the sweep's own
+     * 07:00-22:00 envelope is accepted here and never acted on. Either way the
+     * operator would set a window, see no error, and lose the hours they were
+     * trying to buy — and an unpolled bidding hour cannot be recovered.
+     *
+     * `pollWindowProblem` is in shared-types beside the constants the POLLER
+     * enforces, so this cannot drift into explaining a rule the API does not
+     * apply. A WARNING rather than a blocker: the window is optional and a bad
+     * one costs the default, which is not worth refusing an otherwise good
+     * record over.
+     */
+    const pollProblem = pollWindowProblem(pollHhmmToMin(form.pollFrom), pollHhmmToMin(form.pollTo));
+    if (pollProblem) out.push({ code: 'W-POLL', msg: pollProblem.message, blocking: false });
     return out;
   }, [derived, form, offerTotals, resvTotals, shownCount]);
 
@@ -2940,6 +2982,49 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                       : <div className="faint" style={{ fontSize: 12.5, marginTop: 6 }}>Unblock requests will reach all {names.length === 1 ? 'of it' : `${names.length} of them`}.</div>;
                   })()}
                 </Field>
+              </div>
+            </Panel>
+
+            {/*
+              * THE POLLER'S WINDOW FOR THIS ISSUE, and it is a bidding-hours
+              * fact, which is why it sits with the dates rather than in
+              * Integrations: the global window there is every issue's, this is
+              * one issue's exception.
+              *
+              * Why it exists: SEBI's 10:00-17:00 is the rule, not a guarantee.
+              * JPL bid outside it, and a global window either misses the first
+              * hour of such an issue or drags every other issue into hours it
+              * is not trading in. Until this panel there was no way to set one
+              * but a database write.
+              */}
+            <Panel title="Live subscription polling">
+              <div className="form-grid">
+                <Field
+                  label="Poll from (IST)"
+                  value={form.pollFrom}
+                  hint="blank = the global window (set in Integrations). Only for an issue that bids outside the usual hours."
+                >
+                  <input type="time" className="input mono" value={form.pollFrom} onChange={(e) => set({ pollFrom: e.target.value })} />
+                </Field>
+                <Field
+                  label="Poll until (IST)"
+                  value={form.pollTo}
+                  hint="includes the grace hour past bidding close — the exchanges keep serving consolidated figures for 30-60 min after"
+                >
+                  <input type="time" className="input mono" value={form.pollTo} onChange={(e) => set({ pollTo: e.target.value })} />
+                </Field>
+                {/* Either box alone is a legitimate half-override: an unset end
+                    falls back to the global, so 'poll until 20:00, start at the
+                    usual time' is a real thing to want. Said here because the
+                    two empty boxes otherwise read as a pair that must be
+                    filled together. */}
+                <div className="col-2">
+                  <div className="faint" style={{ fontSize: 12.5 }}>
+                    Either box can be left blank on its own — that end falls back to the global window. The sweep itself never runs outside
+                    {' '}<b>{pollTimeToHhmm(POLL_ENVELOPE_FROM_MIN)}-{pollTimeToHhmm(POLL_ENVELOPE_TO_MIN)} IST</b>, whatever is set here.
+                    {' '}A bidding hour that passes unpolled cannot be recovered afterwards.
+                  </div>
+                </div>
               </div>
             </Panel>
 
