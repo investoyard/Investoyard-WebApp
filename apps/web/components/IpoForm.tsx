@@ -3002,7 +3002,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
                 <Field
                   label="Poll from (IST)"
                   value={form.pollFrom}
-                  hint="blank = the global window (set in Integrations). Only for an issue that bids outside the usual hours."
+                  hint="blank = the global window (System Settings → Provider Keys). Only for an issue that bids outside the usual hours."
                 >
                   <input type="time" className="input mono" value={form.pollFrom} onChange={(e) => set({ pollFrom: e.target.value })} />
                 </Field>

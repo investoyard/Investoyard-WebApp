@@ -1,4 +1,5 @@
 import { PDFDocument, PDFTextField, PDFName, PDFString, PDFRef, PDFDict, StandardFonts, rgb } from 'pdf-lib';
+import { parseDefaultAppearance, createFontResolver, burnInFontSize } from './asba-font';
 
 /**
  * AcroForm fill engine — used when the operator's uploaded ASBA blank is a
@@ -257,12 +258,14 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
   // identically in every viewer, including WhatsApp.
   if (flatten) {
     if (appearancesOk === form.getFields().length) {
-      try { form.flatten({ updateFieldAppearances: false }); }
-      catch {
-        burnInAndStrip(doc, form, font);
+      let flattened = false;
+      try { form.flatten({ updateFieldAppearances: false }); flattened = true; }
+      catch { /* fall through */ }
+      if (!flattened) {
+        await burnInAndStrip(doc, form, font);
       }
     } else {
-      burnInAndStrip(doc, form, font);
+      await burnInAndStrip(doc, form, font);
     }
   } else {
     // Caller explicitly asked to keep the form (e.g. preview flow that
@@ -287,8 +290,8 @@ export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatte
  * OVER the drawn values, and the operator (correctly) called that "still not
  * flattened" (2026-09-21).
  */
-function burnInAndStrip(doc: PDFDocument, form: any, font: any): void {
-  burnInFields(doc, form, font);
+async function burnInAndStrip(doc: PDFDocument, form: any, font: any): Promise<void> {
+  await burnInFields(doc, form, font);
   // form.removeField() detaches the field from the form AND removes its
   // widget annotations from whichever page they sit on. Iterate a snapshot
   // since removeField mutates the underlying array.
@@ -345,10 +348,30 @@ function burnInAndStrip(doc: PDFDocument, form: any, font: any): void {
  * on the sheet). Silent per-widget try/catch — one malformed widget must
  * not stop the rest of the sheet from printing.
  */
-function burnInFields(doc: PDFDocument, form: any, font: any): void {
+/**
+ * THE BLANK'S OWN `/DA` DECIDES FONT, SIZE AND COLOUR (operator, 2026-10-21).
+ *
+ * This used to draw every value in embedded Helvetica, at a size derived from
+ * the widget height, in a dark navy — three substitutions, none of them a
+ * decision anybody made. The blanks ask for Arial Black at a stated size in
+ * black, and have since they were uploaded. Measured across all 74: 1,990
+ * fields name `Arial-Black`, 802 inherit the form default `/Helv 0 Tf 0 g`,
+ * and the colour is black on all 2,792.
+ *
+ * A field with no `/DA` of its own inherits the FORM's, which is what the PDF
+ * spec says and what a viewer would do. Resolution order is field, then form,
+ * then our defaults.
+ */
+async function burnInFields(doc: PDFDocument, form: any, font: any): Promise<void> {
   const pageByRef = new Map<string, any>();
   for (const pg of doc.getPages()) pageByRef.set(pg.ref.toString(), pg);
-  const ink = rgb(0.05, 0.05, 0.2);
+  /* The form-level /DA, inherited by any field that declares none. */
+  let formDa = '';
+  try {
+    const v = form.acroForm.dict.get(PDFName.of('DA'));
+    if (v) formDa = String((v as any).decodeText ? (v as any).decodeText() : v);
+  } catch { /* no form default — per-field or our own */ }
+  const resolveFont = createFontResolver(doc, font, (m) => console.warn(m));
 
   for (const field of form.getFields()) {
     if (!(field instanceof PDFTextField)) continue;
@@ -374,22 +397,34 @@ function burnInFields(doc: PDFDocument, form: any, font: any): void {
         page = (pref && pageByRef.get(pref.toString())) || doc.getPages()[0];
       } catch { page = doc.getPages()[0]; }
 
-      const size = Math.max(6, Math.min(10, r.height * 0.55));
+      /* Field /DA first, form /DA second — the inheritance a viewer applies. */
+      let da = formDa;
+      try {
+        const v = field.acroField.dict.get(PDFName.of('DA'));
+        if (v) da = String((v as any).decodeText ? (v as any).decodeText() : v);
+      } catch { /* inherit */ }
+      const appearance = parseDefaultAppearance(da);
+      const drawFont = await resolveFont(appearance.fontName);
+      const size = burnInFontSize(appearance.size, r.height);
+      const ink = rgb(appearance.color.r, appearance.color.g, appearance.color.b);
       const y = r.y + (r.height - size) / 2 + size * 0.12;
 
       if (comb && maxLen > 0) {
         const cw = r.width / maxLen;
         const s = String(value).slice(0, maxLen);
         for (let i = 0; i < s.length; i++) {
-          const chw = font.widthOfTextAtSize(s[i], size);
+          const chw = drawFont.widthOfTextAtSize(s[i], size);
           try {
-            page.drawText(s[i], { x: r.x + i * cw + Math.max(0, (cw - chw) / 2), y, size, font, color: ink });
+            page.drawText(s[i], { x: r.x + i * cw + Math.max(0, (cw - chw) / 2), y, size, font: drawFont, color: ink });
           } catch { /* one bad glyph must not fail the print */ }
         }
       } else {
         let t = String(value);
-        while (t.length && font.widthOfTextAtSize(t, size) > r.width - 3) t = t.slice(0, -1);
-        try { page.drawText(t, { x: r.x + 2, y, size, font, color: ink }); }
+        /* Shrink-to-fit on WIDTH is kept: a stated size is what the blank asks
+           for, but a value wider than its own box would run into the next one.
+           Truncation is the pre-existing behaviour and stays. */
+        while (t.length && drawFont.widthOfTextAtSize(t, size) > r.width - 3) t = t.slice(0, -1);
+        try { page.drawText(t, { x: r.x + 2, y, size, font: drawFont, color: ink }); }
         catch { /* one bad glyph must not fail the print */ }
       }
     }
