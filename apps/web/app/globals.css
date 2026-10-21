@@ -4483,8 +4483,28 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* Why the pro-rata rows read NA. One size down from the total it sits under
    and lighter, because it explains the table rather than reporting from it;
    `line-height` is set because this one wraps to two lines on a phone where
-   the total never does. */
-.subv2-aw-note { margin-top: 4px; font-size: 10.5px; line-height: 1.45; color: var(--text-muted); }
+   the total never does.
+
+   `width: 0` + `min-width: 100%` IS LOAD-BEARING, NOT DECORATION. It is the
+   'do not contribute to intrinsic sizing' idiom, and this note needs it:
+   `.subv2-det-in`'s second and third tracks are `minmax(0, auto)`, and an
+   `auto` track sizes to its content's MAX-CONTENT width. A 150-character
+   sentence measures ~704px on one line, so this single paragraph grew the
+   Application-wise column from 274px to 734px and crushed Share-wise beside
+   it to 69px — measured at 1440, reported by the operator within the hour.
+
+   During intrinsic sizing the percentage min-width cannot resolve, so the
+   element contributes its `width: 0`; during layout the track is definite,
+   so `min-width: 100%` fills it and the text wraps. The column is sized by
+   its TABLE again, which is what sized it before the note existed.
+
+   WHY IT WAS MISSED: every width I measured — 800, 1009, 375 — is at or
+   below the 1100px breakpoint, where `.subv2-det-in` falls to
+   `minmax(0, 1fr) minmax(0, 1fr)` and an fr track does NOT grow to
+   max-content. The fault exists only ABOVE that breakpoint, which is every
+   desktop anybody actually uses. Measure a grid change at a real desktop
+   width, not just at the pane's. */
+.subv2-aw-note { width: 0; min-width: 100%; margin-top: 4px; font-size: 10.5px; line-height: 1.45; color: var(--text-muted); }
 
 /* empty state */
 .subv2-empty { padding: 44px 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-2); border-radius: 16px; background: var(--surface); }

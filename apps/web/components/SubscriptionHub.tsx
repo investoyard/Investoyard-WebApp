@@ -709,7 +709,7 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
       </div>
       <p className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>Total applications: <b>{fmtIn(totalApps)}</b></p>
       {proRataNote(appRows) && (
-        <p className="muted" style={{ fontSize: 10.5, marginTop: 4 }}>{proRataNote(appRows)}</p>
+        <p className="subv2-aw-note">{proRataNote(appRows)}</p>
       )}
     </section>
   );
