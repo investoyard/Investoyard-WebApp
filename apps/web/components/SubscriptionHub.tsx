@@ -86,11 +86,28 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
   // /subscription/v2 (operator ask, 2026-09-23). No fetch is needed: subLog
   // and subLogHour already ride along on every IPO from `getIpos()`.
   const [dayWise, setDayWise] = useState<IpoFull | null>(null);
-  // The share-canvas is a child component that owns its own ref; we lift the
-  // DOM node up via useState so html2canvas can point at it, and so the
-  // reference itself is mutable (useRef's `.current` is readonly under
-  // strict typing when initialised with `null`).
-  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
+  // THE SHARE CANVAS IS A REF, NOT STATE, AND THAT DISTINCTION WAS THE WHOLE
+  // BUG. `onShare` CREATES the canvas by calling setShareTarget, so on the
+  // click that matters the child has not rendered yet — a value read from
+  // state is whatever the RUNNING closure captured, which is `null` every
+  // single time. The handler threw 'canvas not ready' before html2canvas was
+  // ever reached, so every share since this shipped answered 'Snapshot
+  // failed'. Proved rather than reasoned: after a click the off-screen card
+  // IS in the DOM from 100ms on, and html2canvas rasterises it fine by hand
+  // (2160x2428, 773 KB) — the node was there, the closure could not see it.
+  // A ref is dereferenced at call time, so it sees whatever the last render
+  // put there.
+  //
+  // The note that used to sit here said useRef's `.current` is readonly under
+  // strict typing. It is not. `useRef<T | null>(null)` returns a
+  // MutableRefObject; only `useRef<T>(null)` is readonly. A wrong reason for
+  // choosing state is what kept the bug in place.
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const setCanvasNode = useCallback((el: HTMLDivElement | null) => { canvasRef.current = el; }, []);
+  // Guards a second click while a render is in flight. Only reachable now
+  // that sharing works at all, and worth having: the rasterise is slow, so
+  // two concurrent passes over one node is an easy thing to trigger.
+  const sharingRef = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const toastRef = useRef<HTMLDivElement>(null);
 
@@ -166,13 +183,15 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
   }, []);
 
   const onShare = useCallback(async (ipo: IpoFull) => {
+    if (sharingRef.current) return;
+    sharingRef.current = true;
     setShareTarget(ipo);
     // Let React paint the off-screen canvas before snapping it.
     await new Promise((r) => setTimeout(r, 30));
     try {
       showToast('Preparing snapshot…');
       const h2c = await ensureHtml2Canvas();
-      const node = canvasEl;
+      const node = canvasRef.current;
       if (!h2c || !node) throw new Error('canvas not ready');
       const canvas: HTMLCanvasElement = await h2c(node, { backgroundColor: '#ffffff', scale: 2 });
       canvas.toBlob(async (blob: Blob | null) => {
@@ -195,13 +214,19 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
           showToast('Downloaded');
         }
       });
-    } catch {
-      showToast('Snapshot failed');
+    } catch (e: any) {
+      // Name the reason. The two real failures here are 'the CDN script did
+      // not load' and 'html2canvas threw on this node', and a reader can act
+      // on the first but not the second.
+      const why = String(e?.message ?? e ?? '');
+      showToast(/load failed/i.test(why) ? 'Could not load the image tool' : 'Snapshot failed');
+      if (why) console.error('[share] snapshot failed:', why);
     } finally {
+      sharingRef.current = false;
       // Keep the target briefly so async toBlob has time to serialize, then clear.
       window.setTimeout(() => setShareTarget(null), 800);
     }
-  }, [showToast, canvasEl]);
+  }, [showToast]);
 
   return (
     <div className="subv2">
@@ -274,7 +299,7 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
 
       {/* Off-screen 1080-wide snapshot rendered on demand. Populated with the
           share-target IPO's data; html2canvas rasterises then removes it. */}
-      {shareTarget && <ShareCanvas ipo={shareTarget} onRef={setCanvasEl} />}
+      {shareTarget && <ShareCanvas ipo={shareTarget} onRef={setCanvasNode} />}
       {dayWise && (
         <Modal
           wide

@@ -3930,6 +3930,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* left: avatar + name + meta chips */
 .subv2-ln-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .subv2-avatar { width: 46px; height: 46px; border-radius: 12px; flex: none; overflow: hidden; background: var(--bg-2); }
+.subv2-avatar .ipologo { max-width: 100%; max-height: 100%; }
 .subv2-ln-name { min-width: 0; flex: 1; }
 .subv2-ln-name h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.005em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .subv2-name-link { color: inherit; text-decoration: none; transition: color .15s ease; }
@@ -3955,7 +3956,6 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-updated::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pos) 20%, transparent); animation: subv2-pulse 1.8s ease-in-out infinite; }
 @keyframes subv2-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .subv2-updated::before { animation: none; } }
-@media (max-width: 700px) { .subv2-updated { position: static; margin-top: 6px; } }
 /* Board + status chips use the site-wide `.ic-tag mb/sme` and `.ic-status …`
  * families (see IpoCard). No local overrides — keep the palette universal.
  * The old .subv2-tag rules were retired 2026-09-18 after operator flagged the
@@ -4682,6 +4682,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 
   /* Avatar + name a touch smaller */
   .subv2-avatar { width: 40px; height: 40px; }
+  .subv2-ln-l { align-items: flex-start; }
   .subv2-ln-name h3 { font-size: 14px; }
   .subv2-ln-times .tx-n { font-size: 22px; }
   .subv2-ln-times .tx-x { font-size: 12px; }
