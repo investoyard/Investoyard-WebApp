@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getIpos, type IpoFull } from '@/lib/api';
-import { IpoRow } from '@/components/SubscriptionHub';
+import { IpoRow, istTodayYmd } from '@/components/SubscriptionHub';
 import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { VisitorBeacon } from '@/components/VisitorBeacon';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
@@ -138,10 +138,4 @@ export function NseIpoLanding({ ipo: baked }: { ipo: IpoFull | null }) {
   );
 }
 
-function istTodayYmd(): string {
-  const fmt = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
+

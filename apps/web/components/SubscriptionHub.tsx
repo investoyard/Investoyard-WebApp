@@ -75,7 +75,10 @@ function fmtDateRange(openIso?: string, closeIso?: string): string {
 }
 
 /** Today in IST as `YYYY-MM-DD`. */
-function istTodayYmd(): string {
+/** Today in IST as YYYY-MM-DD. Exported because three surfaces need it —
+ *  the hub, `/subscription/v2` and the admin Subscription Report — and a
+ *  local copy per surface is the shape that produced the two-tone-ladder bug. */
+export function istTodayYmd(): string {
   const fmt = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
   });

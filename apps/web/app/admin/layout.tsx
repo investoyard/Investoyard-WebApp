@@ -28,6 +28,7 @@ const NAV: NavNode[] = [
     { href: '/admin/catalog/new', label: 'Add New IPO', perm: 'ipos.manage' },
     { href: '/admin/catalog/import', label: 'Import from Excel', perm: 'ipos.import' },
     { href: '/admin/catalog/operations', label: 'IPO Operations', perm: 'ipos.operations' },
+    { href: '/admin/subscription-report', label: 'Subscription Report' },
     { href: '/admin/catalog/gmp-log', label: 'GMP Log & Contributors', perm: 'gmp.log.view' },
     { href: '/admin/catalog/gmp-feed', label: 'GMP Feed', perm: 'gmp.feed.view' },
     { href: '/admin/masters/ipo-category', label: 'IPO Category', perm: 'masters.ipo-category.manage' },

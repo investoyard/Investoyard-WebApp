@@ -1,6 +1,5 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
-import { LangSwitcher } from '@/components/LangSwitcher';
 import { NavLive } from '@/components/NavLive';
 import { useStore } from '@/lib/store';
 import { useTenant } from '@/components/TenantProvider';
@@ -41,7 +40,12 @@ export function SiteHeader() {
         <NavLive langQuery={q} />
 
         <div className="header-actions">
-          <span className="lang-wrap"><LangSwitcher /></span>
+          {/* LANGUAGE SWITCHER HIDDEN (operator, 2026-10-22). Only the CONTROL
+              is gone: /hi pages are still built, still in the sitemap and still
+              carry their hreflang alternates, and ?lang=hi still resolves — so
+              visitors arriving from search are unaffected. Restore this one line
+              when the Hindi translation pass lands; the component is untouched.
+              <span className="lang-wrap"><LangSwitcher /></span> */}
           {mobile ? (
             <a href={`/account${q}`} className="avatar" aria-label="Your account" title={tr('apps.link')}>
               {initials || '★'}
