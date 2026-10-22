@@ -5,11 +5,19 @@
    reserved strictly for money/market signals.
    ========================================================================== */
 
-:root {
-  /* fonts */
+/* FONT FALLBACKS ONLY — see the note above. These live on `html` (0,0,1) and
+   NOT in the `:root` block below (0,1,0) on purpose: next/font sets both of
+   these on <html> via a generated class, which is also (0,1,0), so declaring
+   them at `:root` made it a tie decided by stylesheet order — and this file is
+   linked second, so the fallback silently beat Inter and Plus Jakarta Sans on
+   every page of the site. A lower-specificity selector cannot win that tie,
+   which is exactly what a fallback should do. */
+html {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: var(--font-sans);
+}
 
+:root {
   /* brand */
   --brand: #3c2e7e;
   --brand-700: #332765;
