@@ -348,7 +348,18 @@ export class AuthService {
     }
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, username: user.username, tenant: user.tenantId ?? undefined },
-      { secret: process.env.JWT_SECRET, expiresIn: process.env.JWT_EXPIRES_IN ?? '30d' },
+      {
+        secret: process.env.JWT_SECRET,
+        /* OPERATORS GET A SHORTER SESSION THAN CUSTOMERS, and the split is the
+           point: this token opens the admin console, while a customer token
+           opens one person’s own applications. There is no refresh and no
+           revocation list anywhere in this app, so the expiry IS the session
+           policy — the only thing that ends a session early is the clock.
+           Falls back to the shared value, then to 12h, so an install that
+           sets neither still gets the tighter figure here rather than the
+           customer one. */
+        expiresIn: process.env.JWT_EXPIRES_IN_OPERATOR ?? '12h',
+      },
     );
     this.audit('auth.operator.login', { actorId: user.id, label: user.username ?? uname, detail: { ip } });
     return { accessToken, user: { id: user.id, username: user.username, name: user.name, tenantId: user.tenantId } };
