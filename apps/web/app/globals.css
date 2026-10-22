@@ -59,7 +59,7 @@ html {
      `.banner.ok` already paired with it. `--pos` stays for bars, dots and
      fills, where contrast is not being read as text. */
   --pos-ink: #0c6b41;
-  --neg: #d8412a;  --neg-soft: #fcebe8;
+  --neg: #d8412a;  --neg-soft: #fcebe8;  --neg-ink: #b3372e;
   --listed: #0e7c8a; --listed-soft: #e3f2f5; /* deep teal — the "on the board" accent, distinct from brand indigo */
   --warn: #b07d00; --warn-soft: #fbf3df;
   --info: var(--brand);
@@ -881,6 +881,16 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .banner.info { background: var(--brand-50); color: var(--brand-700); }
 .banner.warn { background: var(--warn-soft); color: #7a5800; }
 .banner.ok { background: var(--pos-soft); color: var(--pos-ink); }
+/* `.banner.bad` WAS USED BY SIX CALL SITES AND DEFINED BY NONE, so every error
+   banner in admin rendered as the plain neutral `.banner` — present, but not
+   reading as an error. Defined here to the same recipe as its siblings: a soft
+   ground with a DARKENED ink, never the raw semantic colour. Measured, because
+   this family has been got wrong before: `--neg` on `--neg-soft` is 3.86:1 and
+   FAILS AA for body text, where `--neg-ink` is 5.19:1 — in line with
+   `.banner.warn` at 5.89 and `.banner.ok` at 5.80. `--neg-ink` is a promotion of
+   the hex the Print Forms CTA already used, not a new colour, exactly as
+   `--pos-ink` was. */
+.banner.bad { background: var(--neg-soft); color: var(--neg-ink); }
 .disclaimer { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.55; }
 
 /* ----------------------------------------------------------------- FOOTER (dark) */

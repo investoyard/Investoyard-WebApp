@@ -167,7 +167,7 @@ export default function SubscriptionReportPage() {
         )}
       </div>
 
-      {err && <div className="banner warn">Could not load the IPO list — {err}</div>}
+      {err && <div className="banner bad">Could not load the IPO list — {err}</div>}
       {!all && !err && <Loader />}
 
       {all && !sel && (
