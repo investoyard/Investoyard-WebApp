@@ -247,7 +247,30 @@ export function SubscriptionHub({ ipos: baked }: { ipos: IpoFull[] }) {
       const h2c = await ensureHtml2Canvas();
       const node = canvasRef.current;
       if (!h2c || !node) throw new Error('canvas not ready');
-      const canvas: HTMLCanvasElement = await h2c(node, { backgroundColor: '#ffffff', scale: 2 });
+      /* THE SNAPSHOT IS TAKEN FROM THE LIVE DOM, so anything it paints must
+         already be ready — html2canvas gets no second chance. Two things are
+         not ready at 30ms: the WEBFONT (a paint delay is no guarantee that
+         `document.fonts` has resolved, and a fallback face would be baked
+         into the PNG for good) and the two logos, one of which is
+         CROSS-ORIGIN. Neither may fail the share, so both are best-effort. */
+      try { await (document as any).fonts?.ready; } catch { /* no FontFaceSet: the inline family still applies */ }
+      const coLogo = (ipo as any).logo as string | undefined;
+      await Promise.all([
+        preloadImage('/investoyard-logo-light.svg'),
+        coLogo ? preloadImage(coLogo, 'anonymous') : Promise.resolve(),
+      ]);
+      const canvas: HTMLCanvasElement = await h2c(node, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        /* `useCORS`, NEVER `allowTaint`. The company logo is served from the
+           API host, which answers with Access-Control-Allow-Origin for our
+           origins (and for localhost, which is what makes this verifiable
+           off a local build). `allowTaint` would draw it and then TAINT the
+           canvas, so the `toBlob` below would throw and sharing would break
+           outright — a worse outcome than a missing logo. */
+        useCORS: true,
+        imageTimeout: 4000,
+      });
       canvas.toBlob(async (blob: Blob | null) => {
         if (!blob) { showToast('Snapshot failed'); return; }
         const name = shortName(titleCase(ipo.name)).replace(/[^\w-]+/g, '_');
@@ -1086,48 +1109,173 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
   );
 }
 
-/** Off-screen 1080-wide canvas rendered on-demand while snapshotting. Colours
- *  are inlined in the CSS block (not var()) so html2canvas gets identical pixels
- *  regardless of light/dark theme. Owns its own ref and hands the DOM node up
- *  via `onRef` so the parent can point html2canvas at it. */
-function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement | null) => void }) {
+/** Off-screen 1080-wide snapshot card, rendered on demand while sharing.
+ *
+ *  THE IMAGE IS THE PAGE, AND UNTIL 2026-10-22 IT WAS NOT. Six operator
+ *  reports in one message, and the root cause of three of them was that
+ *  NEITHER FONT THIS CARD ASKED FOR EXISTED ON THE PAGE IT RENDERS ON:
+ *  `next/font` publishes Inter as `__Inter_<hash>` (reachable only through
+ *  `var(--font-sans)`), and 'JetBrains Mono' is loaded by `/partner-api`
+ *  alone — a different route chunk. So every figure in both tables fell
+ *  through to generic `monospace`, i.e. COURIER NEW on Windows, and the text
+ *  to `system-ui`; the typeface also changed with whoever pressed Share.
+ *  Verified in the published CSS: 42 `@font-face` blocks for `__Inter_*` /
+ *  `__Plus_Jakarta_Sans_*`, 19 for `__JetBrains_Mono_*`, and ZERO declaring
+ *  either literal name.
+ *
+ *  SO THE FAMILY IS RESOLVED AT SNAPSHOT TIME FROM THE LIVE DOM rather than
+ *  named in CSS — `getComputedStyle(document.body).fontFamily` is by
+ *  definition the face the page is painting, hash and all. It is set inline on
+ *  the root and INHERITED; the canvas CSS must therefore declare no
+ *  `font-family` at all, or a rule on `td` would beat the inheritance and put
+ *  Courier back. Column alignment comes from `tabular-nums`, which is what the
+ *  page's own tables use, not from a monospace face.
+ *
+ *  WIDTH IS THE ONLY THING THAT COSTS LEGIBILITY. The card is a fixed 1080px
+ *  and a chat fits an image TO WIDTH, so a forwarded copy is read at roughly
+ *  37%: a 26px figure arrives at ~10px. Extra ROWS are therefore free and
+ *  extra COLUMNS are not — which is how "add the share counts back" (operator,
+ *  2026-10-22) and "make the type bigger" are both satisfied at once. The
+ *  share count went back in as a SECOND LINE inside the existing cell, exactly
+ *  as `ShareWisePanel` renders it, adding no column.
+ *
+ *  Colours are inlined here rather than taken from `var()` so the image is
+ *  identical whatever theme the reader's browser is in.
+ */
+function ShareCanvas({ ipo, onRef, disclaimer = 'full' }: {
+  ipo: IpoFull;
+  onRef: (el: HTMLDivElement | null) => void;
+  /** 'full' prints the operator's locked wording verbatim; 'short' prints its
+   *  operative sentence and points at the page. See SubscriptionDisclaimer —
+   *  that text is sign-off-locked, so this switch chooses how much of it
+   *  travels, never what it says. */
+  disclaimer?: 'full' | 'short';
+}) {
   const localRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     onRef(localRef.current);
     return () => onRef(null);
   }, [onRef]);
+
+  /* The page's own face, read off the page. `document.body` carries
+     `var(--font-sans)`, and the page's tables inherit it — they set no family
+     of their own — so one value here reproduces every surface this card
+     mirrors. `--font-display` is read for the headings and falls back to the
+     body face rather than to a literal name that may not be declared. */
+  const fonts = useMemo(() => {
+    if (typeof document === 'undefined') return { sans: '', display: '' };
+    const sans = getComputedStyle(document.body).fontFamily || '';
+    const dsp = getComputedStyle(document.documentElement).getPropertyValue('--font-display').trim();
+    return { sans, display: dsp || sans };
+  }, []);
+
   const table = subscriptionTable(ipo);
   const t = table?.total.times ?? ipo.subscriptionTimes ?? 0;
   const tc = tone(t);
   const price = ipo.priceBandMax ?? ipo.priceBandMin ?? 0;
-  const tHex = tc === 'hot' ? '#0f9d58' : tc === 'warm' ? '#e6ad12' : tc === 'cool' ? '#c58a00' : '#d92d20';
+  const anchorDeducted = table?.anchorDeducted ?? 0;
+  const anchorBasis = table?.anchorBasis ?? null;
+  const toneHex = (x: number) => {
+    const k = tone(x);
+    return k === 'hot' ? '#0f9d58' : k === 'warm' ? '#e6ad12' : k === 'cool' ? '#c58a00' : '#d92d20';
+  };
+  const tHex = toneHex(t);
   const tBg = tc === 'hot' ? '#e6f6ee' : tc === 'warm' ? '#fff7df' : tc === 'cool' ? '#fff5d9' : '#fdece9';
-  const snapshotAt = fmtDateTime(new Date().toISOString());
-  /* `appWiseRows`, not a local list. This held a hand-written copy that had
-     drifted — it named `employee` but neither `shareholder` nor
-     `policyholder`, so JPL's shared image showed one reserved quota and
-     dropped the other — and its `applicationsTimes != null` test would now
-     drop every pro-rata row, Employee included. The shared image should be
-     the page, which is the whole argument for one selector. */
+
+  /* THE EXCHANGE'S OWN AS-OF TIME, which is the figure's age and the thing the
+     page prints. This footer used to carry `new Date()` — when the IMAGE was
+     made — so a snapshot taken at 18:00 of figures last polled at 13:52
+     claimed 18:00 (operator report 4). Both are shown now, each labelled for
+     what it is; only one of them says anything about the numbers. */
+  const asOf = fmtDateTime((ipo as any).subscriptionAsOf);
+  const generatedAt = fmtDateTime(new Date().toISOString());
+
+  /* `issueSizeCr` FIRST, because `issueSize` is not a number on every payload:
+     the /ipos LIST endpoint serves it ALREADY FORMATTED ("₹30,213 Cr") while
+     the column is rupees. Reading it blind is the 10^7 error this repository
+     has booked twice, most recently as a dash on the featured panel. */
+  const issueSizeText = (() => {
+    const cr = (ipo as any).issueSizeCr;
+    if (typeof cr === 'number' && cr > 0) return fmtCr(cr);
+    const raw = (ipo as any).issueSize;
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    if (typeof raw === 'number' && raw > 0) return fmtCr(raw / 1e7);
+    return '';
+  })();
+
+  const dates = fmtDateRange(ipo.openDate, ipo.closeDate);
+  const band = ipo.priceBandMin && ipo.priceBandMax
+    ? `₹${fmtIn(ipo.priceBandMin)} – ₹${fmtIn(ipo.priceBandMax)}`
+    : (ipo.priceBandMax ?? ipo.priceBandMin) ? `₹${fmtIn((ipo.priceBandMax ?? ipo.priceBandMin) as number)}` : '';
+  /* The four the operator picked (2026-10-22): the three the subscription card
+     already shows as pills, plus the issue size. A detail with no value is
+     dropped rather than printed as a dash — an image is not a form. */
+  const facts: Array<[string, string]> = [
+    ['IPO Dates', dates],
+    ['Price Band', band],
+    ['Lot Size', ipo.lotSize ? `${fmtIn(ipo.lotSize)} shares` : ''],
+    ['Issue Size', issueSizeText],
+  ].filter((f): f is [string, string] => Boolean(f[1]));
+
+  /* The page's vocabulary, from the page's own resolver — status wording has to
+     be identical across surfaces. Only the COLOUR is re-derived here, because
+     `statusChip`'s class is a `var()`-driven tone family and this card inlines
+     every colour it paints. */
+  const status = statusChip(ipo);
+  const stHot = /closing/i.test(status.label);
+
   const appRows = appWiseRows(table?.rows ?? []);
-  const cellPair = (shares: number) => price > 0 ? `${fmtIn(shares)}` : `${fmtIn(shares)}`;
-  /* The shared image valued EVERY row at the band price, so a discounted quota
-     read high here even though the page beside it did not - and the Total was
-     wrong for the same reason the page's was. `amount` is the row's own rupee
-     value from `subscriptionTable`; see the note on SubRowT.bookAmount. */
-  const cellCr = (shares: number, amount?: number) =>
-    amount != null ? fmtCr(amount / 1e7) : price > 0 ? fmtCr((shares * price) / 1e7) : '—';
+
+  /* Identical expression to `ShareWisePanel`'s `cell`, deliberately: shares as
+     the headline with the row's own rupee value beneath it. `amount` is already
+     valued at the row's OWN price, so a discounted employee quota reads the
+     same here as on the page instead of at the band price. */
+  const cell2 = (shares: number, amount?: number, rowPrice?: number) => {
+    const px = rowPrice && rowPrice > 0 ? rowPrice : price;
+    const cr = amount != null ? amount / 1e7 : px > 0 ? (shares * px) / 1e7 : null;
+    return (
+      <div className="sc-2l">
+        <span className="big">{fmtIn(shares)}</span>
+        {cr != null && <span className="small">{fmtCr(cr)}</span>}
+      </div>
+    );
+  };
+
+  const logo = (ipo as any).logo as string | undefined;
+  const monogram = shortName(titleCase(ipo.name)).replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() || 'IY';
+
   return (
-    <div ref={localRef} className="subv2-canvas" aria-hidden="true">
+    <div ref={localRef} className="subv2-canvas" aria-hidden="true" style={{ fontFamily: fonts.sans }}>
+      {/* Brand band — the indigo ground is what `investoyard-logo-light.svg`
+          exists for (our shipped mark is indigo + gold, and the indigo half of
+          it disappears on an indigo field). This replaces the plain text
+          "Investoyard" that used to sit here at 22px, i.e. SMALLER than the
+          table figures beneath it (operator report 6). */}
+      <div className="sc-band">
+        <img className="sc-mark" src="/investoyard-logo-light.svg" alt="Investoyard" />
+        <span className="sc-kicker">Live IPO Subscription</span>
+      </div>
+
       <div className="sc-inner">
-        <div className="sc-head">
-          <div className="sc-brand">Investoyard</div>
-          <div className="sc-kicker">Live IPO Subscription</div>
-        </div>
         <div className="sc-hero-row">
           <div className="sc-hero">
-            <span className={`sc-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME IPO' : 'Mainboard IPO'}</span>
-            <h1 className="sc-name">{shortName(titleCase(ipo.name))}</h1>
+            {/* The company's own logo (operator ask, 2026-10-22). 102 of the
+                1,306 records carry one and both issues open today do; the rest
+                get a monogram rather than the generic building glyph, which
+                reads as a missing image once rasterised. Capped at 80px
+                because the sources are small — JPL's is a 148px PNG, so at
+                `scale: 2` an 80px slot is 160 device px and barely upscaled,
+                where a 120px slot would visibly soften it. */}
+            <span className="sc-colog">
+              {logo ? <img src={logo} alt="" crossOrigin="anonymous" /> : <span className="mono">{monogram}</span>}
+            </span>
+            <div className="sc-hero-t">
+              <h1 className="sc-name">{shortName(titleCase(ipo.name))}</h1>
+              <div className="sc-chips">
+                <span className={`sc-tag ${ipo.type === 'sme' ? 'sme' : 'mb'}`}>{ipo.type === 'sme' ? 'SME IPO' : 'Mainboard IPO'}</span>
+                <span className="sc-st" style={{ color: stHot ? '#d92d20' : '#0f9d58', background: stHot ? '#fdece9' : '#e6f6ee' }}>{status.label}</span>
+              </div>
+            </div>
           </div>
           <div className="sc-hero-r">
             <div className="sc-times" style={{ color: tHex }}>
@@ -1137,74 +1285,92 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
           </div>
         </div>
 
+        {/* As-of, on its own line and not in the footer: it is the age of every
+            figure below it, so it belongs with them. */}
+        {asOf && <div className="sc-asof">Exchange data as of <b>{asOf}</b></div>}
+
+        {facts.length > 0 && (
+          <div className="sc-facts">
+            {facts.map(([k, v]) => (
+              <div className="sc-fact" key={k}>
+                <span className="k">{k}</span>
+                <span className="v">{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {table && (
           <section className="sc-section">
-            <h3>Share-wise subscription</h3>
-            {/*
-              * FOUR COLUMNS, NOT SIX, AND THAT IS WHAT MAKES IT READABLE.
-              * The canvas is 1080px and the image is fitted to a phone when it
-              * is forwarded, so six columns at 16px arrive at about 6px. Two of
-              * the six were the same quantity twice — Shares/Book are the book
-              * size in shares and in rupees, Subs/Sub ₹ likewise — so dropping
-              * one unit per pair loses nothing and lets the type nearly double
-              * (operator's call, 2026-10-21: keep the rupee figures).
-              *
-              * SORTED BY `SHARE_ORDER`, which is the whole reason the operator
-              * reported this: `ShareWisePanel` and `DemandPanel` both sort,
-              * this rendered the API's raw order, so a shared image read
-              * Employee, HNI (2-10L), Retail... against QIB, NII, HNI (10L+)
-              * on the page it came from.
-              */}
+            <h3 style={{ fontFamily: fonts.display }}>Share-wise Subscription</h3>
             <table className="sc-tbl">
-              <thead><tr><th>Category</th><th>Book size</th><th>Subscription</th><th>Times</th></tr></thead>
+              {/* The page's headers, in the page's words. These had drifted to
+                  "Book size" and "Times" against the panel's "Book Size" and
+                  "No. of Times" — small, but it is why a shared image did not
+                  read as the page it came from. */}
+              <thead><tr><th>Category</th><th>Book Size</th><th>Subscription</th><th>No. of Times</th></tr></thead>
               <tbody>
                 {table.rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99)).map((r) => {
-                  const key = dotClassFor(r.key ?? '');
+                  /* The page's labels too: `nii` is the API's synthetic
+                     combined bucket and reads as plain "HNI", and QIB says
+                     "(Ex. Anchor)" ONLY where a deduction was applied — on a
+                     record with no anchor figure the book IS gross and the
+                     label would lie. Without this the shared image showed a
+                     QIB book short by the anchor with nothing explaining it. */
+                  const isCombo = r.key === 'nii';
+                  const isSubcat = r.key === 'hni' || r.key === 'hni2';
+                  const exAnchor = r.key === 'qib' && anchorDeducted > 0;
+                  const label = isCombo ? 'HNI' : exAnchor ? 'QIB (Ex. Anchor)' : r.cat;
                   return (
-                    <tr key={r.key}>
-                      <td><span className={`sc-cat-dot ${key}`} />{r.cat}</td>
-                      <td>{cellCr(r.bookSize, r.bookAmount)}</td>
-                      <td>{cellCr(r.subscribed, r.subAmount)}</td>
-                      <td style={{ color: (tone(r.times) === 'hot' ? '#0f9d58' : tone(r.times) === 'warm' ? '#e6ad12' : tone(r.times) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{r.times.toFixed(2)}×</td>
+                    <tr key={r.key} className={isSubcat ? 'sc-sub' : undefined}>
+                      <td><span className={`sc-cat-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} />{label}</td>
+                      <td>{cell2(r.bookSize, r.bookAmount, r.price)}</td>
+                      <td>{cell2(r.subscribed, r.subAmount, r.price)}</td>
+                      <td className="sc-mult" style={{ color: toneHex(r.times) }}>{r.times.toFixed(2)}×</td>
                     </tr>
                   );
                 })}
                 <tr className="sc-tot">
                   <td>Total</td>
-                  <td>{cellCr(table.total.bookSize, table.total.bookAmount)}</td>
-                  <td>{cellCr(table.total.subscribed, table.total.subAmount)}</td>
-                  <td>{t.toFixed(2)}×</td>
+                  <td>{cell2(table.total.bookSize, table.total.bookAmount)}</td>
+                  <td>{cell2(table.total.subscribed, table.total.subAmount)}</td>
+                  <td className="sc-mult">{t.toFixed(2)}×</td>
                 </tr>
               </tbody>
             </table>
+            {/* The page's anchor footnote, verbatim from ShareWisePanel. It
+                costs no arithmetic — `subscriptionTable` has returned
+                `anchorDeducted` and `anchorBasis` since 2026-09-21 — and one
+                figure can be checked against the exchange while the other
+                cannot, so it says which. */}
+            <p className="sc-foot-note">
+              {anchorDeducted <= 0
+                ? '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'
+                : anchorBasis === 'estimated'
+                  ? `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, which is ESTIMATED from the reserved percentage rather than the allotment.`
+                  : `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, from the actual anchor allotment.`}
+            </p>
           </section>
         )}
 
         {appRows.length > 0 && (
           <section className="sc-section">
-            {/* Sentence case, matching the Share-wise heading above it and the
-                page itself. The two headings read as one document now. */}
-            <h3>Application-wise subscription</h3>
+            <h3 style={{ fontFamily: fonts.display }}>Application-wise Subscription</h3>
             <table className="sc-tbl">
-              {/* The page's own four columns, in the page's order. The NSE/BSE
-                  split was two more columns for a figure nobody quotes, and it
-                  was costing the type size that makes this legible at all. */}
               <thead><tr><th>Category</th><th>Req 1×</th><th>Applications</th><th>Times</th></tr></thead>
               <tbody>
-                {appRows.map((r) => {
-                  return (
-                    <tr key={r.key}>
-                      <td><span className={`sc-cat-dot ${dotClassFor(r.key ?? '')}`} />{r.cat}</td>
-                      <td>{appReq1xText(r)}</td>
-                      <td style={{ fontWeight: 800 }}>{fmtIn(r.bidCount ?? 0)}</td>
-                      <td style={{ color: (r.proRata ? '#6b7280' : tone(r.applicationsTimes ?? 0) === 'hot' ? '#0f9d58' : tone(r.applicationsTimes ?? 0) === 'warm' ? '#e6ad12' : tone(r.applicationsTimes ?? 0) === 'cool' ? '#c58a00' : '#d92d20'), fontWeight: 800 }}>{appTimesText(r)}</td>
-                    </tr>
-                  );
-                })}
+                {appRows.map((r) => (
+                  <tr key={r.key}>
+                    <td><span className={`sc-cat-dot ${dotClassFor(r.key ?? '')}`} />{r.cat}</td>
+                    <td className="sc-num">{appReq1xText(r)}</td>
+                    <td className="sc-num b">{fmtIn(r.bidCount ?? 0)}</td>
+                    <td className="sc-mult" style={{ color: r.proRata ? '#6b7280' : toneHex(r.applicationsTimes ?? 0) }}>{appTimesText(r)}</td>
+                  </tr>
+                ))}
                 <tr className="sc-tot">
-                  <td>Total applications</td>
+                  <td>Total Applications</td>
                   <td />
-                  <td>{fmtIn(appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0))}</td>
+                  <td className="sc-num">{fmtIn(appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0))}</td>
                   <td />
                 </tr>
               </tbody>
@@ -1212,19 +1378,55 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
           </section>
         )}
 
-        {/* The disclaimer travels WITH the image (operator ask, 2026-10-21).
-            A forwarded screenshot leaves the page behind, so a figure that
-            carries a caveat on site must carry it here too — this is the same
-            text the page shows, cut to what fits. */}
-        <p className="sc-disclaimer">
-          Sourced from the NSE and BSE and subject to change in real time. For information only
-          — not an offer, a recommendation or investment advice. Verify against the exchange
-          before acting on it.
-        </p>
+        {/* THE DISCLAIMER TRAVELS WITH THE IMAGE, because a forwarded snapshot
+            leaves the page and its caveat behind. The wording is the operator's
+            own, locked 2026-09-18 — see SubscriptionDisclaimer, which is where
+            both surfaces read it from; nothing here rewords it.
+            It also used to be unreadable rather than absent: `.sc-disclaimer`
+            was declared ONCE, UNSCOPED, at 15px among the showcase rules, so it
+            rendered at a third the size of the figures and about 5px once
+            forwarded. It is scoped under `.subv2-canvas` now. */}
+        <section className="sc-disclaimer">
+          <h4>Disclaimer</h4>
+          <p className="lead">
+            Sourced from the websites of the National Stock Exchange (NSE) and Bombay
+            Stock Exchange (BSE) and subject to change on real time basis. For information
+            purpose only &mdash; the recipient alone is responsible for any decision taken
+            on the basis of this data.
+          </p>
+          {disclaimer === 'full' ? (
+            <p className="fine">
+              The above-mentioned information / data are sourced from the websites of
+              National Stock Exchange (NSE) and Bombay Stock Exchange (BSE) and are subject
+              to change on real time basis. For updated information / data you can visit
+              their respective website. The information / data provided herein above are
+              for information purpose only and provided &ldquo;AS IS&rdquo; and &ldquo;AS
+              AVAILABLE&rdquo; basis and without warranty, express or implied. We do not
+              guarantee or warrant the accuracy, adequacy or completeness of the
+              information received through the said websites. &ldquo;We&rdquo; hold not
+              responsibility of any kind as regard to any discrepancies, errors,
+              omissions, losses or damages. &ldquo;We&rdquo; including its affiliates and
+              any of its officers, directors, personnel and employees, shall not liable
+              for any loss, damage of any nature, including but not limited to direct,
+              indirect, punitive, special, exemplary, consequential, as also any loss of
+              profit in any way arising from the use of information / data received
+              through the said websites. The recipient alone shall be fully responsible /
+              are liable for any decision taken on the basis of such information / data.
+              All recipients should before acting upon the said information make their own
+              investigation, seek appropriate professional advice.
+            </p>
+          ) : (
+            <p className="fine">
+              Provided &ldquo;AS IS&rdquo; and without warranty, express or implied. We do
+              not guarantee the accuracy, adequacy or completeness of the information.
+              Full disclaimer at investoyard.com/subscription.
+            </p>
+          )}
+        </section>
 
         <footer className="sc-foot">
-          <span className="sc-time">Snapshot · {snapshotAt}</span>
           <span className="sc-url">investoyard.com</span>
+          <span className="sc-time">Snapshot generated {generatedAt}</span>
         </footer>
       </div>
     </div>
@@ -1234,6 +1436,21 @@ function ShareCanvas({ ipo, onRef }: { ipo: IpoFull; onRef: (el: HTMLDivElement 
 // Silence the eslint no-unused about subCatLabel (imported so the module barrel
 // stays intact if the panel later opts into rich labels for legacy rows).
 void subCatLabel;
+
+/** Warm an image into the cache and wait for it to load, so html2canvas
+ *  finds it ready. NEVER rejects and never waits long: a logo is decoration
+ *  and a share must not fail — or hang — over one. */
+function preloadImage(src: string, crossOrigin?: string, ms = 2500): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const img = new Image();
+    if (crossOrigin) img.crossOrigin = crossOrigin;
+    const timer = window.setTimeout(resolve, ms);
+    const fin = () => { window.clearTimeout(timer); resolve(); };
+    img.onload = fin;
+    img.onerror = fin;
+    img.src = src;
+  });
+}
 
 /** Lazy-load html2canvas from CDN once. Same version the design HTML uses. */
 async function ensureHtml2Canvas(): Promise<any> {

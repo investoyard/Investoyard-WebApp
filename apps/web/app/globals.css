@@ -523,7 +523,6 @@ h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.012em; margin: 0; }
 /* The disclaimer travels with the image: a forwarded screenshot leaves the
    page and its caveat behind. Sized to be legible when the image is fitted
    to a chat window, which is the only place it will ever be read. */
-.sc-disclaimer { margin: 22px 0 0; padding: 16px 18px; border-radius: 10px; background: #f6f5fb; border-left: 4px solid #ffcb32; font-size: 15px; line-height: 1.55; color: #5b5470; }
 .sc-chip { position: absolute; background: var(--surface); box-shadow: var(--sh-md); border-radius: var(--r); padding: 10px 14px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .sc-chip.a { top: -16px; right: 8px; transform: rotate(2deg); }
 .sc-chip.b { bottom: -18px; left: -10px; transform: rotate(-2deg); }
@@ -4548,46 +4547,135 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 /* Share/canvas snapshot — off-screen 1080-wide renderer used by html2canvas.
  * Colours are inlined (not CSS vars) because html2canvas needs computed values
  * for the exact pixels the sharer sees. Matches ipoSubscription_iy_v2.html. */
-.subv2-canvas { position: fixed; left: -99999px; top: -99999px; width: 1080px; background: #ffffff; color: #0e0b1e; font-family: 'Inter', system-ui, sans-serif; }
-.subv2-canvas .sc-inner { padding: 36px 44px 30px; background: radial-gradient(700px 300px at 100% 0%, rgba(255,203,50,.14), transparent 60%), radial-gradient(700px 300px at 0% 100%, rgba(60,46,126,.09), transparent 60%), linear-gradient(180deg, #ffffff 0%, #fafafd 100%); }
-.subv2-canvas .sc-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 3px solid #ffcb32; margin-bottom: 22px; }
-.subv2-canvas .sc-brand { font-size: 22px; font-weight: 800; color: #3c2e7e; letter-spacing: -.01em; }
-.subv2-canvas .sc-kicker { font-size: 12px; color: #3c2e7e; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 9px; }
-.subv2-canvas .sc-kicker::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #0f9d58; box-shadow: 0 0 0 3px rgba(15,157,88,.18); }
-.subv2-canvas .sc-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 26px; padding: 18px 0 22px; margin-bottom: 20px; }
-.subv2-canvas .sc-hero { flex: 1; min-width: 0; }
-.subv2-canvas .sc-tag { display: inline-block; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 8px; }
+/* ===== SHARE SNAPSHOT CARD — 1080 wide, rasterised by html2canvas ==========
+   NO `font-family` ANYWHERE IN THIS BLOCK, deliberately. The face is resolved
+   from the live DOM at snapshot time and set INLINE on `.subv2-canvas`, where
+   every child inherits it. The literal names this block used to carry —
+   'Inter' and 'JetBrains Mono' — are not declared families on this page:
+   next/font publishes `__Inter_<hash>` (reachable only through
+   `var(--font-sans)`) and JetBrains Mono is loaded by /partner-api alone. So
+   every figure in both tables fell through to generic monospace, i.e. COURIER
+   NEW, and the face changed with whoever pressed Share. A `font-family` on
+   `td` here would beat the inheritance and put Courier straight back; column
+   alignment comes from `tabular-nums`, which is how the page's tables do it.
+
+   COLOURS ARE LITERAL, NEVER `var()`: the node is rasterised in whatever theme
+   the reader's browser happens to be in, so a token would resolve to the dark
+   palette on a dark-mode machine and paint light text onto this white card.
+
+   WIDTH IS THE ONLY DIMENSION THAT COSTS LEGIBILITY — a chat fits an image to
+   width, so a forwarded 1080px card is read at roughly 37% and a 26px figure
+   arrives at ~10px. Rows are free; columns are not. Both tables stay at four. */
+.subv2-canvas { position: fixed; left: -99999px; top: -99999px; width: 1080px; background: #ffffff; color: #0e0b1e; }
+
+/* Brand band. The indigo ground is what `investoyard-logo-light.svg` exists
+   for — the shipped mark is indigo + gold and its indigo half vanishes on an
+   indigo field. This replaced the plain text "Investoyard" that used to sit
+   here at 22px, i.e. smaller than the figures below it. */
+.subv2-canvas .sc-band { display: flex; align-items: center; justify-content: space-between; padding: 24px 44px; background: linear-gradient(100deg, #2a2052 0%, #3c2e7e 56%, #4a3a95 100%); border-bottom: 5px solid #ffcb32; }
+.subv2-canvas .sc-mark { height: 40px; width: auto; display: block; }
+.subv2-canvas .sc-kicker { font-size: 17px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; color: #ffcb32; display: inline-flex; align-items: center; gap: 11px; }
+.subv2-canvas .sc-kicker::before { content: ""; width: 11px; height: 11px; border-radius: 50%; background: #5ddc9a; box-shadow: 0 0 0 4px rgba(93,220,154,.24); }
+
+.subv2-canvas .sc-inner { padding: 28px 44px 26px; background: radial-gradient(760px 320px at 100% 0%, rgba(255,203,50,.13), transparent 62%), radial-gradient(760px 340px at 0% 100%, rgba(60,46,126,.08), transparent 62%), linear-gradient(180deg, #ffffff 0%, #fafafd 100%); }
+
+/* Hero — company logo, name, board + status, and the headline multiple. */
+.subv2-canvas .sc-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 2px solid #ebe7f2; }
+.subv2-canvas .sc-hero { flex: 1; min-width: 0; display: flex; align-items: center; gap: 20px; }
+/* 80px, not larger: the sources are small — JPL's is a 148px PNG — so at
+   `scale: 2` this is 160 device px and barely upscaled, where a 120px tile
+   would visibly soften. White tile because an indexed PNG with transparency
+   looks dirty straight onto the gradient. */
+.subv2-canvas .sc-colog { flex: 0 0 auto; width: 80px; height: 80px; border-radius: 14px; background: #ffffff; border: 1px solid #e4dff0; box-shadow: 0 4px 14px -8px rgba(14,11,30,.16); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.subv2-canvas .sc-colog img { max-width: 66px; max-height: 66px; width: auto; height: auto; display: block; }
+.subv2-canvas .sc-colog .mono { font-size: 29px; font-weight: 800; color: #3c2e7e; letter-spacing: .02em; }
+.subv2-canvas .sc-hero-t { min-width: 0; }
+.subv2-canvas .sc-name { margin: 0 0 10px; font-size: 36px; font-weight: 800; letter-spacing: -.015em; line-height: 1.12; color: #0e0b1e; }
+.subv2-canvas .sc-chips { display: flex; align-items: center; gap: 9px; }
+.subv2-canvas .sc-tag { display: inline-block; padding: 6px 13px; border-radius: 7px; font-size: 13px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .subv2-canvas .sc-tag.mb { background: #f3f1fb; color: #3c2e7e; border: 1px solid rgba(60,46,126,.22); }
-.subv2-canvas .sc-tag.sme { background: #fff7df; color: #e6ad12; border: 1px solid rgba(230,173,18,.32); }
-.subv2-canvas .sc-name { margin: 0; font-size: 28px; font-weight: 800; color: #0e0b1e; line-height: 1.15; }
+.subv2-canvas .sc-tag.sme { background: #fff7df; color: #b07d00; border: 1px solid rgba(230,173,18,.34); }
+.subv2-canvas .sc-st { display: inline-block; padding: 6px 13px; border-radius: 99px; font-size: 13px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 .subv2-canvas .sc-hero-r { flex: 0 0 auto; text-align: right; padding-left: 24px; border-left: 3px solid #ffcb32; }
-.subv2-canvas .sc-times { font-family: 'JetBrains Mono', monospace; line-height: 1; font-weight: 700; }
-.subv2-canvas .sc-times .n { font-size: 52px; letter-spacing: -.03em; }
-.subv2-canvas .sc-times .x { font-size: 24px; color: #8b849f; font-weight: 600; }
-.subv2-canvas .sc-status { display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; }
+.subv2-canvas .sc-times { line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.subv2-canvas .sc-times .n { font-size: 60px; letter-spacing: -.035em; }
+.subv2-canvas .sc-times .x { font-size: 27px; color: #8b849f; font-weight: 700; }
+.subv2-canvas .sc-status { display: inline-block; margin-top: 9px; padding: 6px 13px; border-radius: 99px; font-size: 13px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+
+/* The exchange's own as-of time sits WITH the figures, because it is their age.
+   The footer's timestamp is when the image was made and says nothing about the
+   numbers; both are labelled for what they are. */
+.subv2-canvas .sc-asof { margin: 16px 0 0; font-size: 18px; color: #615a80; font-variant-numeric: tabular-nums; }
+.subv2-canvas .sc-asof b { color: #0e0b1e; font-weight: 700; }
+
+/* The three pills the subscription card already shows, plus the issue size. */
+.subv2-canvas .sc-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0 24px; }
+.subv2-canvas .sc-fact { background: #ffffff; border: 1px solid #ebe7f2; border-left: 4px solid #ffcb32; border-radius: 10px; padding: 13px 15px; min-width: 0; }
+.subv2-canvas .sc-fact .k { display: block; font-size: 12.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #8b849f; margin-bottom: 5px; }
+.subv2-canvas .sc-fact .v { display: block; font-size: 21px; font-weight: 700; color: #0e0b1e; font-variant-numeric: tabular-nums; line-height: 1.2; }
+
 .subv2-canvas .sc-section { margin-bottom: 24px; }
-.subv2-canvas .sc-section:last-of-type { margin-bottom: 0; }
-.subv2-canvas .sc-section h3 { margin: 0 0 14px; font-size: 19px; font-weight: 800; letter-spacing: .10em; text-transform: uppercase; color: #3c2e7e; padding-bottom: 8px; border-bottom: 2px solid #ffcb32; display: inline-block; padding-right: 24px; }
+.subv2-canvas .sc-section h3 { margin: 0 0 13px; font-size: 20px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #3c2e7e; padding-bottom: 8px; border-bottom: 2px solid #ffcb32; display: inline-block; padding-right: 24px; }
+
 .subv2-canvas .sc-tbl { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #ebe7f2; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px -8px rgba(14,11,30,.10); }
-.subv2-canvas .sc-tbl th { padding: 16px 18px; text-align: left; background: #f6f5fb; color: #3c2e7e; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; border-bottom: 2px solid #ebe7f2; }
+.subv2-canvas .sc-tbl th { padding: 14px 18px; text-align: left; background: #f6f5fb; color: #3c2e7e; font-size: 15px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; border-bottom: 2px solid #ebe7f2; }
 .subv2-canvas .sc-tbl th:not(:first-child) { text-align: right; }
-.subv2-canvas .sc-tbl td { padding: 18px 18px; border-bottom: 1px solid #ebe7f2; font-family: 'JetBrains Mono', monospace; font-size: 26px; color: #0e0b1e; }
+.subv2-canvas .sc-tbl td { padding: 13px 18px; border-bottom: 1px solid #ebe7f2; font-size: 22px; font-weight: 700; color: #0e0b1e; vertical-align: middle; font-variant-numeric: tabular-nums; }
 .subv2-canvas .sc-tbl td:not(:first-child) { text-align: right; }
 .subv2-canvas .sc-tbl tr:last-child td { border-bottom: none; }
-.subv2-canvas .sc-tbl td:first-child { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; }
-.subv2-canvas .sc-tbl .sc-tot td { background: #3c2e7e; color: #ffffff; font-weight: 800; font-size: 28px; padding: 20px 18px; border-top: 3px solid #ffcb32; border-bottom: none; }
-.subv2-canvas .sc-tbl .sc-tot td:first-child { color: #ffcb32; font-family: 'Inter', sans-serif; font-size: 19px; letter-spacing: .10em; text-transform: uppercase; }
-.subv2-canvas .sc-cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 9px; vertical-align: middle; }
+/* The two HNI bands are SUB-ROWS of the roll-up above them — the page tints
+   and indents them (`tr.subcat`) and the snapshot did not, so three HNI
+   lines read as peers whose multiples do not reconcile. Same tint as the
+   page; the indent is larger because the type here is larger. */
+.subv2-canvas .sc-tbl tr.sc-sub td { background: #f3f4f6; }
+.subv2-canvas .sc-tbl tr.sc-sub td:first-child { padding-left: 38px; }
+
+/* The share count back as the headline with its rupee value beneath — the same
+   two-line cell `ShareWisePanel` renders (`subv2-2l`). It restores the figure
+   the operator asked for WITHOUT adding a column, which is the only reason
+   "put the shares back" and "make the type bigger" can both be satisfied. */
+.subv2-canvas .sc-2l { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.subv2-canvas .sc-2l .big { font-size: 26px; font-weight: 800; color: #0e0b1e; }
+.subv2-canvas .sc-2l .small { font-size: 17px; font-weight: 600; color: #726a8c; margin-top: 3px; }
+.subv2-canvas .sc-mult { font-size: 27px; font-weight: 800; }
+.subv2-canvas .sc-num { font-size: 24px; font-weight: 700; }
+.subv2-canvas .sc-num.b { font-weight: 800; }
+
+.subv2-canvas .sc-tbl .sc-tot td { background: #3c2e7e; color: #ffffff; font-weight: 800; padding: 15px 18px; border-top: 3px solid #ffcb32; border-bottom: none; }
+.subv2-canvas .sc-tbl .sc-tot td:first-child { color: #ffcb32; font-size: 17px; letter-spacing: .09em; text-transform: uppercase; }
+.subv2-canvas .sc-tbl .sc-tot .sc-2l .big { color: #ffffff; }
+.subv2-canvas .sc-tbl .sc-tot .sc-2l .small { color: rgba(255,255,255,.76); }
+.subv2-canvas .sc-tbl .sc-tot .sc-mult, .subv2-canvas .sc-tbl .sc-tot .sc-num { color: #ffffff; }
+
+/* The page's anchor footnote. One of the two QIB bases can be checked against
+   the exchange and the other cannot, so it says which — without it a shared
+   image showed a QIB book short by the anchor with nothing explaining it. */
+.subv2-canvas .sc-foot-note { margin: 11px 2px 0; font-size: 15.5px; line-height: 1.45; color: #615a80; }
+
+/* A category with no colour of its own still gets a swatch rather than a 10px
+   hole — `dotClassFor` returns '' for policyholder and the market maker. */
+.subv2-canvas .sc-cat-dot { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 10px; vertical-align: middle; background: #5c6187; }
 .subv2-canvas .sc-cat-dot.qib { background: #2f66d0; }
 .subv2-canvas .sc-cat-dot.hni { background: #e0a200; }
 .subv2-canvas .sc-cat-dot.hni2 { background: #7c4dff; }
 .subv2-canvas .sc-cat-dot.retail { background: #3c2e7e; }
 .subv2-canvas .sc-cat-dot.emp { background: #0f766e; }
 .subv2-canvas .sc-cat-dot.shareholder { background: #be185d; }
-.subv2-canvas .sc-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; margin-top: 24px; border-top: 2px solid #ebe7f2; font-size: 12px; }
-.subv2-canvas .sc-foot .sc-time { color: #615a80; font-weight: 600; }
-.subv2-canvas .sc-foot .sc-url { color: #3c2e7e; font-weight: 800; font-size: 16px; letter-spacing: .02em; display: inline-flex; align-items: center; gap: 8px; }
-.subv2-canvas .sc-foot .sc-url::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ffcb32; }
+
+/* SCOPED. This was declared ONCE, UNSCOPED, at 15px among the showcase rules,
+   so the snapshot's disclaimer rendered at a third of the figures' size — about
+   5px once forwarded: present without being legible. The lead carries the
+   operative sentence at a readable size and the fine print carries the
+   operator's locked wording (2026-09-18) as the record. */
+.subv2-canvas .sc-disclaimer { margin: 4px 0 0; padding: 16px 20px; border-radius: 10px; background: #f6f5fb; border-left: 5px solid #ffcb32; }
+.subv2-canvas .sc-disclaimer h4 { margin: 0 0 8px; font-size: 15px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: #3c2e7e; }
+.subv2-canvas .sc-disclaimer .lead { margin: 0; font-size: 17px; line-height: 1.5; color: #4a4363; font-weight: 600; }
+.subv2-canvas .sc-disclaimer .fine { margin: 9px 0 0; font-size: 13px; line-height: 1.5; color: #7a7391; }
+
+.subv2-canvas .sc-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; margin-top: 20px; border-top: 2px solid #ebe7f2; }
+.subv2-canvas .sc-foot .sc-url { color: #3c2e7e; font-weight: 800; font-size: 22px; letter-spacing: .01em; display: inline-flex; align-items: center; gap: 10px; }
+.subv2-canvas .sc-foot .sc-url::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #ffcb32; }
+.subv2-canvas .sc-foot .sc-time { color: #8b849f; font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
 
 /* toast used by share flow */
 .subv2-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(100px); opacity: 0; background: #1a1638; color: #fff; padding: 11px 18px; border-radius: 99px; display: inline-flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 600; box-shadow: 0 30px 80px -30px rgba(60,46,126,.35); z-index: 200; transition: transform .28s, opacity .28s; }
