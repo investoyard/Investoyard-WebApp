@@ -840,7 +840,14 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .appstatus { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: var(--pill); background: var(--bg-2); color: var(--text-muted); }
 .appstatus.good { color: var(--pos); background: var(--pos-soft); }
 .appstatus.wait { color: var(--warn); background: var(--warn-soft); }
-.appstatus.bad { color: var(--neg); background: var(--neg-soft); }
+/* `--neg-ink`, not `--neg`: 3.86:1 against a 4.5 bar at 12px before, 5.19 now.
+   This chip is CUSTOMER-FACING and carries not_allotted, rejected, failed and
+   dp_failed, plus the Same PAN warning in the apply flow — so it is what nearly
+   every unsuccessful applicant reads after an allotment. The GMP pill carries
+   the identical pair and was DELIBERATELY left (operator, 2026-10-22): same
+   defect, but a decorative figure rather than the reason an application did
+   not go through. */
+.appstatus.bad { color: var(--neg-ink); background: var(--neg-soft); }
 .appstatus.info { color: var(--brand); background: var(--brand-50); }
 
 /* ----------------------------------------------------------------- STICKY APPLY BAR */
