@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { ShareWisePanel, AppWisePanel, DemandPanel, tone, toneLabel, type QibSplit } from '@/components/SubscriptionHub';
 import { subscriptionTable } from '@/lib/ipoCalc';
+import { fmtDateTime } from '@investoyard/shared-types';
 import { useLiveIpo } from '@/lib/useLiveIpo';
 import { Icon } from '@/components/Icon';
 import type { SubRowT, AnchorBasis } from '@/lib/ipoCalc';
@@ -43,6 +44,7 @@ export function LiveSubscription({
   anchorDeducted?: number;
   anchorBasis?: AnchorBasis;
   status: string;
+  /** RAW ISO. Formatted here, not by the caller — see `asOfL`. */
   asOf?: string;
   priceMin?: number;
   priceMax?: number;
@@ -63,7 +65,11 @@ export function LiveSubscription({
   const totalL = freshT?.total ?? total;
   const anchorDeductedL = freshT ? freshT.anchorDeducted : anchorDeducted;
   const anchorBasisL = freshT ? freshT.anchorBasis : anchorBasis;
-  const asOfL = (fresh as any)?.subscriptionAsOf ?? asOf;
+  /* ONE formatter for both branches. `fmtDateTime` returns "" for a missing
+     or unparseable value, which the render below already treats as absent,
+     and it is the same expression the hub uses — so the two surfaces can no
+     longer disagree about how this stamp reads. */
+  const asOfL = fmtDateTime((fresh as any)?.subscriptionAsOf ?? asOf);
   const totalAppsL = (fresh as any)?.totalApps ?? totalApps;
   const qibSplitL = ((fresh as any)?.extra?.qibSplit as QibSplit | undefined) ?? qibSplit;
   const live = status === 'open';

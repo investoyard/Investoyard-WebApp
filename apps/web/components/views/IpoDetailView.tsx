@@ -55,8 +55,11 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
   const todayMs = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
   const resRows = calc.reservation(ipo);
   const subT = calc.subscriptionTable(ipo);
+  /* RAW, and deliberately not formatted here. `LiveSubscription` prefers the
+     live record it fetches itself and falls back to this one, so formatting
+     at the call site put a pre-formatted date and a raw ISO string into the
+     same variable — and the raw one is what reached the page. */
   const subAsOfRaw = ipo.subscription?.find((s) => s.asOf)?.asOf;
-  const subAsOf = subAsOfRaw ? fmtDate(subAsOfRaw.slice(0, 10)) : undefined;
 
   // group the lot ladder by category (min → max lots)
   const lotGroups: { cat: string; sub: string; min: calc.LotRow; max: calc.LotRow }[] = [];
@@ -251,7 +254,7 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
           {ipo.subscription && subT && (
             <section id="subscription">
               <div className="section-title">{tr('detail.liveSubscription')}</div>
-              <LiveSubscription rows={subT.rows} total={subT.total} anchorDeducted={subT.anchorDeducted} anchorBasis={subT.anchorBasis} status={ipo.status} asOf={subAsOf} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} qibSplit={(ipo as any)?.extra?.qibSplit} />
+              <LiveSubscription rows={subT.rows} total={subT.total} anchorDeducted={subT.anchorDeducted} anchorBasis={subT.anchorBasis} status={ipo.status} asOf={subAsOfRaw} priceMin={ipo.priceBandMin} priceMax={ipo.priceBandMax ?? ipo.priceBandMin} totalApps={ipo.totalApps} ipoType={ipo.type} symbol={ipo.symbol} qibSplit={(ipo as any)?.extra?.qibSplit} />
               {/* Day-wise + hourly drill-down moved to /subscription/v2 (2026-09-22).
                   Operator ask: keep the detail page slim; a "View detail" link on
                   the Live Subscription card sends the reader over to
