@@ -3087,7 +3087,12 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 /* status pills (neutral, semantic reserved for money) */
 .st { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: var(--pill); text-transform: capitalize; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .st.ok { background: var(--pos-soft); color: var(--pos); }
-.st.bad { background: var(--neg-soft); color: var(--neg); }
+/* `--neg-ink`, not `--neg`: this chip is 11.5px, where the raw pair measured
+   3.86:1 and failed AA — smaller text than the banner that prompted the fix, so
+   it mattered more here. 5.19:1 now. The same pair survives on several other
+   surfaces; they are listed in CLAUDE.md with their measurements rather than
+   swept, because two of them are customer-facing and one is the status tone. */
+.st.bad { background: var(--neg-soft); color: var(--neg-ink); }
 .st.mut { background: var(--bg-2); color: var(--text-faint); }
 .st.brand { background: var(--brand-50); color: var(--brand); }
 .st.warn { background: var(--warn-soft); color: #7a5800; }
