@@ -579,15 +579,16 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
               * application figures for renders nothing rather than an empty
               * table. 4 of the 9 SME issues with subscription rows have them.
               */}
-            {/* COLUMN 2 STACKS Application-wise over the Lot ladder, so column
-                3 can carry the new Demand card (operator ask, 2026-10-13).
-                Three grid columns either way — the ladder moved DOWN, it did
-                not move out. */}
-            <div className="subv2-det-stack">
-              <AppWisePanel rows={table.rows} />
-              <LotLadderPanel ipo={ipo} />
-            </div>
+            <AppWisePanel rows={table.rows} />
             <DemandPanel rows={table.rows} total={table.total} price={price} qibSplit={(ipo as any)?.extra?.qibSplit} />
+            {/* THE LADDER IS A FULL-WIDTH FOOTER (2026-10-22). It used to sit
+                inside a stack beside Application-wise, which meant the DOM met
+                it before Demand and a block of `order:` rules had to move it
+                visually below 1400px. Last in the DOM, it is last everywhere
+                — same reading order the operator asked for, now without the
+                workaround, and a screen reader gets it too. It is reference,
+                not live figures, so the full width suits it. */}
+            <LotLadderPanel ipo={ipo} />
           </div>
         </div>
       )}
@@ -723,6 +724,9 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
  *  "needed for 1×" against "came in". */
 export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
   const appRows = appWiseRows(rows);
+  /* QIB never appears in `appRows` — `APP_WISE_ORDER` leaves it out — so its
+     count comes from the unfiltered rows. */
+  const qibApps = Number(rows.find((r) => r.key === 'qib')?.bidCount ?? 0);
   if (appRows.length === 0) return null;
   const totalApps = appRows.reduce((s, r) => s + (r.bidCount ?? 0), 0);
   return (
@@ -774,6 +778,19 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
       </div>
       {proRataNote(appRows) && (
         <p className="subv2-aw-note">{proRataNote(appRows)}</p>
+      )}
+      {/* WHY THIS TOTAL IS SMALLER THAN THE HEADLINE ONE. The tile above counts
+          every category; this table leaves QIB out, because institutions have no
+          minimum bid and so no applications-for-1x to divide by. The difference
+          is exactly QIB’s application count, so it is printed rather than
+          described — a reader can then check the subtraction themselves. */}
+      {qibApps > 0 && (
+        <p className="subv2-aw-note">
+          QIB is excluded: institutions bid without a minimum application size, so an
+          application-wise multiple cannot be computed for them. The headline Applications
+          figure counts every category, so it is higher than this total by QIB’s{' '}
+          <b>{fmtIn(qibApps)}</b> application{qibApps === 1 ? '' : 's'}.
+        </p>
       )}
     </section>
   );

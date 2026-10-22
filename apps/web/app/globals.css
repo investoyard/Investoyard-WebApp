@@ -4224,10 +4224,19 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
  * track for its content and lets it shrink rather than push when there is not
  * room; below 1400px the row becomes a 2x2 anyway.
  */
-.subv2-det-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto); gap: 14px; padding: 14px 18px 16px; align-items: start; }
+/* THE THIRD COLUMN HAS A FLOOR AND THE OTHER TWO DO NOT, which is the only
+   version that costs nothing. Demand carries the densest content (QIB split,
+   nested, with rupee amounts) and `auto` gave it only what it strictly
+   needed: 249px against Share-wise’s 463. Measured at 1440 — a 290px floor
+   takes 41px from Share-wise’s SLACK and overflows nothing, where every
+   proportional split overflows a neighbour and 310px starts squeezing
+   Share-wise. Floor, not `fr`, so a narrow viewport can still shrink it. */
+.subv2-det-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(290px, auto); gap: 14px; padding: 14px 18px 16px; align-items: start; }
 /* Column 2 holds Application-wise above the Lot ladder; the gap matches the
    grid's own so a stacked column reads the same as a side-by-side one. */
-.subv2-det-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* The Lot ladder spans every column: it is a reference table read last, and
+   a full row suits it better than a third of one. */
+.subv2-det-in > .pnl-lot { grid-column: 1 / -1; }
 
 /*
  * THE PANEL ROW IS BREAKPOINTED ON WHAT THE TABLES ACTUALLY NEED, measured
@@ -4250,10 +4259,8 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
  */
 @media (max-width: 1400px) {
   .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  /* The stack DISSOLVES rather than occupying one cell of two — otherwise the
-     second row would be half empty. `display: contents` promotes its children
-     to grid items so the four panels lay out as a true 2x2. */
-  .subv2-det-stack { display: contents; }
+  /* The ladder still spans the full row here, so the three live panels pair
+     off above it rather than leaving half a row empty. */
 }
 @media (max-width: 700px) {
   .subv2-det-in { grid-template-columns: minmax(0, 1fr); }
@@ -4264,9 +4271,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 
      Share-wise, then Application-wise, then Subscription Demand, then the Lot
      ladder: the live figures first, the reference table last (operator ask,
-     2026-10-21). In the DOM the ladder sits inside `.subv2-det-stack` next to
-     Application-wise, which is right for the desktop column but puts it ahead
-     of Demand when everything collapses into one column.
+     2026-10-21). THE DOM NOW MATCHES THAT ORDER (2026-10-22): the ladder was
+     lifted out of `.subv2-det-stack` and made a full-width footer, so these
+     rules assert an order the markup already has. They are kept as a GUARD —
+     reorder the JSX and the layout still reads correctly — not as the fix.
 
      `order` works here only because the stack is already `display: contents`
      below 1400px, so all four panels are real grid items rather than two
@@ -4278,10 +4286,12 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
      matches nothing. Written that way first, it left those two on the default
      `order: 0` and they sorted to the TOP - App, Lot, Share, Demand.
 
-     KNOWN LIMIT: this moves them visually, not in the DOM, so a screen reader
-     still meets the ladder before Demand. Four independent read-only tables,
-     so the cost is small - and the alternative, reordering the JSX, means
-     re-deriving the desktop layout, which this change is meant not to touch. */
+     ~~KNOWN LIMIT: this moves them visually, not in the DOM~~ FIXED 2026-10-22.
+     It used to move them visually only, so a screen reader met the ladder
+     before Demand; the note said the alternative meant re-deriving the desktop
+     layout. It did not — making the ladder a full-width footer put the DOM in
+     the reading order and improved the desktop at the same time. **A cost
+     recorded as unavoidable is worth re-testing when the layout next moves.** */
   .subv2-det-in .pnl-share { order: 1; }
   .subv2-det-in .pnl-app { order: 2; }
   .subv2-det-in .pnl-demand { order: 3; }
@@ -4316,7 +4326,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    what happened on the detail page. With it, the wrap's overflow-x does the job
    it was added for. */
 .subv2-det-in { min-width: 0; }
-.subv2-det-in > .subv2-det-panel, .subv2-det-stack > .subv2-det-panel { min-width: 0; }
+.subv2-det-in > .subv2-det-panel { min-width: 0; }
 
 /* v2 (.subv2-solo) — safer track shrinking. Grid tracks default to
    min-content which lets a wide table push the panel past 1fr, spilling
@@ -4329,7 +4339,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    ~280px. Weighting 1.7 / 1.15 / 1.15 gives them more breathing room
    than the earlier 2 / 1 / 1 which starved the app-wise Times column
    at 1200-1400px viewports. */
-.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto); }
+.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(290px, auto); }
 .subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; overflow: hidden; }
 .subv2-solo .subv2-det-in .subv2-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 1400px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
@@ -4352,6 +4362,9 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
      columns at 701-900 and only collapses at 700, where the unscoped rules in
      that block pick it up. Reordering a two-column grid is a different
      question from stacking one, and the operator asked for the phone. */
+  /* Guards, like the block above: the DOM has carried this order since the
+     ladder became a footer (2026-10-22). The 701-900 measurement that
+     produced these rules still stands and is why they are scoped. */
   .subv2:not(.subv2-detail) .subv2-det-in .pnl-share { order: 1; }
   .subv2:not(.subv2-detail) .subv2-det-in .pnl-app { order: 2; }
   .subv2:not(.subv2-detail) .subv2-det-in .pnl-demand { order: 3; }
@@ -4379,7 +4392,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .subv2-det-panel h4::before { content: ""; display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
 .subv2-det-panel header .muted { font-size: 10.5px; color: var(--text-muted); }
 .subv2-tbl-wrap { overflow-x: auto; margin: 0 -6px; }
-.subv2-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+/* `tabular-nums` so figures line up digit under digit down a column — the
+   convention this file states and these tables were missing (measured as
+   `normal`, 2026-10-22). Harmless on the category column, which is text. */
+.subv2-tbl { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 .subv2-tbl th { text-align: left; padding: 6px 8px; white-space: nowrap; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 /* 8px -> 5px of horizontal padding INSIDE the panel row only, which buys ~24px
    on every four-column table — the difference between three-across fitting at
