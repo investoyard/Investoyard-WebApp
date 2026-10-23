@@ -66,18 +66,25 @@ function timeFor(ipo: ClockIpo, key: 'openDate' | 'closeDate', fallback: string)
 }
 
 /**
- * An instant for `date` at `time`, in the READER'S OWN timezone.
+ * An instant for `date` at `time` **in IST** (operator decision, 2026-10-23).
  *
- * That is what the three render sites did before this and is kept deliberately
- * rather than pinned to IST: changing it would move every countdown for every
- * reader outside India, which is a separate decision from fixing the hour.
- * It is a real limitation — a reader in London sees JPL's 19:00 close land at
- * 19:00 GMT, which is 00:30 IST the next day.
+ * These are Indian exchange hours: an issue closes at 19:00 in Mumbai and at
+ * no other time anywhere. Parsing without an offset reads the string in the
+ * READER OWN zone, which is what the four hardcoded render sites did — so a
+ * reader in London counted down to 19:00 GMT, half past midnight IST, six
+ * hours after bidding had actually shut.
  */
+/** IST as a fixed offset. **Exact, not an approximation: India has no DST**
+    and has not since 1945. The same shortcut would be wrong for a zone that
+    observes it, where the offset depends on the date being parsed. */
+export const IST_OFFSET = '+05:30';
+/** The same constant as minutes east of UTC, for arithmetic. */
+export const IST_OFFSET_MIN = 330;
+
 function at(date: string | null | undefined, time: string): number | null {
   const d = dayOf(date);
   if (!d) return null;
-  const ms = new Date(`${d}T${time}:00`).getTime();
+  const ms = new Date(`${d}T${time}:00${IST_OFFSET}`).getTime();
   return Number.isFinite(ms) ? ms : null;
 }
 
@@ -89,6 +96,29 @@ export function openAt(ipo: ClockIpo): number | null {
 /** When bidding closes, in ms. Null when the record has no close date. */
 export function closeAt(ipo: ClockIpo): number | null {
   return at(ipo.closeDate, timeFor(ipo, 'closeDate', DEFAULT_CLOSE_TIME));
+}
+
+/**
+ * An instant rendered as an IST clock time — "7 pm", "5 pm", "5:33 pm".
+ *
+ * **IST, NOT THE READER ZONE, AND THAT IS THE POINT.** The instant is pinned
+ * to IST, so formatting it with `getHours()` would undo half the fix: a
+ * reader in London would get a correct countdown captioned "closes today,
+ * 1:30 pm" for an issue the exchange, the RHP and every other site put at 7.
+ * The hour an Indian IPO closes is a fact about Mumbai, not about the reader.
+ *
+ * Minutes appear only when there are any: "7:00 pm" beside a ticking clock is
+ * a decimal point nobody needs.
+ */
+export function istClock(ms: number | null): string | null {
+  if (ms === null || !Number.isFinite(ms)) return null;
+  /* Shift into IST and read the UTC parts — the standard way to get another
+     zone wall clock without pulling in a timezone library. */
+  const d = new Date(ms + IST_OFFSET_MIN * 60_000);
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'am' : 'pm'}`;
 }
 
 /**

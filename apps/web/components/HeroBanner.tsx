@@ -7,7 +7,7 @@ import { inr, priceBand } from '@/lib/format';
 import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { LABEL, demandWord, titleCase, shortName, closeAt } from '@investoyard/shared-types';
+import { LABEL, demandWord, titleCase, shortName, closeAt, istClock } from '@investoyard/shared-types';
 import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
 
 /**
@@ -71,13 +71,12 @@ const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
  * "7:00 pm" beside a ticking clock is a decimal point nobody needs.
  */
 function closeClock(ipo: IpoFull): string {
-  const ms = closeAt(ipo);
-  if (ms === null) return 'the close';
-  const d = new Date(ms);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'am' : 'pm'}`;
+  /* `istClock`, not `getHours()`. The instant is pinned to IST, so reading
+     it on the reader clock would caption a correct countdown with the wrong
+     hour — "closes today, 1:30 pm" in London for an issue the exchange and
+     every other site put at 7 pm. The hour an Indian IPO closes is a fact
+     about Mumbai, not about whoever is looking at it. */
+  return istClock(closeAt(ipo)) ?? 'the close';
 }
 
 function useCountdown(end: number | null): string | null {
