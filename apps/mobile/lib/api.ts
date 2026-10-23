@@ -23,6 +23,83 @@ function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
+/* ---- the bank / branch / pincode directory ---------------------------
+ * Reference data for the applicant form. PUBLIC — a person filling in their
+ * first applicant has no profile yet, and none of this is about them.
+ *
+ * EVERY ONE OF THESE RETURNS EMPTY RATHER THAN THROWING, and the form reads
+ * that as "no directory" and falls back to a plain text field. The masters
+ * are filled by a separate import, so between a deploy and that import the
+ * tables are empty — and a picker with nothing in it would make the bank
+ * fields unfillable on the one screen an applicant cannot avoid.
+ * ------------------------------------------------------------------- */
+
+export interface BankOption { id: string; name: string; major?: boolean }
+export interface BranchRow {
+  id: string; ifsc: string; branch: string;
+  city: string | null; district: string | null; state: string | null;
+  bank: { id: string; name: string };
+}
+export interface PincodeRow { pincode: string; city: string | null; state: string | null; ambiguous: boolean }
+
+async function dirGet<T>(path: string, signal?: AbortSignal, fallback?: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { signal });
+    if (!res.ok) return fallback as T;
+    /* READ AS TEXT, because Nest sends an EMPTY BODY for a `null` handler
+       result rather than the string "null" — `res.json()` then throws
+       "Unexpected end of JSON input". An unknown pincode is exactly that,
+       and it is a normal answer on a field queried while someone types, so
+       it must not travel as an exception. Verified live: /pincode/999999
+       answers 200 with zero bytes. */
+    const body = await res.text();
+    if (!body) return fallback as T;
+    return JSON.parse(body) as T;
+  } catch {
+    /* An ABORT lands here, and that is correct: the caller superseded this
+       query a keystroke ago and is not waiting for it. So does a network
+       failure — the form falls back to a plain text field either way. */
+    return fallback as T;
+  }
+}
+
+/** ~1,350 rows — loaded whole and filtered in memory, as web does. */
+export const fetchBanks = () => dirGet<BankOption[]>('/profiles/banks', undefined, []);
+
+/** States and UTs — a closed set of 36, so the form offers a real picker. */
+export const fetchStates = () => dirGet<{ name: string; code: string | null }[]>('/profiles/states', undefined, []);
+
+/**
+ * Branch search. BANK-SCOPED and capped server-side — 1.82 lakh rows is not
+ * something to pull to a phone. A pasted IFSC resolves exactly without a
+ * bank, which is why `bankId` is optional: someone holding the code should
+ * not have to find their bank in a list first.
+ */
+export function searchBranches(bankId: string | undefined, q: string, signal?: AbortSignal) {
+  const qs: string[] = [];
+  if (bankId) qs.push(`bankId=${encodeURIComponent(bankId)}`);
+  if (q) qs.push(`q=${encodeURIComponent(q)}`);
+  return dirGet<BranchRow[]>(`/profiles/bank-branches?${qs.join('&')}`, signal, []);
+}
+
+/**
+ * City SUGGESTIONS, derived from the pincode directory rather than a master
+ * of their own, so they can never disagree with what a pincode fills in. The
+ * field still accepts a typed value the directory has never heard of — a
+ * closed list could make a valid application unfillable, because the
+ * registrar matches what the applicant’s BANK holds, not what we imported.
+ */
+export function searchCities(q: string, state?: string, signal?: AbortSignal) {
+  const qs: string[] = [];
+  if (q) qs.push(`q=${encodeURIComponent(q)}`);
+  if (state) qs.push(`state=${encodeURIComponent(state)}`);
+  return dirGet<{ city: string; state: string | null }[]>(`/profiles/cities?${qs.join('&')}`, signal, []);
+}
+
+/** Null for a pincode we do not carry — not an error; this runs while typing. */
+export const lookupPincode = (pin: string, signal?: AbortSignal) =>
+  dirGet<PincodeRow | null>(`/profiles/pincode/${encodeURIComponent(pin)}`, signal, null);
+
 
 // The API's list endpoint returns full detail rows (same serializer as by-symbol),
 // so cards can show subscription/reservation/lot expanders without a second fetch.
