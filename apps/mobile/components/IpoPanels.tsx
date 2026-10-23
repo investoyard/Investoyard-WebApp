@@ -30,36 +30,76 @@ import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel } from '
  * both web surfaces so a category cannot be dropped from two of three.
  */
 export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
-  const [view, setView] = useState<'shares' | 'apps'>('shares');
+  const [view, setView] = useState<'shares' | 'apps' | 'money'>('shares');
   const t = calc.subscriptionTable(ipo);
   if (!t) return <Text style={s.muted}>Subscription not open yet.</Text>;
 
   const appRows = appWiseRows(t.rows);
   const hasApps = appRows.length > 0;
-  const shown = hasApps ? view : 'shares';
+  /* Application-wise hides itself when the exchange reports no bid counts —
+     most of the catalogue. Demand always has figures, because it is the same
+     shares valued at a price we already hold, so it never needs hiding. */
+  const shown = view === 'apps' && !hasApps ? 'shares' : view;
   /* Share-wise takes SHARE_ORDER; Application-wise is already ordered by
      `appWiseRows`, which returns APP_WISE_ORDER — a DIFFERENT list, since it
      leaves QIB out entirely (an institution bids with no minimum application
      size, so there is no applications-for-1x to divide by). Re-sorting that
      one would be a second opinion about a question already answered. */
   const rows = shown === 'apps' ? appRows : orderShareRows(t.rows);
+  /* ₹ CRORE, SIZED TO THE COLUMN. The two decimals web prints reach
+     "₹2,01,471.88" — ~102px at this weight, in an 82px slot. Decimals are
+     kept while the issue is small enough to carry them and dropped once it
+     is not: ₹3.50 and ₹2,01,472 are both the honest reading at their size.
+
+     THE PRECISION IS CHOSEN ONCE, FROM THE WIDEST ROW, and applied to every
+     figure including the total. Per-value it gave a column reading ₹453.8,
+     ₹707.5, ₹538.6, ₹168.9, ₹1,062 — four with a decimal and one without,
+     because only one crossed 1000. How many decimals an issue can carry is a
+     property of the ISSUE, not of each of its categories. */
+  const dpFor = (vals: (number | undefined)[]) => {
+    const top = Math.max(0, ...vals.map((v) => (v ?? 0) / 1e7));
+    return top >= 1000 ? 0 : top >= 100 ? 1 : 2;
+  };
+  /* ONE PRECISION PER COLUMN. Applied and book are orders of magnitude apart
+     on an oversubscribed issue — SHELLZ applies ₹1,062 Cr against a ₹19 Cr
+     book — so a precision chosen from the applied figures rounded its ₹2.71
+     Cr QIB book to "₹3 Cr". Each column decides from its own widest value. */
+  const dpSub = dpFor([...t.rows.map((r) => r.subAmount), t.total.subAmount]);
+  const dpBook = dpFor([...t.rows.map((r) => r.bookAmount), t.total.bookAmount]);
+  const money = (paise: number | undefined, dp: number) => {
+    const v = paise != null && paise > 0 ? paise / 1e7 : 0;
+    return '\u20b9' + v.toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  };
   const totalApps = appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0);
 
   return (
     <View>
-      {hasApps ? (
-        <View style={s.subSeg}>
-          {([['shares', 'Share-wise'], ['apps', 'Application-wise']] as const).map(([k, label]) => (
-            <Pressable
-              key={k}
-              onPress={() => setView(k)}
-              style={({ pressed }) => [s.subSegBtn, shown === k && s.subSegBtnOn, pressed && { opacity: 0.8 }]}
+      <View style={s.subSeg}>
+        {/* `Application-wise` drops out when there is nothing behind it; the
+            other two are always there, so the control is never a single
+            lonely pill. Labels shrink rather than truncate — three segments
+            on a 320px phone is the tight case, and a clipped "Application-"
+            is worse than 11px type. */}
+        {(hasApps
+          ? ([['shares', 'Share-wise'], ['apps', 'Application-wise'], ['money', '₹ Crore']] as const)
+          : ([['shares', 'Share-wise'], ['money', '₹ Crore']] as const)
+        ).map(([k, label]) => (
+          <Pressable
+            key={k}
+            onPress={() => setView(k)}
+            style={({ pressed }) => [s.subSegBtn, shown === k && s.subSegBtnOn, pressed && { opacity: 0.8 }]}
+          >
+            <Text
+              style={[s.subSegTxt, shown === k && s.subSegTxtOn]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
             >
-              <Text style={[s.subSegTxt, shown === k && s.subSegTxtOn]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       {rows.map((r) => {
         /* The bar is the same 15× ramp in both views so a reader switching
@@ -78,6 +118,11 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
            sub-line stops claiming one and says why instead. Keep the two in
            step by hand, as with the split UPI input and DematPanel. */
         const noRatio = shown === 'apps' && r.proRata === true;
+        /* The BAR is the same times ramp in all three views, and in Demand
+           that is exact rather than approximate: both sides of the ratio
+           scale by the same price, so the rupee multiple IS the share
+           multiple. Recomputing it from the rupee figures could only add
+           rounding drift between two views of one issue. */
         const times = shown === 'apps' ? (r.applicationsTimes ?? 0) : r.times;
         const under = !noRatio && times < 1;
         const w = Math.max(4, Math.min(100, (times / 15) * 100));
@@ -98,27 +143,41 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
                 </View>
               )}
               <Text style={s.subBook}>
-                {shown === 'apps'
+                {shown === 'money'
+                  ? `book ${money(r.bookAmount, dpBook)} Cr`
+                  : shown === 'apps'
                   /* Applications RECEIVED against those needed for 1× — the two
                      figures the Reserved column on an SME lot ladder does not
                      carry, which is why this view exists at all. */
                   ? (noRatio
                     ? `${shC(r.bidCount ?? 0)} applications · allotted pro-rata`
                     : `need ${shC(r.req1x ?? 0)} for 1× · got ${shC(r.bidCount ?? 0)}`)
-                  : `book ${shC(r.bookSize)} · applied ${shC(r.subscribed)}`}
+                    : `book ${shC(r.bookSize)} · applied ${shC(r.subscribed)}`}
               </Text>
             </View>
-            <Text style={[s.subX, under && s.subUnder]}>{noRatio ? '\u2014' : `${times}\u00d7`}</Text>
+            <Text style={[s.subX, shown === 'money' && s.subXMoney, shown !== 'money' && under && s.subUnder]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {shown === 'money'
+                ? money(r.subAmount, dpSub)
+                : noRatio ? '\u2014' : `${times}\u00d7`}
+            </Text>
           </View>
         );
       })}
 
       <View style={s.subTotal}>
         <Text style={s.subTotalK}>
-          {shown === 'apps' ? 'Total applications' : 'Total subscription'}
+          {shown === 'apps' ? 'Total applications'
+            : shown === 'money' ? 'Total applied (₹ Cr)'
+            : 'Total subscription'}
         </Text>
-        <Text style={s.subTotalV}>
-          {shown === 'apps' ? shC(totalApps) : `${t.total.times}×`}
+        <Text style={s.subTotalV} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {shown === 'apps' ? shC(totalApps)
+            : shown === 'money'
+              /* The TOTAL's rupees are summed in `subscriptionTable`, where each
+                 row's own price is known — never recomputed here from a weighted
+                 average, which is off by the employee discount. */
+              ? money(t.total.subAmount, dpSub)
+              : `${t.total.times}×`}
         </Text>
       </View>
 
@@ -272,6 +331,11 @@ const s = StyleSheet.create({
   fill: { height: '100%', borderRadius: 999 },
   subBook: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, marginTop: 4, fontVariant: ['tabular-nums'] },
   subX: { width: 56, textAlign: 'right', fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
+  /* 82px rather than 56: the widest compact figure in the catalogue is
+     "₹2,01,472" at ~77px. The room comes from `subMid`, which is flex and
+     only loses bar width. A rupee figure is never dimmed the way a
+     sub-1x multiple is — a small book is not an under-subscription. */
+  subXMoney: { width: 82 },
   subUnder: { color: ui.muted },
   subTotal: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
