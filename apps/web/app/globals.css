@@ -4224,19 +4224,42 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
  * track for its content and lets it shrink rather than push when there is not
  * room; below 1400px the row becomes a 2x2 anyway.
  */
-/* THE THIRD COLUMN HAS A FLOOR AND THE OTHER TWO DO NOT, which is the only
-   version that costs nothing. Demand carries the densest content (QIB split,
-   nested, with rupee amounts) and `auto` gave it only what it strictly
-   needed: 249px against Share-wise’s 463. Measured at 1440 — a 290px floor
-   takes 41px from Share-wise’s SLACK and overflows nothing, where every
-   proportional split overflows a neighbour and 310px starts squeezing
-   Share-wise. Floor, not `fr`, so a narrow viewport can still shrink it. */
-.subv2-det-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(290px, auto); gap: 14px; padding: 14px 18px 16px; align-items: start; }
+/* ALL THREE TRACKS ARE `auto` AND A FLOOR ON ANY OF THEM COSTS ANOTHER ONE.
+   A 290px floor on Demand shipped on 2026-10-22 to answer a reviewer who
+   found that column cramped, and was reverted the next day: it left
+   Share-wise 9px short of its own table at 1440 and gave it a horizontal
+   scrollbar. The arithmetic is simply tight — the three tables plus padding
+   want 1059px and the row has 1050 — so `auto`, which hands each table its
+   min-content and no more, is the only arrangement where nothing overflows.
+   A 255px FLOOR IS BACK, and this time it is paid for out of real slack.
+   Once the header stopped driving the track (see the header rule), Share-wise
+   settled at 489 against a 417px need - 72px spare - so Demand can take 47 of
+   them and still leave 26px of headroom. Measured at this width: 270 leaves
+   11px, 285 already costs Share-wise 4px and 300 costs 19. The grid is a
+   capped 1114px at every viewport above the breakpoint, so the margin is not
+   eaten by a narrower window - it is eaten by the FIGURES GROWING. A digit
+   added to the Share-wise numbers costs about 14px across its two numeric
+   columns, which is why the choice is 255 and not 270.
+   **Demand looks narrow because its content IS narrow. Widening it takes
+   pixels from the widest and most-read table on the page.** */
+.subv2-det-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(255px, auto); gap: 14px; padding: 14px 18px 16px; align-items: start; }
 /* Column 2 holds Application-wise above the Lot ladder; the gap matches the
    grid's own so a stacked column reads the same as a side-by-side one. */
-/* The Lot ladder spans every column: it is a reference table read last, and
-   a full row suits it better than a third of one. */
-.subv2-det-in > .pnl-lot { grid-column: 1 / -1; }
+/* THE LADDER SITS UNDER APPLICATION-WISE, PLACED RATHER THAN WRAPPED.
+   It spent a day as a full-width footer and the operator preferred it back
+   in column 2 (2026-10-23). Explicit grid placement does that WITHOUT
+   restoring the `.subv2-det-stack` wrapper, so the ladder stays last in the
+   DOM — which is the half of the footer change that was worth keeping, since
+   it is what a screen reader follows and what made the `order:` rules
+   redundant. Scoped to the three-column state and to `:not(.subv2-detail)`:
+   the detail page runs a TWO-column grid, and forcing a panel into column 3
+   there would conjure an implicit third column. */
+@media (min-width: 1401px) {
+  .subv2:not(.subv2-detail) .subv2-det-in > .pnl-share { grid-column: 1; grid-row: 1 / span 2; }
+  .subv2:not(.subv2-detail) .subv2-det-in > .pnl-app { grid-column: 2; grid-row: 1; }
+  .subv2:not(.subv2-detail) .subv2-det-in > .pnl-demand { grid-column: 3; grid-row: 1 / span 2; }
+  .subv2:not(.subv2-detail) .subv2-det-in > .pnl-lot { grid-column: 2; grid-row: 2; }
+}
 
 /*
  * THE PANEL ROW IS BREAKPOINTED ON WHAT THE TABLES ACTUALLY NEED, measured
@@ -4339,7 +4362,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    ~280px. Weighting 1.7 / 1.15 / 1.15 gives them more breathing room
    than the earlier 2 / 1 / 1 which starved the app-wise Times column
    at 1200-1400px viewports. */
-.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(290px, auto); }
+.subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(255px, auto); }
 .subv2-solo .subv2-det-in > .subv2-det-panel { min-width: 0; overflow: hidden; }
 .subv2-solo .subv2-det-in .subv2-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 1400px) { .subv2-solo .subv2-det-in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
@@ -4387,9 +4410,35 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .subv2-solo .subv2-det-panel { padding: 8px 8px; }
 }
 .subv2-det-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-.subv2-det-panel header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+/* THE HEADER MUST NOT SIZE THE COLUMN. Two of these tracks are `auto`, which
+   sizes to MAX-CONTENT - so adding a 26px badge to the header widened the
+   Subscription Demand column by 34px and took them straight off Share-wise,
+   which then overflowed its own table by 2px and grew a scrollbar. Same
+   mechanism as the footnote that crushed a card to 69px on 2026-10-21, same
+   idiom: `width: 0` so it contributes nothing while the track is being
+   measured, `min-width: 100%` so it fills the column once that is settled.
+   The TABLE decides how wide the column is; the header just lives in it. */
+.subv2-det-panel header { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); width: 0; min-width: 100%; }
+
+/* PANEL HEADER BADGES (operator ask, 2026-10-23, from a mockup). All four
+   glyphs already existed in `Icon` — pie, doc, users, chart — so nothing new
+   is drawn; only the tinted tile is new.
+
+   THE PALETTE DELIBERATELY AVOIDS GREEN AND RED. The mockup gives
+   Application-wise a green badge, and on this site green and red are
+   reserved for financial signals — the same rule the reviewer himself
+   arrived at in his point 4. Teal reads close to his green without joining
+   the gain/loss palette, and gold is a brand colour rather than a signal.
+   Icons are graphics, judged against 3:1, not the 4.5:1 text bar. */
+.subv2-det-panel header .pnl-ico { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
+.pnl-share header .pnl-ico { background: var(--brand-50); color: var(--brand); }
+.pnl-app header .pnl-ico { background: var(--listed-soft); color: var(--listed); }
+.pnl-demand header .pnl-ico { background: #e9eefb; color: var(--c-qib); }
+.pnl-lot header .pnl-ico { background: var(--gold-50); color: var(--gold-600); }
 .subv2-det-panel h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 6px; }
-.subv2-det-panel h4::before { content: ""; display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
+/* THE GOLD DOT IS GONE: the icon badge beside the title replaced it (2026-10-23).
+   Keeping both left every header reading icon, dot, title - two markers doing
+   one job, and the mockup this came from has only the icon. */
 .subv2-det-panel header .muted { font-size: 10.5px; color: var(--text-muted); }
 .subv2-tbl-wrap { overflow-x: auto; margin: 0 -6px; }
 /* `tabular-nums` so figures line up digit under digit down a column — the
