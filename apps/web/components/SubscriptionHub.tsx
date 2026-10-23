@@ -665,9 +665,11 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
   return (
     <section className="subv2-det-panel pnl-share">
       <header>
-        <span className="pnl-ico"><Icon name="pie" size={15} /></span>
-        <h4>Share-wise</h4>
-        <span className="muted">by category</span>
+        <span className="pnl-ico"><Icon name="pie-fill" size={15} /></span>
+        <div className="pnl-ttl">
+          <h4>Share-wise</h4>
+          <span className="muted">by category</span>
+        </div>
       </header>
       <div className="subv2-tbl-wrap">
         {/* `subv2-tbl-share` scopes the phone layout: under 480px this table
@@ -737,7 +739,7 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
   return (
     <section className="subv2-det-panel pnl-app">
       <header>
-        <span className="pnl-ico"><Icon name="doc" size={15} /></span>
+        <span className="pnl-ico"><Icon name="doc-fill" size={15} /></span>
         <h4>Application-wise</h4>
       </header>
       <div className="subv2-tbl-wrap">
@@ -856,9 +858,11 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
   return (
     <section className="subv2-det-panel pnl-demand">
       <header>
-        <span className="pnl-ico"><Icon name="users" size={15} /></span>
-        <h4>Subscription Demand</h4>
-        <span className="muted">in ₹ crore</span>
+        <span className="pnl-ico"><Icon name="users-fill" size={15} /></span>
+        <div className="pnl-ttl">
+          <h4>Subscription Demand</h4>
+          <span className="muted">in ₹ crore</span>
+        </div>
       </header>
       <div className="subv2-tbl-wrap">
         <table className="subv2-tbl">
@@ -944,9 +948,11 @@ export function LotLadderPanel({ ipo }: { ipo: IpoFull }) {
     return (
       <section className="subv2-det-panel pnl-lot">
         <header>
-          <span className="pnl-ico"><Icon name="chart" size={15} /></span>
-          <h4>Lot ladder</h4>
-          <span className="muted">SME</span>
+          <span className="pnl-ico"><Icon name="chart-fill" size={15} /></span>
+          <div className="pnl-ttl">
+            <h4>Lot ladder</h4>
+            <span className="muted">SME</span>
+          </div>
         </header>
         <div className="subv2-tbl-wrap">
           <table className="subv2-tbl">
@@ -1009,7 +1015,7 @@ export function LotLadderPanel({ ipo }: { ipo: IpoFull }) {
   return (
     <section className="subv2-det-panel pnl-lot">
       <header>
-        <span className="pnl-ico"><Icon name="chart" size={15} /></span>
+        <span className="pnl-ico"><Icon name="chart-fill" size={15} /></span>
         <h4>Lot ladder</h4>
       </header>
       <div className="subv2-tbl-wrap">

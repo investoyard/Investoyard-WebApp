@@ -9,7 +9,8 @@ type IconName =
   | 'home' | 'box' | 'list' | 'exchange' | 'rupee' | 'receipt' | 'bank' | 'layers'
   | 'settings' | 'x' | 'upload' | 'download' | 'filter' | 'sitemap' | 'dot'
   | 'user' | 'user-plus' | 'pie' | 'cursor' | 'whatsapp' | 'repeat'
-  | 'clock-fill' | 'check-fill' | 'trending-fill' | 'flame-fill';
+  | 'clock-fill' | 'check-fill' | 'trending-fill' | 'flame-fill'
+  | 'pie-fill' | 'doc-fill' | 'users-fill' | 'chart-fill';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
@@ -72,6 +73,10 @@ const PATHS: Record<IconName, React.ReactNode> = {
   user: <><circle cx="12" cy="8" r="3.6" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></>,
   'user-plus': <><circle cx="9.5" cy="8" r="3.4" /><path d="M3.5 20a6 6 0 0 1 12 0" /><path d="M19 8v6M16 11h6" /></>,
   pie: <><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M14 3.3A9 9 0 0 1 20.7 10H14V3.3Z" /></>,
+  'pie-fill': <><path d="M11 3.06A9 9 0 1 0 20.94 13H11V3.06Z" fill="currentColor" stroke="none" /><path d="M13 3.06V11h7.94A9 9 0 0 0 13 3.06Z" fill="currentColor" stroke="none" opacity=".55" /></>,
+  'doc-fill': <><path d="M7 3h7l4 4v14H7z" fill="currentColor" stroke="none" /><path d="M14 3l4 4h-4V3Z" fill="currentColor" stroke="none" opacity=".45" /></>,
+  'users-fill': <><circle cx="9" cy="8" r="3.4" fill="currentColor" stroke="none" /><path d="M3 20.5a6 6 0 0 1 12 0Z" fill="currentColor" stroke="none" /><circle cx="17.2" cy="8.6" r="2.6" fill="currentColor" stroke="none" opacity=".6" /><path d="M15.6 20.5a7.5 7.5 0 0 0-2.3-5.1 5 5 0 0 1 7.7 5.1Z" fill="currentColor" stroke="none" opacity=".6" /></>,
+  'chart-fill': <><rect x="3" y="11" width="4.2" height="9" rx="1.1" fill="currentColor" stroke="none" /><rect x="9.9" y="4.6" width="4.2" height="15.4" rx="1.1" fill="currentColor" stroke="none" /><rect x="16.8" y="8.2" width="4.2" height="11.8" rx="1.1" fill="currentColor" stroke="none" opacity=".62" /></>,
   cursor: <path d="M5 3l6 16 2.2-6.8L20 10 5 3Z" />,
   /* The four demand marks on IPO cards, one per tier of the subscription
      ladder. SOLID, because at 14px beside a bold figure a 1.75px outline

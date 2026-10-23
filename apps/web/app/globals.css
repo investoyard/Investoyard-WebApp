@@ -4418,7 +4418,38 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    idiom: `width: 0` so it contributes nothing while the track is being
    measured, `min-width: 100%` so it fills the column once that is settled.
    The TABLE decides how wide the column is; the header just lives in it. */
-.subv2-det-panel header { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); width: 0; min-width: 100%; }
+/* THE HEADER IS A TINTED BAND ACROSS THE TOP OF THE CARD (operator ask from a
+   mockup, 2026-10-23). It BLEEDS past the panel padding with negative
+   margins, so `min-width` has to be `calc(100% + 28px)` — 100% resolves
+   against the content box, and the band needs the 14px of padding on each
+   side as well. `width: 0` still does the important job: two of these grid
+   tracks are `auto`, which size to MAX-CONTENT, so without it the header
+   decides how wide the column is and starves its neighbour. That is exactly
+   what the badges did when they first went in. */
+.subv2-det-panel header { display: flex; align-items: center; gap: 10px; margin: -12px -14px 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); border-radius: 11px 11px 0 0; width: 0; min-width: calc(100% + 28px); }
+
+/* Title over subtitle, which is what the subtitle wanted anyway: inline, "in
+   ₹ crore" wrapped to its own line once the column narrowed, just raggedly. */
+.subv2-det-panel header .pnl-ttl { display: flex; flex-direction: column; min-width: 0; }
+.subv2-det-panel header .pnl-ttl h4 { margin: 0; }
+
+/* ONE IDENTITY COLOUR PER CARD: a solid badge with a white glyph, over a
+   soft band of the same hue. These are LEGEND colours, like the category
+   swatches in the tables — they name a card, they never sit beside a figure,
+   and nothing reads them as a signal. White glyphs are graphics, so the bar
+   is 3:1, and each badge was measured against it: indigo 11.15, green 3.97,
+   blue 5.34. **The gold the mockup uses is 2.03:1 and fails**, so the ladder
+   takes the deeper amber at 3.63 — the same colour family, dark enough that
+   the glyph actually reads. */
+.subv2-det-panel header .pnl-ico { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
+.pnl-share header { background: var(--brand-50); }
+.pnl-share header .pnl-ico { background: var(--brand); }
+.pnl-app header { background: var(--pos-soft); }
+.pnl-app header .pnl-ico { background: var(--pos); }
+.pnl-demand header { background: #e9eefb; }
+.pnl-demand header .pnl-ico { background: var(--c-qib); }
+.pnl-lot header { background: var(--gold-50); }
+.pnl-lot header .pnl-ico { background: var(--warn); }
 
 /* PANEL HEADER BADGES (operator ask, 2026-10-23, from a mockup). All four
    glyphs already existed in `Icon` — pie, doc, users, chart — so nothing new
@@ -4430,11 +4461,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    arrived at in his point 4. Teal reads close to his green without joining
    the gain/loss palette, and gold is a brand colour rather than a signal.
    Icons are graphics, judged against 3:1, not the 4.5:1 text bar. */
-.subv2-det-panel header .pnl-ico { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
-.pnl-share header .pnl-ico { background: var(--brand-50); color: var(--brand); }
-.pnl-app header .pnl-ico { background: var(--listed-soft); color: var(--listed); }
-.pnl-demand header .pnl-ico { background: #e9eefb; color: var(--c-qib); }
-.pnl-lot header .pnl-ico { background: var(--gold-50); color: var(--gold-600); }
+/* (the tinted-tile version of these badges was replaced by the solid ones above) */
 .subv2-det-panel h4 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); display: inline-flex; align-items: center; gap: 6px; }
 /* THE GOLD DOT IS GONE: the icon badge beside the title replaced it (2026-10-23).
    Keeping both left every header reading icon, dot, title - two markers doing
