@@ -4407,9 +4407,14 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .subv2-solo .subv2-tbl tr.subcat td:first-child { padding-left: 8px; }
   .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 12px; }
   .subv2-solo .subv2-tbl-wrap { margin: 0; }
-  .subv2-solo .subv2-det-panel { padding: 8px 8px; }
+  .subv2-solo .subv2-det-panel { --pnl-px: 8px; --pnl-py: 8px; }
 }
-.subv2-det-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+/* `--pnl-px` / `--pnl-py` EXIST SO THE HEADER BAND CAN BLEED CORRECTLY.
+   The band sits flush to the card edge by pulling a negative margin equal to
+   this padding, and the padding changes at three breakpoints — so hardcoding
+   the pull made the tint overhang the card by 5px on a phone. Override the
+   VARIABLES at a breakpoint, never `padding` directly, and the band follows. */
+.subv2-det-panel { --pnl-px: 14px; --pnl-py: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: var(--pnl-py) var(--pnl-px); }
 /* THE HEADER MUST NOT SIZE THE COLUMN. Two of these tracks are `auto`, which
    sizes to MAX-CONTENT - so adding a 26px badge to the header widened the
    Subscription Demand column by 34px and took them straight off Share-wise,
@@ -4426,7 +4431,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    tracks are `auto`, which size to MAX-CONTENT, so without it the header
    decides how wide the column is and starves its neighbour. That is exactly
    what the badges did when they first went in. */
-.subv2-det-panel header { display: flex; align-items: center; gap: 10px; margin: -12px -14px 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); border-radius: 11px 11px 0 0; width: 0; min-width: calc(100% + 28px); }
+.subv2-det-panel header { display: flex; align-items: center; gap: 10px; margin: calc(-1 * var(--pnl-py)) calc(-1 * var(--pnl-px)) 10px; padding: 9px var(--pnl-px); border-bottom: 1px solid var(--border); border-radius: 11px 11px 0 0; width: 0; min-width: calc(100% + 2 * var(--pnl-px)); }
 
 /* Title over subtitle, which is what the subtitle wanted anyway: inline, "in
    ₹ crore" wrapped to its own line once the column narrowed, just raggedly. */
@@ -4530,7 +4535,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    So below 480px each row becomes a block: category and the multiple on one
    line, book and subscribed beneath it, each labelled from `data-l` now that
    the header row is gone. Nothing scrolls sideways and the ₹ Cr figures come
-   back. Scoped to `.subv2-tbl-share`: the other three panels fit at 375px and
+   back. Scoped to `.subv2-tbl-share`: Subscription Demand and the Lot ladder fit at 375px, APPLICATION-WISE DOES NOT — measured 2026-10-23, it needs 52px of sideways drag inside its own card — and all three
    stay as tables.
 
    It applies to BOTH surfaces - /subscription/v2 and the cards on
@@ -4989,7 +4994,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .subv2-info-pill { font-size: 10px; padding: 2px 7px; }
 
   /* Tables — smaller type, less padding so 4-col Share-wise cells don't clip */
-  .subv2-det-panel { padding: 10px 12px; }
+  .subv2-det-panel { --pnl-px: 12px; --pnl-py: 10px; }
   .subv2-tbl { font-size: 11.5px; }
   .subv2-tbl th { padding: 5px 6px; font-size: 9.5px; }
   .subv2-tbl td { padding: 6px 6px; }
@@ -5053,7 +5058,7 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   .subv2-tbl tr.subcat td:first-child { padding-left: 10px; }
   .subv2-2l .big { font-size: 11px; }
   .subv2-2l .small { font-size: 9.5px; }
-  .subv2-det-panel { padding: 8px 10px; }
+  .subv2-det-panel { --pnl-px: 10px; --pnl-py: 8px; }
   .subv2-tbl-wrap { margin: 0 -4px; }
   .subv2-aw-head { padding-right: 0; flex-direction: column; align-items: flex-start; }
   .subv2-aw-head-chips { margin-top: 6px; }
