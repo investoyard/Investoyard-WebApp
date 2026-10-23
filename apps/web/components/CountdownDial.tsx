@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { IpoFull } from '@/lib/api';
 import { Icon } from '@/components/Icon';
-import { stageOf, toneOf } from '@investoyard/shared-types';
+import { stageOf, toneOf, closeAt, openAt, milestoneAt } from '@investoyard/shared-types';
 
 /**
  * Animated countdown dial (client-only). Shared by the listing card and the
@@ -71,16 +71,22 @@ export function CountdownDial({ ipo }: { ipo: IpoFull }) {
 
   /* ── what this stage is counting towards ─────────────────────────────── */
   const isOpen = stage === 'live' || stage === 'opentoday' || stage === 'closingtoday';
+  /* `at` is the INSTANT this stage counts to, and each stage names its own.
+     All four used to get a hardcoded 17:00 appended, which was wrong twice
+     over: it ignored the hour the operator entered for the close, and it
+     counted an OPENING down to 17:00 while the card beside it on the same
+     page used 10:00. Allotment and listing carry no operator time and no
+     convention, so they keep 17:00 — now stated rather than implied. */
   const plan =
-      stage === 'awaiting' ? { target: ipo.allotmentDate, unit: 'ALLOTMENT', idleBig: '—', idleSmall: 'AWAITING' }
-    : stage === 'allotmentout' ? { target: ipo.listingDate, unit: 'LISTING', idleBig: 'OUT', idleSmall: 'ALLOTMENT' }
-    : isOpen ? { target: ipo.closeDate, unit: 'LEFT', idleBig: 'LIVE', idleSmall: 'BIDDING' }
-    : { target: ipo.openDate, unit: 'TO OPEN', idleBig: 'SOON', idleSmall: 'OPENS' };
+      stage === 'awaiting' ? { at: milestoneAt(ipo.allotmentDate), unit: 'ALLOTMENT', idleBig: '—', idleSmall: 'AWAITING' }
+    : stage === 'allotmentout' ? { at: milestoneAt(ipo.listingDate), unit: 'LISTING', idleBig: 'OUT', idleSmall: 'ALLOTMENT' }
+    : isOpen ? { at: closeAt(ipo), unit: 'LEFT', idleBig: 'LIVE', idleSmall: 'BIDDING' }
+    : { at: openAt(ipo), unit: 'TO OPEN', idleBig: 'SOON', idleSmall: 'OPENS' };
 
   // no date to count to → say where the issue stands, never somebody else's state
-  if (!plan.target) return state(plan.idleBig, plan.idleSmall);
+  if (plan.at === null) return state(plan.idleBig, plan.idleSmall);
 
-  const end = new Date(plan.target + 'T17:00:00').getTime();
+  const end = plan.at;
   // first paint is server-rendered: no clock, so no countdown yet
   if (now === null) return ring(1, 'var(--brand)', '—', plan.unit);
 

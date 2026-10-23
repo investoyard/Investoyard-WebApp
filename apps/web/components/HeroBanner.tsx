@@ -7,7 +7,7 @@ import { inr, priceBand } from '@/lib/format';
 import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { LABEL, demandWord, titleCase, shortName } from '@investoyard/shared-types';
+import { LABEL, demandWord, titleCase, shortName, closeAt } from '@investoyard/shared-types';
 import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
 
 /**
@@ -56,15 +56,34 @@ const fmtD = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
   ? `${+s.slice(8, 10)} ${MON3[+s.slice(5, 7) - 1]}` : '—');
 
 /**
- * Live countdown to the close of bidding (3pm cut-off on the closing day).
- * Starts null so the static export and the first client render agree, then
- * ticks every second — the urgency device on a "Closing today" slide.
+ * Live countdown to the close of bidding. Starts null so the static export
+ * and the first client render agree, then ticks every second — the urgency
+ * device on a "Closing today" slide.
+ *
+ * IT TAKES AN INSTANT, NOT A DATE, and that is the fix: it used to append
+ * `T15:00:00` — THREE PM — to the date column, where the rest of the site
+ * used 17:00 and JPL itself closes at 19:00. The caller resolves the hour
+ * with `closeAt`, which reads what the operator entered.
  */
-function useCountdown(closeDate?: string): string | null {
+/**
+ * "5 pm" / "7 pm" / "5:33 pm" — the closing hour in words, for the line
+ * under the countdown. Minutes appear only when there are any, because
+ * "7:00 pm" beside a ticking clock is a decimal point nobody needs.
+ */
+function closeClock(ipo: IpoFull): string {
+  const ms = closeAt(ipo);
+  if (ms === null) return 'the close';
+  const d = new Date(ms);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'am' : 'pm'}`;
+}
+
+function useCountdown(end: number | null): string | null {
   const [left, setLeft] = useState<string | null>(null);
   useEffect(() => {
-    if (!closeDate || !/^\d{4}-\d{2}-\d{2}$/.test(closeDate)) return;
-    const end = new Date(`${closeDate}T15:00:00`).getTime(); // exchange cut-off
+    if (end === null) return;
     const tick = () => {
       const ms = end - Date.now();
       if (ms <= 0) { setLeft(null); return; }
@@ -76,7 +95,7 @@ function useCountdown(closeDate?: string): string | null {
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [closeDate]);
+  }, [end]);
   return left;
 }
 
@@ -670,7 +689,7 @@ function PastelIpoSlide({ ipo, q }: { ipo: IpoFull; q: string }) {
   const canApply = (ipo as any).extra?.startBid === true;
   const canPrint = (ipo as any).extra?.startPrint === true;
   const closing = tag.urgent === true;
-  const countdown = useCountdown(closing ? ipo.closeDate : undefined);
+  const countdown = useCountdown(closing ? closeAt(ipo) : null);
   const tenant = useTenant();
   const showGmp = tenant.flags.gmpEnabled && ipo.gmp != null;
   const lanes = categoryLanes(ipo, showGmp);
@@ -767,7 +786,7 @@ function IpoSlide({ ipo, q, active }: { ipo: IpoFull; q: string; active: boolean
   const canApply = (ipo as any).extra?.startBid === true;
   const canPrint = (ipo as any).extra?.startPrint === true;
   const closing = tag.urgent === true;
-  const countdown = useCountdown(closing ? ipo.closeDate : undefined);
+  const countdown = useCountdown(closing ? closeAt(ipo) : null);
 
   return (
     <div className={`hb-slide ipo acc-${tag.cls}`}>
@@ -807,7 +826,10 @@ function IpoSlide({ ipo, q, active }: { ipo: IpoFull; q: string; active: boolean
             if (ipo.status !== 'open') return null;
             const d = daysUntil(ipo.closeDate);
             if (d == null || d < 0) return null;
-            return <em>{d === 0 ? 'closes today, 3 pm' : d === 1 ? 'closes tomorrow' : `closes in ${d} days`}</em>;
+            /* The SECOND copy of the hardcoded 3 pm, on the date chip rather
+               than the countdown. Missed on the first pass of this fix and
+               found by grepping the shipped bundle for the literal. */
+            return <em>{d === 0 ? `closes today, ${closeClock(ipo)}` : d === 1 ? 'closes tomorrow' : `closes in ${d} days`}</em>;
           })()}
         </div>
 
@@ -907,7 +929,11 @@ function IssueMatrix({ ipo, countdown, active }: { ipo: IpoFull; countdown: stri
       </div>
 
       {countdown && (
-        <div className="hb-mxcd"><span className="k">Closes in</span><b className="mono">{countdown}</b><span className="s">today, 3 pm</span></div>
+        /* The hour was a LITERAL "today, 3 pm" here, which agreed with the
+           countdown’s own hardcoded 15:00 and so looked deliberate. It is
+           read off the issue now, so it cannot disagree with the clock
+           beside it — and it says 7 pm on an issue that closes at 7. */
+        <div className="hb-mxcd"><span className="k">Closes in</span><b className="mono">{countdown}</b><span className="s">today, {closeClock(ipo)}</span></div>
       )}
       {/* only when a real GMP is on screen — the column alone, showing dashes,
           isn't presenting a grey-market figure so needs no disclaimer */}

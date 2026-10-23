@@ -11,7 +11,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime, closeAt, openAt } from '@investoyard/shared-types';
 
 export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -52,7 +52,11 @@ function OpensIn({ ipo }: { ipo: IpoFull }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => { setNow(Date.now()); }, []);
   if (now === null || !ipo.openDate) return null;
-  const diff = new Date(ipo.openDate + 'T10:00:00').getTime() - now;
+  /* Same resolver as the close hint below: the operator can state an open
+     hour too, and 10:00 is the fallback rather than the rule. */
+  const start = openAt(ipo);
+  if (start === null) return null;
+  const diff = start - now;
   if (diff <= 0) return null;
   const d = Math.ceil(diff / 86400000);
   return <span className="ic-opens">Opens in <b>{d}d</b></span>;
@@ -64,7 +68,12 @@ function CloseHint({ ipo }: { ipo: IpoFull }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => { setNow(Date.now()); }, []);
   if (now === null || !ipo.closeDate) return null;
-  const diff = new Date(ipo.closeDate + 'T17:00:00').getTime() - now;
+  /* `closeAt` reads the hour the operator entered (`extra.closeDate`) and
+     falls back to 17:00. This hardcoded 17:00, so JPL — corrected to 19:00
+     on the IPO form — counted down to the wrong hour here. */
+  const end = closeAt(ipo);
+  if (end === null) return null;
+  const diff = end - now;
   if (diff <= 0) return null;
   const d = Math.ceil(diff / 86400000);
   if (d <= 1) return null;

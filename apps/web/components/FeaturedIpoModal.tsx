@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ipoUrl, titleCase, LABEL, lotLadder } from '@investoyard/shared-types';
+import { ipoUrl, titleCase, LABEL, lotLadder, closeAt, openAt } from '@investoyard/shared-types';
 import { Icon } from '@/components/Icon';
 import { getIpoDetail } from '@/lib/api';
 
@@ -92,9 +92,11 @@ const HERO_IMAGE = '/featured/jpl-stage.png';
 
 const DISMISS_KEY = `iy.featured.${FEATURED_SYMBOL}`;
 
-/** The hours an issue opens and closes on, matching `OpensIn` in IpoCard. */
-const OPEN_AT = 'T10:00:00';
-const CLOSE_AT = 'T17:00:00';
+/* The hours come from `openAt` / `closeAt` in shared-types now, which read
+   what the operator entered and fall back to 10:00 / 17:00. The two
+   constants that were here hardcoded the FALLBACK as though it were the
+   rule — so JPL, this panel’s own subject and corrected to a 19:00 close,
+   counted down to 17:00 on the one screen built to feature it. */
 
 
 type AnyIpo = Record<string, any>;
@@ -306,13 +308,12 @@ function windowLine(open?: string | null, close?: string | null): string | null 
  * close it renders NOTHING rather than counting into the negative — and the
  * panel has removed itself by then anyway.
  */
-function Countdown({ openIso, closeIso }: { openIso?: string | null; closeIso?: string | null }) {
-  const a = parts(openIso), b = parts(closeIso);
-  const aIso = a?.iso ?? null, bIso = b?.iso ?? null;
-  const target = useMemo(() => ({
-    open: aIso ? new Date(aIso + OPEN_AT).getTime() : null,
-    close: bIso ? new Date(bIso + CLOSE_AT).getTime() : null,
-  }), [aIso, bIso]);
+/* INSTANTS, not dates. Resolving the hour needs the whole record (the
+   operator’s time lives in `extra`), so it happens at the call site and this
+   is handed the answer — rather than taking the record and knowing about
+   `extra`, which is not a countdown’s business. */
+function Countdown({ openMs, closeMs }: { openMs: number | null; closeMs: number | null }) {
+  const target = useMemo(() => ({ open: openMs, close: closeMs }), [openMs, closeMs]);
 
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -646,7 +647,7 @@ export function FeaturedIpoModal({ ipos }: { ipos: AnyIpo[] }) {
           </div>
 
           <div className="fi-facts">
-            <Countdown openIso={ipo.openDate} closeIso={ipo.closeDate} />
+            <Countdown openMs={openAt(ipo)} closeMs={closeAt(ipo)} />
 
             {win && !hasWindowInTimeline && (
               <div className="fi-win">
