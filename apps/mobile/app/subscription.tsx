@@ -7,6 +7,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
+import * as calc from '../lib/ipoCalc';
+import { orderShareRows, shareWiseLabel, subCatLabel } from '@investoyard/shared-types';
 import { getIpos } from '../lib/api';
 import { titleCase } from '../lib/format';
 import { demandWord } from '../lib/ipoStage';
@@ -16,13 +18,34 @@ import { CompanyLogo } from '../components/ui/CompanyLogo';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonCard } from '../components/ui/Skeleton';
 
-const CAT_LABEL: Record<string, string> = { qib: 'QIB', nii: 'NII', retail: 'Retail', employee: 'Employee', shareholder: 'Shareholder', total: 'Total' };
+/*
+ * There is no label map here any more, and that is the point. The one that
+ * was here carried six keys and the catalogue uses more: `hni`, `hni2` and
+ * `policyholder` all fell through to `.toUpperCase()`, so 37 records read
+ * "HNI", "HNI2" and "POLICYHOLDER" on this screen against "HNI (10L+)",
+ * "HNI (2-10L)" and "Policyholder" everywhere else. It was the FOURTH
+ * hand-written copy of a mapping `subCatLabel` already owns.
+ */
 
 function SubCard({ ipo }: { ipo: IpoFull }) {
   const router = useRouter();
-  const rows = (ipo.subscription ?? []).filter((r) => r.category !== 'total');
-  const total = ipo.subscriptionTimes ?? (ipo.subscription ?? []).find((r) => r.category === 'total')?.timesSubscribed;
-  const maxX = Math.max(1, ...rows.map((r) => r.timesSubscribed));
+  /* THE SAME TABLE THE DETAIL PAGE RENDERS. Until 2026-10-23 this card read
+     the raw rows, which carry the times the poller STORED (demand / GROSS
+     offered) while `subscriptionTable` recomputes against the NET book with
+     the anchor deducted — so one tap moved JPL’s QIB from 14.82x to 36.74x
+     with nothing to explain it, on 59 rows across the catalogue. */
+  const table = calc.subscriptionTable(ipo);
+  /* The 11 records `subscriptionTable` cannot resolve have no reservation
+     table at all (historical imports; none currently open). They keep the raw
+     rows, which is what they show today — a fallback firing only where there
+     is no better answer, rather than one competing with a better answer. */
+  const rows = table
+    ? orderShareRows(table.rows).map((r) => ({ key: r.key, cat: shareWiseLabel(r, table.anchorDeducted), times: r.times }))
+    : (ipo.subscription ?? []).filter((r) => r.category !== 'total')
+        .map((r) => ({ key: r.category, cat: subCatLabel(r.category), times: r.timesSubscribed }));
+  const total = table?.total.times
+    ?? ipo.subscriptionTimes ?? (ipo.subscription ?? []).find((r) => r.category === 'total')?.timesSubscribed;
+  const maxX = Math.max(1, ...rows.map((r) => r.times));
   return (
     <Card style={{ marginTop: 10 }} onPress={() => router.push(`/ipo/${ipo.symbol}`)}>
       <View style={styles.head}>
@@ -41,12 +64,12 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
       {rows.length > 0 ? (
         <View style={{ marginTop: 12, gap: 8 }}>
           {rows.map((r) => (
-            <View key={r.category} style={styles.catRow}>
-              <Text style={styles.catK}>{CAT_LABEL[r.category] ?? r.category.toUpperCase()}</Text>
+            <View key={r.key} style={styles.catRow}>
+              <Text style={styles.catK} numberOfLines={1}>{r.cat}</Text>
               <View style={styles.track}>
-                <View style={[styles.fill, { width: `${Math.max(4, Math.min(100, (r.timesSubscribed / maxX) * 100))}%` }]} />
+                <View style={[styles.fill, { width: `${Math.max(4, Math.min(100, (r.times / maxX) * 100))}%` }]} />
               </View>
-              <Text style={styles.catV}>{r.timesSubscribed}×</Text>
+              <Text style={styles.catV}>{r.times}×</Text>
             </View>
           ))}
         </View>

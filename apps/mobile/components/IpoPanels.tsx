@@ -10,7 +10,7 @@ import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
-import { LABEL, appWiseRows } from '@investoyard/shared-types';
+import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
 /**
@@ -37,7 +37,12 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
   const appRows = appWiseRows(t.rows);
   const hasApps = appRows.length > 0;
   const shown = hasApps ? view : 'shares';
-  const rows = shown === 'apps' ? appRows : t.rows;
+  /* Share-wise takes SHARE_ORDER; Application-wise is already ordered by
+     `appWiseRows`, which returns APP_WISE_ORDER — a DIFFERENT list, since it
+     leaves QIB out entirely (an institution bids with no minimum application
+     size, so there is no applications-for-1x to divide by). Re-sorting that
+     one would be a second opinion about a question already answered. */
+  const rows = shown === 'apps' ? appRows : orderShareRows(t.rows);
   const totalApps = appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0);
 
   return (
@@ -78,7 +83,14 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
         const w = Math.max(4, Math.min(100, (times / 15) * 100));
         return (
           <View style={s.subRow} key={r.cat}>
-            <Text style={s.subCat}>{r.cat}</Text>
+            {/* "QIB (Ex. Anchor)" where a deduction was taken, so the number
+                explains itself where it is read; the plain label where none
+                was, because there the book IS gross and the suffix would lie.
+                Share-wise only — an Application-wise row counts applications,
+                which the anchor has no bearing on. */}
+            <Text style={s.subCat} numberOfLines={1}>
+              {shown === 'apps' ? r.cat : shareWiseLabel(r, t.anchorDeducted)}
+            </Text>
             <View style={s.subMid}>
               {!noRatio && (
                 <View style={s.track}>
@@ -109,6 +121,16 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
           {shown === 'apps' ? shC(totalApps) : `${t.total.times}×`}
         </Text>
       </View>
+
+      {/* ONE OF THREE SENTENCES, never a generic "Net" — a deduction taken
+          from a stated share count is the allotment off the intimation
+          letter and can be checked against the exchange, while one taken
+          from `anchorPct` is our arithmetic against a ceiling the issue may
+          not have used. `shC` rather than the full grouping: a phone reads
+          "0.49 Cr" where web has a footnote line for "48,83,605". */}
+      {shown === 'shares' ? (
+        <Text style={s.anchorNote}>{anchorNote(t.anchorDeducted, t.anchorBasis, shC)}</Text>
+      ) : null}
     </View>
   );
 }
@@ -311,4 +333,6 @@ const s = StyleSheet.create({
   pos: { color: ui.green },
   neg: { color: ui.red },
   disclaimer: { fontFamily: fonts.regular, fontSize: 10, color: ui.muted, marginTop: 10 },
+  /* Same weight as the GMP disclaimer: a caveat, not a figure. */
+  anchorNote: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.muted, marginTop: 10 },
 });

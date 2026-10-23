@@ -9,7 +9,7 @@ import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
 import { VisitorBeacon } from '@/components/VisitorBeacon';
-import { titleCase, shortName, fmtDateTime, appWiseRows } from '@investoyard/shared-types';
+import { titleCase, shortName, fmtDateTime, appWiseRows, shareWiseLabel, anchorNote, orderShareRows } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -604,7 +604,8 @@ export function IpoRow({ ipo, today, onShare, onDayWise, detailLink = true }: {
  *  is the synthetic `nii` row from the API — kept when both split rows are
  *  present (see subscriptionTable) and rendered with the `combo` class for
  *  the pastel indigo background. Sub-rows are NOT indented (operator ask). */
-const SHARE_ORDER: Record<string, number> = { qib: 0, nii: 1, hni: 2, hni2: 3, retail: 4, employee: 5, shareholder: 6, policyholder: 7 };
+/* SHARE_ORDER moved to shared-types/shareWise.ts on 2026-10-23 so mobile could
+   read it too — it had no ordering at all and listed the API's raw order. */
 /**
  * THE QIB BOOK SIZE IS NET OF THE ANCHOR, AND THE PANEL NOW SAYS SO — on all
  * three surfaces, because this component is all three (operator ask,
@@ -656,12 +657,7 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
       </div>
     );
   };
-  // Sort rows into canonical order; unknown categories fall to the end.
-  const ordered = rows.slice().sort((a, b) => {
-    const ai = SHARE_ORDER[a.key ?? ''] ?? 99;
-    const bi = SHARE_ORDER[b.key ?? ''] ?? 99;
-    return ai - bi;
-  });
+  const ordered = orderShareRows(rows);
   return (
     <section className="subv2-det-panel pnl-share">
       <header>
@@ -693,8 +689,7 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
               const isSubcat = r.key === 'hni' || r.key === 'hni2';
               /* Only when a deduction was actually applied — on a record with no
                  anchor figure the Book Size IS gross and the label would lie. */
-              const exAnchor = r.key === 'qib' && anchorDeducted > 0;
-              const label = isCombo ? 'HNI' : exAnchor ? 'QIB (Ex. Anchor)' : r.cat;
+              const label = shareWiseLabel(r, anchorDeducted);
               const dotKey = isCombo ? 'hni' : dotClassFor(r.key ?? '');
               return (
                 <tr key={r.key} className={isSubcat ? 'subcat' : undefined}>
@@ -715,11 +710,7 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
         </table>
       </div>
       <p className="subv2-note">
-        {anchorDeducted <= 0
-          ? '*QIB Book Size is Gross — the anchor allocation is not on this record yet.'
-          : anchorBasis === 'estimated'
-            ? `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, which is ESTIMATED from the reserved percentage rather than the allotment.`
-            : `*QIB Book Size EXCLUDES the anchor portion of ${fmtIn(anchorDeducted)} shares, from the actual anchor allotment.`}
+        {'*' + anchorNote(anchorDeducted, anchorBasis, fmtIn)}
       </p>
     </section>
   );
@@ -865,7 +856,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
     return px > 0 ? (shares * px) / 1e7 : 0;
   };
   // Same order as Share-wise, so the two cards read as one table in two units.
-  const ordered = rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99));
+  const ordered = orderShareRows(rows);
   /* GROUPED, not bare. `toFixed(2)` printed 167140.28, which at five and six
      figures is genuinely hard to read and was the one place a reviewer’s mockup
      was plainly better than the page. `en-IN` so the grouping is the lakh/crore
@@ -903,7 +894,7 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
               return (
                 <Fragment key={r.key}>
                   <tr className={isSubcat ? 'subcat' : undefined}>
-                    <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{isCombo ? 'HNI' : r.cat}</b></td>
+                    <td><span className={`subv2-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} /><b>{shareWiseLabel(r)}</b></td>
                     <td><b>{cr(at(r.subscribed, r.price, r.subAmount))}</b></td>
                   </tr>
                   {r.key === 'qib' && subRows.map(([label, sh]) => (
@@ -1355,7 +1346,7 @@ function ShareCanvas({ ipo, onRef, disclaimer = 'full' }: {
                   read as the page it came from. */}
               <thead><tr><th>Category</th><th>Book Size</th><th>Subscription</th><th>No. of Times</th></tr></thead>
               <tbody>
-                {table.rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99)).map((r) => {
+                {orderShareRows(table.rows).map((r) => {
                   /* The page's labels too: `nii` is the API's synthetic
                      combined bucket and reads as plain "HNI", and QIB says
                      "(Ex. Anchor)" ONLY where a deduction was applied — on a
@@ -1364,8 +1355,7 @@ function ShareCanvas({ ipo, onRef, disclaimer = 'full' }: {
                      QIB book short by the anchor with nothing explaining it. */
                   const isCombo = r.key === 'nii';
                   const isSubcat = r.key === 'hni' || r.key === 'hni2';
-                  const exAnchor = r.key === 'qib' && anchorDeducted > 0;
-                  const label = isCombo ? 'HNI' : exAnchor ? 'QIB (Ex. Anchor)' : r.cat;
+                  const label = shareWiseLabel(r, anchorDeducted);
                   return (
                     <tr key={r.key} className={isSubcat ? 'sc-sub' : undefined}>
                       <td><span className={`sc-cat-dot ${isCombo ? 'hni' : dotClassFor(r.key ?? '')}`} />{label}</td>
