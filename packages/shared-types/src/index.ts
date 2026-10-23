@@ -276,6 +276,7 @@ export * from './ipoDocs';
 export * from './appWise';
 export * from './shareWise';
 export * from './applicantForm';
+export * from './dayWise';
 export * from './pollWindow';
 export * from './tenantContent';
 export * from './richText';

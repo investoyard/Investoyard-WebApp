@@ -31,7 +31,8 @@ import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
-import { exchangeLabels, LABEL, docLabel, isPublicDoc } from '@investoyard/shared-types';
+import { exchangeLabels, LABEL, docLabel, isPublicDoc, type DayEntry, type HourEntry } from '@investoyard/shared-types';
+import { DayWisePanel } from '../../components/DayWisePanel';
 
 /* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
    listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
@@ -115,9 +116,16 @@ export default function IpoDetailScreen() {
   // day-wise trends — REAL admin/poller logs only (never synthesized on live rows)
   const gmpLog: { d: string; gmp: number }[] = Array.isArray(ex.gmpLog)
     ? ex.gmpLog.map((e: any) => ({ d: String(e?.d ?? ''), gmp: Number(e?.gmp) || 0 })) : [];
-  const subLog: { d: string; total: number }[] = Array.isArray(ex.subLog)
-    ? ex.subLog.map((e: any) => ({ d: String(e?.d ?? ''), total: Number(e?.total) || 0 })) : [];
-  const hasTrends = gmpLog.length >= 2 || subLog.length >= 2;
+  /* PASSED THROUGH WHOLE, not flattened to a total. The old line here mapped
+     every entry down to `{ d, total }` for a sparkline — which is why this
+     screen showed one line for the whole issue while the browser showed six
+     categories and an hourly drill-down. The figures were always here. */
+  const subLog: DayEntry[] = Array.isArray(ex.subLog) ? ex.subLog : [];
+  const subLogHour: HourEntry[] = Array.isArray(ex.subLogHour) ? ex.subLogHour : [];
+  /* ONE day is worth showing — it is a real bidding day with real figures.
+     The GMP sparkline still needs two, because a line between one point and
+     nothing is not a trend. */
+  const hasTrends = gmpLog.length >= 2 || subLog.length >= 1;
   // ex.anchors was rendered on this screen; hidden 2026-09-09 (identities
   // are for the operator report only). Kept parsed out here as a marker
   // in case the operator ever asks for an aggregate summary — see web parity.
@@ -351,14 +359,13 @@ export default function IpoDetailScreen() {
                   color={gmpLog[gmpLog.length - 1].gmp >= 0 ? ui.green : ui.red}
                 />
               ) : null}
-              {subLog.length >= 2 ? (
-                <TrendBlock
-                  label="Subscription (×)"
-                  points={subLog.map((e) => e.total)}
-                  first={subLog[0].d} lastDay={subLog[subLog.length - 1].d}
-                  lastValue={`${subLog[subLog.length - 1].total}×`}
-                  color={ui.indigo}
-                />
+              {subLog.length ? (
+                <View>
+                  {/* Same inline label TrendBlock uses above it, so the two
+                      headings in this section are one style and not two. */}
+                  <Text style={{ ...microLabel, fontSize: 10.5, marginBottom: 2 }}>Subscription by day</Text>
+                  <DayWisePanel subLog={subLog} subLogHour={subLogHour} closeDate={ipo.closeDate ?? undefined} />
+                </View>
               ) : null}
             </Card>
           </View>

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { dayValue, dayWiseRows, hasAppFigures, type DayEntry, type HourEntry } from '@investoyard/shared-types';
 
 /**
  * Day-wise + hourly subscription table.
@@ -27,13 +28,9 @@ import { useState } from 'react';
  *  bid counts for, and on every entry logged before 2026-09-30. */
 interface AppCell { n?: number | null; x?: number | null }
 
-interface DayEntry {
-  d?: string; qib?: number | null; nii?: number | null; retail?: number | null;
-  hni?: number | null; hni2?: number | null; employee?: number | null;
-  shareholder?: number | null; total?: number | null;
-  apps?: Record<string, AppCell> | null;
-}
-interface HourEntry extends DayEntry { t?: string }
+/* `DayEntry` / `HourEntry` and the derivation below come from shared-types,
+   so mobile draws the same days from the same rules in the shape a phone
+   has room for. See packages/shared-types/src/dayWise.ts. */
 
 type View = 'shares' | 'apps';
 
@@ -79,28 +76,14 @@ export function DayWiseSubscription({
      figures reach the log from 2026-09-30 and CANNOT be backfilled, so every
      day logged before then — and every issue that closed before then — has
      none, and offering an empty view would be worse than not offering it. */
-  const hasApps = [...subLog, ...subLogHour].some(
-    (e) => e?.apps && Object.values(e.apps).some((c) => c && (c.x != null || c.n != null)),
-  );
+  const hasApps = hasAppFigures(subLog, subLogHour);
   const shown: View = hasApps ? view : 'shares';
   const cell = (e: DayEntry, key: string, sharesVal?: number | null) =>
     (shown === 'apps' ? <AppCellView c={e.apps?.[key]} /> : <>{tx(sharesVal)}</>);
-  // Day numbers come from the row's POSITION in the ascending log, not from a
-  // date subtraction: a window that straddles a weekend (Fri close → Tue) would
-  // number its three bidding days 1, 4, 5. The poller writes one entry per open
-  // day, so position is the bidding day (operator ask, 2026-09-23).
-  const dayNo = new Map<string, number>();
-  subLog.forEach((e, i) => { if (e.d) dayNo.set(e.d, i + 1); });
-  const days = [...subLog].reverse();
-  // group hourly by day for O(1) lookup
-  const byDay = new Map<string, HourEntry[]>();
-  for (const h of subLogHour) {
-    if (!h?.d) continue;
-    const arr = byDay.get(h.d) ?? [];
-    arr.push(h);
-    byDay.set(h.d, arr);
-  }
-  for (const arr of byDay.values()) arr.sort((a, b) => String(a.t).localeCompare(String(b.t)));
+  /* Day numbering, ordering and the hourly grouping are `dayWiseRows` —
+     newest first, numbered by POSITION in the ascending log so a window
+     straddling a weekend cannot number its three bidding days 1, 4, 5. */
+  const rows = dayWiseRows(subLog, subLogHour, closeDate);
 
   return (
     <div className={bare ? undefined : 'panel'} style={bare ? undefined : { marginTop: 14 }}>
@@ -142,15 +125,16 @@ export function DayWiseSubscription({
             </tr>
           </thead>
           <tbody>
-            {days.map((e) => {
-              const hourly = e.d ? byDay.get(e.d) ?? [] : [];
+            {rows.map((row) => {
+              const e = row.entry;
+              const hourly = row.hours;
               const hasHourly = hourly.length > 0;
-              const isOpen = openDay === e.d;
+              const isOpen = openDay === row.d;
               return (
                 <>
                   <tr
                     key={e.d}
-                    onClick={() => hasHourly && e.d && setOpenDay(isOpen ? null : e.d)}
+                    onClick={() => hasHourly && setOpenDay(isOpen ? null : row.d)}
                     style={{ cursor: hasHourly ? 'pointer' : 'default', background: isOpen ? 'var(--bg-subtle)' : undefined }}
                   >
                     <td style={{ color: hasHourly ? 'var(--brand-500)' : 'var(--muted)', fontSize: 14, textAlign: 'center' }}>
@@ -158,12 +142,12 @@ export function DayWiseSubscription({
                     </td>
                     <td>
                       <b className="dws-day">
-                        Day {dayNo.get(e.d ?? '') ?? '—'}{e.d && e.d === closeDate ? ' (Last)' : ''}
+                        Day {row.dayNo}{row.isLast ? ' (Last)' : ''}
                       </b>
                       <span className="dws-date">{fmtDay(e.d)}</span>
                     </td>
                     <td className="mono">{cell(e, 'qib', e.qib)}</td>
-                    <td className="mono">{cell(e, 'hni', e.hni ?? e.nii)}</td>
+                    <td className="mono">{cell(e, 'hni', dayValue(e, 'hni'))}</td>
                     <td className="mono">{cell(e, 'hni2', e.hni2)}</td>
                     <td className="mono">{cell(e, 'retail', e.retail)}</td>
                     <td className="mono" style={{ fontWeight: 700 }}>{cell(e, 'total', e.total)}</td>
@@ -173,7 +157,7 @@ export function DayWiseSubscription({
                       <td></td>
                       <td style={{ color: 'var(--muted)', paddingLeft: 20 }}>{h.t ?? '—'}</td>
                       <td className="mono">{cell(h, 'qib', h.qib)}</td>
-                      <td className="mono">{cell(h, 'hni', h.hni ?? h.nii)}</td>
+                      <td className="mono">{cell(h, 'hni', dayValue(h, 'hni'))}</td>
                       <td className="mono">{cell(h, 'hni2', h.hni2)}</td>
                       <td className="mono">{cell(h, 'retail', h.retail)}</td>
                       <td className="mono">{cell(h, 'total', h.total)}</td>
