@@ -32,10 +32,19 @@ const EVENTS: { field: 'openDate' | 'closeDate' | 'allotmentDate' | 'listingDate
 ];
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-/* IST. The grid arithmetic below round-trips date STRINGS and never asks the
-   clock, so only "which day is today" needed changing. */
-const iso = (d: Date) => istToday(d.getTime());
-const todayIso = () => iso(new Date());
+/**
+ * The LOCAL calendar date of `d` — a pure round-trip, and it must stay one.
+ *
+ * `addDays`, `mondayOf` and the month grid all hand this a Date built at
+ * LOCAL MIDNIGHT of a calendar date and expect that same date back, which is
+ * correct in any zone. Converting the INSTANT to IST here breaks exactly
+ * that: local midnight anywhere east of +05:30 is still the previous day in
+ * Mumbai, so Singapore, Tokyo, Sydney and Auckland rendered the whole grid a
+ * day out. Only "which day is TODAY" is an IST question.
+ */
+const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* THE one IST question on this screen. */
+const todayIso = () => istToday();
 const addDays = (day: string, n: number) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + n); return iso(d); };
 const mondayOf = (day: string) => { const d = new Date(`${day}T00:00:00`); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); };
 const prettyDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });

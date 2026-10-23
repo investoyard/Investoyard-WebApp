@@ -22,10 +22,11 @@ import {
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
-const localDay = () => {
-  const d = new Date();
-  return istToday(d.getTime()); // IST
-};
+/* TODAY IN IST. Written as a bare call deliberately: `istToday(someDate
+   .getTime())` is only correct when the Date is NOW, and passing it a Date
+   built at local midnight is what put the calendar grid a day out on every
+   device east of IST. Do not copy that shape. */
+const localDay = () => istToday();
 
 export default function InsightsScreen() {
   const router = useRouter();
