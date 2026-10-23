@@ -184,12 +184,11 @@ Say  '       Same Wi-Fi as this machine?  use -Lan'
 Say  '       Phone on mobile data?        keep the default (public IP)'
 
 # VERIFIED, because the obvious grep says otherwise: this variable does NOT
-# appear in node_modules@expocli (the hoisted copy). The CLI actually in use
-# is the NESTED node_modulesexpo
-ode_modules@expocli, whose UrlCreator.js
-# reads it. Confirmed against the running server: the manifest came back with
-# launchAsset.url = http://103.107.27.38:8081/... rather than the LAN address.
-# Check the manifest, not the package you expect to find it in.
+# appear in node_modules/@expo/cli (the hoisted copy). The CLI actually in
+# use is the NESTED node_modules/expo/node_modules/@expo/cli, whose
+# UrlCreator.js reads it. Confirmed against the running server: the manifest
+# came back with launchAsset.url = http://103.107.27.38:8081/... and not the
+# LAN address. Check the manifest, not the package you expect it to be in.
 $env:REACT_NATIVE_PACKAGER_HOSTNAME = $PackagerHost
 # The Expo tunnel is blocked from this network, so offline mode skips the
 # login/tunnel attempt that would otherwise stall the start.
