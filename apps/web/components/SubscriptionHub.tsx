@@ -854,7 +854,14 @@ export function DemandPanel({ rows, total, price, qibSplit }: {
   };
   // Same order as Share-wise, so the two cards read as one table in two units.
   const ordered = rows.slice().sort((a, b) => (SHARE_ORDER[a.key ?? ''] ?? 99) - (SHARE_ORDER[b.key ?? ''] ?? 99));
-  const cr = (v: number) => (v > 0 ? v.toFixed(2) : '—');
+  /* GROUPED, not bare. `toFixed(2)` printed 167140.28, which at five and six
+     figures is genuinely hard to read and was the one place a reviewer’s mockup
+     was plainly better than the page. `en-IN` so the grouping is the lakh/crore
+     one every other figure on this site uses - 1,67,140.28, not 167,140.28.
+     Kept local rather than folded into `fmtCr`: this column prints BARE crore
+     with no symbol and no rounding, because the panel heading already says
+     "in ₹ crore", and `fmtCr` both adds the symbol and rounds above 1000. */
+  const cr = (v: number) => (v > 0 ? v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
   return (
     <section className="subv2-det-panel pnl-demand">
       <header>
