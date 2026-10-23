@@ -672,12 +672,17 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
         </div>
       </header>
       <div className="subv2-tbl-wrap">
-        {/* `subv2-tbl-share` scopes the phone layout: under 480px this table
-            STACKS into one block per category instead of scrolling sideways.
-            The other three panels fit at 375px and are left as tables.
-            `data-l` supplies the row label the stacked layout prints, so the
-            figures are still named once the header row is gone. */}
-        <table className="subv2-tbl subv2-tbl-share">
+        {/* `subv2-tbl-stack` carries the phone layout: under 480px the header
+            row is hidden and each category becomes one block instead of a
+            table that scrolls sideways. It was called `subv2-tbl-share` while
+            this was the only table with it — a name for WHICH TABLE rather
+            than WHAT IT DOES — and Application-wise now shares it.
+            `subv2-tbl-share` remains for what is genuinely only here: the
+            sub-category rows and this table’s own total. `data-l` supplies
+            each figure’s label, since the hidden header no longer can.
+            Subscription Demand and both lot ladders FIT at 375px and stay
+            tables — measured, not assumed. */}
+        <table className="subv2-tbl subv2-tbl-stack subv2-tbl-share">
           <thead><tr><th>Category</th><th>Book Size</th><th>Subscription</th><th>No. of Times</th></tr></thead>
           <tbody>
             {ordered.map((r) => {
@@ -743,7 +748,14 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
         <h4>Application-wise</h4>
       </header>
       <div className="subv2-tbl-wrap">
-        <table className="subv2-tbl">
+        {/* `subv2-tbl-stack` gives this the same phone layout Share-wise has
+            had: below 480px the header row is hidden and each category
+            becomes one block, instead of a four-column table that drags
+            sideways inside its own card (operator ask, 2026-10-23 — it was
+            the last panel still doing that). `data-l` names each figure,
+            since the hidden header no longer can. `subv2-tbl-app` is for the
+            total row alone: two of its four cells are empty here. */}
+        <table className="subv2-tbl subv2-tbl-stack subv2-tbl-app">
           <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
           <tbody>
             {appRows.map((r) => {
@@ -754,8 +766,8 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
               return (
                 <tr key={r.key}>
                   <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                  <td>{appReq1xText(r)}</td>
-                  <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
+                  <td data-l="Req 1×">{appReq1xText(r)}</td>
+                  <td data-l="Applications"><b>{fmtIn(r.bidCount ?? 0)}</b></td>
                   <td className={appToneCls(r)}><b>{appTimesText(r)}</b></td>
                 </tr>
               );
@@ -1110,15 +1122,19 @@ function AppWisePage({ ipos, today }: { ipos: IpoFull[]; today: string }) {
               </div>
             </div>
             <div className="subv2-tbl-wrap">
-              <table className="subv2-tbl">
+              {/* Stacks on a phone exactly as the panel does — same four
+                  columns, same sideways drag before this. Its total is a
+                  `<p>` below the table rather than a `tfoot`, so it needs
+                  no `subv2-tbl-app`. */}
+              <table className="subv2-tbl subv2-tbl-stack">
                 <thead><tr><th>Category</th><th>Req 1×</th><th>Total</th><th>Times</th></tr></thead>
                 <tbody>
                   {appRows.map((r) => {
                     return (
                       <tr key={r.key}>
                         <td><span className={`subv2-dot ${dotClassFor(r.key ?? '')}`} /><b>{r.cat}</b></td>
-                        <td>{appReq1xText(r)}</td>
-                        <td><b>{fmtIn(r.bidCount ?? 0)}</b></td>
+                        <td data-l="Req 1×">{appReq1xText(r)}</td>
+                        <td data-l="Applications"><b>{fmtIn(r.bidCount ?? 0)}</b></td>
                         <td className={appToneCls(r)}><b>{appTimesText(r)}</b></td>
                       </tr>
                     );

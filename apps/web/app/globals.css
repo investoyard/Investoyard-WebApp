@@ -4399,13 +4399,13 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    / font so the 4-col numeric table fits without any horizontal scroll
    on 375px viewports. Category cell drops the subcat indent to 8px too. */
 @media (max-width: 480px) {
-  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .small { display: none; }
-  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) { font-size: 12px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-stack) .subv2-2l .small { display: none; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-stack) { font-size: 12px; }
   .subv2-solo .subv2-tbl th { padding: 5px 3px; font-size: 9.5px; }
   .subv2-solo .subv2-tbl td { padding: 7px 3px; }
   .subv2-solo .subv2-tbl td:first-child { padding-left: 4px; }
   .subv2-solo .subv2-tbl tr.subcat td:first-child { padding-left: 8px; }
-  .subv2-solo .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 12px; }
+  .subv2-solo .subv2-tbl:not(.subv2-tbl-stack) .subv2-2l .big { font-size: 12px; }
   .subv2-solo .subv2-tbl-wrap { margin: 0; }
   .subv2-solo .subv2-det-panel { --pnl-px: 8px; --pnl-py: 8px; }
 }
@@ -4516,11 +4516,11 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    a little more vertical padding is comfortable on a phone and still leaves
    headroom for a longer figure than JPL's. */
 @media (max-width: 480px) {
-  .subv2-tbl:not(.subv2-tbl-share) { font-size: 12px; }
-  .subv2-tbl:not(.subv2-tbl-share) th { font-size: 9.5px; padding-top: 5px; padding-bottom: 5px; }
-  .subv2-tbl:not(.subv2-tbl-share) td { padding-top: 7px; padding-bottom: 7px; }
-  .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .big { font-size: 12px; }
-  .subv2-tbl:not(.subv2-tbl-share) .subv2-2l .small { font-size: 10.5px; }
+  .subv2-tbl:not(.subv2-tbl-stack) { font-size: 12px; }
+  .subv2-tbl:not(.subv2-tbl-stack) th { font-size: 9.5px; padding-top: 5px; padding-bottom: 5px; }
+  .subv2-tbl:not(.subv2-tbl-stack) td { padding-top: 7px; padding-bottom: 7px; }
+  .subv2-tbl:not(.subv2-tbl-stack) .subv2-2l .big { font-size: 12px; }
+  .subv2-tbl:not(.subv2-tbl-stack) .subv2-2l .small { font-size: 10.5px; }
 }
 
 /* ── Share-wise on a phone: one block per category, not a sideways scroll ──
@@ -4535,61 +4535,83 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
    So below 480px each row becomes a block: category and the multiple on one
    line, book and subscribed beneath it, each labelled from `data-l` now that
    the header row is gone. Nothing scrolls sideways and the ₹ Cr figures come
-   back. Scoped to `.subv2-tbl-share`: Subscription Demand and the Lot ladder fit at 375px, APPLICATION-WISE DOES NOT — measured 2026-10-23, it needs 52px of sideways drag inside its own card — and all three
-   stay as tables.
+   back. Scoped to `.subv2-tbl-stack`, which SHARE-WISE AND APPLICATION-WISE
+   both carry — the same four-column shape (a label, two figures and a
+   multiple), which is why one set of rules serves them.
+
+   NOT given to the other three, and the reason differs: Subscription Demand
+   and the MAINBOARD lot ladder FIT at 375px (measured, 268 in 268). The SME
+   lot ladder does NOT — five columns, 296 in a 268 wrap, so 28px of drag
+   inside its own wrapper — but these rules assume the four-column shape
+   (a label, two figures stacked beneath, a multiple on the right), and a
+   five-column table laid out by them would put Amount and Reserved in the
+   wrong places. It needs rules of its own. Pre-existing and unchanged:
+   verified identical on the live build, not introduced by the stacking.
 
    It applies to BOTH surfaces - /subscription/v2 and the cards on
    /subscription - because it keys off the table, not off `.subv2-solo`, which
    only the standalone page carries. The hub was the worse of the two (48px
    clipped, since it was not even getting the squeeze). */
 @media (max-width: 480px) {
-  .subv2-tbl.subv2-tbl-share thead { display: none; }
-  .subv2-tbl.subv2-tbl-share, .subv2-tbl.subv2-tbl-share tbody { display: block; }
-  .subv2-tbl.subv2-tbl-share tr {
+  .subv2-tbl.subv2-tbl-stack thead { display: none; }
+  /* `tfoot` IS IN THIS LIST BECAUSE APPLICATION-WISE PUTS ITS TOTAL THERE.
+     Share-wise keeps its total in `tbody`, so the rule did without it for
+     as long as this was a one-table layout — and a `table-footer-group`
+     inside a `display: block` table is wrapped in an ANONYMOUS TABLE BOX,
+     so the total would have rendered as a stray table under the stack
+     rather than as the last block in it. */
+  .subv2-tbl.subv2-tbl-stack, .subv2-tbl.subv2-tbl-stack tbody, .subv2-tbl.subv2-tbl-stack tfoot { display: block; }
+  .subv2-tbl.subv2-tbl-stack tr {
     display: grid; grid-template-columns: 1fr auto; column-gap: 10px;
     padding: 9px 2px 10px; border-top: 1px solid var(--border);
   }
-  .subv2-tbl.subv2-tbl-share tr:first-child { border-top: 0; }
+  .subv2-tbl.subv2-tbl-stack tr:first-child { border-top: 0; }
   /* Cells stop being table cells, so their own borders and padding go. */
-  .subv2-tbl.subv2-tbl-share td { display: block; border: 0; padding: 0; white-space: nowrap; }
-  .subv2-tbl.subv2-tbl-share td:nth-child(1) { grid-area: 1 / 1; font-size: 12.5px; }
+  .subv2-tbl.subv2-tbl-stack td { display: block; border: 0; padding: 0; white-space: nowrap; }
+  .subv2-tbl.subv2-tbl-stack td:nth-child(1) { grid-area: 1 / 1; font-size: 12.5px; }
   /* The multiple, top-right and big: the whole point of the change. */
-  .subv2-tbl.subv2-tbl-share td:nth-child(4) { grid-area: 1 / 2; text-align: right; font-size: 15px; }
-  .subv2-tbl.subv2-tbl-share td:nth-child(2) { grid-area: 2 / 1 / auto / span 2; }
-  .subv2-tbl.subv2-tbl-share td:nth-child(3) { grid-area: 3 / 1 / auto / span 2; }
+  .subv2-tbl.subv2-tbl-stack td:nth-child(4) { grid-area: 1 / 2; text-align: right; font-size: 15px; }
+  .subv2-tbl.subv2-tbl-stack td:nth-child(2) { grid-area: 2 / 1 / auto / span 2; }
+  .subv2-tbl.subv2-tbl-stack td:nth-child(3) { grid-area: 3 / 1 / auto / span 2; }
   /* Label on the left, figures on the right, on one line each. */
-  .subv2-tbl.subv2-tbl-share td:nth-child(2), .subv2-tbl.subv2-tbl-share td:nth-child(3) {
+  .subv2-tbl.subv2-tbl-stack td:nth-child(2), .subv2-tbl.subv2-tbl-stack td:nth-child(3) {
     display: flex; align-items: baseline; justify-content: space-between;
     gap: 10px; margin-top: 5px;
   }
-  .subv2-tbl.subv2-tbl-share td[data-l]::before {
+  .subv2-tbl.subv2-tbl-stack td[data-l]::before {
     content: attr(data-l); flex: none;
     font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
     color: var(--text-muted);
   }
   /* The two-line cell lies down: shares, then ₹ Cr beside them. */
-  .subv2-tbl.subv2-tbl-share .subv2-2l { flex-direction: row; align-items: baseline; gap: 7px; }
-  .subv2-tbl.subv2-tbl-share .subv2-2l .small { display: inline; margin-top: 0; }
-  .subv2-tbl.subv2-tbl-share .subv2-2l .big { font-size: 12.5px; }
+  .subv2-tbl.subv2-tbl-stack .subv2-2l { flex-direction: row; align-items: baseline; gap: 7px; }
+  .subv2-tbl.subv2-tbl-stack .subv2-2l .small { display: inline; margin-top: 0; }
+  .subv2-tbl.subv2-tbl-stack .subv2-2l .big { font-size: 12.5px; }
   /* Indent the two HNI sub-rows the way the table version does. */
   /* The sub-row tint moves to the BLOCK. `.subv2-tbl tr.subcat td` paints each
      cell, and in a grid the 10px column gap is not a cell - so the fill came
      out as stripes with a bare channel beside the multiple. Same move the
      Total row needs, and for the same reason. */
-  .subv2-tbl.subv2-tbl-share tr.subcat { background: #F3F4F6; border-radius: 8px; padding-left: 8px; padding-right: 8px; }
-  .subv2-tbl.subv2-tbl-share tr.subcat td { background: none; }
-  .subv2-tbl.subv2-tbl-share tr.subcat td:nth-child(1) { padding-left: 10px; }
+  .subv2-tbl.subv2-tbl-stack tr.subcat { background: #F3F4F6; border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .subv2-tbl.subv2-tbl-stack tr.subcat td { background: none; }
+  .subv2-tbl.subv2-tbl-stack tr.subcat td:nth-child(1) { padding-left: 10px; }
   /* Total keeps its brand fill, now over the whole block. */
-  .subv2-tbl.subv2-tbl-share tr.tot { background: var(--brand-100); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .subv2-tbl.subv2-tbl-stack tr.tot { background: var(--brand-100); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
   /* The base rule gives every Total CELL a 2px top border and vertical
      padding. In a grid those become three stubs with the column gap showing
      between them, and a stray rule above the second and third lines. The
      block carries the one border instead. */
-  .subv2-tbl.subv2-tbl-share tr.tot td { background: none; border-top: 0; padding-top: 0; padding-bottom: 0; }
-  .subv2-tbl.subv2-tbl-share tr.tot { border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); }
-  .subv2-tbl.subv2-tbl-share tr.tot td:nth-child(1) { font-size: 11px; }
+  .subv2-tbl.subv2-tbl-stack tr.tot td { background: none; border-top: 0; padding-top: 0; padding-bottom: 0; }
+  .subv2-tbl.subv2-tbl-stack tr.tot { border-top: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); }
+  .subv2-tbl.subv2-tbl-stack tr.tot td:nth-child(1) { font-size: 11px; }
+  /* APPLICATION-WISE’S TOTAL ROW HAS TWO EMPTY CELLS — no Req 1× and no
+     multiple sum, because neither of those adds up. Stacked, that would be a
+     label with a blank beside it and the figure three rows below, so the
+     count moves up into the slot the multiple uses on every other row. */
+  .subv2-tbl.subv2-tbl-app tr.tot td:nth-child(2), .subv2-tbl.subv2-tbl-app tr.tot td:nth-child(4) { display: none; }
+  .subv2-tbl.subv2-tbl-app tr.tot td:nth-child(3) { grid-area: 1 / 2; text-align: right; font-size: 15px; }
   /* Nothing to scroll any more. */
-  .subv2-det-panel .subv2-tbl-wrap:has(.subv2-tbl-share) { overflow-x: visible; }
+  .subv2-det-panel .subv2-tbl-wrap:has(.subv2-tbl-stack) { overflow-x: visible; }
 }
 
 /* two-line cells inside the 4-col Share-wise table (shares big, ₹ Cr small)
