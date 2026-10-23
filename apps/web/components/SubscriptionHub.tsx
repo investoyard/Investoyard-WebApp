@@ -723,10 +723,14 @@ export function ShareWisePanel({ rows, total, price, anchorDeducted = 0, anchorB
  *  footnote); Total moved AFTER Req 1× so the reader compares
  *  "needed for 1×" against "came in". */
 export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
+  /* THIS TOTAL IS SMALLER THAN THE HEADLINE Applications TILE, BY DESIGN, and
+     it is worth knowing before anyone reports it as a mismatch: the tile is
+     `total.bidCount`, every category, while `appWiseRows` leaves QIB out —
+     institutions bid without a minimum application size, so there is no
+     applications-for-1x to divide by. The gap is exactly QIB’s bid count.
+     A note saying so was shown on the page for a day and removed at the
+     operator’s request (2026-10-23); the arithmetic is unchanged. */
   const appRows = appWiseRows(rows);
-  /* QIB never appears in `appRows` — `APP_WISE_ORDER` leaves it out — so its
-     count comes from the unfiltered rows. */
-  const qibApps = Number(rows.find((r) => r.key === 'qib')?.bidCount ?? 0);
   if (appRows.length === 0) return null;
   const totalApps = appRows.reduce((s, r) => s + (r.bidCount ?? 0), 0);
   return (
@@ -778,19 +782,6 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
       </div>
       {proRataNote(appRows) && (
         <p className="subv2-aw-note">{proRataNote(appRows)}</p>
-      )}
-      {/* WHY THIS TOTAL IS SMALLER THAN THE HEADLINE ONE. The tile above counts
-          every category; this table leaves QIB out, because institutions have no
-          minimum bid and so no applications-for-1x to divide by. The difference
-          is exactly QIB’s application count, so it is printed rather than
-          described — a reader can then check the subtraction themselves. */}
-      {qibApps > 0 && (
-        <p className="subv2-aw-note">
-          QIB is excluded: institutions bid without a minimum application size, so an
-          application-wise multiple cannot be computed for them. The headline Applications
-          figure counts every category, so it is higher than this total by QIB’s{' '}
-          <b>{fmtIn(qibApps)}</b> application{qibApps === 1 ? '' : 's'}.
-        </p>
       )}
     </section>
   );
