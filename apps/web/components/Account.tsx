@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { AsyncSearchSelect } from '@/components/ui/AsyncSearchSelect';
 import { makeT, Lang } from '@investoyard/i18n';
-import { dematLabel } from '@investoyard/shared-types';
+import { dematLabel, APPLICANT_HELP, APPLICANT_ERR } from '@investoyard/shared-types';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, addDemat, retireDemat, clearConsumerSession, getConsumerToken, fetchRelationships, fetchUpiHandles, gmpAccess,
   fetchSecurity, setPassword, clearPassword, setOtpChannel, type SecuritySettings,
@@ -507,66 +507,14 @@ function ProfileCard({ p, tr, onEdit, onDelete, onChanged }: { p: ApiProfile; tr
   );
 }
 
-/**
- * Every word of help and every error on the applicant form, in ONE place.
- *
- * KEPT TOGETHER SO THE WORDING CAN BE EDITED WITHOUT READING JSX. This screen
- * is mostly copy — sixteen fields of which only four said anything at all
- * before — and copy gets revised far more often than the markup around it.
- *
- * TWO RULES THE WORDING FOLLOWS:
- *   HELP says where to FIND the thing, not what it is. "Bank account number"
- *   does not need defining; what people do not know is which of their numbers
- *   it is and where their broker hides it.
- *   ERRORS say what to DO. "Invalid IFSC" names a verdict; "An IFSC is 11
- *   characters — four letters, a zero, then six more" names the fix.
- *
- * MARKED [P3] = PROVISIONAL: these fields become pickers when the bank/branch
- * and pincode masters land, and their wording will change with them. They are
- * written for the free-text form that exists today.
- */
-export const HELP = {
-  relationship: 'Self, spouse, mother and father can each be added once. Add anyone else as “other”.',
-  fullName: 'Exactly as printed on the PAN card — the registrar matches it letter for letter.',
-  pan: 'Ten characters: five letters, four digits, one letter.',
-  panLocked: 'Locked — this applicant already has IPO applications, so the PAN cannot change.',
-  depository: 'Not sure? Your demat number tells you: one starting 12… is CDSL, one starting IN is NSDL.',
-  dpId: 'The first half of an NSDL demat number — IN and six digits.',
-  clientId: 'The last eight digits of the same NSDL number.',
-  cdsl: 'All sixteen digits, no spaces. CDSL has no separate DP ID.',
-  upi: 'The UPI ID the application money is blocked from. It must belong to the applicant.',
-
-  bankToggle: 'Add bank & contact details — this is what lets us pre-fill your printed application form',
-  mobile: 'Where the registrar sends allotment updates. Leave blank to use your account’s number.',
-  email: 'Where the allotment advice is sent.',
-  bankName: 'The bank holding the account the money is blocked in.',                    // [P3]
-  branchName: 'The branch on your cheque book or passbook.',                             // [P3]
-  bankAccount: 'The account the money is blocked in. It must be in the applicant’s own name.',
-  ifsc: 'On your cheque book, beside the account number.',                               // [P3] — hidden once branches are a picker
-  address: 'As registered with your bank.',
-  city: 'Filled in from your pincode — change it if your bank has something different.',
-  state: 'Filled in from your pincode.',
-  pincode: 'Six digits — we’ll fill in your city and state.',
-  pincodeAmbiguous: 'This pincode covers more than one district — check the city and state we filled in.',
-  bankPick: 'Pick your bank, then its branch. We take the IFSC from the branch so you never have to type it.',
-  branchPick: 'Search by branch name or by city.',
-  branchPicked: (ifsc: string) => `IFSC ${ifsc} — taken from this branch.`,
-  ifscFromBranch: 'Filled in from the branch you picked.',                                                                // [P3] — will fill city and state
-} as const;
-
-export const ERR = {
-  fullName: 'Enter the applicant’s name, exactly as on the PAN card.',
-  pan: 'Check the PAN — ten characters, like ABCDE1234F.',
-  dpId: 'A DP ID is IN followed by six digits.',
-  clientId: 'An NSDL Client ID is eight digits.',
-  cdsl: 'A CDSL demat number is sixteen digits.',
-  upiFormat: 'A UPI ID looks like yourname@bank.',
-  upiHandle: 'Pick the handle that follows @.',
-  upiName: 'Type the name that goes before @.',
-  mobile: 'A mobile number is ten digits.',
-  ifsc: 'An IFSC is eleven characters — four letters, a zero, then six more.',
-  pincodeUnknown: 'We don’t have that pincode — type your city and state yourself.',           // [P3]
-} as const;
+/* The wording moved to `packages/shared-types/src/applicantForm.ts` on
+   2026-10-23 so MOBILE could read it. Mobile’s copy of this form carried no
+   help at all — sixteen fields, not one hint — and writing a second block
+   there would have put customer-facing copy in two places, which is
+   explicitly the thing the two surfaces may not differ on. Re-exported under
+   the old names so every call site below is unchanged. */
+export const HELP = APPLICANT_HELP;
+export const ERR = APPLICANT_ERR;
 
 /**
  * The line under a field: its help, or its error when there is one.

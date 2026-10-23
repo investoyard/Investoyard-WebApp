@@ -11,6 +11,7 @@ import { useProfiles, Relationship } from '../../components/profiles';
 import { getRelationships, getUpiHandles, RelationshipOption } from '../../lib/api';
 import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
+import { APPLICANT_ERR as ERR, APPLICANT_HELP as HELP } from '@investoyard/shared-types';
 import { Button } from '../../components/ui/Button';
 import { CheckIcon, ChevronDownIcon } from '../../components/ui/icons';
 
@@ -70,6 +71,8 @@ export default function NewProfileScreen() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /* Set on the first save attempt; nothing inline is shown before it. */
+  const [tried, setTried] = useState(false);
   // Allowed UPI handles (admin master) — a UPI ID saves only on a listed handle.
   const [upiHandles, setUpiHandles] = useState<string[]>([]);
   useEffect(() => { getUpiHandles().then(setUpiHandles); }, []);
@@ -112,14 +115,35 @@ export default function NewProfileScreen() {
   const upiFormatOk = !upiId || /^[\w.\-]{2,}@[a-zA-Z0-9]{2,}$/.test(upiId);
   const upiHandleOk = !upiId || !upiHandles.length || upiHandles.includes((upiId.split('@')[1] ?? '').toLowerCase());
   const upiOk = upiFormatOk && upiHandleOk;
-  const valid = fullName.trim() && panOk && dematOk && upiOk && (editing ? true : consent);
+  /* IFSC and mobile are OPTIONAL, so these only bite once something has been
+     typed into them. Web has validated both for months; mobile accepted a
+     malformed IFSC silently and printed it onto the ASBA form. */
+  const ifscOk = !ifsc || /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(ifsc);
+  const mobileOk = !mobile || mobile.length === 10;
+  const valid = fullName.trim() && panOk && dematOk && upiOk && ifscOk && mobileOk && (editing ? true : consent);
+
+  /* INLINE ERRORS WAIT FOR THE FIRST SAVE ATTEMPT. Telling someone their
+     half-typed PAN is malformed while they are still typing it is the form
+     arguing with them. */
+  const E = {
+    fullName: tried && !fullName.trim() ? ERR.fullName : null,
+    pan: tried && !panOk ? ERR.pan : null,
+    dpId: tried && !isCdsl && !/^[0-9]{6}$/.test(dpId) ? ERR.dpId : null,
+    clientId: tried && !dematOk && (isCdsl ? !/^[0-9]{16}$/.test(clientId) : !/^[0-9]{8}$/.test(clientId))
+      ? (isCdsl ? ERR.cdsl : ERR.clientId) : null,
+    ifsc: tried && !ifscOk ? ERR.ifsc : null,
+    mobile: tried && !mobileOk ? ERR.mobile : null,
+  };
 
   const onSave = async () => {
+    setTried(true);
     if (!valid) {
       setError(!editing && !consent ? 'Please give consent to continue'
         : !dematOk ? (isCdsl ? 'CDSL demat number must be 16 digits' : 'NSDL: DP ID is IN + 6 digits, Client ID is 8 digits')
         : !upiFormatOk ? 'Enter the UPI ID as name@handle (e.g. name@okaxis)'
         : !upiHandleOk ? `@${upiId.split('@')[1] ?? ''} is not a supported UPI handle`
+        : !ifscOk ? ERR.ifsc
+        : !mobileOk ? ERR.mobile
         : 'Please complete all fields with a valid PAN');
       return;
     }
@@ -177,16 +201,18 @@ export default function NewProfileScreen() {
               </Pressable>
             ))}
           </View>
+          <Text style={styles.segHelp}>{HELP.relationship}</Text>
         </Card>
 
         <SectionTitle label="Identity" style={{ marginTop: 24 }} />
         <Card>
-          <Field label={t('profile.fullName')} value={fullName} onChange={setFullName} first />
+          <Field label={t('profile.fullName')} value={fullName} onChange={setFullName} first help={HELP.fullName} error={E.fullName} />
           <Field
             label={panLocked ? `${t('profile.pan')} — locked (has applications)` : t('profile.pan')}
             value={pan} onChange={setPan} autoCapitalize="characters" maxLength={10}
             placeholder={editing ? `${editing.pan} — type to change` : 'ABCDE1234F'}
             mono editable={!panLocked}
+            help={panLocked ? HELP.panLocked : HELP.pan} error={E.pan}
           />
         </Card>
 
@@ -213,11 +239,12 @@ export default function NewProfileScreen() {
           </Text>
           {!isCdsl && (
             <Field label={`${t('profile.dpId')} — IN prefix is added automatically`} value={dpId}
-              onChange={(v) => setDpId(v.replace(/\D/g, '').slice(0, 6))} placeholder="301234 (6 digits)" maxLength={6} mono keyboard="number-pad" />
+              onChange={(v) => setDpId(v.replace(/\D/g, '').slice(0, 6))} placeholder="301234 (6 digits)" maxLength={6} mono keyboard="number-pad" help={HELP.dpId} error={E.dpId} />
           )}
           <Field label={isCdsl ? 'Demat number (16 digits)' : `${t('profile.clientId')} (8 digits)`} value={clientId}
             onChange={(v) => setClientId(v.replace(/\D/g, '').slice(0, isCdsl ? 16 : 8))}
-            placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} mono keyboard="number-pad" />
+            placeholder={isCdsl ? '16-digit demat number' : '12345678'} maxLength={isCdsl ? 16 : 8} mono keyboard="number-pad"
+            help={isCdsl ? HELP.cdsl : HELP.clientId} error={E.clientId} />
           {/* UPI is split: the user types only the name and PICKS the handle from
               the admin-managed master, so an unsupported handle is impossible. */}
           <View style={styles.upiWrap}>
@@ -296,17 +323,17 @@ export default function NewProfileScreen() {
           </Pressable>
           {!bankOpen ? null : (
           <>
-          <Field label="Mobile" value={mobile} onChange={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))} maxLength={10} placeholder="98XXXXXXXX" mono keyboard="number-pad" />
-          <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" autoCapitalize="none" />
-          <Field label="Bank name" value={bankName} onChange={setBankName} placeholder="HDFC Bank" />
-          <Field label="Branch name" value={branchName} onChange={setBranchName} placeholder="MG Road" />
+          <Field label="Mobile" value={mobile} onChange={(v) => setMobile(v.replace(/\D/g, '').slice(0, 10))} maxLength={10} placeholder="98XXXXXXXX" mono keyboard="number-pad" help={HELP.mobile} error={E.mobile} />
+          <Field label="Email" value={email} onChange={setEmail} placeholder="you@example.com" autoCapitalize="none" help={HELP.email} />
+          <Field label="Bank name" value={bankName} onChange={setBankName} placeholder="HDFC Bank" help={HELP.bankName} />
+          <Field label="Branch name" value={branchName} onChange={setBranchName} placeholder="MG Road" help={HELP.branchName} />
           <Field label="Bank account no." value={bankAccount} onChange={setBankAccount}
-            placeholder={editing?.hasBank ? 'saved ✓ — type to replace' : undefined} autoCapitalize="none" mono />
-          <Field label="IFSC" value={ifsc} onChange={setIfsc} autoCapitalize="characters" placeholder="HDFC0001234" mono />
-          <Field label="Address" value={address} onChange={setAddress} />
-          <Field label="City" value={city} onChange={setCity} />
-          <Field label="State" value={stateName} onChange={setStateName} />
-          <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad" />
+            placeholder={editing?.hasBank ? 'saved ✓ — type to replace' : undefined} autoCapitalize="none" mono help={HELP.bankAccount} />
+          <Field label="IFSC" value={ifsc} onChange={setIfsc} autoCapitalize="characters" placeholder="HDFC0001234" mono help={HELP.ifsc} error={E.ifsc} />
+          <Field label="Address" value={address} onChange={setAddress} help={HELP.address} />
+          <Field label="City" value={city} onChange={setCity} help={HELP.cityTyped} />
+          <Field label="State" value={stateName} onChange={setStateName} help={HELP.stateTyped} />
+          <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad" help={HELP.pincodeTyped} />
           </>
           )}
         </Card>
@@ -342,6 +369,10 @@ function Field(props: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
   autoCapitalize?: 'none' | 'characters'; maxLength?: number; first?: boolean; mono?: boolean;
   keyboard?: 'default' | 'number-pad'; editable?: boolean;
+  /* THE ERROR REPLACES THE HELP rather than stacking under it. Two lines of
+     competing advice under one input is worse than either alone — by the
+     time the help is wrong, what is wanted is the correction. */
+  help?: string; error?: string | null;
 }) {
   const [focused, setFocused] = useState(false);
   const locked = props.editable === false;
@@ -361,6 +392,11 @@ function Field(props: {
         keyboardType={props.keyboard ?? 'default'}
         editable={!locked}
       />
+      {props.error ? (
+        <Text style={styles.fieldErr}>{props.error}</Text>
+      ) : props.help ? (
+        <Text style={styles.fieldHelp}>{props.help}</Text>
+      ) : null}
     </>
   );
 }
@@ -372,6 +408,12 @@ const styles = StyleSheet.create({
   upiWarn: { fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, fontSize: 12, marginTop: 2, lineHeight: 17 },
   // demat explainer
   dematNote: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
+  /* Sits under its input, pulled up against it — the gap below belongs to the
+     NEXT label (`label` carries marginTop 16), so no margin is added here. */
+  fieldHelp: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
+  fieldErr: { fontFamily: fonts.medium, fontWeight: '500', color: ui.red, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
+  /* The relationship control is not a `Field`, so it carries its own. */
+  segHelp: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   // split UPI input: name + handle picker
   upiWrap: { marginTop: 16 },
   upiLabel: { ...microLabel, fontSize: 11, marginBottom: 7 },

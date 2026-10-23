@@ -275,6 +275,7 @@ export * from './sponsorBank';
 export * from './ipoDocs';
 export * from './appWise';
 export * from './shareWise';
+export * from './applicantForm';
 export * from './pollWindow';
 export * from './tenantContent';
 export * from './richText';
