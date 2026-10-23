@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LANGS } from '@investoyard/i18n';
+import { LANGS, TRANSLATED_LANGS } from '@investoyard/i18n';
 import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
 import { useLang, useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
@@ -88,15 +88,27 @@ export default function AccountScreen() {
           <View style={styles.langs}>
             {LANGS.map((l) => {
               const on = l.code === lang;
+              /* `TRANSLATED_LANGS` is derived from the dictionaries in
+                 `packages/i18n`, so this list cannot claim a language the
+                 app cannot actually speak. */
+              const ready = TRANSLATED_LANGS.includes(l.code);
               return (
                 <Pressable
                   key={l.code}
-                  onPress={() => setLang(l.code)}
-                  style={({ pressed }) => [styles.lang, on && styles.langOn, pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] }]}
+                  onPress={() => ready && setLang(l.code)}
+                  disabled={!ready}
+                  style={({ pressed }) => [
+                    styles.lang,
+                    on && styles.langOn,
+                    !ready && styles.langOff,
+                    pressed && ready && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+                  ]}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
+                  accessibilityState={{ selected: on, disabled: !ready }}
+                  accessibilityLabel={ready ? l.label : `${l.english} — not translated yet`}
                 >
-                  <Text style={[styles.langTxt, on && styles.langTxtOn]}>{l.label}</Text>
+                  <Text style={[styles.langTxt, on && styles.langTxtOn, !ready && styles.langTxtOff]}>{l.label}</Text>
+                  {!ready ? <Text style={styles.langSoon}>soon</Text> : null}
                 </Pressable>
               );
             })}
@@ -401,8 +413,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   langOn: { backgroundColor: ui.indigo },
+  /* Dimmed and flat rather than removed — see the comment at the call site. */
+  langOff: { opacity: 0.45, flexDirection: 'row', alignItems: 'center', gap: 5 },
   langTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   langTxtOn: { color: '#ffffff' },
+  langTxtOff: { color: ui.muted },
+  langSoon: { fontSize: 9.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
   version: { fontSize: 12, color: ui.muted, textAlign: 'center', marginTop: 28, fontFamily: fonts.semibold, fontWeight: '600' },
   foot: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
 });

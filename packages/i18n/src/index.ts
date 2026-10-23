@@ -364,4 +364,22 @@ export function makeT(lang: Lang) {
   return (key: string) => t(lang, key);
 }
 
+/**
+ * The languages that actually have a dictionary.
+ *
+ * `LANGS` is what the app may OFFER; this is what changes anything when
+ * chosen. The four scaffolds above hold `{}`, so `t()` falls through to
+ * English for every key and the reader sees no difference at all — which on
+ * a language picker reads as a broken control rather than as a missing
+ * translation. Derived from `dicts` so it cannot drift from them: adding a
+ * real dictionary is one edit, not two that can disagree.
+ */
+export const TRANSLATED_LANGS: Lang[] = (Object.keys(dicts) as Lang[])
+  .filter((code) => Object.keys(dicts[code]).length > 0);
+
+/** True when picking this language changes what the app says. */
+export function isTranslated(lang: Lang): boolean {
+  return TRANSLATED_LANGS.includes(lang);
+}
+
 export const DEFAULT_LANG: Lang = 'en';
