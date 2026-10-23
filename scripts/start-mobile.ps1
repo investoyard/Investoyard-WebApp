@@ -183,6 +183,31 @@ Good "phone will connect to $PackagerHost"
 Say  '       Same Wi-Fi as this machine?  use -Lan'
 Say  '       Phone on mobile data?        keep the default (public IP)'
 
+# --- 6. the Expo Go build this project needs -------------------------------
+# Expo Go on the Play Store carries only the NEWEST SDK, so it drifts away
+# from a pinned project by itself and then refuses to open it. Nothing here
+# can stop that; naming the build that does work is the next best thing.
+Say ""
+Say '6. Expo Go version'
+$PkgJson = Join-Path $Mobile 'package.json'
+try {
+  $ExpoRange = (Get-Content $PkgJson -Raw | ConvertFrom-Json).dependencies.expo
+  $Sdk = ([regex]::Match($ExpoRange, '(\d+)')).Groups[1].Value
+  if ($Sdk) {
+    Good "this project is SDK $Sdk - Expo Go must match"
+    Say  "       If the phone says the installed Expo Go is a different SDK,"
+    Say  "       the Play Store build has moved on. Install the matching one:"
+    Say  "         https://expo.dev/go?sdkVersion=$Sdk&platform=android&device=true"
+    Say  "       Then turn OFF auto-update for Expo Go, or the store replaces it."
+    Say  "       The lasting fix is a development build, which pins the SDK and"
+    Say  "       makes the Expo Go version irrelevant."
+  } else {
+    Warn "could not read the SDK from package.json"
+  }
+} catch {
+  Warn "could not read apps/mobile/package.json"
+}
+
 # VERIFIED, because the obvious grep says otherwise: this variable does NOT
 # appear in node_modules/@expo/cli (the hoisted copy). The CLI actually in
 # use is the NESTED node_modules/expo/node_modules/@expo/cli, whose
@@ -198,7 +223,8 @@ Say ''
 Say '==============================================================='
 Say '  Starting Metro. Scan the QR below with Expo Go.'
 Say ''
-Say '  Expo Go must be the SDK 54 build (the Play Store one is).'
+Say '  Expo Go must match the SDK printed above. The Play Store build'
+Say '  tracks the NEWEST SDK, so it will not be the right one for long.'
 Say '  Press Ctrl+C in this window to stop the server.'
 Say '==============================================================='
 Say ''
