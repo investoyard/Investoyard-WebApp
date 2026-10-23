@@ -10,7 +10,7 @@ import { getIpos, type IpoFull } from '@/lib/api';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { RemindButton } from '@/components/RemindButton';
-import { titleCase } from '@investoyard/shared-types';
+import { titleCase, istToday } from '@investoyard/shared-types';
 
 type Tone = 'open' | 'close' | 'allot' | 'list';
 interface Ev { date: string; label: string; tone: Tone; ipo: IpoFull }
@@ -24,7 +24,11 @@ const EVENTS: { field: 'openDate' | 'closeDate' | 'allotmentDate' | 'listingDate
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-const todayIso = () => iso(new Date());
+/* IST. `iso`, `addDays` and `mondayOf` below are left alone deliberately:
+   they round-trip date STRINGS through local midnight and never ask the
+   clock, so they are correct in any zone. Only "which day is today" was
+   answered on the reader calendar. */
+const todayIso = () => istToday();
 const addDays = (day: string, n: number) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + n); return iso(d); };
 const mondayOf = (day: string) => { const d = new Date(`${day}T00:00:00`); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); };
 const prettyDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });

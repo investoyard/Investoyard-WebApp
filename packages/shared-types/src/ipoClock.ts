@@ -122,6 +122,49 @@ export function istClock(ms: number | null): string | null {
 }
 
 /**
+ * TODAY in IST, as `YYYY-MM-DD`.
+ *
+ * **WHICH DAY IT IS, FOR AN INDIAN IPO, IS A FACT ABOUT MUMBAI** — the same
+ * rule as the hour above. Derived from the reader clock instead, a visitor in
+ * London at 20:00 on the 23rd (01:30 IST on the 24th) is told an issue that
+ * shut six hours ago "closes today", and one in Auckland sees tomorrow’s
+ * issues as open.
+ *
+ * It also makes the STATIC EXPORT agree with the browser. Pages are built on
+ * a server in IST, so a stage baked at build time was already an IST stage;
+ * a client re-deriving it locally could disagree with the HTML it hydrated.
+ */
+export function istToday(now: number = Date.now()): string {
+  return new Date(now + IST_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Midnight IST of today, in ms — for comparing against a date-only value.
+ *
+ * Built from `istToday()` so the two can never disagree about which day it
+ * is, which a second independent derivation eventually would.
+ */
+export function istTodayMs(now: number = Date.now()): number {
+  return Date.parse(`${istToday(now)}T00:00:00${IST_OFFSET}`);
+}
+
+/**
+ * Whole days from today (IST) to `date`, or null when there is no date.
+ *
+ * 0 is today, 1 tomorrow, negative is past. **Counted between IST MIDNIGHTS,
+ * not by dividing a duration**: a duration would be wrong across the day a
+ * reader’s own clock changes for DST, and `daysUntil` is what decides the
+ * words "closes today" and "closes tomorrow".
+ */
+export function istDaysUntil(date?: string | null, now: number = Date.now()): number | null {
+  const d = dayOf(date);
+  if (!d) return null;
+  const target = Date.parse(`${d}T00:00:00${IST_OFFSET}`);
+  if (!Number.isFinite(target)) return null;
+  return Math.round((target - istTodayMs(now)) / 86_400_000);
+}
+
+/**
  * Any other dated milestone — allotment, listing — at a stated hour.
  *
  * These carry no operator time and no convention of their own, so the caller

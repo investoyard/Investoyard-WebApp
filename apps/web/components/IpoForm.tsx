@@ -16,7 +16,7 @@ import { CardReviewModal } from '@/components/CardReviewModal';
 import { Icon } from '@/components/Icon';
 import { ipoPhase } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
-import { pollTimeToHhmm, pollHhmmToMin, pollWindowProblem, POLL_ENVELOPE_FROM_MIN, POLL_ENVELOPE_TO_MIN, computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, minAllotmentShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource } from '@investoyard/shared-types';
+import { pollTimeToHhmm, pollHhmmToMin, pollWindowProblem, POLL_ENVELOPE_FROM_MIN, POLL_ENVELOPE_TO_MIN, computeIssue, CATEGORY_LABELS, exchangesFor, minApplicationShares, minAllotmentShares, offerTotals, totalSharesAt, sponsorBankNames, ASBA_SERIES_LABEL, ASBA_SERIES_KINDS, ASBA_SERIES_FALLBACK, activeSeriesMember, normSeriesKind, seriesIssues, seriesFallbackNote, type AsbaSeriesKind, type IssueInputs, type LegBasis, type CarveoutBasis, type OfferSource, istToday } from '@investoyard/shared-types';
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 const DOC_TYPES = ['RHP', 'DRHP', 'Prospectus', 'Anchor allocation', 'Financials', 'Other'] as const;
@@ -1543,7 +1543,7 @@ export function IpoForm({ ipoId }: { ipoId?: string }) {
       });
     }
     const closeYmd = (form.closeDate || '').slice(0, 10);
-    const todayYmd = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const todayYmd = istToday(); // IST — the dates on this form are exchange dates
     if (splitFilled === 0 && closeYmd && closeYmd >= todayYmd) {
       const opens = (form.openDate || '').slice(0, 10);
       const when = opens && opens > todayYmd ? `opens on ${opens}` : 'is open for bidding';

@@ -3,7 +3,7 @@
  * Tier-0 reads are public. Mock fallback keeps SEO pages building when the API is down.
  */
 import type { IpoListItem, IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { EXCHANGES, exchangeLabels, minAllotmentShares } from '@investoyard/shared-types';
+import { EXCHANGES, exchangeLabels, minAllotmentShares, istToday } from '@investoyard/shared-types';
 export type { IpoListItem, IpoDetail };
 
 /** Web-local enrichment for the live-data detail page (kept out of the shared contract). */
@@ -129,8 +129,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 const STATUS_ORDER = ['upcoming', 'open', 'closed', 'listed'];
 function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate' | 'listingDate'>): IpoDetail['status'] {
   if (ipo.status === 'withdrawn') return ipo.status;
-  const now = new Date();
-  const day = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local YYYY-MM-DD
+  const day = istToday(); // IST — the issue’s own calendar, not the reader’s
   let derived = 'upcoming';
   if (ipo.listingDate && day >= ipo.listingDate) derived = 'listed';
   else if (ipo.closeDate && day > ipo.closeDate) derived = 'closed';

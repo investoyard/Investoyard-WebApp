@@ -10,7 +10,7 @@ import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
-import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel } from '@investoyard/shared-types';
+import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel, istTodayMs } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
 /**
@@ -268,7 +268,7 @@ export function LotPanel({ ipo }: { ipo: IpoFull }) {
 /* ── Timeline rail — filled indigo dots for past, grey for future ───────── */
 export function TimelinePanel({ ipo }: { ipo: IpoFull }) {
   const states = timelineStates(calc.timeline(ipo));
-  const todayMs = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
+  const todayMs = istTodayMs(); // IST midnight; was a UTC date reopened locally
   return (
     <View>
       {states.map(({ item, ms, state }, i) => (

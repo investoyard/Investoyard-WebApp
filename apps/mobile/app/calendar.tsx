@@ -6,6 +6,7 @@
  * Dots: green=opens · amber=closes · indigo=allotment · grey=listing.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, shadowCard, ui } from '../lib/theme';
@@ -31,7 +32,9 @@ const EVENTS: { field: 'openDate' | 'closeDate' | 'allotmentDate' | 'listingDate
 ];
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* IST. The grid arithmetic below round-trips date STRINGS and never asks the
+   clock, so only "which day is today" needed changing. */
+const iso = (d: Date) => istToday(d.getTime());
 const todayIso = () => iso(new Date());
 const addDays = (day: string, n: number) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + n); return iso(d); };
 const mondayOf = (day: string) => { const d = new Date(`${day}T00:00:00`); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); };

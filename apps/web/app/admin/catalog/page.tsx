@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
@@ -132,7 +133,7 @@ export default function AdminCatalog() {
       // Day-wise GMP log — one entry per day (latest save wins), drives the
       // detail page's real GMP trend. Kept to the last 30 days.
       const ex: any = gmpDetail.extra ?? {};
-      const day = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const day = istToday(); // IST, like every other day derivation
       const gmpVal = num(gmpForm.gmp);
       const gmpLog = gmpVal != null
         ? [...(Array.isArray(ex.gmpLog) ? ex.gmpLog : []).filter((e: any) => e?.d !== day),

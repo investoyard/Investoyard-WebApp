@@ -1,3 +1,4 @@
+import { istDaysUntil, istTodayMs } from '@investoyard/shared-types';
 /**
  * Mobile display helpers — mirrors apps/web/lib/format.ts + apps/web/lib/catColor.ts
  * so the app and the web front site present identical figures.
@@ -37,12 +38,20 @@ export function shC(n: number): string {
   return Math.round(n).toLocaleString('en-IN');
 }
 
-/** Whole days until end of the given date (negative if past). */
+/**
+ * Whole days from TODAY IN IST to the given date. 0 is today, negative past.
+ *
+ * THIS WAS A DAY OUT, independently of any timezone — byte-identical to the
+ * copy in apps/web. It ceiled the duration to the END of the target day, so
+ * an issue closing TODAY returned 1, which made `closesInLabel` below print
+ * "Closes tomorrow" on the closing day and left "Closes today" unreachable.
+ * An issue that closed YESTERDAY read "Closes today".
+ *
+ * IST now as well: which day it is, for an Indian IPO, is a fact about
+ * Mumbai rather than about wherever the phone happens to be.
+ */
 export function daysUntil(dateStr?: string): number | null {
-  if (!dateStr) return null;
-  const end = new Date(dateStr);
-  end.setHours(23, 59, 59, 999);
-  return Math.ceil((end.getTime() - Date.now()) / 86_400_000);
+  return istDaysUntil(dateStr);
 }
 
 export function closesInLabel(closeDate?: string): string | null {
@@ -93,7 +102,9 @@ export function relText(ms: number | null, today: number, done: boolean): string
 
 /** Milestone state for a parsed timeline: index < nowIdx = done, === nowIdx = now. */
 export function timelineStates<T extends { date?: string }>(items: T[]): { item: T; ms: number | null; state: 'done' | 'now' | '' }[] {
-  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
+  /* IST midnight. This took the UTC date and reopened it at LOCAL midnight,
+     which is two zones in one expression. */
+  const today = istTodayMs();
   const parsed = items.map((x) => ({ item: x, ms: /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? new Date(x.date + 'T00:00:00').getTime() : null }));
   let nowIdx = parsed.findIndex((p) => p.ms == null || (p.ms as number) >= today);
   if (nowIdx === -1) nowIdx = parsed.length;

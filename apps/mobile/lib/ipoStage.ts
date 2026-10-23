@@ -8,6 +8,7 @@
  *   → allotmentout → listed
  */
 import type { ChipTone } from '../components/ui/Chip';
+import { istToday } from '@investoyard/shared-types';
 import type { IpoFull } from './ipoCalc';
 
 export type Stage =
@@ -34,10 +35,10 @@ export interface StageInfo {
   cta: { kind: CtaKind; label: string };
 }
 
-const localDay = (): string => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+/* IST, matching `stage.ts` in shared-types — the two must agree about what
+   day it is or the phone and the browser disagree about whether an issue is
+   still open. */
+const localDay = (): string => istToday();
 const daysFrom = (date?: string): number | null => {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   return Math.round(

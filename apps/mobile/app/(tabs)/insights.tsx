@@ -4,6 +4,7 @@
  *   2. Explore tiles → GMP · Subscription · Performance · News · Glossary · Calendar
  */
 import { useCallback, useEffect, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
@@ -23,7 +24,7 @@ const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
 const localDay = () => {
   const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return istToday(d.getTime()); // IST
 };
 
 export default function InsightsScreen() {

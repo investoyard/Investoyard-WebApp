@@ -7,7 +7,7 @@ import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
 import { statusChip } from '@/components/IpoCard';
 import { useTenant } from '@/components/TenantProvider';
-import { titleCase, LABEL } from '@investoyard/shared-types';
+import { titleCase, LABEL, istToday } from '@investoyard/shared-types';
 
 /**
  * Live navigation — the menu carries a little real-time data, and IPOs opens
@@ -22,7 +22,8 @@ import { titleCase, LABEL } from '@investoyard/shared-types';
  * belong to and beside the GMP disclaimer.
  */
 
-const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* TODAY IN IST. Was the reader calendar — see `istToday` in shared-types. */
+const dayIso = () => istToday();
 
 interface Signals {
   liveCount: number;

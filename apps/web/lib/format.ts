@@ -1,3 +1,4 @@
+import { istDaysUntil } from '@investoyard/shared-types';
 export function inr(n?: number): string {
   return n == null ? '—' : '₹' + n.toLocaleString('en-IN');
 }
@@ -7,12 +8,20 @@ export function priceBand(min?: number, max?: number): string {
   return max != null && max !== min ? `₹${min}–${max}` : `₹${min}`;
 }
 
-/** Whole days until end of the given date (negative if past). */
+/**
+ * Whole days from TODAY IN IST to the given date. 0 is today, negative past.
+ *
+ * THIS USED TO BE A DAY OUT, independently of any timezone. It ceiled the
+ * duration to END of the target day, so an issue closing TODAY returned 1 —
+ * which made `closesInLabel` say "Closes tomorrow" on the closing day and
+ * left "Closes today" UNREACHABLE, and told the admin notification bell the
+ * same. An issue that closed YESTERDAY read "Closes today".
+ *
+ * It is also IST now, like every other day derivation: which day it is, for
+ * an Indian IPO, is a fact about Mumbai and not about the reader.
+ */
 export function daysUntil(dateStr?: string): number | null {
-  if (!dateStr) return null;
-  const end = new Date(dateStr);
-  end.setHours(23, 59, 59, 999);
-  return Math.ceil((end.getTime() - Date.now()) / 86_400_000);
+  return istDaysUntil(dateStr);
 }
 
 export function closesInLabel(closeDate?: string): string | null {

@@ -7,7 +7,7 @@ import { inr, priceBand } from '@/lib/format';
 import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { LABEL, demandWord, titleCase, shortName, closeAt, istClock } from '@investoyard/shared-types';
+import { LABEL, demandWord, titleCase, shortName, closeAt, istClock, istToday, istDaysUntil } from '@investoyard/shared-types';
 import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
 
 /**
@@ -18,11 +18,13 @@ import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
  * on-brand. Auto-rotates every 5s; arrows, dots, hover-pause, swipe.
  */
 
-const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* TODAY IN IST. Was the reader calendar — see `istToday` in shared-types. */
+const dayIso = () => istToday();
 
+/* A local copy of what shared-types already owns. Kept as a one-line
+   delegation rather than deleted, because this file calls it five times. */
 function daysUntil(date?: string): number | null {
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  return Math.round((new Date(`${date}T00:00:00`).getTime() - new Date(`${dayIso()}T00:00:00`).getTime()) / 86400000);
+  return istDaysUntil(date);
 }
 
 /**

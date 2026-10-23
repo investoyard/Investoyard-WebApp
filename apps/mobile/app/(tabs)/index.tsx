@@ -8,6 +8,7 @@
  * One-time GMP awareness dialog (compliance).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -106,7 +107,7 @@ export default function HomeScreen() {
   const shortDate = (s?: string) => { const f = fmtDate(s); return f === '—' ? 'TBA' : f.slice(0, 6); };
 
   // gold dot on the calendar icon when TODAY carries any IPO event
-  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayIso = istToday(); // IST, like every other day derivation
   const hasTodayEvents = (ipos ?? []).some((i) =>
     i.openDate === todayIso || i.closeDate === todayIso || i.allotmentDate === todayIso || i.listingDate === todayIso);
   const liveCount = (ipos ?? []).filter((i) => i.status === 'open').length;

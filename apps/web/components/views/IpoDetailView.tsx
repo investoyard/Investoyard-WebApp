@@ -12,7 +12,7 @@ import * as calc from '@/lib/ipoCalc';
 import { cleanRich } from '@/lib/richClean';
 import { catColor, shC, fmtDate, relText, timelineStates, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, exchangeLabels, toneOf, docLabel, isPublicDoc } from '@investoyard/shared-types';
+import { LABEL, titleCase, exchangeLabels, toneOf, docLabel, isPublicDoc, istTodayMs } from '@investoyard/shared-types';
 
 /** hreflang alternates shared by the en page and the /[lang]/ SEO routes. */
 export function detailAlternates(symbol: string, lang: Lang): Metadata['alternates'] {
@@ -52,7 +52,8 @@ export function IpoDetailBody({ lang, ipo }: { lang: Lang; ipo: NonNullable<Awai
   const faqList = opFaqs.length ? opFaqs : (ipo.faqs ?? []);
 
   const tlStates = timelineStates(calc.timeline(ipo));
-  const todayMs = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
+  /* IST midnight. Was a UTC date reopened at LOCAL midnight — two zones in one expression. */
+  const todayMs = istTodayMs();
   const resRows = calc.reservation(ipo);
   const subT = calc.subscriptionTable(ipo);
   /* RAW, and deliberately not formatted here. `LiveSubscription` prefers the

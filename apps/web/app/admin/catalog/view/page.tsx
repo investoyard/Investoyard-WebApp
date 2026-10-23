@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
@@ -71,7 +72,7 @@ function IpoDetail() {
     { label: 'Allotment', date: ipo.allotmentDate }, { label: 'Refund', date: day(ex.refundDate) },
     { label: 'Demat credit', date: day(ex.dematDate) }, { label: 'Listing', date: ipo.listingDate },
   ];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday(); // IST — this was the UTC date, which rolls 5.5h early
 
   const overview = (
     <>

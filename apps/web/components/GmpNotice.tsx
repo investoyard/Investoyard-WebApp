@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { getConsumerToken, grantConsent } from '@/lib/consumer-api';
 
 /**
@@ -18,11 +19,10 @@ import { getConsumerToken, grantConsent } from '@/lib/consumer-api';
 const VERSION = 'gmp-v2';
 const KEY = `iy.gmpConsent.${VERSION}`;
 
-/** local YYYY-MM-DD — a day boundary the reader would recognise, not UTC's */
-const today = () => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+/* TODAY IN IST. It was the reader day — which for an Indian IPO disclaimer
+   means a visitor abroad could be re-shown it, or not shown it, on the
+   wrong side of a boundary nobody here shares. */
+const today = () => istToday();
 
 export function GmpNotice() {
   const [show, setShow] = useState(false);

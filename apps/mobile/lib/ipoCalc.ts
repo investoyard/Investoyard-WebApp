@@ -25,7 +25,7 @@
  * passes around, and the three view helpers below.
  */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { reservedPctFor } from '@investoyard/shared-types';
+import { reservedPctFor, istToday } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -53,8 +53,7 @@ const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, empl
 const STATUS_ORDER = ['upcoming', 'open', 'closed', 'listed'];
 export function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate' | 'listingDate'>): IpoDetail['status'] {
   if (ipo.status === 'withdrawn') return ipo.status;
-  const now = new Date();
-  const day = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local YYYY-MM-DD
+  const day = istToday(); // IST — the issue's own calendar, not the phone's
   let derived = 'upcoming';
   if (ipo.listingDate && day >= ipo.listingDate) derived = 'listed';
   else if (ipo.closeDate && day > ipo.closeDate) derived = 'closed';

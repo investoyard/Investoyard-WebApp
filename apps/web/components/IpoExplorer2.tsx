@@ -7,14 +7,15 @@ import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { compareForList, isRecent, LABEL } from '@investoyard/shared-types';
+import { compareForList, isRecent, LABEL, istToday } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
 
 type TypeFilter = 'all' | 'mainboard' | 'sme';
 type StatusFilter = 'all' | 'open' | 'upcoming' | 'closed';
 
-const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* TODAY IN IST. Was the reader calendar — see `istToday` in shared-types. */
+const dayIso = () => istToday();
 
 /**
  * IPO explorer — the /home2 candidate.

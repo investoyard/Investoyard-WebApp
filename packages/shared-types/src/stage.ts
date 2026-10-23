@@ -1,3 +1,5 @@
+import { istDaysUntil, istToday } from './ipoClock';
+
 /**
  * IPO lifecycle stage — the ONE derivation shared by web and mobile.
  *
@@ -20,16 +22,22 @@ export interface StageInput {
   extra?: { startBid?: boolean } | Record<string, any> | null;
 }
 
-const localDay = (): string => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+/**
+ * WHICH DAY IT IS, IN IST — not on the reader clock, which is what this used
+ * to read. An issue opens and closes on an Indian calendar day; a visitor in
+ * London at 20:00 on the 23rd is already on the 24th in Mumbai, and was being
+ * told an issue that shut six hours earlier was still closing today. One in
+ * Auckland saw tomorrow issues as open.
+ *
+ * It also makes the STATIC EXPORT agree with the browser: pages are built on
+ * a server in IST, so a stage baked into the HTML was always an IST stage,
+ * and a client re-deriving it locally could disagree with what it hydrated.
+ */
+const dayOfIst = (now?: number): string => istToday(now);
 
-const daysFrom = (date?: string): number | null => {
+const daysFrom = (date?: string, now?: number): number | null => {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  return Math.round(
-    (new Date(`${date}T00:00:00`).getTime() - new Date(`${localDay()}T00:00:00`).getTime()) / 86_400_000,
-  );
+  return istDaysUntil(date, now);
 };
 
 /**
@@ -48,15 +56,21 @@ export const STAGE_RANK: Record<Stage, number> = {
   withdrawn: 8,
 };
 
-export function stageOf(ipo: StageInput): Stage {
+/**
+ * `now` exists so this can be TESTED against a non-IST reader. The `TZ`
+ * environment variable has no effect on Node on this box — every value
+ * reports Asia/Calcutta — so injecting the instant is the only honest way to
+ * exercise one, and it keeps the function pure besides.
+ */
+export function stageOf(ipo: StageInput, now?: number): Stage {
   if (ipo.status === 'withdrawn') return 'withdrawn';
-  const today = localDay();
+  const today = dayOfIst(now);
   const startBid = (ipo.extra as any)?.startBid === true;
 
   if (ipo.status === 'listed') return 'listed';
 
   if (ipo.status === 'closed') {
-    const a = daysFrom(ipo.allotmentDate);
+    const a = daysFrom(ipo.allotmentDate, now);
     return a != null && a <= 0 ? 'allotmentout' : 'awaiting';
   }
 
@@ -69,7 +83,7 @@ export function stageOf(ipo: StageInput): Stage {
   return startBid ? 'preapply' : 'upcoming';
 }
 
-export const stageRank = (ipo: StageInput): number => STAGE_RANK[stageOf(ipo)];
+export const stageRank = (ipo: StageInput, now?: number): number => STAGE_RANK[stageOf(ipo, now)];
 
 /**
  * The three stages an issue passes through while it is OPEN share one sort
@@ -89,9 +103,14 @@ export const stageRank = (ipo: StageInput): number => STAGE_RANK[stageOf(ipo)];
 const OPEN_STAGES: Stage[] = ['closingtoday', 'opentoday', 'live'];
 const listRank = (s: Stage): number => (OPEN_STAGES.includes(s) ? STAGE_RANK.closingtoday : STAGE_RANK[s]);
 
-/** Customer-facing status label — identical wording on both surfaces. */
-export function stageLabel(ipo: StageInput): string {
-  const s = stageOf(ipo);
+/**
+ * Customer-facing status label — identical wording on both surfaces.
+ *
+ * Takes the same optional `now` as `stageOf`, and threads it, so a label and
+ * the stage it describes can never be derived against two different days.
+ */
+export function stageLabel(ipo: StageInput, now?: number): string {
+  const s = stageOf(ipo, now);
   switch (s) {
     case 'closingtoday': return 'Closing Today';
     case 'opentoday': return 'Open Today';
@@ -102,7 +121,7 @@ export function stageLabel(ipo: StageInput): string {
     case 'listed': return 'Listed';
     case 'withdrawn': return 'Withdrawn';
     default: {
-      const d = daysFrom(ipo.openDate);
+      const d = daysFrom(ipo.openDate, now);
       if (d === 0) return 'Opens Today';
       if (d === 1) return 'Opens Tomorrow';
       if (d != null && d > 1 && d <= 4) return `Opens in ${d}d`;

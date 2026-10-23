@@ -9,7 +9,7 @@ import { SubscriptionDisclaimer } from '@/components/SubscriptionDisclaimer';
 import { DayWiseSubscription } from '@/components/DayWiseSubscription';
 import { Modal } from '@/components/ui/Modal';
 import { VisitorBeacon } from '@/components/VisitorBeacon';
-import { titleCase, shortName, fmtDateTime, appWiseRows, shareWiseLabel, anchorNote, orderShareRows } from '@investoyard/shared-types';
+import { titleCase, shortName, fmtDateTime, appWiseRows, shareWiseLabel, anchorNote, orderShareRows, istToday } from '@investoyard/shared-types';
 
 /**
  * Subscription Hub v2 — /subscription
@@ -78,12 +78,11 @@ function fmtDateRange(openIso?: string, closeIso?: string): string {
 /** Today in IST as YYYY-MM-DD. Exported because three surfaces need it —
  *  the hub, `/subscription/v2` and the admin Subscription Report — and a
  *  local copy per surface is the shape that produced the two-tone-ladder bug. */
+/* Delegates to shared-types, which every other surface now reads too. This
+   was the ONLY correct day derivation on the site and it was local to one
+   file; the rest have been brought to it rather than the other way round. */
 export function istTodayYmd(): string {
-  const fmt = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  return istToday();
 }
 
 const dotClassFor = (key: string): string =>

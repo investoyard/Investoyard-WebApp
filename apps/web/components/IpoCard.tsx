@@ -11,7 +11,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime, closeAt, openAt } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime, closeAt, openAt, istToday, istDaysUntil, istTodayMs } from '@investoyard/shared-types';
 
 export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -85,10 +85,9 @@ function CloseHint({ ipo }: { ipo: IpoFull }) {
   );
 }
 
-const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-const daysFromToday = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s)
-  ? Math.round((new Date(`${s}T00:00:00`).getTime() - new Date(`${dayIso()}T00:00:00`).getTime()) / 86400000)
-  : null);
+/* TODAY IN IST. Was the reader calendar — see `istToday` in shared-types. */
+const dayIso = () => istToday();
+const daysFromToday = (s?: string) => istDaysUntil(s);
 
 /**
  * ONE time-aware status chip per card (calm & data-clear: a single precise
@@ -503,7 +502,8 @@ export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull;
   }
   if (k === 'timeline') {
     const items = calc.timeline(ipo);
-    const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00').getTime();
+    /* IST midnight. Was a UTC date reopened at LOCAL midnight — two zones in one expression. */
+    const today = istTodayMs();
     const parsed = items.map((x) => ({ ...x, ms: /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? new Date(x.date + 'T00:00:00').getTime() : null }));
     let nowIdx = parsed.findIndex((p) => p.ms == null || p.ms >= today);
     if (nowIdx === -1) nowIdx = parsed.length; // all done

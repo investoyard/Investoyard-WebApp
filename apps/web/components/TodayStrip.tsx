@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { istToday } from '@investoyard/shared-types';
 import { getIpos, type IpoFull } from '@/lib/api';
 
 /**
@@ -10,7 +11,8 @@ import { getIpos, type IpoFull } from '@/lib/api';
  * catalog; each segment links to where that number lives.
  */
 
-const dayIso = () => new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/* TODAY IN IST. Was the reader calendar — see `istToday` in shared-types. */
+const dayIso = () => istToday();
 
 export function TodayStrip({ ipos: baked, langQuery = '' }: { ipos: IpoFull[]; langQuery?: string }) {
   const [ipos, setIpos] = useState<IpoFull[]>(baked);
