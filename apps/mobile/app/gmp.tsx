@@ -8,7 +8,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
-import { getIpos } from '../lib/api';
+import { getIposResult } from '../lib/api';
+import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
@@ -54,8 +55,14 @@ function Row({ ipo, last }: { ipo: IpoFull; last: boolean }) {
 
 export default function GmpScreen() {
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
+  /* distinct from `null` (still loading) and from an empty list. */
+  const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async () => { setIpos(await getIpos()); }, []);
+  const load = useCallback(async () => {
+    const r = await getIposResult();
+    setOffline(!r.ok);
+    setIpos(r.ok ? r.ipos : []);
+  }, []);
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -80,6 +87,8 @@ export default function GmpScreen() {
       </Text>
       {ipos === null ? (
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
+      ) : offline ? (
+        <OfflineState onRetry={load} />
       ) : groups.length === 0 ? (
         <EmptyState title={`No live ${LABEL.gmp.toLowerCase()} right now`} body={`${LABEL.gmp} appears here while issues are open or awaiting listing.`} />
       ) : (

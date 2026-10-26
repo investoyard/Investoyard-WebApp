@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts, ui } from '../../lib/theme';
 import { tapLight } from '../../lib/haptics';
@@ -21,16 +21,21 @@ import {
 /** Icon slot: filled variant + soft indigo pill behind the icon when active. */
 function TabIcon({ focused, color, Line, Fill }: {
   focused: boolean;
-  color: string;
+  /* RN 0.88: tabBarIcon passes a ColorValue, which may be an opaque
+     platform colour or null - not necessarily a string. */
+  color: ColorValue;
   Line: ComponentType<IconProps>;
   Fill: ComponentType<IconProps>;
 }) {
   const I = focused ? Fill : Line;
+  /* Narrow once. A non-string ColorValue cannot be handed to IconProps,
+     so fall back to a real theme colour rather than casting a lie. */
+  const tint = typeof color === 'string' ? color : ui.muted;
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapOn]}>
       {/* Zomato-style 2px active indicator at the very top of the tab slot */}
       {focused ? <View style={styles.activeLine} /> : null}
-      <I size={24} color={color} strokeWidth={1.8} />
+      <I size={24} color={tint} strokeWidth={1.8} />
     </View>
   );
 }

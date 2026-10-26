@@ -9,7 +9,8 @@ import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import * as calc from '../lib/ipoCalc';
 import { orderShareRows, shareWiseLabel, subCatLabel } from '@investoyard/shared-types';
-import { getIpos } from '../lib/api';
+import { getIposResult } from '../lib/api';
+import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
 import { demandWord } from '../lib/ipoStage';
 import { Card } from '../components/ui/Card';
@@ -82,8 +83,14 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
 
 export default function SubscriptionScreen() {
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
+  /* distinct from `null` (still loading) and from an empty list. */
+  const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async () => { setIpos(await getIpos()); }, []);
+  const load = useCallback(async () => {
+    const r = await getIposResult();
+    setOffline(!r.ok);
+    setIpos(r.ok ? r.ipos : []);
+  }, []);
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -104,6 +111,8 @@ export default function SubscriptionScreen() {
     >
       {ipos === null ? (
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
+      ) : offline ? (
+        <OfflineState onRetry={load} />
       ) : open.length === 0 && recent.length === 0 ? (
         <EmptyState title="No subscription data yet" body="Live category-wise demand shows here while issues are open." />
       ) : (

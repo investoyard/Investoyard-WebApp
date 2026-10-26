@@ -4,7 +4,7 @@
  * GMP (+disclaimer), SME norms, company accordions, issue details — restyled to
  * the elevated fintech language. Sticky bottom bar: MIN INVESTMENT + Apply.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Linking, NativeScrollEvent, NativeSyntheticEvent, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View,
 } from 'react-native';
@@ -52,11 +52,11 @@ export default function IpoDetailScreen() {
   // Sticky section navigation (Pack D): section Y positions are captured via
   // onLayout; the chip bar appears after the hero scrolls away and tracks the
   // section under the reader. ALL hooks live above the early returns.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const secY = useRef<Record<string, number>>({});
   const [navOn, setNavOn] = useState(false);
   const [active, setActive] = useState('overview');
-  const navRef = useRef<ScrollView>(null);
+  const navRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const load = useCallback(async () => {
     if (symbol) setIpo((await getIpo(String(symbol))) ?? null);

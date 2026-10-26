@@ -10,7 +10,8 @@ import { istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, shadowCard, ui } from '../lib/theme';
-import { getIpos } from '../lib/api';
+import { getIposResult } from '../lib/api';
+import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
 import type { IpoFull } from '../lib/ipoCalc';
 import { tapSelect } from '../lib/haptics';
@@ -53,13 +54,19 @@ const shortDM = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString(
 export default function CalendarScreen() {
   const router = useRouter();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
+  /* distinct from `null` (still loading) and from an empty list. */
+  const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<'month' | 'week'>('month');
   const [anchor, setAnchor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayIso()));
   const [selected, setSelected] = useState(todayIso());
 
-  const load = useCallback(async () => { setIpos(await getIpos()); }, []);
+  const load = useCallback(async () => {
+    const r = await getIposResult();
+    setOffline(!r.ok);
+    setIpos(r.ok ? r.ipos : []);
+  }, []);
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -246,6 +253,8 @@ export default function CalendarScreen() {
       {/* ── below the card ── */}
       {ipos === null ? (
         <View style={{ marginTop: 20 }}><SkeletonCard lines={2} /></View>
+      ) : offline ? (
+        <OfflineState onRetry={load} />
       ) : view === 'month' ? (
         /* MONTH: selected-day detail */
         <>

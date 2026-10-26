@@ -3,7 +3,7 @@
  * bottom white sheet (radius 24) with the mobile → OTP flow. Auth logic is
  * unchanged (requestOtp → verifyOtp → signIn → back).
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ComponentRef } from 'react';
 import {
   KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -45,7 +45,7 @@ export default function LoginScreen() {
      person watching the wrong app concludes it never arrived. */
   const [sentVia, setSentVia] = useState<'sms' | 'whatsapp'>('sms');
   const [otpFocused, setOtpFocused] = useState(false);
-  const otpRef = useRef<TextInput>(null);
+  const otpRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   // full-screen gradient → light status bar while this modal is up
   useFocusEffect(

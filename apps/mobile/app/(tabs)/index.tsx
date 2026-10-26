@@ -7,7 +7,7 @@
  *   Mainboard/SME segment → stage-driven IPO cards.
  * One-time GMP awareness dialog (compliance).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -16,7 +16,8 @@ import { setStatusBarStyle } from 'expo-status-bar';
 import { fonts, animateNext, shadowCard, ui } from '../../lib/theme';
 import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
 import { stageOf } from '../../lib/ipoStage';
-import { getIpos, getNotifications } from '../../lib/api';
+import { getIposResult, getNotifications } from '../../lib/api';
+import { OfflineState } from '../../components/ui/OfflineState';
 import { useAuth } from '../../components/auth';
 import { fmtDate, titleCase } from '../../lib/format';
 import { tapLight } from '../../lib/haptics';
@@ -51,6 +52,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
+  /* distinct from `null` (still loading) and from an empty list. */
+  const [offline, setOffline] = useState(false);
   const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [justRefreshed, setJustRefreshed] = useState(false);
@@ -59,17 +62,18 @@ export default function HomeScreen() {
   const [board, setBoard] = useState<Board>('all');
   const [searchOn, setSearchOn] = useState(false);
   const [query, setQuery] = useState('');
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   // light header (no gradient hero any more) → dark status-bar content
   useFocusEffect(useCallback(() => { setStatusBarStyle('dark'); }, []));
 
   const load = useCallback(async () => {
-    const [rows, notifs] = await Promise.all([
-      getIpos(),
+    const [res, notifs] = await Promise.all([
+      getIposResult(),
       token ? getNotifications(token).catch(() => []) : Promise.resolve([]),
     ]);
-    setIpos(rows);
+    setOffline(!res.ok);
+    setIpos(res.ok ? res.ipos : []);
     setUnread(notifs.filter((n: any) => !(n.readAt ?? n.read)).length);
   }, [token]);
 
@@ -227,6 +231,8 @@ export default function HomeScreen() {
             <SkeletonCard lines={3} />
             <SkeletonCard lines={2} />
           </View>
+        ) : offline ? (
+          <OfflineState onRetry={load} />
         ) : q ? (
           /* search results — one flat list, no sectioning */
           filtered.length === 0 ? (

@@ -3,7 +3,7 @@
  * at the TOP of this screen (sir's decision: Home stays cards-first; banners
  * live with news). Auto-rotates every 5s, swipeable.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
@@ -22,7 +22,7 @@ const fmtDate = (s?: string | null) =>
   s ? new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
 function Banners({ banners }: { banners: BannerView[] }) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const idx = useRef(0);
   useEffect(() => {
     if (banners.length < 2) return;

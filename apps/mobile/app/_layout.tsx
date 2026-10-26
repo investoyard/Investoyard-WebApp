@@ -77,9 +77,11 @@ export default function RootLayout() {
     <AuthProvider>
       <ProfilesProvider>
         <LanguageProvider>
-          {/* translucent so the Home/Login gradients render under the status bar;
-              gradient screens flip to 'light' via useFocusEffect */}
-          <StatusBar style="dark" translucent backgroundColor="transparent" />
+          {/* SDK 58 removed translucent + backgroundColor from StatusBarProps.
+              Android edge-to-edge is the default from SDK 55, so the bar is
+              already translucent and the Home/Login gradients still render
+              under it. Gradient screens flip to 'light' via useFocusEffect. */}
+          <StatusBar style="dark" />
           <RootStack />
         </LanguageProvider>
       </ProfilesProvider>

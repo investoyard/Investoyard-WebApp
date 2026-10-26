@@ -7,7 +7,8 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { listingInfo, type IpoFull } from '../lib/ipoCalc';
-import { getIpos } from '../lib/api';
+import { getIposResult } from '../lib/api';
+import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
@@ -18,8 +19,14 @@ import { SkeletonCard } from '../components/ui/Skeleton';
 export default function PerformanceScreen() {
   const router = useRouter();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
+  /* distinct from `null` (still loading) and from an empty list. */
+  const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async () => { setIpos(await getIpos()); }, []);
+  const load = useCallback(async () => {
+    const r = await getIposResult();
+    setOffline(!r.ok);
+    setIpos(r.ok ? r.ipos : []);
+  }, []);
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -43,6 +50,8 @@ export default function PerformanceScreen() {
     >
       {ipos === null ? (
         <><SkeletonCard lines={2} /><SkeletonCard lines={3} /></>
+      ) : offline ? (
+        <OfflineState onRetry={load} />
       ) : listed.length === 0 ? (
         <EmptyState title="No listings yet" body="Listing-day performance shows here as issues list." />
       ) : (

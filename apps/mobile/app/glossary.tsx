@@ -2,7 +2,7 @@
  * IPO Glossary — same content source as the web page
  * (packages/shared-types/src/glossary.ts). Jump chips + expandable sections.
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GLOSSARY } from '@investoyard/shared-types';
 import { fonts, ui } from '../lib/theme';
@@ -10,7 +10,7 @@ import { tapLight } from '../lib/haptics';
 import { Card } from '../components/ui/Card';
 
 export default function GlossaryScreen() {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const secY = useRef<Record<string, number>>({});
   const [active, setActive] = useState(GLOSSARY[0].id);
 
