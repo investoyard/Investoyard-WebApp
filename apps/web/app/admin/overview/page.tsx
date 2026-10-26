@@ -92,6 +92,7 @@ export default function AdminOverview() {
           the dashboard that is losing data while it is not looked at, and it must
           not wait on the counts to render. */}
       <SubscriptionWatch data={readiness} />
+      <FeedWatch data={readiness} />
       {loading || !c || !d ? <Loader /> : (
         <>
           {/* ---- headline counts ---- */}
@@ -224,6 +225,78 @@ export default function AdminOverview() {
  * present and permanently empty is a card people stop reading, which is exactly
  * how the thing it is warning about happened.
  */
+/**
+ * AN EXCHANGE FEED THAT HAS STOPPED ANSWERING.
+ *
+ * On 2026-10-23 BSE's member /demandschedule froze at ~18:54 and never
+ * resumed, through the 19:00 close of a Rs 30,213 Cr issue. JPL published a
+ * QIB book 10.2% short, and NOTHING said so — the response carries no
+ * timestamp, and `subscriptionAsOf` records when WE last wrote, so the page
+ * read "Updated 19:05" over figures frozen eleven minutes earlier. It was
+ * found days later, by comparing against the exchange's own page.
+ *
+ * THE TEST IS RELATIVE. One exchange moving while the other sits still is
+ * unambiguous; an absolute "nothing for N minutes" alarm cannot tell a frozen
+ * feed from a quiet market, and would fire every slow afternoon.
+ *
+ * Nothing on this card can be fixed by entering data, which is exactly why it
+ * needs to exist: there is no form to fill and no error anywhere, so without
+ * it the only symptom is a figure that is quietly too low.
+ *
+ * Renders NOTHING when there is nothing to say, same as its sibling.
+ */
+function FeedWatch({ data }: { data: api.SubscriptionReadiness | null }) {
+  if (!data || !data.staleFeeds || data.staleFeeds.length === 0) return null;
+  const name = (x: 'nse' | 'bse') => (x === 'nse' ? 'NSE' : 'BSE');
+  const mins = (m: number) => (m >= 120 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`);
+  return (
+    <div className="card" style={{ marginBottom: 18, borderColor: 'var(--neg)' }}>
+      <div className="card-head">
+        <span className="t">
+          <Icon name="trending" size={15} /> Exchange feed has stopped updating{' '}
+          <span className="count-badge">{data.staleFeeds.length}</span>
+        </span>
+        <a className="linklike" href="/admin/subscription-report" style={{ fontSize: 13 }}>Subscription report →</a>
+      </div>
+      <div className="card-pad" style={{ paddingBottom: 0 }}>
+        <div className="banner bad" style={{ margin: 0, fontSize: 13.5 }}>
+          <b>One exchange is still answering and the other is not.</b>{' '}
+          The subscription figures published for these issues are short by whatever that
+          exchange's book has done since it went quiet, and the gap widens until it resumes.
+          There is nothing to enter here — the exchange's own page is the reference, and a
+          freeze that lasts through the close leaves the final figures permanently short.
+        </div>
+      </div>
+      <div className="card-pad">
+        <table className="table">
+          <thead><tr>
+            <th>IPO</th><th>Stalled</th>
+            <th style={{ textAlign: 'right' }}>No change for</th>
+            {/* The proof it is a stall and not a quiet market. */}
+            <th style={{ textAlign: 'right' }}>Other exchange moved</th>
+          </tr></thead>
+          <tbody>
+            {data.staleFeeds.map((r) => (
+              <tr key={`${r.id}:${r.exchange}`}>
+                <td><b className="mono">{r.symbol}</b><div className="sub">{r.name}</div></td>
+                <td><span className="st bad">{name(r.exchange)}</span></td>
+                <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--neg-ink)' }}>
+                  {mins(r.stalledMin)}
+                </td>
+                <td className="mono" style={{ textAlign: 'right' }}>{mins(r.siblingMin)} ago</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card-pad muted" style={{ fontSize: 12, paddingTop: 10 }}>
+        Measured from the last time each exchange's own figures CHANGED — not from the last poll.
+        Checked {new Date(data.checkedAt).toLocaleString('en-IN')}.
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionWatch({ data }: { data: api.SubscriptionReadiness | null }) {
   if (!data || data.atRisk.length === 0) return null;
   const open = data.atRisk.filter((r) => r.state === 'open');

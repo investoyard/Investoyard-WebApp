@@ -587,6 +587,17 @@ export interface SubscriptionReadiness {
     lostDays: number; daysLeft: number;
     reason: string;
   }[];
+  /**
+   * Open issues where ONE exchange has stopped updating while the other keeps
+   * moving. A different problem from `atRisk`, which is "the poller cannot
+   * compute this issue at all" — here it can, and a feed went quiet.
+   */
+  staleFeeds: {
+    id: string; symbol: string; name: string;
+    exchange: 'nse' | 'bse';
+    stalledMin: number;
+    siblingMin: number;
+  }[];
 }
 export const fetchSubscriptionReadiness = () =>
   authed<SubscriptionReadiness>(`${API}/admin/subscription/readiness`, { method: 'GET' });

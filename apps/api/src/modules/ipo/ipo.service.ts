@@ -37,7 +37,7 @@ const GMP_DISCLAIMER = 'Grey-market data is unofficial and not investment advice
  * is destroy one — see the note in `update()` for what that cost.
  */
 const SERVER_OWNED_EXTRA = [
-  'subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit',
+  'subLog', 'subLogHour', 'gmpLog', 'gmpSourceId', 'qibSplit', 'feedSeen',
 ] as const;
 
 /**

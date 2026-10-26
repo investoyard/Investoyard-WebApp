@@ -11,6 +11,7 @@ export * from './format';
 export * from './issueRules';
 export * from './computeIssue';
 export * from './stage';
+export * from './feedHealth';
 export * from './holidays';
 export * from './carveouts';
 export * from './minApplication';

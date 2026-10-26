@@ -9,6 +9,7 @@ import {
   DEFAULT_POLL_FROM_MIN, DEFAULT_POLL_TO_MIN,
   POLL_ENVELOPE_FROM_MIN, POLL_ENVELOPE_TO_MIN,
   pollMinute,
+  noteFeedReading, feedHealth, FEED_STALE_MIN, type FeedSeen, type FeedSeenMap,
 } from '@investoyard/shared-types';
 import { offeredFromIpo, type Bucket } from './offered';
 
@@ -457,6 +458,20 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       lostDays: number; daysLeft: number;
       reason: string;
     }[];
+    /**
+     * TWO DIFFERENT PROBLEMS ON ONE CARD, deliberately. `atRisk` is "the poller
+     * cannot compute this issue at all"; `staleFeeds` is "it can, and one
+     * exchange has stopped answering". Same audience, same permission, same
+     * screen — a second alert surface is a second thing nobody reads.
+     */
+    staleFeeds: {
+      id: string; symbol: string; name: string;
+      exchange: 'nse' | 'bse';
+      /** minutes since THAT exchange's figures last changed */
+      stalledMin: number;
+      /** minutes since the other one changed — the proof it is not just a quiet market */
+      siblingMin: number;
+    }[];
   }> {
     return tenantContext.runUnscoped(async () => {
       const today = this.istParts().ymd;
@@ -473,6 +488,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
       const atRisk = [];
+      const staleFeeds = [];
       for (const i of ipos) {
         const extra: any = i.extra ?? {};
         const offered = offeredFromIpo({
@@ -481,6 +497,33 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           priceBandMin: i.priceBandMin as any,
           extra,
         });
+        /*
+         * A STALLED FEED IS THE OPPOSITE PROBLEM TO `atRisk` — the poller CAN
+         * compute this issue, and one exchange has simply stopped answering.
+         * So it is judged BEFORE the skip below, not after it.
+         *
+         * NO WINDOW CHECK IS NEEDED, and that is a property of the rule rather
+         * than an omission: `feedHealth` only fires when one exchange changed
+         * within the last few minutes, which cannot happen unless polling is
+         * running. Outside the poll window both sides are stale, the rule
+         * reads "both quiet", and the card stays silent on its own.
+         */
+        /* `day()` rather than `o`: that is declared below the skip, and an
+           issue the poller CAN compute never reaches it. */
+        const openOn = day(i.openDate);
+        if (openOn && openOn <= today) {
+          const seen: FeedSeenMap = (extra.feedSeen && typeof extra.feedSeen === 'object') ? extra.feedSeen : {};
+          const health = feedHealth(seen);
+          if (health.stale) {
+            staleFeeds.push({
+              id: i.id, symbol: i.symbol, name: i.name,
+              exchange: health.exchange,
+              stalledMin: health.stalledMin,
+              siblingMin: health.siblingMin,
+            });
+          }
+        }
+
         if (offered !== null) continue;   // the poller can compute it — nothing to say
 
         /* Name the actual blocker rather than "incomplete". The reservation table
@@ -516,7 +559,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           reason,
         });
       }
-      return { checkedAt: new Date().toISOString(), atRisk };
+      return { checkedAt: new Date().toISOString(), atRisk, staleFeeds };
     });
   }
 
@@ -667,6 +710,41 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
          * shipped will never carry it, and neither will the part of today that
          * preceded the pool restart.
          */
+        /*
+         * WHEN DID EACH EXCHANGE LAST ACTUALLY MOVE?
+         *
+         * `subscriptionAsOf` answers "when did WE last write", which is not the
+         * same question and is why a card read "Updated 19:05" over BSE figures
+         * frozen at 18:54 on 2026-10-23. This records the last CHANGE per
+         * exchange, which is the only thing that can tell a stalled feed from a
+         * quiet market.
+         *
+         * The totals come from the BUCKETED figures rather than the raw rows, so
+         * what the detector watches is exactly what we store — a row the bucket
+         * maps dropped is not demand we hold, and should not count as movement.
+         *
+         * `noteFeedReading` owns the two rules that matter and is tested: an
+         * empty read is missing data rather than a change to zero, and an
+         * UNCHANGED figure must NOT advance the timestamp. Both are the point.
+         */
+        const feedPatch: Record<string, unknown> = {};
+        {
+          let nseTot = 0;
+          let bseTot = 0;
+          for (const a of buckets.values()) { nseTot += a.nseShares; bseTot += a.bseShares; }
+          const prev: FeedSeenMap = (ex.feedSeen && typeof ex.feedSeen === 'object') ? ex.feedSeen : {};
+          const iso = now.toISOString();
+          const next: FeedSeenMap = {};
+          const nse = noteFeedReading(prev.nse as FeedSeen | undefined, nseTot, iso);
+          const bse = noteFeedReading(prev.bse as FeedSeen | undefined, bseTot, iso);
+          if (nse) next.nse = nse;
+          if (bse) next.bse = bse;
+          /* Only write when something is there to write. The jsonb merge
+             REPLACES this key wholesale, so an empty object would erase a
+             baseline the detector needs. */
+          if (next.nse || next.bse) feedPatch.feedSeen = next;
+        }
+
         const qibSplitPatch: Record<string, unknown> = {};
         {
           const anySplit = [...qibSplit.values()].some((v) => v.sh > 0 || v.bids > 0);
@@ -721,7 +799,7 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
           }),
           this.prisma.$executeRaw`
             UPDATE "Ipo"
-               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour, ...qibSplitPatch })}::jsonb
+               SET "extra" = COALESCE("extra", '{}'::jsonb) || ${JSON.stringify({ subLog, subLogHour, ...qibSplitPatch, ...feedPatch })}::jsonb
              WHERE "id" = ${ipo.id}`,
           /*
            * `subscriptionAsOf` deliberately stays on the PRISMA path, in both
