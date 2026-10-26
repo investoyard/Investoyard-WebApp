@@ -2,13 +2,13 @@
  * Subscription — live category-wise demand for open issues (+ the last week's
  * closed ones), with plain-language demand words calibrated per board.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import * as calc from '../lib/ipoCalc';
-import { orderShareRows, shareWiseLabel, subCatLabel } from '@investoyard/shared-types';
+import { istToday, orderShareRows, shareWiseLabel, subCatLabel } from '@investoyard/shared-types';
 import { getIposResult } from '../lib/api';
 import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
@@ -18,6 +18,8 @@ import { SectionTitle } from '../components/ui/SectionTitle';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { SearchIcon, XIcon } from '../components/ui/icons';
+import { tapLight } from '../lib/haptics';
 
 /*
  * There is no label map here any more, and that is the point. The one that
@@ -86,6 +88,9 @@ export default function SubscriptionScreen() {
   /* distinct from `null` (still loading) and from an empty list. */
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<SubFilter>('all');
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<ComponentRef<typeof TextInput>>(null);
   const load = useCallback(async () => {
     const r = await getIposResult();
     setOffline(!r.ok);
@@ -98,23 +103,92 @@ export default function SubscriptionScreen() {
   }, [load]);
 
   const withSub = (i: IpoFull) => (i.subscription ?? []).length > 0 || i.subscriptionTimes != null;
-  const open = (ipos ?? []).filter((i) => i.status === 'open' && withSub(i));
-  const recent = (ipos ?? []).filter((i) => (i.status === 'closed' || i.status === 'listed') && withSub(i))
-    .sort((a, b) => (b.closeDate ?? '').localeCompare(a.closeDate ?? ''))
-    .slice(0, 8);
+  const todayIso = istToday();
+
+  const { open, recent } = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    /* One predicate for both lists, so a filter cannot mean two things on one
+       screen. 'closing' legitimately empties the closed list - an issue that
+       has already closed is not closing today. */
+    const passes = (i: IpoFull) => {
+      if (q && !`${i.name} ${i.symbol ?? ''}`.toLowerCase().includes(q)) return false;
+      if (filter === 'closing') return i.closeDate === todayIso;
+      if (filter === 'mainboard' || filter === 'sme') return i.type === filter;
+      return true;
+    };
+    const all = ipos ?? [];
+    /* THE CLOSED SECTION IS A TIME WINDOW, NOT A COUNT (operator, 2026-10-26).
+       It used to take the 8 most recently closed whatever their age, while
+       this file's own docblock claimed "the last week's closed ones" - the
+       comment was right and the code never implemented it. A consequence
+       worth knowing: in a quiet fortnight this section now renders NOTHING,
+       where the count cap always found something to show. That is correct for
+       a heading that says "final subscription". */
+    const cutoff = sevenDaysAgoIso();
+    return {
+      open: all.filter((i) => i.status === 'open' && withSub(i) && passes(i)),
+      recent: all
+        .filter((i) => (i.status === 'closed' || i.status === 'listed') && withSub(i)
+          && (i.closeDate ?? '') >= cutoff && passes(i))
+        .sort((a, b) => (b.closeDate ?? '').localeCompare(a.closeDate ?? '')),
+    };
+  }, [ipos, filter, query, todayIso]);
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />}
-    >
+    <View style={styles.screen}>
+      <View style={styles.subHead}>
+        <View style={styles.searchRow}>
+          <SearchIcon size={17} color={ui.muted} strokeWidth={2} />
+          <TextInput
+            ref={searchRef}
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search by company or symbol"
+            placeholderTextColor={ui.muted}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {query.length > 0 ? (
+            <Pressable onPress={() => { tapLight(); setQuery(''); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+              <XIcon size={16} color={ui.muted} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+        </View>
+        {/* A SCROLLING chip row, not a segmented control: four options with
+            "Closing today" and "Mainboard" among them do not fit a 375px
+            segment, and a clipped label is worse than a scroll. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {SUB_FILTERS.map(({ key, label }) => {
+            const on = filter === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => { tapLight(); setFilter(key); }}
+                style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={[styles.chipTxt, on && styles.chipTxtOn]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />}
+      >
       {ipos === null ? (
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
       ) : offline ? (
         <OfflineState onRetry={load} />
       ) : open.length === 0 && recent.length === 0 ? (
-        <EmptyState title="No subscription data yet" body="Live category-wise demand shows here while issues are open." />
+        <EmptyState
+          title={query.trim() || filter !== 'all' ? 'Nothing matches those filters' : 'No subscription data yet'}
+          body={query.trim() || filter !== 'all'
+            ? 'Clear the search or choose All to see every issue with live demand.'
+            : 'Live category-wise demand shows here while issues are open.'}
+        />
       ) : (
         <>
           {open.length > 0 ? (
@@ -131,13 +205,52 @@ export default function SubscriptionScreen() {
           ) : null}
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
+}
+
+type SubFilter = 'all' | 'closing' | 'mainboard' | 'sme';
+const SUB_FILTERS: { key: SubFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'closing', label: 'Closing today' },
+  { key: 'mainboard', label: 'Mainboard' },
+  { key: 'sme', label: 'SME' },
+];
+
+/**
+ * Seven days back from today, in IST.
+ *
+ * Both ends are UTC midnight of a plain date string, so the subtraction cannot
+ * drift across a timezone boundary - parsing the IST day as +05:30 and then
+ * formatting in UTC silently yields EIGHT days, which is the class of
+ * off-by-one this project has already paid for once.
+ */
+function sevenDaysAgoIso(): string {
+  const today = istToday();
+  return new Date(Date.parse(today + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  subHead: {
+    backgroundColor: '#ffffff', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: ui.divider, gap: 10,
+  },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    backgroundColor: ui.canvas, borderRadius: 12, paddingHorizontal: 12, height: 40,
+  },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 14.5, color: ui.title, padding: 0 },
+  chipRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
+  chip: {
+    paddingHorizontal: 13, height: 32, borderRadius: 999, justifyContent: 'center',
+    backgroundColor: ui.canvas,
+  },
+  chipOn: { backgroundColor: ui.indigo },
+  chipTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  chipTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },
   name: { fontSize: 14.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
   totalBox: { alignItems: 'flex-end' },

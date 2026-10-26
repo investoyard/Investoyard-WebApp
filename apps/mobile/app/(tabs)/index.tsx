@@ -8,7 +8,7 @@
  * One-time GMP awareness dialog (compliance).
  */
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { compareForList, istToday } from '@investoyard/shared-types';
+import { compareForList, isRecent, istToday } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +19,7 @@ import { stageOf } from '../../lib/ipoStage';
 import { getIposResult, getNotifications } from '../../lib/api';
 import { OfflineState } from '../../components/ui/OfflineState';
 import { useAuth } from '../../components/auth';
-import { fmtDate, titleCase } from '../../lib/format';
+import { fmtDate } from '../../lib/format';
 import { tapLight } from '../../lib/haptics';
 import { IpoListCard } from '../../components/IpoListCard';
 import { GmpDialog } from '../../components/GmpDialog';
@@ -27,11 +27,21 @@ import { SectionTitle } from '../../components/ui/SectionTitle';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { IllusDocs } from '../../components/ui/illustrations';
 import { SkeletonCard } from '../../components/ui/Skeleton';
-import { CompanyLogo } from '../../components/ui/CompanyLogo';
+import { CompactRow } from '../../components/ui/CompactRow';
 import { FadeInUp } from '../../components/ui/motion';
 import { BellIcon, CalendarIcon, ChevronRightIcon, SearchIcon, XIcon } from '../../components/ui/icons';
 
 type Filter = 'all' | 'open' | 'upcoming' | 'closed';
+/**
+ * A FIXED 16, exactly as the web home shows, and for the same reason: they come
+ * off the top of compareForList, so they are the most ACTIONABLE issues rather
+ * than the most recent. Everything else is one tap away on /ipos.
+ *
+ * Before this the 'all' view was UNBOUNDED - it rendered every record the API
+ * returned, which since the 500-row default was lifted is 1,314 of them.
+ */
+const HOME_LIMIT = 16;
+
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'open', label: 'Open' },
@@ -93,14 +103,22 @@ export default function HomeScreen() {
   }, [load]);
 
   // Board filter applies FIRST — sections and status filtering both respect it.
-  const base = (ipos ?? []).filter((i) => board === 'all' || i.type === board);
   const q = query.trim().toLowerCase();
-  const searched = q
-    ? base.filter((i) => i.name.toLowerCase().includes(q) || i.symbol.toLowerCase().includes(q))
-    : base;
-  /* Sorted ONCE, and the sections inherit it - filter() preserves order, so
-     every list below is in the same stage-aware order the web home uses. */
-  const sorted = [...searched].sort(compareForList);
+  /* SEARCH REACHES THE WHOLE CATALOGUE; the 6-month window applies to browsing
+     only. Web does the same, and it matters more here now that the home list
+     is capped: a search that could only find what the page already shows
+     would be no search at all. */
+  const matched = q
+    ? (ipos ?? []).filter((i) => i.name.toLowerCase().includes(q) || i.symbol.toLowerCase().includes(q))
+    : (ipos ?? []).filter(isRecent);
+  /* Sorted ONCE and then CAPPED, and the sections inherit both - filter()
+     preserves order, so every list below is in the same stage-aware order the
+     web home uses, over the same sixteen. */
+  const page = [...matched].sort(compareForList).slice(0, HOME_LIMIT);
+  /* The board control facets off THOSE SIXTEEN rather than off the catalogue.
+     Counting the wider set instead is the exact bug the web home records:
+     "SME 42" printed over a page showing eleven. */
+  const sorted = board === 'all' ? page : page.filter((i) => i.type === board);
   const openIpos = sorted.filter((i) => i.status === 'open');
   const upcoming = sorted.filter((i) => i.status === 'upcoming');
   const listed = sorted.filter((i) => i.status === 'listed' || i.status === 'closed');
@@ -355,30 +373,20 @@ export default function HomeScreen() {
             ) : null}
           </>
         )}
+
+        {ipos !== null && !offline ? (
+          <Pressable
+            onPress={() => { tapLight(); router.push('/ipos'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Browse all IPOs"
+            style={({ pressed }) => [styles.browseAll, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={styles.browseAllTxt}>Browse all IPOs</Text>
+            <ChevronRightIcon size={15} color={ui.indigo} strokeWidth={2.2} />
+          </Pressable>
+        ) : null}
       </ScrollView>
     </>
-  );
-}
-
-function CompactRow({ ipo, right, divider, onPress }: {
-  ipo: IpoFull;
-  right: React.ReactNode;
-  divider: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.compactRow, divider && styles.compactDivider, pressed && { opacity: 0.7 }]}
-    >
-      <CompanyLogo uri={ipo.logoUrl} name={ipo.name} size={36} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.compactName} numberOfLines={1}>{titleCase(ipo.name)}</Text>
-        <Text style={styles.compactSym} numberOfLines={1}>{ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}</Text>
-      </View>
-      {right}
-      <ChevronRightIcon size={15} color={ui.muted} strokeWidth={2} />
-    </Pressable>
   );
 }
 
@@ -421,6 +429,12 @@ const styles = StyleSheet.create({
   searchClose: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: ui.slateTint },
   // status chips with live counts
   filters: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 8, flexDirection: 'row' },
+  browseAll: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginHorizontal: 16, marginTop: 18, height: 46, borderRadius: 12,
+    backgroundColor: ui.indigoTint,
+  },
+  browseAllTxt: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   todayRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingTop: 12 },
   todayLbl: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 12, color: ui.title, letterSpacing: 0.3, textTransform: 'uppercase' },
   todayItem: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted },
@@ -449,10 +463,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', borderRadius: 20, marginHorizontal: 16,
     paddingHorizontal: 14, paddingVertical: 4, ...shadowCard,
   },
-  compactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
-  compactDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
-  compactName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
   compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
   compactPrice: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   gain: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', marginTop: 1, fontVariant: ['tabular-nums'] },
