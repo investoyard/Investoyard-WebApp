@@ -150,7 +150,13 @@ export class IpoService {
     type?: string; status?: string; q?: string; limit?: number; offset?: number;
     includeCatalogOnly?: boolean; from?: string; to?: string;
   }) {
-    const take = Math.min(Math.max(1, f.limit ?? 500), 2000);
+    /* DEFAULT IS THE WHOLE CATALOGUE, not a page of it (operator, 2026-10-26).
+       It used to be 500, and because NEITHER client passes a limit, both the
+       site and the app silently saw only the 500 newest by close date - the
+       older catalogue was unreachable from either. The payload is large and
+       that is the real cost; measure it before raising the 2000 cap, and give
+       /ipos proper from/to paging before the historical rows land. */
+    const take = Math.min(Math.max(1, f.limit ?? 2000), 2000);
     const rows = await this.prisma.ipo.findMany({
       where: {
         type: f.type as any,

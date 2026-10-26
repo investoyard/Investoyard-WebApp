@@ -120,9 +120,19 @@ export type IposResult =
 export async function getIposResult(): Promise<IposResult> {
   try {
     const res = await fetch(`${API_BASE}/ipos`);
-    if (!res.ok) return { ok: false, reason: 'unreachable' };
+    if (!res.ok) {
+      /* A STATUS means we reached something and it refused us - a Cloudflare
+         challenge (403/503) looks nothing like a dead network, and only the
+         status tells them apart. */
+      if (__DEV__) console.warn(`[api] GET ${API_BASE}/ipos -> HTTP ${res.status} ${res.statusText}`);
+      return { ok: false, reason: 'unreachable' };
+    }
     return { ok: true, ipos: ((await res.json()) as IpoDetail[]).map(enrich) };
-  } catch {
+  } catch (e: any) {
+    /* NO status means the request never completed: DNS, TLS trust, a blocked
+       port, or a dropped connection. React Native reports most of these as the
+       same "Network request failed", so the message is the only clue there is. */
+    if (__DEV__) console.warn(`[api] GET ${API_BASE}/ipos FAILED before any response: ${e?.message ?? e}`);
     return { ok: false, reason: 'unreachable' };
   }
 }
