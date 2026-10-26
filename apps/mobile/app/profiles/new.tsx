@@ -455,6 +455,19 @@ export default function NewProfileScreen() {
             <Field label="IFSC" value={ifsc} onChange={setIfsc} autoCapitalize="characters" placeholder="HDFC0001234" mono help={HELP.ifsc} error={E.ifsc} />
           )}
           <Field label="Address" value={address} onChange={setAddress} help={HELP.address} />
+          {/* PINCODE FIRST, because it fills the two fields under it (operator
+              ask on web 2026-10-20, carried to mobile 2026-10-26 - it was
+              applied to one surface and never grepped for on the other).
+              Asking for the city and then overwriting it a moment later is the
+              form arguing with the person filling it in - and because the fill
+              only touches what is EMPTY, a pincode asked for LAST could never
+              fill anything at all. */}
+          <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad"
+            help={dirReady ? (pinNote ?? HELP.pincode) : HELP.pincodeTyped}
+            /* An UNKNOWN pincode is an error, an AMBIGUOUS one is a note -
+               web draws that line and mobile did not. Field renders error
+               INSTEAD of help, so the two cannot stack. */
+            error={dirReady && pinNote === ERR.pincodeUnknown ? pinNote : undefined} />
           {dirReady ? (
             <>
               <PickerField
@@ -492,8 +505,6 @@ export default function NewProfileScreen() {
               <Field label="State" value={stateName} onChange={setStateName} help={HELP.stateTyped} />
             </>
           )}
-          <Field label="Pincode" value={pincode} onChange={(v) => setPincode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} mono keyboard="number-pad"
-            help={dirReady ? (pinNote ?? HELP.pincode) : HELP.pincodeTyped} />
           </>
           )}
         </Card>
