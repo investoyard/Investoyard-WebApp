@@ -343,7 +343,17 @@ img, svg { vertical-align: middle; }
 
 .ic-topics { display: flex; gap: 6px; flex-wrap: wrap; margin: 13px 0 0; }
 .ic-topics::-webkit-scrollbar { display: none; }
-.ic-topic { flex: 0 0 auto; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: var(--pill); padding: 6px 10px; cursor: pointer; white-space: nowrap; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s; }
+/* THE HORIZONTAL PADDING IS 7px BECAUSE OF A WEBFONT, NOT BECAUSE 7 LOOKS RIGHT.
+   The five chips (Reservation Lots Timeline Subs + Exp. Premium) needed 357.8px
+   in a 358px row under the old system-font stack - a fit with 0.2px to spare.
+   When the `html` vs `:root` specificity fix (2026-10-22) finally let Inter
+   paint, every chip grew: 376.1px total, +18.3px, and "Exp. Premium" dropped to
+   a second line on 14 of 16 cards. At 7px the row needs 346.1px, so it now has
+   11.9px of headroom instead of 0.2px.
+   DO NOT put this back to 10px without re-measuring the row against the card.
+   The page-overflow sweep run with the font fix could not have caught this: a
+   chip wrapping inside a flex container is not page overflow. */
+.ic-topic { flex: 0 0 auto; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: var(--pill); padding: 6px 7px; cursor: pointer; white-space: nowrap; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s; }
 .ic-topic:hover { color: var(--text); }
 .ic-topic.on { color: var(--brand); background: var(--brand-50); border-color: var(--brand-200); }
 .ic-topic .gp { color: var(--pos); font-weight: 600; } .ic-topic .gn { color: var(--neg); font-weight: 600; }

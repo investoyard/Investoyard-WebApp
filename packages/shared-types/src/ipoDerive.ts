@@ -752,19 +752,37 @@ export function subscriptionTable(ipo: IpoFull): { rows: SubRowT[]; total: SubRo
 }
 
 export interface TlItem { label: string; date?: string; }
-function addDays(d?: string, n = 1): string | undefined {
-  if (!d) return undefined;
-  const dt = new Date(d + 'T00:00:00');
-  dt.setDate(dt.getDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
+/** `extra` stores these as a date or a full ISO string; admin slices the same way. */
+const tlDay = (v: unknown): string | undefined => (typeof v === 'string' && v ? v.slice(0, 10) : undefined);
+/**
+ * The public key-dates timeline.
+ *
+ * REFUND AND DEMAT CREDIT ARE THE OPERATOR'S OWN FIELDS, not a derivation.
+ * They were `addDays(allotmentDate, 1)` until 2026-10-27, which was wrong twice
+ * over. It ignored `extra.refundDate` / `extra.dematDate` — the boxes on the IPO
+ * form, which admin's own catalog view has always read — and `addDays` itself
+ * was broken in IST: `new Date(d + 'T00:00:00')` is LOCAL midnight while
+ * `.toISOString()` is UTC, two zones in one expression, so the +1 was cancelled
+ * and it returned its input. All three rows therefore printed `allotmentDate`:
+ * CORE4 read 28 Oct for allotment, refunds AND demat credit where the operator
+ * had entered 28 / 29 / 29.
+ *
+ * NO FALLBACK WHEN THE OPERATOR HAS NOT ENTERED ONE (operator's call). A row
+ * with no date renders blank rather than a guess — the same rule that stopped
+ * `enrich()` synthesising financials. It is cheap: of 1,314 visible records only
+ * 8 have an allotment date without these fields. And a naive +1 would be wrong
+ * anyway — of the 119 records carrying both, 87 are allotment+1 but 22 of the
+ * other 31 are weekend skips, so the operator is applying a business-day rule
+ * that a bare increment cannot reproduce.
+ */
 export function timeline(ipo: IpoFull): TlItem[] {
+  const ex: any = (ipo as any).extra ?? {};
   return [
     { label: 'Open date', date: ipo.openDate },
     { label: 'Close date', date: ipo.closeDate },
     { label: 'Basis of allotment', date: ipo.allotmentDate },
-    { label: 'Initiation of refunds', date: addDays(ipo.allotmentDate, 1) },
-    { label: 'Credit to demat', date: addDays(ipo.allotmentDate, 1) },
+    { label: 'Initiation of refunds', date: tlDay(ex.refundDate) },
+    { label: 'Credit to demat', date: tlDay(ex.dematDate) },
     { label: 'Listing date', date: ipo.listingDate },
   ];
 }

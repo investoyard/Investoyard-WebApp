@@ -6,7 +6,7 @@
  * that were actually broken on 2026-10-07, so a regression on any of them puts
  * a wrong number back in front of an investor.
  */
-import { subscriptionTable, lotLadder, reservedPctFor, offeredByBucket, reservation } from './ipoDerive';
+import { subscriptionTable, lotLadder, reservedPctFor, offeredByBucket, reservation, timeline } from './ipoDerive';
 
 const RES = { qib: 50, nii: 15, retail: 35, employee: 5, total: 100 };
 const RSME = { qib: 0, nii: 50, retail: 50, employee: 0, total: 100 };
@@ -304,5 +304,77 @@ describe('reservation() — the legend reconciles to the issue size', () => {
     };
     const rows = reservation(both as any);
     expect(rows.filter((r) => r.key === 'employee')).toHaveLength(1);
+  });
+});
+
+/**
+ * THE KEY-DATES TIMELINE — the rows an investor reads to know when their money
+ * comes back. It had no test, and shipped two bugs at once until 2026-10-27:
+ * it ignored the operator's own refund/demat fields, and the `addDays` it used
+ * instead was a no-op in IST, so all three middle rows printed one date.
+ */
+describe('timeline — refund and demat are the operator’s fields', () => {
+  /* CORE4 as actually stored on 2026-10-26: the operator entered 29 Oct for
+     both, the page printed 28 Oct three times. */
+  const CORE4: any = {
+    openDate: '2026-10-23', closeDate: '2026-10-27',
+    allotmentDate: '2026-10-28', listingDate: '2026-10-30',
+    extra: { refundDate: '2026-10-29', dematDate: '2026-10-29' },
+  };
+
+  const byLabel = (ipo: any) => {
+    const m: Record<string, string | undefined> = {};
+    for (const r of timeline(ipo)) m[r.label] = r.date;
+    return m;
+  };
+
+  it('prints what the operator entered, not allotmentDate three times', () => {
+    const t = byLabel(CORE4);
+    expect(t['Basis of allotment']).toBe('2026-10-28');
+    expect(t['Initiation of refunds']).toBe('2026-10-29');
+    expect(t['Credit to demat']).toBe('2026-10-29');
+  });
+
+  it('never collapses the three middle rows onto one date', () => {
+    const t = byLabel(CORE4);
+    expect(t['Initiation of refunds']).not.toBe(t['Basis of allotment']);
+  });
+
+  it('leaves the row BLANK when the operator has not entered one, rather than guessing', () => {
+    /* Operator's call. A business-day guess printed beside real entered dates
+       would be indistinguishable from one, and only 8 records are affected. */
+    const t = byLabel({ ...CORE4, extra: {} });
+    expect(t['Initiation of refunds']).toBeUndefined();
+    expect(t['Credit to demat']).toBeUndefined();
+    expect(t['Basis of allotment']).toBe('2026-10-28');
+  });
+
+  it('accepts a full ISO string, which the importer and the note parser write', () => {
+    const t = byLabel({ ...CORE4, extra: { refundDate: '2026-10-29T00:00:00.000Z', dematDate: '2026-10-29T18:30:00.000Z' } });
+    expect(t['Initiation of refunds']).toBe('2026-10-29');
+    expect(t['Credit to demat']).toBe('2026-10-29');
+  });
+
+  it('survives a record with no extra at all', () => {
+    const t = byLabel({ openDate: '2026-10-23', closeDate: '2026-10-27' });
+    expect(t['Initiation of refunds']).toBeUndefined();
+    expect(Object.keys(t)).toHaveLength(6);
+  });
+
+  it('keeps the six rows in reading order', () => {
+    expect(timeline(CORE4).map((r) => r.label)).toEqual([
+      'Open date', 'Close date', 'Basis of allotment',
+      'Initiation of refunds', 'Credit to demat', 'Listing date',
+    ]);
+  });
+
+  it('SFCTECH: a weekend skip no increment could have produced', () => {
+    /* Allots Friday 30 Oct, operator's refund Monday 2 Nov. allotment+1 would
+       have published Saturday 31 Oct. */
+    const t = byLabel({
+      allotmentDate: '2026-10-30',
+      extra: { refundDate: '2026-11-02', dematDate: '2026-11-02' },
+    });
+    expect(t['Initiation of refunds']).toBe('2026-11-02');
   });
 });

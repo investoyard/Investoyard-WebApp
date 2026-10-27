@@ -1,4 +1,4 @@
-import { istTodayMs } from '@investoyard/shared-types';
+import { istDayMs, istTodayMs } from '@investoyard/shared-types';
 /** Shared display helpers for IPO detail panels — one source of truth so the
     listing card and the detail page use the exact same colour system & formats. */
 
@@ -84,7 +84,9 @@ export function timelineStates<T extends { date?: string }>(items: T[]): { item:
      two different zones in one expression, so it was wrong in a third way
      again rather than merely reader-relative. */
   const today = istTodayMs();
-  const parsed = items.map((x) => ({ item: x, ms: /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? new Date(x.date + 'T00:00:00').getTime() : null }));
+  /* istDayMs, not a local-midnight parse: `today` below is an IST instant and
+     the two bases only agree for a reader already in IST. */
+  const parsed = items.map((x) => ({ item: x, ms: istDayMs(x.date) }));
   let nowIdx = parsed.findIndex((p) => p.ms == null || (p.ms as number) >= today);
   if (nowIdx === -1) nowIdx = parsed.length;
   return parsed.map((p, i) => ({ ...p, state: i < nowIdx ? 'done' : i === nowIdx ? 'now' : '' }));

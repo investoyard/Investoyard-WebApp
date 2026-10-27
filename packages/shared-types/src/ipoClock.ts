@@ -145,7 +145,27 @@ export function istToday(now: number = Date.now()): string {
  * is, which a second independent derivation eventually would.
  */
 export function istTodayMs(now: number = Date.now()): number {
-  return Date.parse(`${istToday(now)}T00:00:00${IST_OFFSET}`);
+  return istDayMs(istToday(now)) as number;
+}
+
+/**
+ * Midnight IST of a GIVEN date, in ms — the counterpart to `istTodayMs`.
+ *
+ * It exists because three separate copies of the milestone comparison parsed
+ * their dates with `new Date(d + 'T00:00:00')` — LOCAL midnight — and compared
+ * the result against `istTodayMs()`, an IST instant. The two agree only for a
+ * reader already in IST, which is why it was invisible here; each of those
+ * three carried a comment saying the zone fix had landed, and only the
+ * `today` half of it ever did.
+ *
+ * Returns null for anything that is not a date, so a caller can keep
+ * distinguishing "no date" from "a date in the past".
+ */
+export function istDayMs(date?: string | null): number | null {
+  const d = dayOf(date);
+  if (!d) return null;
+  const ms = Date.parse(`${d}T00:00:00${IST_OFFSET}`);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /**

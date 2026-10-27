@@ -1,4 +1,4 @@
-import { istDaysUntil, istTodayMs } from '@investoyard/shared-types';
+import { istDayMs, istDaysUntil, istTodayMs } from '@investoyard/shared-types';
 /**
  * Mobile display helpers — mirrors apps/web/lib/format.ts + apps/web/lib/catColor.ts
  * so the app and the web front site present identical figures.
@@ -105,7 +105,9 @@ export function timelineStates<T extends { date?: string }>(items: T[]): { item:
   /* IST midnight. This took the UTC date and reopened it at LOCAL midnight,
      which is two zones in one expression. */
   const today = istTodayMs();
-  const parsed = items.map((x) => ({ item: x, ms: /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? new Date(x.date + 'T00:00:00').getTime() : null }));
+  /* istDayMs, not a local-midnight parse: `today` below is an IST instant and
+     the two bases only agree for a reader already in IST. */
+  const parsed = items.map((x) => ({ item: x, ms: istDayMs(x.date) }));
   let nowIdx = parsed.findIndex((p) => p.ms == null || (p.ms as number) >= today);
   if (nowIdx === -1) nowIdx = parsed.length;
   return parsed.map((p, i) => ({ ...p, state: i < nowIdx ? 'done' : i === nowIdx ? 'now' : '' }));

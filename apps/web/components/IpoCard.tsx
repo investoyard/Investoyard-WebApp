@@ -11,7 +11,7 @@ import { useStore, store } from '@/lib/store';
 import * as calc from '@/lib/ipoCalc';
 import { MON, catColor, shC, fmtDate, relText, segLabel, segTextColor, pctStr } from '@/lib/catColor';
 import { makeT, Lang } from '@investoyard/i18n';
-import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime, closeAt, openAt, istToday, istDaysUntil, istTodayMs } from '@investoyard/shared-types';
+import { LABEL, titleCase, shortName, toneOf, stageOf, demandWord, demandTier, fmtDateTime, closeAt, openAt, istToday, istDaysUntil, istTodayMs, istDayMs } from '@investoyard/shared-types';
 
 export type Topic = 'gmp' | 'reservation' | 'lot' | 'timeline' | 'sub';
 
@@ -504,7 +504,7 @@ export function TopicPanel({ k, ipo, tr, v2 = false }: { k: Topic; ipo: IpoFull;
     const items = calc.timeline(ipo);
     /* IST midnight. Was a UTC date reopened at LOCAL midnight — two zones in one expression. */
     const today = istTodayMs();
-    const parsed = items.map((x) => ({ ...x, ms: /^\d{4}-\d{2}-\d{2}$/.test(x.date ?? '') ? new Date(x.date + 'T00:00:00').getTime() : null }));
+    const parsed = items.map((x) => ({ ...x, ms: istDayMs(x.date) }));
     let nowIdx = parsed.findIndex((p) => p.ms == null || p.ms >= today);
     if (nowIdx === -1) nowIdx = parsed.length; // all done
     return (

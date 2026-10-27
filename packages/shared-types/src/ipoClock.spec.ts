@@ -7,10 +7,7 @@
    have gone on passing if the code read the reader's zone instead, which is
    the exact bug the IST pinning exists to fix. A test that only holds in one
    timezone cannot catch a timezone bug. */
-import {
-  DEFAULT_CLOSE_TIME, DEFAULT_OPEN_TIME, IST_OFFSET, IST_OFFSET_MIN,
-  closeAt, istClock, milestoneAt, openAt,
-} from './ipoClock';
+import { DEFAULT_CLOSE_TIME, DEFAULT_OPEN_TIME, IST_OFFSET, IST_OFFSET_MIN, closeAt, istClock, istDayMs, istToday, istTodayMs, milestoneAt, openAt } from './ipoClock';
 
 /* JPL is the record this was written for: the operator corrected its close to
    19:00 in the IPO form, which lands in `extra.closeDate`, while the column
@@ -156,5 +153,27 @@ describe('milestoneAt', () => {
     expect(milestoneAt(undefined)).toBeNull();
     expect(milestoneAt(null)).toBeNull();
     expect(milestoneAt('')).toBeNull();
+  });
+});
+
+describe('istDayMs — IST midnight of a given date', () => {
+  it('is an ABSOLUTE instant, so the assertion holds in any reader zone', () => {
+    expect(istDayMs('2026-10-28')).toBe(Date.parse('2026-10-27T18:30:00.000Z'));
+  });
+
+  it('agrees with istTodayMs for today, which is what the comparison relies on', () => {
+    const now = Date.parse('2026-10-28T09:00:00+05:30');
+    expect(istDayMs(istToday(now))).toBe(istTodayMs(now));
+  });
+
+  it('returns null for a missing or unparseable date, never 0 or NaN', () => {
+    expect(istDayMs(undefined)).toBeNull();
+    expect(istDayMs(null)).toBeNull();
+    expect(istDayMs('')).toBeNull();
+    expect(istDayMs('not-a-date')).toBeNull();
+  });
+
+  it('takes the day off a full ISO string', () => {
+    expect(istDayMs('2026-10-28T13:45:00.000Z')).toBe(istDayMs('2026-10-28'));
   });
 });
