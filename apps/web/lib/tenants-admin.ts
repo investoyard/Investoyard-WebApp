@@ -851,6 +851,22 @@ export const archiveAllotment = (ipoId: string) =>
   authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
 export const restoreAllotment = (ipoId: string) =>
   authed<{ restored: number }>(`${API}/admin/allotment/restore/${ipoId}`, { method: 'POST' });
+/**
+ * Delete ONE uploaded file and the rows it inserted.
+ *
+ * Refuses server-side for a file imported before per-file tracking
+ * (2026-10-27), whose rows carry no importId and cannot be told from their
+ * siblings — the error names `deleteAllotmentRecords` instead. Matched
+ * applications and the gz archive are deliberately left alone.
+ */
+export const deleteAllotmentImport = (id: string) =>
+  authed<{ deleted: number; fileName: string; matchedApplicationsLeftAlone: number }>(
+    `${API}/admin/allotment/imports/${id}`, { method: 'DELETE' });
+/** Delete EVERY allotment record for an IPO plus its import rows — the only
+ *  delete that reaches rows imported before per-file tracking. */
+export const deleteAllotmentRecords = (ipoId: string) =>
+  authed<{ deleted: number; imports: number; symbol: string }>(
+    `${API}/admin/allotment/records/${ipoId}`, { method: 'DELETE' });
 
 /* -------------------------------------------------- admin: IPO catalog import (Excel) */
 export interface IpoImportPreview {

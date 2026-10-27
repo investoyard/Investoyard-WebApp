@@ -1242,15 +1242,36 @@ model AllotmentRecord {
   ipoId          String
   ipo            Ipo     @relation(fields: [ipoId], references: [id])
   applicationNo  String
+  /// WHICH UPLOADED FILE INSERTED THIS ROW, so one file can be deleted
+  /// without touching the others. Deliberately NOT a foreign key: a FK
+  /// adds a constraint check to every one of a million bulk inserts, and
+  /// the delete path removes the rows before the import row anyway.
+  ///
+  /// NULL on every row imported before 2026-10-27 (1.6M of them) and on
+  /// RESTORED rows, because the gz archive format has no slot for it. Those
+  /// can only be removed by the per-IPO delete, which says so.
+  importId       String?
   pan            String  @default("")
   dpClientId     String? // DP id + client id (16 chars)
   category       String? // registrar bucket (IND / RET / SHA / EMP ...)
   name           String?
+  /// SHARES STAY Int DELIBERATELY. A single applicant cannot bid for more than
+  /// the issue offers, and the largest Indian issue ever is ~2.2e8 shares
+  /// against an INT4 ceiling of 2.1e9 — an order of magnitude of headroom. The
+  /// observed maximum across 1.6M rows is 1,269,000, i.e. 0.1% of the ceiling.
   appliedShares  Int     @default(0)
-  amount         Int     @default(0) // whole rupees applied / blocked
+  /// MONEY IS BigInt BECAUSE Int IS ONLY ₹214.75 CRORE (INT4, 2,147,483,647)
+  /// AND THAT IS SMALLER THAN A SINGLE QIB BID ON A BIG ISSUE. JIO's FILE2
+  /// (2026-10-27) died mid-import on exactly this — a ToSql /
+  /// ConversionError("Unable to fit in ...") out of createMany, after 419,982
+  /// of 999,999 rows had landed — and JPL's own partial data already held
+  /// ₹142.00 Cr, 66% of the ceiling, with 580,017 rows still unread. 36 issues
+  /// in the catalogue are larger than the ceiling, so this was waiting for
+  /// every one of them and not just for this file.
+  amount         BigInt  @default(0) // whole rupees applied / blocked
   allottedShares Int     @default(0)
-  allottedAmount Int     @default(0) // whole rupees adjusted for allotment
-  refundAmount   Int     @default(0) // whole rupees released
+  allottedAmount BigInt  @default(0) // whole rupees adjusted for allotment
+  refundAmount   BigInt  @default(0) // whole rupees released
   reason         String? // registrar rejection reason (non-allottees)
   /// Trading member / broker as the registrar names it. Operator ask
   /// 2026-10-13. Nullable because every row imported before that date has no
@@ -1260,6 +1281,7 @@ model AllotmentRecord {
   @@unique([ipoId, applicationNo])
   @@index([ipoId, pan])
   @@index([ipoId, amount])
+  @@index([importId])
 }
 
 /// One uploaded registrar file (registrars split big IPOs into FILE1..FILEn, so

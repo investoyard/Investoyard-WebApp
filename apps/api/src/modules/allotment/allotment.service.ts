@@ -26,8 +26,9 @@ const BATCH = 5000;
    which `|| null` turns into a null column rather than a crash. */
 type Row = [string, string, string, string, string, number, number, number, number, number, string, string?];
 
-const toRecord = (ipoId: string, r: Row) => ({
+const toRecord = (ipoId: string, importId: string | null, r: Row) => ({
   ipoId,
+  importId,
   applicationNo: r[0],
   pan: r[1],
   dpClientId: r[2] || null,
@@ -40,6 +41,30 @@ const toRecord = (ipoId: string, r: Row) => ({
   refundAmount: r[9],
   reason: r[10] || null,
   tmName: r[11] || null,
+});
+
+/**
+ * THE MONEY COLUMNS ARE BigInt, AND A BigInt DOES NOT SURVIVE JSON.stringify —
+ * it throws "Do not know how to serialize a BigInt", so a raw record reaching a
+ * JSON response or the NDJSON archive would 500 rather than render wrong.
+ *
+ * Converting to a number is EXACT: a double holds every integer up to 2^53,
+ * which is ₹9,00,71,992 crore, and it keeps the API shape numeric so no client
+ * changes. The column is wide for the same reason the conversion is safe —
+ * INT4's ₹214.75 Cr is smaller than one QIB bid, 2^53 is larger than any issue
+ * that will ever exist.
+ *
+ * ONLY TWO SITES NEED THIS AND THEY ARE NAMED HERE RATHER THAN LEFT TO BE
+ * REDISCOVERED: searchRecords, which returns raw rows, and doArchive, which
+ * JSON.stringifies the row tuple. The CSV export is already safe because esc
+ * calls String(), which a BigInt answers correctly; the matching sweep and the
+ * consumer allotment checker read only the Int share columns.
+ */
+const moneyToNumber = <T extends { amount: bigint | number; allottedAmount: bigint | number; refundAmount: bigint | number }>(r: T) => ({
+  ...r,
+  amount: Number(r.amount),
+  allottedAmount: Number(r.allottedAmount),
+  refundAmount: Number(r.refundAmount),
 });
 
 /**
@@ -119,7 +144,7 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
         if (!line) continue;
         const row = JSON.parse(line) as Row;
         if (row[7] > 0) allotted++;
-        batch.push(toRecord(ipoId, row));
+        batch.push(toRecord(ipoId, importId, row));
         if (batch.length >= BATCH) await flush();
       }
       await flush();
@@ -264,7 +289,8 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     if (q.amount != null && Number.isFinite(q.amount) && q.amount >= 0) {
       const field = q.amountField === 'allotted' ? 'allottedAmount' : 'amount';
       const op = q.amountOp === '>' ? 'gt' : q.amountOp === '<' ? 'lt' : 'equals';
-      where[field] = { [op]: Math.round(q.amount) };
+      /* A BigInt column. Prisma coerces a number, but be explicit. */
+      where[field] = { [op]: BigInt(Math.round(q.amount)) };
     }
     if (q.status === 'allotted') where.allottedShares = { gt: 0 };
     else if (q.status === 'not_allotted') where.allottedShares = 0;
@@ -282,7 +308,7 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       this.prisma.allotmentRecord.count({ where }),
       this.prisma.allotmentRecord.findMany({ where, orderBy: { id: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }),
     ]);
-    return { total, page, pageSize, rows };
+    return { total, page, pageSize, rows: rows.map(moneyToNumber) };
   }
 
   /**
@@ -359,7 +385,8 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
         for (const r of page) {
           rows++;
           const row: Row = [r.applicationNo, r.pan, r.dpClientId ?? '', r.category ?? '', r.name ?? '',
-            r.appliedShares, r.amount, r.allottedShares, r.allottedAmount, r.refundAmount, r.reason ?? ''];
+            r.appliedShares, Number(r.amount), r.allottedShares, Number(r.allottedAmount),
+            Number(r.refundAmount), r.reason ?? ''];
           yield JSON.stringify(row) + '\n';
         }
       }
@@ -371,13 +398,89 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       create: { ipoId, fileName, rows, fileSize },
       update: { fileName, rows, fileSize, createdAt: new Date() },
     });
-    // purge in slices so we never hold a single giant delete transaction
-    for (;;) {
-      const slice: { id: number }[] = await this.prisma.allotmentRecord.findMany({ where: { ipoId }, select: { id: true }, take: 50000 });
-      if (slice.length === 0) break;
-      await this.prisma.allotmentRecord.deleteMany({ where: { id: { in: slice.map((s) => s.id) } } });
-    }
+    await this.purgeRecords({ ipoId });
     this.log.log(`archived ${rows} allotment rows of ${symbol} → ${fileName}`);
+  }
+
+  /**
+   * Delete matching records in SLICES, never one giant transaction.
+   *
+   * Extracted from the archive purge so the two destructive paths cannot drift:
+   * a million-row delete held in one transaction is the same mistake that
+   * forces the PARSER into its own process.
+   *
+   * The `where` is deliberately a narrow union rather than a Prisma input type:
+   * these are the ONLY two scopes a delete may ever have, and spelling them out
+   * stops a looser filter reaching a bulk delete by accident.
+   */
+  private async purgeRecords(where: { ipoId: string } | { importId: string }): Promise<number> {
+    let gone = 0;
+    for (;;) {
+      const slice: { id: number }[] =
+        await this.prisma.allotmentRecord.findMany({ where, select: { id: true }, take: 50000 });
+      if (slice.length === 0) return gone;
+      const res = await this.prisma.allotmentRecord.deleteMany({ where: { id: { in: slice.map((s) => s.id) } } });
+      gone += res.count;
+    }
+  }
+
+  /**
+   * Delete ONE uploaded file: its rows, then the import row itself.
+   *
+   * TWO THINGS IT DELIBERATELY DOES NOT TOUCH (operator's call, 2026-10-27):
+   *
+   *  - MATCHED APPLICATIONS. The import also writes our own Application rows
+   *    (status allotted / not_allotted, allottedLots, allotmentReason) and
+   *    notifies the investor. Reverting an investor who has already been told
+   *    they were allotted is worse than leaving the record; re-uploading
+   *    re-runs the matching anyway.
+   *  - THE GZ ARCHIVE. Once an IPO is archived and purged, that file is the
+   *    ONLY remaining copy, so deleting it here would make the operation
+   *    unrecoverable with nothing to restore from.
+   *
+   * IT REFUSES when the import predates per-file tracking and its rows are
+   * therefore unattributable (importId null on all of them). Removing the
+   * record of a million-row import while the rows stay in the table is the
+   * half-action that leaves somebody confused later; the message names the
+   * per-IPO delete instead.
+   */
+  async deleteImport(id: string) {
+    const imp = await this.prisma.allotmentImport.findUnique({ where: { id } });
+    if (!imp) throw new NotFoundException('Import not found.');
+    if (imp.status === 'processing') {
+      throw new BadRequestException('That import is still running. Wait for it to finish or fail, then delete it.');
+    }
+    /* The closure pattern restoreIpo already uses: enqueue returns void, so
+       the count comes back through a captured variable. */
+    let deleted = 0;
+    await this.enqueue(async () => { deleted = await this.purgeRecords({ importId: id }); });
+    if (deleted === 0 && imp.imported > 0) {
+      throw new BadRequestException(
+        `This file was imported before per-file tracking (2026-10-27), so its ${imp.imported.toLocaleString('en-IN')} rows `
+        + 'cannot be told apart from the other files for this IPO. Use "Delete all allotment data for this IPO" instead.',
+      );
+    }
+    await this.prisma.allotmentImport.delete({ where: { id } });
+    return { deleted, fileName: imp.fileName, matchedApplicationsLeftAlone: imp.matched };
+  }
+
+  /**
+   * Delete EVERY allotment row for an IPO, plus all of its import rows.
+   *
+   * The catch-all, and the only thing that reaches rows imported before
+   * per-file tracking. Same two exclusions as `deleteImport`: matched
+   * applications and the gz archive are left alone.
+   */
+  async deleteIpoRecords(ipoId: string) {
+    const ipo = await this.prisma.ipo.findUnique({ where: { id: ipoId }, select: { symbol: true } });
+    if (!ipo) throw new NotFoundException('IPO not found.');
+    const running = await this.prisma.allotmentImport.count({ where: { ipoId, status: 'processing' } });
+    if (running > 0) throw new BadRequestException('An import for this IPO is still running. Wait for it to finish, then delete.');
+    let deleted = 0;
+    await this.enqueue(async () => { deleted = await this.purgeRecords({ ipoId }); });
+    const imports = await this.prisma.allotmentImport.deleteMany({ where: { ipoId } });
+    this.log.log(`deleted ${deleted} allotment rows and ${imports.count} import rows for ${ipo.symbol}`);
+    return { deleted, imports: imports.count, symbol: ipo.symbol };
   }
 
   /** Re-import an archived IPO's records from the gz file, then drop the archive. */
@@ -399,7 +502,9 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       };
       for await (const line of rl) {
         if (!line) continue;
-        batch.push(toRecord(ipoId, JSON.parse(line) as Row));
+        /* null: the archive format carries no importId, so a restored row is
+           only ever removable by the per-IPO delete. */
+        batch.push(toRecord(ipoId, null, JSON.parse(line) as Row));
         if (batch.length >= BATCH) await flush();
       }
       await flush();

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, Param, Post, Query, Res,
+  BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Res,
   UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -130,6 +130,31 @@ export class AllotmentController {
       (chunk) => res.write(chunk),
     );
     res.end();
+  }
+
+  /**
+   * Delete ONE uploaded file and the rows it inserted.
+   *
+   * Matched applications and the gz archive are deliberately left alone —
+   * see `deleteImport`. Refuses for a file imported before per-file
+   * tracking, because its rows cannot be told from its siblings.
+   */
+  @Delete('imports/:id')
+  @RequirePermissions('bids.manage')
+  deleteImport(@Param('id') id: string) {
+    return this.svc.deleteImport(id);
+  }
+
+  /**
+   * Delete EVERY allotment row for an IPO, plus all of its import rows.
+   *
+   * The catch-all, and the only thing that reaches rows imported before
+   * per-file tracking.
+   */
+  @Delete('records/:ipoId')
+  @RequirePermissions('bids.manage')
+  deleteIpoRecords(@Param('ipoId') ipoId: string) {
+    return this.svc.deleteIpoRecords(ipoId);
   }
 
   @Post('archive/:ipoId')
