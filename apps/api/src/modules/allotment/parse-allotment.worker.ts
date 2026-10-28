@@ -40,7 +40,14 @@ const COLS: Record<string, string[]> = {
      on `AllotmentImport.headers` — one real upload names the column and this
      list stops being a guess. An unmatched column simply leaves the field null;
      it never writes a wrong value. */
-  tm: ['TMNAME', 'TM', 'TRADINGMEMBER', 'TRADINGMEMBERNAME', 'BROKERNAME', 'BROKER',
+  /* `BIDBROKER` FIRST, BECAUSE IT IS THE ONLY ONE EVER SEEN IN A REAL FILE.
+     The list below it was provisional and WRONG: JIO's registrar names the
+     column BID_BROKER, which none of the old candidates matched, so tmName
+     was null on all 1,419,960 JPL rows and the 2026-10-13 feature had never
+     worked on a document. Confirmed against the header row recorded on
+     `AllotmentImport.headers`, which is exactly what that column is for. */
+  tm: ['BIDBROKER', 'BIDBROKERNAME', 'BIDBROKERID',
+    'TMNAME', 'TM', 'TRADINGMEMBER', 'TRADINGMEMBERNAME', 'BROKERNAME', 'BROKER',
     'MEMBERNAME', 'MEMBER', 'SYNDICATEMEMBER', 'TMCODE', 'BROKERCODE', 'TRADINGMEMBERCODE'],
 };
 const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');

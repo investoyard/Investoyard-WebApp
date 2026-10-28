@@ -33,6 +33,17 @@ const ALLOWED = new Set(['.dbf', '.xlsb', '.xlsx', '.xls', '.csv']);
 const MAX_FILE = 126 * 1024 * 1024;
 
 /** Admin — registrar allotment imports + the allotment-record browser. */
+/**
+ * Accept a pasted column however it arrives - newline, comma, space or tab
+ * separated, or an array from a client that split it already. The operator
+ * copies these out of a spreadsheet, and which separator comes with it is
+ * not something to make them think about.
+ */
+function splitPans(v: string[] | string | undefined): string[] {
+  if (Array.isArray(v)) return v;
+  return String(v ?? '').split(/[\s,;]+/).filter(Boolean);
+}
+
 @Controller('admin/allotment')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AllotmentController {
@@ -68,6 +79,35 @@ export class AllotmentController {
   @RequirePermissions('bids.view')
   one(@Param('id') id: string) {
     return this.svc.getImport(id);
+  }
+
+  /**
+   * Bulk PAN lookup, pivoted to one line per PAN.
+   *
+   * POST rather than GET: 5,000 PANs do not belong in a query string, and
+   * a PAN list is not something to leave sitting in an access log.
+   */
+  @Post('pan-summary')
+  @RequirePermissions('bids.view')
+  panSummary(@Body() body: { ipoId?: string; pans?: string[] | string }) {
+    if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
+    return this.svc.panSummary(body.ipoId, splitPans(body.pans));
+  }
+
+  /** The same pivot as a file. Streamed as text; the row count is bounded by
+   *  the paste limit, so this needs none of the cursoring the record export does. */
+  @Post('pan-summary.csv')
+  @RequirePermissions('bids.view')
+  async panSummaryCsv(
+    @Body() body: { ipoId?: string; pans?: string[] | string },
+    @Res() res: Response,
+  ) {
+    if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
+    const out = await this.svc.panSummaryCsv(body.ipoId, splitPans(body.pans));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${out.symbol}-pan-summary.csv"`);
+    /* BOM first, or Excel reads the system codepage and mangles names. */
+    res.send('\uFEFF' + out.csv);
   }
 
   @Get('summary')

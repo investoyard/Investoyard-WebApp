@@ -19,6 +19,21 @@ const ARCHIVE_DIR = join(UPLOAD_DIR, 'allotment-archive');
 const RETENTION_DAYS = 60;
 const SWEEP_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const BATCH = 5000;
+/** Pasted PANs per bulk search. 10,000 measured at 244 ms, so this is about a
+    sensible response size rather than speed. */
+const PAN_SUMMARY_MAX = 5000;
+/** The registrar's own three outcomes, in the operator's reading order. */
+export type PanStatus = 'ALLOTTED' | 'NOT ALLOTTED' | 'REJECTED';
+/** One application under one PAN, named as the registrar names its columns. */
+export interface PanSummaryRecord {
+  applicationNo: string;
+  bidCatg: string | null;
+  sharesApplied: number;
+  amountPaid: number;
+  sharesAllotted: number;
+  applnStatus: PanStatus;
+  reasonForRejection: string | null;
+}
 
 /** normalized row — same tuple the parser worker emits, one JSON array per line */
 /* `tmName` is APPENDED (index 11), never inserted, so an archive written before
@@ -256,12 +271,33 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
 
   // ── queries (admin) ────────────────────────────────────────────────────────
 
-  listImports(ipoId?: string) {
-    return this.prisma.allotmentImport.findMany({
+  /**
+   * Each import, plus HOW MANY OF ITS ROWS CAN ACTUALLY BE DELETED.
+   *
+   * `trackedRows` exists so the UI can disable the per-file delete instead of
+   * letting it 400. Every row imported before 2026-10-27 carries no importId,
+   * so on the day per-file delete shipped it refused on ALL THREE existing
+   * imports - a button that could only fail, which is the thing this codebase
+   * says is worse than no button, and I had cited that rule elsewhere while
+   * breaking it here.
+   *
+   * ONE groupBy rather than a count per row: this list is 50 imports and a
+   * query each would be 50 round trips to render a table.
+   */
+  async listImports(ipoId?: string) {
+    const imports = await this.prisma.allotmentImport.findMany({
       where: ipoId ? { ipoId } : undefined,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+    if (imports.length === 0) return [];
+    const counts = await this.prisma.allotmentRecord.groupBy({
+      by: ['importId'],
+      where: { importId: { in: imports.map((i) => i.id) } },
+      _count: { _all: true },
+    });
+    const tracked = new Map(counts.map((c) => [c.importId as string, c._count._all]));
+    return imports.map((i) => ({ ...i, trackedRows: tracked.get(i.id) ?? 0 }));
   }
 
   async getImport(id: string) {
@@ -481,6 +517,174 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     const imports = await this.prisma.allotmentImport.deleteMany({ where: { ipoId } });
     this.log.log(`deleted ${deleted} allotment rows and ${imports.count} import rows for ${ipo.symbol}`);
     return { deleted, imports: imports.count, symbol: ipo.symbol };
+  }
+
+  /**
+   * THE REGISTRAR'S THREE OUTCOMES, derived from the two columns that carry
+   * them. Measured across 1.6M rows and the split is clean: allotted rows
+   * NEVER carry a reason, so the three are mutually exclusive and exhaustive
+   * (379,339 / 930,694 / 336,479).
+   *
+   * THE FILE ALSO STATES `APPLN_STATUS` IN ITS OWN COLUMN AND WE DISCARD IT —
+   * `parse-allotment.worker.ts` reads it only as a fallback for files with no
+   * shares-allotted column. So this is OUR word, not the document's, which is
+   * weaker than this codebase normally accepts. Operator's call (2026-10-28):
+   * derive it, because the derivation works on all 1.6M existing rows today
+   * while capturing the column would only fill rows imported afterwards.
+   * Storing it verbatim is the better answer the day a re-import is cheap.
+   */
+  private static applnStatus(r: { allottedShares: number; reason?: string | null }): PanStatus {
+    if (r.allottedShares > 0) return 'ALLOTTED';
+    return (r.reason ?? '').trim() ? 'REJECTED' : 'NOT ALLOTTED';
+  }
+
+  /** Allotted first, then not-allotted, then rejected — the operator's order. */
+  private static readonly STATUS_RANK: Record<PanStatus, number> = {
+    ALLOTTED: 0, 'NOT ALLOTTED': 1, REJECTED: 2,
+  };
+
+  /**
+   * Bulk PAN lookup, pivoted to ONE LINE PER PAN.
+   *
+   * A PAN can hold several records in one issue — the worst in the data is 18,
+   * all not-allotted across EMP and IND — so each record contributes its own
+   * block of the registrar's own columns rather than being summed away
+   * (operator's call: summing would hide which application was which).
+   * `maxRecords` tells the caller how wide the table has to be.
+   *
+   * EXACT match on PAN, not the `startsWith` the single-PAN search uses: a
+   * pasted list is a list of whole PANs, and a prefix match would silently pull
+   * in strangers' records under somebody else's heading.
+   *
+   * SCOPED TO ONE IPO (operator's call). 18,840 PANs appear in more than one
+   * issue, and putting two issues on one line would make Applied and Allotted
+   * figures that belong to different offers read as one total.
+   *
+   * Measured: 10,000 PANs against JPL's 1.42M rows in 244 ms, because
+   * `@@index([ipoId, pan])` already exists. The cap is about a sensible
+   * response size rather than speed.
+   */
+  async panSummary(ipoId: string, rawPans: string[]) {
+    const ipo = await this.prisma.ipo.findUnique({ where: { id: ipoId }, select: { symbol: true, name: true } });
+    if (!ipo) throw new NotFoundException('IPO not found.');
+
+    /* Dedupe and validate before touching the database. An invalid PAN is
+       REPORTED rather than dropped: a typo in a pasted column is the single
+       likeliest reason a PAN "is not in the file". */
+    const seen = new Set<string>();
+    const pans: string[] = [];
+    const invalid: string[] = [];
+    for (const raw of rawPans) {
+      const pan = String(raw ?? '').trim().toUpperCase();
+      if (!pan) continue;
+      if (seen.has(pan)) continue;
+      seen.add(pan);
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) { invalid.push(pan); continue; }
+      pans.push(pan);
+    }
+    if (pans.length === 0 && invalid.length === 0) throw new BadRequestException('Paste at least one PAN.');
+    if (pans.length > PAN_SUMMARY_MAX) {
+      throw new BadRequestException(
+        `${pans.length.toLocaleString('en-IN')} PANs pasted — the limit is ${PAN_SUMMARY_MAX.toLocaleString('en-IN')} per search. Split the list.`,
+      );
+    }
+
+    const found = pans.length
+      ? await this.prisma.allotmentRecord.findMany({
+        where: { ipoId, pan: { in: pans } },
+        select: {
+          pan: true, applicationNo: true, category: true, appliedShares: true,
+          amount: true, allottedShares: true, reason: true,
+        },
+      })
+      : [];
+
+    const byPan = new Map<string, PanSummaryRecord[]>();
+    for (const r of found) {
+      const rec: PanSummaryRecord = {
+        applicationNo: r.applicationNo,
+        bidCatg: r.category ?? null,
+        sharesApplied: r.appliedShares,
+        amountPaid: Number(r.amount),
+        sharesAllotted: r.allottedShares,
+        applnStatus: AllotmentService.applnStatus(r),
+        reasonForRejection: (r.reason ?? '').trim() || null,
+      };
+      const list = byPan.get(r.pan) ?? [];
+      list.push(rec);
+      byPan.set(r.pan, list);
+    }
+
+    /* Order inside a PAN: group rank, then application number, so two
+       identical requests cannot come back in different orders. */
+    for (const list of byPan.values()) {
+      list.sort((a, b) =>
+        AllotmentService.STATUS_RANK[a.applnStatus] - AllotmentService.STATUS_RANK[b.applnStatus]
+        || a.applicationNo.localeCompare(b.applicationNo, undefined, { numeric: true }));
+    }
+
+    /* PANs in the order they were pasted, so the result lines up with the
+       column the operator copied from. */
+    const rows = pans.filter((p) => byPan.has(p)).map((pan) => {
+      const records = byPan.get(pan)!;
+      const counts = { allotted: 0, notAllotted: 0, rejected: 0 };
+      for (const r of records) {
+        if (r.applnStatus === 'ALLOTTED') counts.allotted++;
+        else if (r.applnStatus === 'REJECTED') counts.rejected++;
+        else counts.notAllotted++;
+      }
+      return { pan, records, counts };
+    });
+
+    return {
+      symbol: ipo.symbol,
+      name: ipo.name,
+      requested: pans.length,
+      invalid,
+      /* Valid, but this registrar file has no row for them. Often the answer
+         the operator actually wants, and it would otherwise just be absent. */
+      notFound: pans.filter((p) => !byPan.has(p)),
+      maxRecords: rows.reduce((m, r) => Math.max(m, r.records.length), 0),
+      rows,
+    };
+  }
+
+  /**
+   * The same pivot as CSV, from the SAME builder — so a download is what the
+   * screen showed rather than a second opinion about it, the rule the record
+   * export already follows with `recordWhere`.
+   *
+   * Headers use the REGISTRAR'S OWN column names, which is what the operator
+   * reads: every one of the seven was confirmed verbatim against the header
+   * row stored on `AllotmentImport.headers`.
+   */
+  async panSummaryCsv(ipoId: string, rawPans: string[]) {
+    const res = await this.panSummary(ipoId, rawPans);
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const per = ['APPLICATION_NO', 'BID_CATG', 'SHARES_APPLIED', 'AMOUNT_PAID', 'SHARES_ALLOTED', 'APPLN_STATUS', 'REASON_FOR_REJECTION'];
+    const width = Math.max(1, res.maxRecords);
+    const head = ['PAN'];
+    for (let i = 1; i <= width; i++) for (const c of per) head.push(width === 1 ? c : `${c}_${i}`);
+    const lines = [head.join(',')];
+    for (const row of res.rows) {
+      const cells: unknown[] = [row.pan];
+      for (let i = 0; i < width; i++) {
+        const r = row.records[i];
+        cells.push(
+          r?.applicationNo ?? '', r?.bidCatg ?? '', r?.sharesApplied ?? '', r?.amountPaid ?? '',
+          r?.sharesAllotted ?? '', r?.applnStatus ?? '', r?.reasonForRejection ?? '',
+        );
+      }
+      lines.push(cells.map(esc).join(','));
+    }
+    /* Not-found PANs ride along rather than being dropped from the file. */
+    for (const pan of res.notFound) {
+      lines.push([pan, ...Array(width * per.length).fill('')].map(esc).join(','));
+    }
+    return { symbol: res.symbol, csv: lines.join('\n') + '\n', rows: res.rows.length, notFound: res.notFound.length };
   }
 
   /** Re-import an archived IPO's records from the gz file, then drop the archive. */

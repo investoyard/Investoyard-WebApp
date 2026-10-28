@@ -793,6 +793,9 @@ export interface AllotmentImportRow {
   status: 'processing' | 'done' | 'failed'; stage?: string | null;
   totalRows: number; imported: number; allotted: number; matched: number;
   error?: string | null; createdAt: string; finishedAt?: string | null;
+  /** Rows carrying this importId, so the UI can disable per-file delete
+   *  instead of letting it 400. 0 on every import from before 2026-10-27. */
+  trackedRows?: number;
 }
 export interface AllotmentRecordRow {
   id: number; applicationNo: string; pan: string; dpClientId?: string | null;
@@ -849,6 +852,69 @@ export const searchAllotmentRecords = (q: {
   `${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
 export const archiveAllotment = (ipoId: string) =>
   authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
+/** The registrar's own three outcomes, in the operator's reading order. */
+export type PanStatus = 'ALLOTTED' | 'NOT ALLOTTED' | 'REJECTED';
+/** One application under one PAN, named as the registrar names its columns —
+ *  every one of these seven was confirmed verbatim against the header row
+ *  stored on `AllotmentImport.headers`. */
+export interface PanSummaryRecord {
+  applicationNo: string;
+  bidCatg: string | null;
+  sharesApplied: number;
+  amountPaid: number;
+  sharesAllotted: number;
+  applnStatus: PanStatus;
+  reasonForRejection: string | null;
+}
+export interface PanSummary {
+  symbol: string;
+  name: string;
+  /** valid PANs actually looked up, after dedupe */
+  requested: number;
+  /** pasted but not a PAN — reported rather than dropped, because a typo is the
+   *  likeliest reason a PAN "is not in the file" */
+  invalid: string[];
+  /** valid, but this registrar file has no row for them */
+  notFound: string[];
+  /** the widest PAN in the result — how many column blocks the table needs */
+  maxRecords: number;
+  rows: { pan: string; records: PanSummaryRecord[]; counts: { allotted: number; notAllotted: number; rejected: number } }[];
+}
+/**
+ * Bulk PAN lookup, pivoted to one line per PAN, scoped to one IPO.
+ *
+ * POST rather than GET: 5,000 PANs do not belong in a query string, and a PAN
+ * list is not something to leave sitting in an access log.
+ */
+export const panSummary = (ipoId: string, pans: string) =>
+  authed<PanSummary>(`${API}/admin/allotment/pan-summary`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ipoId, pans }),
+  });
+export const PAN_SUMMARY_MAX = 5000;
+/**
+ * The same pivot as a file. A POST, so it cannot be a plain <a href> like the
+ * record export - the PAN list is the request body. Mirrors
+ * exportPartnerApiPrintsCsv, which is the existing admin CSV pattern.
+ */
+export async function exportPanSummaryCsv(ipoId: string, pans: string, symbol: string) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/allotment/pan-summary.csv`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ipoId, pans }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({} as any));
+    throw new Error((e as any).message || `${res.status} ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${symbol}-pan-summary.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 export const restoreAllotment = (ipoId: string) =>
   authed<{ restored: number }>(`${API}/admin/allotment/restore/${ipoId}`, { method: 'POST' });
 /**

@@ -406,12 +406,26 @@ export default function ImportAllotmentPage() {
                   <td className="mono">{fmtInt(r.matched)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtDt(r.createdAt)}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {canManage && r.status !== 'processing' && (
-                      <button className="icon-btn danger" disabled={busy} onClick={() => deleteOneImport(r)}
-                        title="Delete this file and the rows it imported" aria-label={`Delete ${r.fileName}`}>
-                        <Icon name="trash" size={15} />
-                      </button>
-                    )}
+                    {canManage && r.status !== 'processing' && (() => {
+                      /* A BUTTON THAT CAN ONLY FAIL IS WORSE THAN NO BUTTON.
+                         Rows imported before per-file tracking carry no
+                         importId, so the server refuses with a 400 and names
+                         the per-IPO delete. On the day this shipped that was
+                         ALL THREE existing imports, so the button 400d every
+                         time it was pressed. Disabled and explained instead;
+                         the server keeps refusing as a backstop. */
+                      const untracked = (r.trackedRows ?? 0) === 0 && r.imported > 0;
+                      return (
+                        <button className="icon-btn danger" disabled={busy || untracked}
+                          onClick={() => deleteOneImport(r)}
+                          title={untracked
+                            ? `Imported before per-file tracking, so its ${fmtInt(r.imported)} rows cannot be told from the other files for this IPO. Use "Delete all data" on the card above.`
+                            : `Delete this file and the ${fmtInt(r.trackedRows ?? 0)} rows it imported`}
+                          aria-label={`Delete ${r.fileName}`}>
+                          <Icon name="trash" size={15} />
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
