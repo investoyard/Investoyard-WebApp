@@ -22,6 +22,11 @@ const BATCH = 5000;
 /** Pasted PANs per bulk search. 10,000 measured at 244 ms, so this is about a
     sensible response size rather than speed. */
 const PAN_SUMMARY_MAX = 5000;
+/** Rows per purge statement. Bounded so a million-row delete is never ONE
+    transaction; the subquery form means the old 32,767 bind-variable ceiling
+    cannot be reached whatever this is set to. 20,000 ids measured at 161 ms,
+    so 10,000 keeps each statement well inside a second. */
+const PURGE_BATCH = 10000;
 /** The registrar's own three outcomes, in the operator's reading order. */
 export type PanStatus = 'ALLOTTED' | 'NOT ALLOTTED' | 'REJECTED';
 /** One application under one PAN, named as the registrar names its columns. */
@@ -109,6 +114,25 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /**
+   * Serialise a job AND LET ITS FAILURE REACH THE CALLER.
+   *
+   * `enqueue` ends in a `.catch` that logs and swallows, which is right for a
+   * background sweep and WRONG for anything whose result is reported back. It
+   * is how `deleteIpoRecords` came to answer "Deleted 0 records and 2 import
+   * rows": the purge threw on its first batch, the error went to a log that
+   * `web.config` disables (`loggingEnabled="false"`), and the method carried
+   * on to delete the import rows and report success.
+   *
+   * The chain is kept alive either way, so one failed job cannot wedge every
+   * later import behind a rejected promise.
+   */
+  private enqueueResult<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(job);
+    this.chain = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   /** serialize heavy jobs — imports/archives never overlap (one 3-4 GB worker max) */
@@ -439,24 +463,50 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Delete matching records in SLICES, never one giant transaction.
+   * Delete matching records in SLICES, never one giant transaction - a
+   * million-row delete held in one is the same mistake that forces the PARSER
+   * into its own process. Shared by both destructive paths so they cannot
+   * drift, and the `where` is a narrow union rather than a Prisma input type:
+   * these are the ONLY two scopes a delete may ever have, and spelling them
+   * out stops a looser filter reaching a bulk delete by accident.
    *
-   * Extracted from the archive purge so the two destructive paths cannot drift:
-   * a million-row delete held in one transaction is the same mistake that
-   * forces the PARSER into its own process.
+   * NO `id IN (...)` LIST, AND THAT IS THE FIX RATHER THAN A SMALLER NUMBER.
+   * This was `findMany({ take: 50000 })` then `deleteMany({ id: { in: ids } })`,
+   * which throws on the FIRST batch:
    *
-   * The `where` is deliberately a narrow union rather than a Prisma input type:
-   * these are the ONLY two scopes a delete may ever have, and spelling them out
-   * stops a looser filter reaching a bulk delete by accident.
+   *     too many bind variables in prepared statement,
+   *     expected maximum of 32767, received 50000
+   *
+   * The ceiling is 32,767, not the 65,535 a reading of the wire protocol
+   * suggests. Tuning 50,000 down would have worked and left the same class of
+   * bug one data-growth step away; a subquery sends TWO parameters whatever the
+   * batch size, so the limit stops being reachable at all. It also drops the
+   * separate `findMany`, halving the round trips.
+   *
+   * INHERITED, NOT INTRODUCED: this is the archive-purge loop, extracted here
+   * on 2026-10-27. So `doArchive` has had the same defect since it was written
+   * — it had simply never run (0 AllotmentArchive rows), and `retentionSweep`
+   * fires it automatically 60 days after listing. It would have archived an
+   * IPO to gz, failed to purge, and left the database unbounded while
+   * reporting success, which is the exact thing that feature exists to stop.
+   * Two IPOs already hold more than 32,767 records.
+   *
+   * The SQL strings are literals and only values are parameters — the column is
+   * chosen by branch, never interpolated. `AllotmentRecord` carries no RLS
+   * policy (`setup-rls.sql` scopes six other tables), so a raw statement here
+   * needs no tenant GUC.
    */
   private async purgeRecords(where: { ipoId: string } | { importId: string }): Promise<number> {
+    const byIpo = 'ipoId' in where;
+    const value = byIpo ? where.ipoId : where.importId;
+    const sql = byIpo
+      ? 'DELETE FROM "AllotmentRecord" WHERE id IN (SELECT id FROM "AllotmentRecord" WHERE "ipoId" = $1 LIMIT $2)'
+      : 'DELETE FROM "AllotmentRecord" WHERE id IN (SELECT id FROM "AllotmentRecord" WHERE "importId" = $1 LIMIT $2)';
     let gone = 0;
     for (;;) {
-      const slice: { id: number }[] =
-        await this.prisma.allotmentRecord.findMany({ where, select: { id: true }, take: 50000 });
-      if (slice.length === 0) return gone;
-      const res = await this.prisma.allotmentRecord.deleteMany({ where: { id: { in: slice.map((s) => s.id) } } });
-      gone += res.count;
+      const n = await this.prisma.$executeRawUnsafe(sql, value, PURGE_BATCH);
+      if (n === 0) return gone;
+      gone += n;
     }
   }
 
@@ -486,10 +536,9 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     if (imp.status === 'processing') {
       throw new BadRequestException('That import is still running. Wait for it to finish or fail, then delete it.');
     }
-    /* The closure pattern restoreIpo already uses: enqueue returns void, so
-       the count comes back through a captured variable. */
-    let deleted = 0;
-    await this.enqueue(async () => { deleted = await this.purgeRecords({ importId: id }); });
+    /* enqueueResult, not enqueue: if the purge fails the caller must hear
+       about it rather than be told 0 rows were deleted. */
+    const deleted = await this.enqueueResult(() => this.purgeRecords({ importId: id }));
     if (deleted === 0 && imp.imported > 0) {
       throw new BadRequestException(
         `This file was imported before per-file tracking (2026-10-27), so its ${imp.imported.toLocaleString('en-IN')} rows `
@@ -512,8 +561,12 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     if (!ipo) throw new NotFoundException('IPO not found.');
     const running = await this.prisma.allotmentImport.count({ where: { ipoId, status: 'processing' } });
     if (running > 0) throw new BadRequestException('An import for this IPO is still running. Wait for it to finish, then delete.');
-    let deleted = 0;
-    await this.enqueue(async () => { deleted = await this.purgeRecords({ ipoId }); });
+    /* THE PURGE FIRST, AND THE IMPORT ROWS ONLY IF IT SUCCEEDS. Reversed, a
+       failed purge still destroyed the import history and left 1,419,960
+       records orphaned with nothing left to describe them — which is exactly
+       what happened on 2026-10-28. enqueueResult rethrows, so this line is
+       never reached on failure. */
+    const deleted = await this.enqueueResult(() => this.purgeRecords({ ipoId }));
     const imports = await this.prisma.allotmentImport.deleteMany({ where: { ipoId } });
     this.log.log(`deleted ${deleted} allotment rows and ${imports.count} import rows for ${ipo.symbol}`);
     return { deleted, imports: imports.count, symbol: ipo.symbol };
