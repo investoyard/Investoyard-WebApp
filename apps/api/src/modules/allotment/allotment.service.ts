@@ -11,6 +11,9 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { ApplicationsService } from '../applications/applications.service';
 import { UPLOAD_DIR } from '../upload/upload.module';
+import {
+  appNoBulkMax, cleanAppNo, isAppNoMode, rangeProblem, rangeSpan, type AppNoMode,
+} from '@investoyard/shared-types';
 
 export const ALLOTMENT_TMP_DIR = join(UPLOAD_DIR, 'allotment-tmp');
 const ARCHIVE_DIR = join(UPLOAD_DIR, 'allotment-archive');
@@ -22,6 +25,13 @@ const BATCH = 5000;
 /** Pasted PANs per bulk search. 10,000 measured at 244 ms, so this is about a
     sensible response size rather than speed. */
 const PAN_SUMMARY_MAX = 5000;
+/** Rows a bulk application-number search may return.
+    Exact cannot exceed its term count, but a PREFIX or a FRAGMENT can match
+    many rows each - 'GROWW' alone matches 48 lakh - so without this a short
+    prefix would pull millions of rows into one JSON response. Reported as
+    `truncated` rather than silently cut, because a result that is quietly
+    partial is worse than one that says so. */
+const APP_NO_ROW_MAX = 20000;
 /** Rows per purge statement. Bounded so a million-row delete is never ONE
     transaction; the subquery form means the old 32,767 bind-variable ceiling
     cannot be reached whatever this is set to. 20,000 ids measured at 161 ms,
@@ -38,6 +48,27 @@ export interface PanSummaryRecord {
   sharesAllotted: number;
   applnStatus: PanStatus;
   reasonForRejection: string | null;
+}
+
+/**
+ * What the allotment list can be filtered by — ONE shape, so the on-screen
+ * search and the CSV export cannot drift into meaning different things. It is
+ * named rather than inlined because three methods now take it.
+ *
+ * `appFrom`/`appTo` are a RANGE and `appNo`/`appNoMode` a single typed number;
+ * they are mutually exclusive and the range wins. See `recordWhere`.
+ */
+export interface RecordFilter {
+  ipoId: string;
+  pan?: string;
+  appNo?: string;
+  appNoMode?: string;
+  appFrom?: string;
+  appTo?: string;
+  amountOp?: string;
+  amount?: number;
+  amountField?: string;
+  status?: string;
 }
 
 /** normalized row — same tuple the parser worker emits, one JSON array per line */
@@ -341,11 +372,45 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Allotment-list search: partial PAN + amount with a > / < / = operator. */
-  /** ONE filter builder for the list and its export — see `exportRecordsCsv`. */
-  private recordWhere(q: { ipoId: string; pan?: string; amountOp?: string; amount?: number; amountField?: string; status?: string }) {
+  /**
+   * ONE filter builder for the list and its export — see `exportRecordsCsv`.
+   *
+   * APPLICATION NUMBER IS NEVER UPPERCASED, unlike PAN. 47,92,920 of JPL's
+   * 1.60 crore rows contain a lowercase letter (every Groww value does), so
+   * folding case would fail to match nearly 48 lakh rows while looking like a
+   * perfectly ordinary empty result.
+   */
+  private recordWhere(q: RecordFilter) {
     const where: any = { ipoId: q.ipoId };
     const pan = (q.pan ?? '').trim().toUpperCase();
     if (pan) where.pan = { startsWith: pan };
+
+    /* A RANGE AND A TYPED NUMBER ARE MUTUALLY EXCLUSIVE, range first: they both
+       constrain the same column, and ANDing them would answer a question the
+       operator did not ask. The UI only ever sends one. */
+    const from = cleanAppNo(q.appFrom);
+    const to = cleanAppNo(q.appTo);
+    if (from || to) {
+      const problem = rangeProblem(from, to);
+      if (problem) throw new BadRequestException(problem);
+      /* Inside one fixed-width series text order IS numeric order, so this is
+         exact — and it resolves to an Index Scan on (ipoId, applicationNo),
+         measured at 0.036 ms against 1.60 crore rows. */
+      where.applicationNo = { gte: from, lte: to };
+    } else {
+      const appNo = cleanAppNo(q.appNo);
+      if (appNo) {
+        const mode: AppNoMode = isAppNoMode(q.appNoMode) ? q.appNoMode : 'exact';
+        where.applicationNo =
+          mode === 'exact' ? appNo
+            : mode === 'prefix' ? { startsWith: appNo }
+              /* The only mode that cannot use the index: a parallel seq scan,
+                 2.3 s on JPL today and slower with every file. Offered because
+                 the operator asked for it, never used by the bulk path above
+                 its own cap. */
+              : { contains: appNo };
+      }
+    }
     if (q.amount != null && Number.isFinite(q.amount) && q.amount >= 0) {
       const field = q.amountField === 'allotted' ? 'allottedAmount' : 'amount';
       const op = q.amountOp === '>' ? 'gt' : q.amountOp === '<' ? 'lt' : 'equals';
@@ -357,18 +422,27 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     return where;
   }
 
-  async searchRecords(q: {
-    ipoId: string; pan?: string; amountOp?: string; amount?: number;
-    amountField?: string; status?: string; page?: number;
-  }) {
+  async searchRecords(q: RecordFilter & { page?: number }) {
     const pageSize = 50;
     const page = Math.max(1, q.page ?? 1);
     const where = this.recordWhere(q);
+    /* A RANGE READS IN SERIES ORDER, "start to end" as the operator asked.
+       Everything else keeps insertion order, which is what it has always
+       shown. Sorting by applicationNo is free for a range: it is the order of
+       the index the range already scans. */
+    const ranged = !!cleanAppNo(q.appFrom) || !!cleanAppNo(q.appTo);
+    const orderBy = ranged
+      ? ({ applicationNo: 'asc' } as const)
+      : ({ id: 'asc' } as const);
     const [total, rows] = await Promise.all([
       this.prisma.allotmentRecord.count({ where }),
-      this.prisma.allotmentRecord.findMany({ where, orderBy: { id: 'asc' }, skip: (page - 1) * pageSize, take: pageSize }),
+      this.prisma.allotmentRecord.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
     ]);
-    return { total, page, pageSize, rows: rows.map(moneyToNumber) };
+    /* How many numbers the range COVERS, so the screen can say "8,240 of
+       10,000" and a gap is visible without listing it. Null when it cannot be
+       stated honestly — a Groww hex tail has no count. */
+    const span = ranged ? rangeSpan(q.appFrom, q.appTo) : null;
+    return { total, page, pageSize, rangeSpan: span, rows: rows.map(moneyToNumber) };
   }
 
   /**
@@ -384,7 +458,7 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
    * you are looking at. Two renderers of one filter would eventually disagree.
    */
   async exportRecordsCsv(
-    q: { ipoId: string; pan?: string; amountOp?: string; amount?: number; amountField?: string; status?: string },
+    q: RecordFilter,
     write: (chunk: string) => unknown,
   ): Promise<number> {
     const where = this.recordWhere(q);
@@ -393,14 +467,25 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     write('Application No,PAN,Name,DP/Client ID,Category,TM Name,Applied Shares,Amount,Allotted Shares,Allotted Amount,Refund Amount,Reason\n');
+    /* A RANGE STREAMS IN SERIES ORDER AND CURSORS ON applicationNo, not on
+       `id`. Ordering by one column while paging on another silently repeats and
+       skips rows; and because the range is already an index scan on
+       (ipoId, applicationNo), advancing its lower bound keeps the whole export
+       inside that one index. Everything else keeps the `id` cursor it has
+       always used. */
+    const ranged = !!cleanAppNo(q.appFrom) || !!cleanAppNo(q.appTo);
+    const rangeTo = cleanAppNo(q.appTo);
     let cursor: number | undefined;
+    let afterAppNo: string | undefined;
     let sent = 0;
     for (;;) {
       const batch = await this.prisma.allotmentRecord.findMany({
-        where,
-        orderBy: { id: 'asc' },
+        where: ranged && afterAppNo !== undefined
+          ? { ...where, applicationNo: { gt: afterAppNo, lte: rangeTo } }
+          : where,
+        orderBy: ranged ? { applicationNo: 'asc' } : { id: 'asc' },
         take: 5000,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...(!ranged && cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
       if (batch.length === 0) break;
       write(batch.map((r) => [
@@ -408,7 +493,9 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
         r.appliedShares, r.amount, r.allottedShares, r.allottedAmount, r.refundAmount, r.reason,
       ].map(esc).join(',')).join('\n') + '\n');
       sent += batch.length;
-      cursor = batch[batch.length - 1].id;
+      const last = batch[batch.length - 1];
+      cursor = last.id;
+      afterAppNo = last.applicationNo;
       if (batch.length < 5000) break;
     }
     return sent;
@@ -736,6 +823,229 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     /* Not-found PANs ride along rather than being dropped from the file. */
     for (const pan of res.notFound) {
       lines.push([pan, ...Array(width * per.length).fill('')].map(esc).join(','));
+    }
+    return { symbol: res.symbol, csv: lines.join('\n') + '\n', rows: res.rows.length, notFound: res.notFound.length };
+  }
+
+  /**
+   * Bulk lookup by APPLICATION NUMBER — flat, one row per number.
+   *
+   * NO PIVOT, and that is the whole difference from `panSummary`. A PAN can
+   * hold several applications in one issue (the worst in the data is 18), which
+   * is why that report has to spread each record across the line. An
+   * application number is UNIQUE per issue — `@@unique([ipoId, applicationNo])`
+   * — so one number is one row and there is nothing to spread.
+   *
+   * ROWS COME BACK IN THE ORDER THEY WERE PASTED, so the result lines up with
+   * the column the operator copied from, and not-found numbers are listed
+   * separately rather than being silently absent.
+   *
+   * Scoped to one IPO, like the PAN search: an application number is only
+   * unique within an issue, so a cross-issue search could return two different
+   * applications under one heading.
+   *
+   * THE CAP DEPENDS ON THE MODE and the gap is three orders of magnitude.
+   * `exact` and `prefix` resolve to index ranges and answer in milliseconds;
+   * `contains` is one parallel seq scan with the terms OR'd together, measured
+   * on JPL at a 2.3 s floor plus ~280 ms per extra term. See
+   * `APP_NO_BULK_CONTAINS_MAX` for the numbers and for why a regex alternation
+   * is not the way out.
+   */
+  async appNoSummary(ipoId: string, rawList: string[], modeRaw?: string) {
+    const ipo = await this.prisma.ipo.findUnique({ where: { id: ipoId }, select: { symbol: true, name: true } });
+    if (!ipo) throw new NotFoundException('IPO not found.');
+    const mode: AppNoMode = isAppNoMode(modeRaw) ? modeRaw : 'exact';
+
+    /* Dedupe, preserving the pasted order. Case is NOT touched — see
+       `recordWhere`. */
+    const seen = new Set<string>();
+    const terms: string[] = [];
+    for (const raw of rawList) {
+      const t = cleanAppNo(raw);
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      terms.push(t);
+    }
+    if (terms.length === 0) throw new BadRequestException('Paste at least one application number.');
+
+    const max = appNoBulkMax(mode);
+    if (terms.length > max) {
+      throw new BadRequestException(
+        `${terms.length.toLocaleString('en-IN')} application numbers pasted — the limit for `
+        + `“${mode === 'contains' ? 'Contains' : mode === 'prefix' ? 'Starts with' : 'Exact'}” is `
+        + `${max.toLocaleString('en-IN')} per search.`
+        + (mode === 'contains'
+          ? ' Contains cannot use the index, so each extra number adds about a third of a second to one full scan.'
+            + ' Use Exact or Starts with for a long list.'
+          : ' Split the list.'),
+      );
+    }
+
+    const select = {
+      applicationNo: true, pan: true, name: true, category: true, tmName: true,
+      appliedShares: true, amount: true, allottedShares: true, allottedAmount: true,
+      refundAmount: true, reason: true,
+    } as const;
+
+    /* ONE query for every term rather than one per term. For exact that is an
+       `IN` the index serves; for the other two it is an OR list, which for
+       `contains` means a single scan instead of N of them. */
+    const found = mode === 'exact'
+      ? await this.prisma.allotmentRecord.findMany({ where: { ipoId, applicationNo: { in: terms } }, select })
+      : await this.prisma.allotmentRecord.findMany({
+        where: {
+          ipoId,
+          OR: terms.map((t) => ({
+            applicationNo: mode === 'prefix' ? { startsWith: t } : { contains: t },
+          })),
+        },
+        select,
+        /* One over the cap, so the caller can tell "exactly at the cap" from
+           "there were more". */
+        take: APP_NO_ROW_MAX + 1,
+        orderBy: { applicationNo: 'asc' },
+      });
+
+    const toRow = (r: typeof found[number]) => ({
+      applicationNo: r.applicationNo,
+      pan: r.pan,
+      name: r.name ?? null,
+      bidCatg: r.category ?? null,
+      tmName: r.tmName ?? null,
+      sharesApplied: r.appliedShares,
+      amountPaid: Number(r.amount),
+      sharesAllotted: r.allottedShares,
+      amountAllotted: Number(r.allottedAmount),
+      amountRefunded: Number(r.refundAmount),
+      applnStatus: AllotmentService.applnStatus(r),
+      reasonForRejection: (r.reason ?? '').trim() || null,
+      /* WHICH PASTED TERM BROUGHT THIS ROW BACK. Under exact it is the number
+         itself, but a prefix or a fragment can return rows that do not look
+         like what was typed, and then the operator needs to see why. */
+      matchedTerm: '',
+    });
+
+    const rows: ReturnType<typeof toRow>[] = [];
+    const hit = new Set<string>();
+
+    if (mode === 'exact') {
+      const byNo = new Map(found.map((r) => [r.applicationNo, r]));
+      for (const t of terms) {
+        const r = byNo.get(t);
+        if (!r) continue;
+        hit.add(t);
+        rows.push({ ...toRow(r), matchedTerm: t });
+      }
+    } else {
+      /* A prefix or a fragment can match many rows, and two terms can match the
+         same row, so each row is attributed to the FIRST term in pasted order
+         that explains it and appears once.
+         `where` is the index of each term, so "first in pasted order" is a
+         comparison rather than a scan. */
+      const where = new Map(terms.map((t, i) => [t, i]));
+
+      if (mode === 'prefix') {
+        /* NOT terms x rows. That is quadratic, and prefix allows 5,000 terms:
+           against 5,000 found rows it is 25 million startsWith calls, and
+           against short prefixes matching thousands of rows each it is far
+           worse. A prefix match is a fixed-length slice, and a pasted list has
+           only a handful of distinct LENGTHS — so look the slice up instead. */
+        const lengths = [...new Set(terms.map((t) => t.length))];
+        for (const r of found) {
+          let best: string | null = null;
+          for (const len of lengths) {
+            const cand = r.applicationNo.slice(0, len);
+            if (cand.length !== len) continue;
+            const idx = where.get(cand);
+            if (idx === undefined) continue;
+            if (best === null || idx < (where.get(best) as number)) best = cand;
+          }
+          if (best === null) continue;
+          hit.add(best);
+          rows.push({ ...toRow(r), matchedTerm: best });
+        }
+      } else {
+        /* `contains` has nowhere to look a slice up from, so this stays a scan
+           — bounded by APP_NO_BULK_CONTAINS_MAX terms, which is why that cap
+           is 25 and not 5,000. */
+        for (const r of found) {
+          let best: string | null = null;
+          for (const t of terms) {
+            if (!r.applicationNo.includes(t)) continue;
+            if (best === null || (where.get(t) as number) < (where.get(best) as number)) best = t;
+          }
+          if (best === null) continue;
+          hit.add(best);
+          rows.push({ ...toRow(r), matchedTerm: best });
+        }
+      }
+
+      /* Pasted order for the OUTPUT too, so a prefix result reads in the order
+         the operator's column did rather than in whatever order the database
+         returned; application number breaks a tie inside one term. */
+      rows.sort((a, b) =>
+        (where.get(a.matchedTerm) as number) - (where.get(b.matchedTerm) as number)
+        || a.applicationNo.localeCompare(b.applicationNo));
+    }
+
+    const truncated = rows.length > APP_NO_ROW_MAX;
+    if (truncated) rows.length = APP_NO_ROW_MAX;
+
+    return {
+      symbol: ipo.symbol,
+      name: ipo.name,
+      mode,
+      requested: terms.length,
+      /* More rows matched than are being returned. Only reachable from prefix
+         or contains, where one term can match many rows. */
+      truncated,
+      rowMax: APP_NO_ROW_MAX,
+      /* Pasted, valid, and this registrar file has no row for it. Frequently
+         the answer the operator actually wants. */
+      notFound: terms.filter((t) => !hit.has(t)),
+      rows,
+    };
+  }
+
+  /**
+   * The same rows as CSV, from the SAME builder — a download is what the screen
+   * showed rather than a second opinion about it, the rule `recordWhere` and
+   * `panSummaryCsv` already follow.
+   *
+   * Headers are the REGISTRAR'S OWN column names, which is what the operator
+   * reads; each was confirmed verbatim against the header row stored on
+   * `AllotmentImport.headers`.
+   */
+  async appNoSummaryCsv(ipoId: string, rawList: string[], mode?: string) {
+    const res = await this.appNoSummary(ipoId, rawList, mode);
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const head = [
+      'APPLICATION_NO', 'PAN', 'NAME', 'BID_CATG', 'BID_BROKER', 'SHARES_APPLIED',
+      'AMOUNT_PAID', 'SHARES_ALLOTED', 'AMOUNT_ALLOTED', 'AMOUNT_REFUND',
+      'APPLN_STATUS', 'REASON_FOR_REJECTION',
+    ];
+    /* The term column only earns its place when a row need not look like what
+       was typed. Under exact it would repeat APPLICATION_NO on every line. */
+    if (res.mode !== 'exact') head.push('SEARCHED_FOR');
+
+    const lines = [head.join(',')];
+    for (const r of res.rows) {
+      const cells: unknown[] = [
+        r.applicationNo, r.pan, r.name, r.bidCatg, r.tmName, r.sharesApplied,
+        r.amountPaid, r.sharesAllotted, r.amountAllotted, r.amountRefunded,
+        r.applnStatus, r.reasonForRejection,
+      ];
+      if (res.mode !== 'exact') cells.push(r.matchedTerm);
+      lines.push(cells.map(esc).join(','));
+    }
+    /* Not-found numbers ride along rather than being dropped from the file. */
+    for (const t of res.notFound) {
+      const cells: unknown[] = [t, ...Array(head.length - (res.mode === 'exact' ? 1 : 2)).fill('')];
+      if (res.mode !== 'exact') cells.push(t);
+      lines.push(cells.map(esc).join(','));
     }
     return { symbol: res.symbol, csv: lines.join('\n') + '\n', rows: res.rows.length, notFound: res.notFound.length };
   }

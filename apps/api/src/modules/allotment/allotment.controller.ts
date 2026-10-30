@@ -38,8 +38,13 @@ const MAX_FILE = 126 * 1024 * 1024;
  * separated, or an array from a client that split it already. The operator
  * copies these out of a spreadsheet, and which separator comes with it is
  * not something to make them think about.
+ *
+ * Shared by the PAN and the application-number lists: it splits a pasted
+ * column and knows nothing about what is in it, so a second copy would be two
+ * answers to one question. It deliberately does NOT normalise the values -
+ * each caller does that, and an application number must keep its case.
  */
-function splitPans(v: string[] | string | undefined): string[] {
+function splitPasted(v: string[] | string | undefined): string[] {
   if (Array.isArray(v)) return v;
   return String(v ?? '').split(/[\s,;]+/).filter(Boolean);
 }
@@ -91,7 +96,7 @@ export class AllotmentController {
   @RequirePermissions('bids.view')
   panSummary(@Body() body: { ipoId?: string; pans?: string[] | string }) {
     if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
-    return this.svc.panSummary(body.ipoId, splitPans(body.pans));
+    return this.svc.panSummary(body.ipoId, splitPasted(body.pans));
   }
 
   /** The same pivot as a file. Streamed as text; the row count is bounded by
@@ -103,9 +108,40 @@ export class AllotmentController {
     @Res() res: Response,
   ) {
     if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
-    const out = await this.svc.panSummaryCsv(body.ipoId, splitPans(body.pans));
+    const out = await this.svc.panSummaryCsv(body.ipoId, splitPasted(body.pans));
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${out.symbol}-pan-summary.csv"`);
+    /* BOM first, or Excel reads the system codepage and mangles names. */
+    res.send('\uFEFF' + out.csv);
+  }
+
+  /**
+   * POST, not GET, for the same two reasons as the PAN list: 5,000 values do
+   * not belong in a query string, and a pasted column is not something to
+   * leave sitting in an access log.
+   *
+   * FLAT, one row per application number - there is nothing to pivot, because
+   * an application number is unique per IPO where a PAN is not.
+   */
+  @Post('app-no-summary')
+  @RequirePermissions('bids.view')
+  appNoSummary(@Body() body: { ipoId?: string; appNos?: string[] | string; mode?: string }) {
+    if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
+    return this.svc.appNoSummary(body.ipoId, splitPasted(body.appNos), body.mode);
+  }
+
+  /** The same rows as a file. The paste limit bounds the row count, so this
+   *  needs none of the cursoring the record export does. */
+  @Post('app-no-summary.csv')
+  @RequirePermissions('bids.view')
+  async appNoSummaryCsv(
+    @Body() body: { ipoId?: string; appNos?: string[] | string; mode?: string },
+    @Res() res: Response,
+  ) {
+    if (!body?.ipoId) throw new BadRequestException('ipoId is required.');
+    const out = await this.svc.appNoSummaryCsv(body.ipoId, splitPasted(body.appNos), body.mode);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${out.symbol}-application-nos.csv"`);
     /* BOM first, or Excel reads the system codepage and mangles names. */
     res.send('\uFEFF' + out.csv);
   }
@@ -117,12 +153,24 @@ export class AllotmentController {
     return this.svc.summary(ipoId);
   }
 
-  /** GET /api/admin/allotment/records — PAN (partial) + amount with >/</= operator. */
+  /**
+   * GET /api/admin/allotment/records — PAN (partial), application number
+   * (exact / prefix / contains) or an application-number RANGE, plus amount
+   * with a >/</= operator.
+   *
+   * `appFrom`/`appTo` and `appNo` are mutually exclusive; the range wins. A
+   * range whose ends are different widths is refused with the widths named,
+   * because text order only matches series order at a fixed width.
+   */
   @Get('records')
   @RequirePermissions('bids.view')
   records(
     @Query('ipoId') ipoId: string,
     @Query('pan') pan?: string,
+    @Query('appNo') appNo?: string,
+    @Query('appNoMode') appNoMode?: string,
+    @Query('appFrom') appFrom?: string,
+    @Query('appTo') appTo?: string,
     @Query('amountOp') amountOp?: string,
     @Query('amount') amount?: string,
     @Query('amountField') amountField?: string,
@@ -131,7 +179,7 @@ export class AllotmentController {
   ) {
     if (!ipoId) throw new BadRequestException('ipoId is required.');
     return this.svc.searchRecords({
-      ipoId, pan, amountOp, amountField, status,
+      ipoId, pan, appNo, appNoMode, appFrom, appTo, amountOp, amountField, status,
       amount: amount != null && amount !== '' ? Number(amount) : undefined,
       page: page ? Number(page) : undefined,
     });
@@ -154,6 +202,10 @@ export class AllotmentController {
     @Res() res: Response,
     @Query('ipoId') ipoId: string,
     @Query('pan') pan?: string,
+    @Query('appNo') appNo?: string,
+    @Query('appNoMode') appNoMode?: string,
+    @Query('appFrom') appFrom?: string,
+    @Query('appTo') appTo?: string,
     @Query('amountOp') amountOp?: string,
     @Query('amount') amount?: string,
     @Query('amountField') amountField?: string,
@@ -161,12 +213,23 @@ export class AllotmentController {
   ) {
     if (!ipoId) throw new BadRequestException('ipoId is required.');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="allotment-${new Date().toISOString().slice(0, 10)}.csv"`);
+    /* A range names its ends in the file name, because an operator who
+       exports four series in a morning has four files in one folder. */
+    const range = (appFrom ?? '').trim() && (appTo ?? '').trim()
+      ? `-${(appFrom ?? '').trim()}-to-${(appTo ?? '').trim()}`.replace(/[^A-Za-z0-9.\-]/g, '')
+      : '';
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="allotment${range}-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
     /* UTF-8 BOM: without it Excel reads the file as the system codepage and
        mangles any non-ASCII name in the registrar's data. */
     res.write('\uFEFF');
     await this.svc.exportRecordsCsv(
-      { ipoId, pan, amountOp, amountField, status, amount: amount != null && amount !== '' ? Number(amount) : undefined },
+      {
+        ipoId, pan, appNo, appNoMode, appFrom, appTo, amountOp, amountField, status,
+        amount: amount != null && amount !== '' ? Number(amount) : undefined,
+      },
       (chunk) => res.write(chunk),
     );
     res.end();

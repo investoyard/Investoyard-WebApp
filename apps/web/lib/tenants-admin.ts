@@ -4,11 +4,21 @@
  * This is the first admin surface backed by the real API rather than the mock store.
  */
 import type {
-  TenantContent, TenantIdentity, TenantContact, ContentGap,
+  TenantContent, TenantIdentity, TenantContact, ContentGap, AppNoMode,
+} from '@investoyard/shared-types';
+import {
+  APP_NO_BULK_CONTAINS_MAX, APP_NO_BULK_MAX, APP_NO_MODE_LABEL, APP_NO_MODES,
+  appNoBulkMax, rangeProblem,
 } from '@investoyard/shared-types';
 /* Re-exported so the admin pages read one module — they already import
    everything else tenant-shaped through `* as api`. */
-export type { TenantContent, TenantIdentity, TenantContact, ContentGap };
+export type { TenantContent, TenantIdentity, TenantContact, ContentGap, AppNoMode };
+/* The application-number rules too, so the list page states the limits the
+   API enforces rather than a second copy of them. */
+export {
+  APP_NO_BULK_CONTAINS_MAX, APP_NO_BULK_MAX, APP_NO_MODE_LABEL, APP_NO_MODES,
+  appNoBulkMax, rangeProblem,
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
@@ -809,9 +819,8 @@ export interface AllotmentRecordRow {
  *  showing, so the file is the rows on screen rather than a second reading of
  *  the filters. A plain link, not a fetch: the response streams and may run to
  *  hundreds of MB, which is not something to hold in a browser variable. */
-export const allotmentCsvUrl = (q: {
-  ipoId: string; pan?: string; amountOp?: string; amount?: string; amountField?: string; status?: string;
-}) => `${API}/admin/allotment/records.csv?${qstr(q)}`;
+export const allotmentCsvUrl = (q: AllotmentRecordQuery) =>
+  `${API}/admin/allotment/records.csv?${qstr(q)}`;
 
 export interface AllotmentArchiveInfo { fileName: string; rows: number; fileSize: number; createdAt: string }
 export interface AllotmentSummary {
@@ -845,13 +854,108 @@ export const fetchAllotmentImport = (id: string) =>
   authed<AllotmentImportRow>(`${API}/admin/allotment/imports/${id}`, { method: 'GET' });
 export const fetchAllotmentSummary = (ipoId: string) =>
   authed<AllotmentSummary>(`${API}/admin/allotment/summary?ipoId=${ipoId}`, { method: 'GET' });
-export const searchAllotmentRecords = (q: {
-  ipoId: string; pan?: string; amountOp?: string; amount?: number | string;
-  amountField?: string; status?: string; page?: number;
-}) => authed<{ total: number; page: number; pageSize: number; rows: AllotmentRecordRow[] }>(
-  `${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
+export const searchAllotmentRecords = (q: AllotmentRecordQuery & { page?: number }) =>
+  authed<{
+    total: number; page: number; pageSize: number;
+    /** How many application numbers the range COVERS, so the screen can say
+     *  "8,240 of 10,000". Null when there is no range, or when the span
+     *  cannot be stated — a Groww hex tail has no count. */
+    rangeSpan: number | null;
+    rows: AllotmentRecordRow[];
+  }>(`${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
 export const archiveAllotment = (ipoId: string) =>
   authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
+/**
+ * Everything the allotment list can be filtered by — ONE shape for the table
+ * and for the Export link, so a download is the rows on screen rather than a
+ * second reading of the filters.
+ *
+ * `appFrom`/`appTo` are a RANGE; `appNo` + `appNoMode` a single typed number.
+ * They are mutually exclusive and the server lets the range win.
+ */
+export type AllotmentRecordQuery = {
+  ipoId: string;
+  pan?: string;
+  appNo?: string;
+  appNoMode?: AppNoMode;
+  appFrom?: string;
+  appTo?: string;
+  amountOp?: string;
+  amount?: number | string;
+  amountField?: string;
+  status?: string;
+}
+
+/** One application number found in bulk, named as the registrar names its
+ *  columns. FLAT — unlike the PAN report there is nothing to pivot, because an
+ *  application number is unique per IPO. */
+export interface AppNoSummaryRow {
+  applicationNo: string;
+  pan: string;
+  name: string | null;
+  bidCatg: string | null;
+  tmName: string | null;
+  sharesApplied: number;
+  amountPaid: number;
+  sharesAllotted: number;
+  amountAllotted: number;
+  amountRefunded: number;
+  applnStatus: PanStatus;
+  reasonForRejection: string | null;
+  /** Which pasted term brought this row back. Only interesting for Starts with
+   *  and Contains, where a row need not look like what was typed. */
+  matchedTerm: string;
+}
+export interface AppNoSummary {
+  symbol: string;
+  name: string;
+  mode: AppNoMode;
+  /** numbers actually looked up, after dedupe */
+  requested: number;
+  /** pasted, but this registrar file has no row for them */
+  notFound: string[];
+  /** More rows matched than were returned. Only reachable from Starts with or
+   *  Contains, where one term can match many rows — 'GROWW' alone matches 48
+   *  lakh. A partial result says so rather than being quietly cut. */
+  truncated: boolean;
+  rowMax: number;
+  rows: AppNoSummaryRow[];
+}
+
+/**
+ * Bulk lookup by application number, scoped to one IPO.
+ *
+ * POST for the same two reasons as the PAN list: thousands of values do not
+ * belong in a query string, and a pasted column is not something to leave
+ * sitting in an access log.
+ */
+export const appNoSummary = (ipoId: string, appNos: string, mode: AppNoMode) =>
+  authed<AppNoSummary>(`${API}/admin/allotment/app-no-summary`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ipoId, appNos, mode }),
+  });
+
+/** The same rows as a file. A POST, so it cannot be a plain <a href> like the
+ *  record export — the list is the request body. */
+export async function exportAppNoSummaryCsv(ipoId: string, appNos: string, mode: AppNoMode, symbol: string) {
+  const token = await adminToken();
+  const res = await fetch(`${API}/admin/allotment/app-no-summary.csv`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ipoId, appNos, mode }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({} as any));
+    throw new Error((e as any).message || `${res.status} ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${symbol}-application-nos.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** The registrar's own three outcomes, in the operator's reading order. */
 export type PanStatus = 'ALLOTTED' | 'NOT ALLOTTED' | 'REJECTED';
 /** One application under one PAN, named as the registrar names its columns —

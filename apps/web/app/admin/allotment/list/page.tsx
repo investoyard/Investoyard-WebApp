@@ -29,17 +29,37 @@ const statusInk = (s: api.PanStatus) =>
 /**
  * Allotment List — browse the imported registrar records per IPO.
  *
- * TWO MODES. *Single* is the original: partial PAN plus an amount with a
- * > / < / = operator. *Bulk PAN* takes a pasted column of whole PANs and
- * returns ONE LINE PER PAN, each of its applications contributing a block of
- * the registrar's own seven columns, ordered allotted → not allotted →
- * rejected. Only the open mode fetches.
+ * TWO CONTROLS: what to search by (PAN / Application No / Application
+ * range), and whether it is one value or a pasted column. Only the open
+ * combination fetches.
+ *
+ *  - PAN, single: the original — partial PAN plus an amount with a
+ *    > / < / = operator.
+ *  - PAN, bulk: a pasted column of whole PANs, ONE LINE PER PAN, each of its
+ *    applications contributing a block of the registrar's own seven columns,
+ *    ordered allotted → not allotted → rejected.
+ *  - Application No: exact, starts-with or contains. FLAT in bulk, because an
+ *    application number is unique per IPO so there is nothing to pivot.
+ *  - Application range: a start and an end of the SAME WIDTH, read and
+ *    exported in series order, with a found-count against the span.
+ *
+ * Application numbers are never uppercased, unlike PAN — see `api.cleanAppNo`
+ * and the note on `recordWhere`.
  */
 export default function AllotmentListPage() {
   const me = useOperator();
   const [ipos, setIpos] = useState<api.AdminIpo[] | null>(null);
   const [ipoId, setIpoId] = useState('');
-  const [mode, setMode] = useState<'single' | 'bulk'>('single');
+  /**
+   * WHAT is being searched, and HOW. Two controls rather than four chips in a
+   * row: the second question only applies to the first two answers.
+   *
+   * `range` has no bulk form — it IS a range, not a list — so `bulkable` gates
+   * the Single/Bulk control rather than letting it offer a combination that
+   * does not exist.
+   */
+  const [field, setField] = useState<'pan' | 'appno' | 'range'>('pan');
+  const [isBulk, setIsBulk] = useState(false);
   const [summary, setSummary] = useState<api.AllotmentSummary | null>(null);
   // search inputs (applied on Search click)
   const [pan, setPan] = useState('');
@@ -48,13 +68,31 @@ export default function AllotmentListPage() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
-  const [result, setResult] = useState<{ total: number; page: number; pageSize: number; rows: api.AllotmentRecordRow[] } | null>(null);
+  const [result, setResult] = useState<{
+    total: number; page: number; pageSize: number; rangeSpan: number | null; rows: api.AllotmentRecordRow[];
+  } | null>(null);
+  // application-number search (single) and range
+  const [appNo, setAppNo] = useState('');
+  const [appNoMode, setAppNoMode] = useState<api.AppNoMode>('exact');
+  const [appFrom, setAppFrom] = useState('');
+  const [appTo, setAppTo] = useState('');
+  // application-number search (bulk)
+  const [appNoText, setAppNoText] = useState('');
+  const [appBulk, setAppBulk] = useState<api.AppNoSummary | null>(null);
+  const [appBulkPage, setAppBulkPage] = useState(1);
   // bulk mode
   const [panText, setPanText] = useState('');
   const [bulk, setBulk] = useState<api.PanSummary | null>(null);
   const [bulkPage, setBulkPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /* A range has no bulk form, so the Single/Bulk control is hidden for it
+     rather than offering a combination that does not exist. */
+  const bulkable = field !== 'range';
+  const panBulk = isBulk && field === 'pan';
+  const appBulkOn = isBulk && field === 'appno';
+  const tableView = !panBulk && !appBulkOn;
 
   useEffect(() => {
     api.fetchIpos().then((list) => {
@@ -64,33 +102,55 @@ export default function AllotmentListPage() {
     }).catch((e) => setErr(String(e?.message ?? e)));
   }, []);
 
+  /**
+   * The filters the table and the Export link both carry — ONE object, so the
+   * file is the rows on screen rather than a second reading of the controls.
+   *
+   * Only the chosen field's values go in: leaving a stale application number in
+   * the query while the operator is searching by PAN would filter by something
+   * no longer on the screen.
+   */
+  const query = useMemo((): api.AllotmentRecordQuery => ({
+    ipoId,
+    pan: field === 'pan' ? (pan.trim() || undefined) : undefined,
+    appNo: field === 'appno' ? (appNo.trim() || undefined) : undefined,
+    appNoMode: field === 'appno' ? appNoMode : undefined,
+    appFrom: field === 'range' ? (appFrom.trim() || undefined) : undefined,
+    appTo: field === 'range' ? (appTo.trim() || undefined) : undefined,
+    amount: amount.trim() === '' ? undefined : Number(amount),
+    amountOp, amountField, status: status || undefined,
+  }), [ipoId, field, pan, appNo, appNoMode, appFrom, appTo, amount, amountOp, amountField, status]);
+
+  /* The range rule, from the shared module the API enforces — so the screen
+     cannot explain a rule the server does not apply. Shown before the request
+     rather than after, since the server would refuse it anyway. */
+  const rangeErr = useMemo(
+    () => (field === 'range' && (appFrom.trim() || appTo.trim()) ? api.rangeProblem(appFrom, appTo) : null),
+    [field, appFrom, appTo],
+  );
+
   const search = useCallback(async (id: string, toPage = 1) => {
     if (!id) return;
     setBusy(true); setErr(null);
     try {
       const [res, sum] = await Promise.all([
-        api.searchAllotmentRecords({
-          ipoId: id,
-          pan: pan.trim() || undefined,
-          amount: amount.trim() === '' ? undefined : Number(amount),
-          amountOp, amountField, status: status || undefined, page: toPage,
-        }),
+        api.searchAllotmentRecords({ ...query, ipoId: id, page: toPage }),
         api.fetchAllotmentSummary(id),
       ]);
       setResult(res); setSummary(sum); setPage(toPage);
     } catch (e: any) { setErr(String(e?.message ?? e)); setResult(null); }
     finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pan, amount, amountOp, amountField, status]);
+  }, [query]);
 
   // fresh IPO selection → clear filters and load page 1
   useEffect(() => {
     if (!ipoId) return;
-    setResult(null); setBulk(null);
-    if (mode === 'single') search(ipoId, 1);
+    setResult(null); setBulk(null); setAppBulk(null);
+    if (tableView) search(ipoId, 1);
     else api.fetchAllotmentSummary(ipoId).then(setSummary).catch(() => setSummary(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ipoId, mode]);
+  }, [ipoId, field, isBulk]);
 
   /* Counted from the same separators the server splits on, so the number under
      the box is what will actually be looked up. */
@@ -117,14 +177,50 @@ export default function AllotmentListPage() {
     finally { setBusy(false); }
   }, [ipoId, panText, bulk]);
 
+  /* Counted from the same separators the server splits on, so the number under
+     the box is what will actually be looked up. Case is NOT folded here — two
+     application numbers differing only in case are two different numbers. */
+  const appPastedCount = useMemo(
+    () => new Set(appNoText.split(/[\s,;]+/).filter(Boolean)).size,
+    [appNoText],
+  );
+  /* The cap depends on the mode, and the gap is three orders of magnitude:
+     contains cannot use the index, so it is one full scan plus a third of a
+     second per extra number. */
+  const appCap = api.appNoBulkMax(appNoMode);
+  const appOverCap = appPastedCount > appCap;
+
+  const runAppBulk = useCallback(async () => {
+    if (!ipoId || !appNoText.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await api.appNoSummary(ipoId, appNoText, appNoMode);
+      setAppBulk(res); setAppBulkPage(1);
+    } catch (e: any) { setErr(String(e?.message ?? e)); setAppBulk(null); }
+    finally { setBusy(false); }
+  }, [ipoId, appNoText, appNoMode]);
+
+  const exportAppBulk = useCallback(async () => {
+    if (!ipoId || !appBulk) return;
+    setBusy(true); setErr(null);
+    try { await api.exportAppNoSummaryCsv(ipoId, appNoText, appNoMode, appBulk.symbol); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }, [ipoId, appNoText, appNoMode, appBulk]);
+
   if (!me) return <Loader />;
   if (!operatorCan(me, 'bids.view')) return <NoAccess />;
 
-  const reset = () => { setPan(''); setAmount(''); setAmountOp('='); setAmountField('applied'); setStatus(''); };
+  const reset = () => {
+    setPan(''); setAppNo(''); setAppFrom(''); setAppTo('');
+    setAmount(''); setAmountOp('='); setAmountField('applied'); setStatus('');
+  };
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   const bulkPages = bulk ? Math.max(1, Math.ceil(bulk.rows.length / BULK_PAGE)) : 1;
   const bulkSlice = bulk ? bulk.rows.slice((bulkPage - 1) * BULK_PAGE, bulkPage * BULK_PAGE) : [];
   const width = bulk ? Math.max(1, bulk.maxRecords) : 1;
+  const appBulkPages = appBulk ? Math.max(1, Math.ceil(appBulk.rows.length / BULK_PAGE)) : 1;
+  const appBulkSlice = appBulk ? appBulk.rows.slice((appBulkPage - 1) * BULK_PAGE, appBulkPage * BULK_PAGE) : [];
 
   return (
     <div style={{ maxWidth: 1200 }}>
@@ -135,10 +231,20 @@ export default function AllotmentListPage() {
       {err && <div className="banner bad" style={{ marginBottom: 14 }}>{err}</div>}
 
       <div className="card"><div className="card-pad">
-        {/* mode */}
-        <div className="seg" role="tablist" aria-label="Search mode" style={{ marginBottom: 12 }}>
-          <button className={mode === 'single' ? 'on' : ''} onClick={() => setMode('single')}>Single PAN</button>
-          <button className={mode === 'bulk' ? 'on' : ''} onClick={() => setMode('bulk')}>Bulk PAN</button>
+        {/* WHAT to search by, then HOW. The second control is hidden for a
+            range, which has no bulk form. */}
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div className="seg" role="tablist" aria-label="Search by">
+            <button className={field === 'pan' ? 'on' : ''} onClick={() => setField('pan')}>PAN</button>
+            <button className={field === 'appno' ? 'on' : ''} onClick={() => setField('appno')}>Application No</button>
+            <button className={field === 'range' ? 'on' : ''} onClick={() => setField('range')}>Application range</button>
+          </div>
+          {bulkable && (
+            <div className="seg" role="tablist" aria-label="One or many">
+              <button className={!isBulk ? 'on' : ''} onClick={() => setIsBulk(false)}>Single</button>
+              <button className={isBulk ? 'on' : ''} onClick={() => setIsBulk(true)}>Bulk</button>
+            </div>
+          )}
         </div>
 
         <div className="filter-row">
@@ -150,14 +256,53 @@ export default function AllotmentListPage() {
             />
           </div>
 
-          {mode === 'single' ? (
+          {tableView ? (
             <>
-              <div className="field" style={{ width: 170 }}>
-                <label>PAN</label>
-                <input className="input mono" value={pan} maxLength={10} placeholder="AIOPC8724F"
-                  onChange={(e) => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') search(ipoId, 1); }} />
-              </div>
+              {field === 'pan' && (
+                <div className="field" style={{ width: 170 }}>
+                  <label>PAN</label>
+                  <input className="input mono" value={pan} maxLength={10} placeholder="AIOPC8724F"
+                    onChange={(e) => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') search(ipoId, 1); }} />
+                </div>
+              )}
+              {/* NEVER uppercased, unlike PAN: 48 lakh of JPL's rows carry a
+                  lowercase letter, so folding case would match nothing while
+                  looking like an ordinary empty result. */}
+              {field === 'appno' && (
+                <>
+                  <div className="field" style={{ width: 210 }}>
+                    <label>Application No</label>
+                    <input className="input mono" value={appNo} placeholder="UPJPL00000001"
+                      onChange={(e) => setAppNo(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') search(ipoId, 1); }} />
+                  </div>
+                  <div className="field" style={{ width: 150 }}>
+                    <label>Match</label>
+                    <select className="input" value={appNoMode} onChange={(e) => setAppNoMode(e.target.value as api.AppNoMode)}>
+                      {api.APP_NO_MODES.map((m) => (
+                        <option key={m} value={m}>{api.APP_NO_MODE_LABEL[m]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+              {field === 'range' && (
+                <>
+                  <div className="field" style={{ width: 210 }}>
+                    <label>From application No</label>
+                    <input className="input mono" value={appFrom} placeholder="UPJPL00000001"
+                      onChange={(e) => setAppFrom(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !rangeErr) search(ipoId, 1); }} />
+                  </div>
+                  <div className="field" style={{ width: 210 }}>
+                    <label>To application No</label>
+                    <input className="input mono" value={appTo} placeholder="UPJPL00001000"
+                      onChange={(e) => setAppTo(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !rangeErr) search(ipoId, 1); }} />
+                  </div>
+                </>
+              )}
               <div className="field" style={{ width: 130 }}>
                 <label>Amount of</label>
                 <select className="input" value={amountField} onChange={(e) => setAmountField(e.target.value as any)}>
@@ -187,21 +332,21 @@ export default function AllotmentListPage() {
                   <option value="not_allotted">Not allotted</option>
                 </select>
               </div>
-              <button className="btn" disabled={busy || !ipoId} onClick={() => search(ipoId, 1)}>{busy ? 'Searching…' : 'Search'}</button>
+              <button className="btn" disabled={busy || !ipoId || !!rangeErr} onClick={() => search(ipoId, 1)}>{busy ? 'Searching…' : 'Search'}</button>
               <button className="btn btn-ghost" disabled={busy} onClick={reset}>Reset</button>
               {/* A LINK, not a fetch: the export streams and a large IPO runs to
                   hundreds of MB, which must never be held in a browser variable.
                   It carries the same filters the table is showing, so what you get
-                  is what you are looking at — including a filtered subset. */}
+                  is what you are looking at — including a range. */}
               <a
                 className="btn btn-ghost"
-                href={ipoId ? api.allotmentCsvUrl({ ipoId, pan, amountOp, amount, amountField, status }) : undefined}
-                aria-disabled={!ipoId || !result}
-                style={!ipoId || !result ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+                href={ipoId && !rangeErr ? api.allotmentCsvUrl(query) : undefined}
+                aria-disabled={!ipoId || !result || !!rangeErr}
+                style={!ipoId || !result || rangeErr ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
                 title="Download the rows matching these filters as a CSV, which Excel opens directly"
               >Export to Excel</a>
             </>
-          ) : (
+          ) : panBulk ? (
             <>
               <button className="btn" disabled={busy || !ipoId || !pastedCount} onClick={runBulk}>
                 {busy ? 'Searching…' : `Search ${pastedCount ? fmtInt(pastedCount) + ' PAN' + (pastedCount === 1 ? '' : 's') : ''}`}
@@ -212,10 +357,27 @@ export default function AllotmentListPage() {
               <button className="btn btn-ghost" disabled={busy || !bulk} onClick={exportBulk}
                 title="Download this pivot as a CSV, which Excel opens directly">Export to Excel</button>
             </>
+          ) : (
+            <>
+              <div className="field" style={{ width: 150 }}>
+                <label>Match</label>
+                <select className="input" value={appNoMode} onChange={(e) => setAppNoMode(e.target.value as api.AppNoMode)}>
+                  {api.APP_NO_MODES.map((m) => (
+                    <option key={m} value={m}>{api.APP_NO_MODE_LABEL[m]}</option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn" disabled={busy || !ipoId || !appPastedCount || appOverCap} onClick={runAppBulk}>
+                {busy ? 'Searching…' : `Search ${appPastedCount ? fmtInt(appPastedCount) : ''}`}
+              </button>
+              <button className="btn btn-ghost" disabled={busy || !appNoText} onClick={() => { setAppNoText(''); setAppBulk(null); }}>Clear</button>
+              <button className="btn btn-ghost" disabled={busy || !appBulk} onClick={exportAppBulk}
+                title="Download these rows as a CSV, which Excel opens directly">Export to Excel</button>
+            </>
           )}
         </div>
 
-        {mode === 'bulk' && (
+        {panBulk && (
           <div className="field" style={{ marginTop: 4 }}>
             <label>PANs — paste a column from Excel; newlines, commas, spaces and tabs all work</label>
             <textarea className="input mono" rows={5} value={panText} placeholder={'AIOPC8724F\nBDCPN1903K\nACMPP9252H'}
@@ -228,6 +390,58 @@ export default function AllotmentListPage() {
               )}
               {' · '}one line per PAN, each application shown separately, ordered allotted then not allotted then rejected
             </div>
+          </div>
+        )}
+
+        {appBulkOn && (
+          <div className="field" style={{ marginTop: 4 }}>
+            <label>Application numbers — paste a column from Excel; newlines, commas, spaces and tabs all work</label>
+            <textarea className="input mono" rows={5} value={appNoText} placeholder={'UPJPL00000001\nUPJPL00000002\nGROWW000005b35bd'}
+              onChange={(e) => setAppNoText(e.target.value)} disabled={busy}
+              style={{ resize: 'vertical', lineHeight: 1.5 }} />
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              {fmtInt(appPastedCount)} number{appPastedCount === 1 ? '' : 's'} detected
+              {appOverCap && (
+                <span style={{ color: 'var(--neg-ink)' }}> — over the {fmtInt(appCap)} limit for {api.APP_NO_MODE_LABEL[appNoMode]}, split the list</span>
+              )}
+              {' · '}one line per number, matched exactly as written including upper and lower case
+              {appNoMode === 'contains' && (
+                <>
+                  {' · '}
+                  <b>Contains cannot use the index</b> — it is one full scan of the IPO, so the limit is{' '}
+                  {fmtInt(api.APP_NO_BULK_CONTAINS_MAX)} and each extra number adds about a third of a second.
+                  Use Exact or Starts with for a long list.
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* THE FOUND COUNT, so a gap in the series is visible without listing
+            it. `rangeSpan` is null when it cannot be stated honestly — a Groww
+            hex tail has no count, and a made-up denominator under a real
+            numerator would be worse than no denominator. */}
+        {field === 'range' && (rangeErr || (result && tableView)) && (
+          <div style={{ marginTop: 10 }}>
+            {rangeErr ? (
+              <div className="banner bad" style={{ margin: 0 }}>{rangeErr}</div>
+            ) : result && result.rangeSpan != null ? (
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="pill">
+                  {fmtInt(result.total)} of {fmtInt(result.rangeSpan)} in this range
+                </span>
+                {result.rangeSpan > result.total && (
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    {fmtInt(result.rangeSpan - result.total)} application number
+                    {result.rangeSpan - result.total === 1 ? '' : 's'} in the range are not in this registrar data
+                  </span>
+                )}
+              </div>
+            ) : result ? (
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                {fmtInt(result.total)} found · this series has no numeric count, so there is no total to compare against
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -245,8 +459,8 @@ export default function AllotmentListPage() {
         )}
       </div></div>
 
-      {/* ── bulk results ───────────────────────────────────────────────── */}
-      {mode === 'bulk' && (
+      {/* ── bulk PAN results ──────────────────────────────────────────── */}
+      {panBulk && (
         <div className="card" style={{ marginTop: 14 }}><div className="card-pad">
           {bulk === null ? (busy ? <Loader /> : (
             <div className="muted" style={{ padding: '14px 0', textAlign: 'center' }}>Paste PANs above and press Search.</div>
@@ -351,8 +565,97 @@ export default function AllotmentListPage() {
         </div></div>
       )}
 
-      {/* ── single-PAN results (unchanged) ─────────────────────────────── */}
-      {mode === 'single' && (
+      {/* ── bulk application-number results ───────────────────────────── */}
+      {/* FLAT, one row per number. Unlike the PAN report there is nothing to
+          pivot: an application number is unique per IPO, so one number is one
+          row and a block of repeated columns would be a block of one. */}
+      {appBulkOn && (
+        <div className="card" style={{ marginTop: 14 }}><div className="card-pad">
+          {appBulk === null ? (busy ? <Loader /> : (
+            <div className="muted" style={{ padding: '14px 0', textAlign: 'center' }}>Paste application numbers above and press Search.</div>
+          )) : (
+            <>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                <b>{appBulk.symbol}</b>
+                <span className="pill">{fmtInt(appBulk.rows.length)} found</span>
+                {appBulk.notFound.length > 0 && <span className="pill">{fmtInt(appBulk.notFound.length)} not in this file</span>}
+                {appBulk.truncated && (
+                  <span className="pill" style={{ background: 'var(--neg-soft)', color: 'var(--neg-ink)' }}>
+                    more than {fmtInt(appBulk.rowMax)} matched — narrow the search
+                  </span>
+                )}
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  {api.APP_NO_MODE_LABEL[appBulk.mode]} match on {fmtInt(appBulk.requested)} number{appBulk.requested === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {appBulk.rows.length === 0 ? (
+                <div className="muted" style={{ padding: '14px 0', textAlign: 'center' }}>None of those application numbers appears in this IPO&rsquo;s registrar data.</div>
+              ) : (
+                <>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table">
+                      <thead><tr>
+                        <th>Application No</th><th>PAN</th><th>Name</th><th>Catg</th><th>TM Name</th>
+                        <th style={{ textAlign: 'right' }}>Applied</th><th style={{ textAlign: 'right' }}>Amount</th>
+                        <th style={{ textAlign: 'right' }}>Allotted</th><th style={{ textAlign: 'right' }}>Allotted ₹</th>
+                        <th style={{ textAlign: 'right' }}>Refund ₹</th><th>Status</th><th>Reason</th>
+                        {/* Only earns a column where a row need not look like
+                            what was typed. */}
+                        {appBulk.mode !== 'exact' && <th>Searched for</th>}
+                      </tr></thead>
+                      <tbody>
+                        {appBulkSlice.map((r) => (
+                          <tr key={r.applicationNo}>
+                            <td className="mono" style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{r.applicationNo}</td>
+                            <td className="mono">{r.pan || '—'}</td>
+                            <td><div style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name ?? ''}>{r.name || '—'}</div></td>
+                            <td className="mono">{r.bidCatg || '—'}</td>
+                            <td><div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.tmName ?? ''}>{r.tmName || '—'}</div></td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtInt(r.sharesApplied)}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{money(r.amountPaid)}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>
+                              {r.sharesAllotted > 0
+                                ? <span style={{ color: 'var(--pos-ink)', fontWeight: 600 }}>{fmtInt(r.sharesAllotted)}</span>
+                                : 0}
+                            </td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{r.amountAllotted ? money(r.amountAllotted) : '—'}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{r.amountRefunded ? money(r.amountRefunded) : '—'}</td>
+                            <td style={{ whiteSpace: 'nowrap', color: statusInk(r.applnStatus), fontWeight: 600, fontSize: 11.5 }}>{r.applnStatus}</td>
+                            <td><div style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.reasonForRejection ?? ''}>{r.reasonForRejection || '—'}</div></td>
+                            {appBulk.mode !== 'exact' && <td className="mono" style={{ whiteSpace: 'nowrap' }}>{r.matchedTerm}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {appBulkPages > 1 && (
+                    <div className="row" style={{ gap: 10, marginTop: 12, alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <span className="muted" style={{ fontSize: 13 }}>
+                        page {appBulkPage} of {fmtInt(appBulkPages)} · the Excel export carries all {fmtInt(appBulk.rows.length)} rows
+                      </span>
+                      <button className="btn btn-secondary btn-sm" disabled={appBulkPage <= 1} onClick={() => setAppBulkPage(appBulkPage - 1)}>‹ Prev</button>
+                      <button className="btn btn-secondary btn-sm" disabled={appBulkPage >= appBulkPages} onClick={() => setAppBulkPage(appBulkPage + 1)}>Next ›</button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Reported, never silently dropped: "not in this registrar's
+                  data" is frequently the answer the operator wants. */}
+              {appBulk.notFound.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Not in this IPO&rsquo;s registrar data ({fmtInt(appBulk.notFound.length)})</div>
+                  <div className="muted mono" style={{ fontSize: 12, wordBreak: 'break-all', lineHeight: 1.7 }}>{appBulk.notFound.join(' · ')}</div>
+                </div>
+              )}
+            </>
+          )}
+        </div></div>
+      )}
+
+      {/* ── the record table: PAN, application number or a range ──────── */}
+      {tableView && (
         <div className="card" style={{ marginTop: 14 }}><div className="card-pad">
           {result === null ? (busy ? <Loader /> : <div className="muted" style={{ padding: '14px 0', textAlign: 'center' }}>Pick an IPO to load records.</div>)
           : result.rows.length === 0 ? (
