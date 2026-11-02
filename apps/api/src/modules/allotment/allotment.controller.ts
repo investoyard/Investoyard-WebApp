@@ -236,6 +236,44 @@ export class AllotmentController {
   }
 
   /**
+   * GET /api/admin/allotment/series.csv - the Range tab's "Export series" button.
+   *
+   * ONE LINE PER APPLICATION NUMBER in the range, matched or not, which is a
+   * different question from the one /records.csv answers: that exports the rows
+   * that matched and says nothing at all about the numbers that did not. So
+   * this is a SECOND button rather than a mode of the first - each does one
+   * thing, and the existing file does not change meaning under the operator.
+   *
+   * Refused before anything runs when the range cannot be listed number by
+   * number (a hexadecimal tail) or spans more than the cap, with the computed
+   * figure named. Streamed for the same reason /records.csv is.
+   */
+  @Get('series.csv')
+  @RequirePermissions('bids.view')
+  async seriesCsv(
+    @Res() res: Response,
+    @Query('ipoId') ipoId: string,
+    @Query('appFrom') appFrom?: string,
+    @Query('appTo') appTo?: string,
+    @Query('appNoMode') appNoMode?: string,
+  ) {
+    if (!ipoId) throw new BadRequestException('ipoId is required.');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    const tag = `-${(appFrom ?? '').trim()}-to-${(appTo ?? '').trim()}`.replace(/[^A-Za-z0-9.\-]/g, '');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="series${tag}-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    /* UTF-8 BOM: without it Excel reads the file as the system codepage and
+       mangles any non-ASCII name in the registrar's data. */
+    res.write('\uFEFF');
+    await this.svc.exportSeriesCsv(
+      { ipoId, from: appFrom, to: appTo, mode: appNoMode },
+      (chunk) => res.write(chunk),
+    );
+    res.end();
+  }
+  /**
    * Delete ONE uploaded file and the rows it inserted.
    *
    * Matched applications and the gz archive are deliberately left alone —

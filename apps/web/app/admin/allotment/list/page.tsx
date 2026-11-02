@@ -68,14 +68,17 @@ export default function AllotmentListPage() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
-  const [result, setResult] = useState<{
-    total: number; page: number; pageSize: number; rangeSpan: number | null; rows: api.AllotmentRecordRow[];
-  } | null>(null);
+  const [result, setResult] = useState<api.AllotmentRecordPage | null>(null);
   // application-number search (single) and range
   const [appNo, setAppNo] = useState('');
   const [appNoMode, setAppNoMode] = useState<api.AppNoMode>('exact');
   const [appFrom, setAppFrom] = useState('');
   const [appTo, setAppTo] = useState('');
+  /* ITS OWN STATE, deliberately not shared with the single search above.
+     The two dropdowns read the same three words and mean different things -
+     there the needle is what was typed, here it is every number in the
+     range - so sharing one value would make each imply the other's. */
+  const [rangeMode, setRangeMode] = useState<api.AppNoMode>('exact');
   // application-number search (bulk)
   const [appNoText, setAppNoText] = useState('');
   const [appBulk, setAppBulk] = useState<api.AppNoSummary | null>(null);
@@ -114,19 +117,38 @@ export default function AllotmentListPage() {
     ipoId,
     pan: field === 'pan' ? (pan.trim() || undefined) : undefined,
     appNo: field === 'appno' ? (appNo.trim() || undefined) : undefined,
-    appNoMode: field === 'appno' ? appNoMode : undefined,
+    appNoMode: field === 'appno' ? appNoMode : field === 'range' ? rangeMode : undefined,
     appFrom: field === 'range' ? (appFrom.trim() || undefined) : undefined,
     appTo: field === 'range' ? (appTo.trim() || undefined) : undefined,
     amount: amount.trim() === '' ? undefined : Number(amount),
     amountOp, amountField, status: status || undefined,
-  }), [ipoId, field, pan, appNo, appNoMode, appFrom, appTo, amount, amountOp, amountField, status]);
+  }), [ipoId, field, pan, appNo, appNoMode, appFrom, appTo, rangeMode, amount, amountOp, amountField, status]);
 
   /* The range rule, from the shared module the API enforces — so the screen
      cannot explain a rule the server does not apply. Shown before the request
      rather than after, since the server would refuse it anyway. */
   const rangeErr = useMemo(
-    () => (field === 'range' && (appFrom.trim() || appTo.trim()) ? api.rangeProblem(appFrom, appTo) : null),
-    [field, appFrom, appTo],
+    () => {
+      if (field !== 'range' || !(appFrom.trim() || appTo.trim())) return null;
+      /* CONTAINS has to enumerate the range to build its terms, so the series
+         cap applies to the TABLE as well and the server would refuse it.
+         Exact and Starts with only need the two ends to be one series. */
+      return rangeMode === 'contains'
+        ? api.seriesProblem(appFrom, appTo, rangeMode)
+        : api.rangeProblem(appFrom, appTo);
+    },
+    [field, appFrom, appTo, rangeMode],
+  );
+
+  /* THE SERIES EXPORT ASKS FOR MORE THAN THE TABLE DOES: to list every number
+     in the range it needs a decimal tail to count along and a span inside the
+     cap. Reported separately so a range that filters perfectly well is not
+     refused for the sake of a button beside it. */
+  const seriesErr = useMemo(
+    () => (field === 'range' && appFrom.trim() && appTo.trim()
+      ? api.seriesProblem(appFrom, appTo, rangeMode)
+      : 'Enter both ends of the range first.'),
+    [field, appFrom, appTo, rangeMode],
   );
 
   const search = useCallback(async (id: string, toPage = 1) => {
@@ -187,6 +209,12 @@ export default function AllotmentListPage() {
   /* The cap depends on the mode, and the gap is three orders of magnitude:
      contains cannot use the index, so it is one full scan plus a third of a
      second per extra number. */
+  /* For the file name: an operator exporting four series in a morning has four
+     files in one folder, so each had better say which issue it came from. */
+  const ipoSymbol = useMemo(
+    () => (ipos ?? []).find((i) => i.id === ipoId)?.symbol ?? '',
+    [ipos, ipoId],
+  );
   const appCap = api.appNoBulkMax(appNoMode);
   const appOverCap = appPastedCount > appCap;
 
@@ -199,6 +227,30 @@ export default function AllotmentListPage() {
     } catch (e: any) { setErr(String(e?.message ?? e)); setAppBulk(null); }
     finally { setBusy(false); }
   }, [ipoId, appNoText, appNoMode]);
+
+  /* BOTH EXPORTS GO THROUGH A FETCH, not an <a href>, and that is forced
+     rather than preferred: the routes read `Authorization: Bearer` and nothing
+     else, so a plain link answers 401. See `downloadCsv` in the API client -
+     this page's Export button had been doing exactly that. */
+  const exportRows = useCallback(async () => {
+    if (!ipoId || rangeErr) return;
+    setBusy(true); setErr(null);
+    try { await api.exportAllotmentRecordsCsv(query, ipoSymbol); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }, [ipoId, rangeErr, query, ipoSymbol]);
+
+  const exportSeries = useCallback(async () => {
+    if (!ipoId || rangeErr || seriesErr) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.exportAllotmentSeriesCsv(
+        { ipoId, appFrom: appFrom.trim(), appTo: appTo.trim(), appNoMode: rangeMode },
+        ipoSymbol,
+      );
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }, [ipoId, rangeErr, seriesErr, appFrom, appTo, rangeMode, ipoSymbol]);
 
   const exportAppBulk = useCallback(async () => {
     if (!ipoId || !appBulk) return;
@@ -213,6 +265,9 @@ export default function AllotmentListPage() {
 
   const reset = () => {
     setPan(''); setAppNo(''); setAppFrom(''); setAppTo('');
+    /* The match modes too: a Contains left over from the last search is a
+       filter nobody can see, and Reset means every filter. */
+    setAppNoMode('exact'); setRangeMode('exact');
     setAmount(''); setAmountOp('='); setAmountField('applied'); setStatus('');
   };
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
@@ -301,6 +356,19 @@ export default function AllotmentListPage() {
                       onChange={(e) => setAppTo(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !rangeErr) search(ipoId, 1); }} />
                   </div>
+                  {/* Each number in the range is the NEEDLE and each stored
+                      number the HAYSTACK: Exact means the stored number IS it,
+                      Starts with means the stored number carries extra digits
+                      after it, Contains means it appears anywhere inside. */}
+                  <div className="field" style={{ width: 150 }}>
+                    <label>Match</label>
+                    <select className="input" value={rangeMode}
+                      onChange={(e) => setRangeMode(e.target.value as api.AppNoMode)}>
+                      {api.APP_NO_MODES.map((m) => (
+                        <option key={m} value={m}>{api.APP_NO_MODE_LABEL[m]}</option>
+                      ))}
+                    </select>
+                  </div>
                 </>
               )}
               <div className="field" style={{ width: 130 }}>
@@ -334,17 +402,29 @@ export default function AllotmentListPage() {
               </div>
               <button className="btn" disabled={busy || !ipoId || !!rangeErr} onClick={() => search(ipoId, 1)}>{busy ? 'Searching…' : 'Search'}</button>
               <button className="btn btn-ghost" disabled={busy} onClick={reset}>Reset</button>
-              {/* A LINK, not a fetch: the export streams and a large IPO runs to
-                  hundreds of MB, which must never be held in a browser variable.
-                  It carries the same filters the table is showing, so what you get
-                  is what you are looking at — including a range. */}
-              <a
+              {/* NOT AN <a href>. These routes read `Authorization: Bearer` and
+                  nothing else, so a plain link answers 401 - which is what this
+                  button did, measured, for as long as it existed. */}
+              <button
                 className="btn btn-ghost"
-                href={ipoId && !rangeErr ? api.allotmentCsvUrl(query) : undefined}
-                aria-disabled={!ipoId || !result || !!rangeErr}
-                style={!ipoId || !result || rangeErr ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+                disabled={busy || !ipoId || !result || !!rangeErr}
+                onClick={exportRows}
                 title="Download the rows matching these filters as a CSV, which Excel opens directly"
-              >Export to Excel</a>
+              >Export to Excel</button>
+              {/* A SECOND BUTTON, not a mode of the one beside it. That exports
+                  the rows that MATCHED; this lists every application number in
+                  the range, matched or not, which is the only way a gap in the
+                  series is visible without counting. Each does one thing, so the
+                  existing file does not change meaning under the operator. */}
+              {field === 'range' && (
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy || !ipoId || !!rangeErr || !!seriesErr}
+                  onClick={exportSeries}
+                  title={seriesErr ?? 'One line per application number in the range - matched, matched'
+                    + ' under a longer number, or not found - with the match counts closing the file'}
+                >Export series</button>
+              )}
             </>
           ) : panBulk ? (
             <>
@@ -430,10 +510,20 @@ export default function AllotmentListPage() {
                 <span className="pill">
                   {fmtInt(result.total)} of {fmtInt(result.rangeSpan)} in this range
                 </span>
-                {result.rangeSpan > result.total && (
+                {/* ONLY HONEST UNDER EXACT. Under Starts with or Contains one
+                    number can match many rows, so `total` counts rows and not
+                    members and the subtraction would be meaningless - on
+                    JPL1-JPL9 it is 118,203 rows against 9 numbers. */}
+                {rangeMode === 'exact' && result.rangeSpan > result.total && (
                   <span className="muted" style={{ fontSize: 12.5 }}>
                     {fmtInt(result.rangeSpan - result.total)} application number
                     {result.rangeSpan - result.total === 1 ? '' : 's'} in the range are not in this registrar data
+                  </span>
+                )}
+                {rangeMode !== 'exact' && (
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    {api.APP_NO_MODE_LABEL[rangeMode]} match, so one number can bring back several rows
+                    — the series export says which number each row answered to
                   </span>
                 )}
               </div>
@@ -442,6 +532,17 @@ export default function AllotmentListPage() {
                 {fmtInt(result.total)} found · this series has no numeric count, so there is no total to compare against
               </span>
             ) : null}
+            {/* SAY SO WHEN THE SERVER RE-PADDED THE ENDS. Nothing at the typed
+                width matched, so it read the range at the width the file uses -
+                which is right, and silent magic on an operator's own input is
+                not. */}
+            {!rangeErr && result?.rangeNormalised && result.rangeFrom && (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                Read as <span className="mono">{result.rangeFrom}</span> to{' '}
+                <span className="mono">{result.rangeTo}</span> — nothing matched at the width you typed,
+                so both ends were padded to the width this file uses.
+              </div>
+            )}
           </div>
         )}
 

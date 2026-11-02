@@ -12,7 +12,9 @@ import { tenantContext } from '../../common/tenant-context';
 import { ApplicationsService } from '../applications/applications.service';
 import { UPLOAD_DIR } from '../upload/upload.module';
 import {
-  appNoBulkMax, cleanAppNo, isAppNoMode, rangeProblem, rangeSpan, type AppNoMode,
+  appNoBulkMax, bumpByte, cleanAppNo, isAppNoMode, memberAt, memberFor, normaliseEnds,
+  padMember, rangeProblem, rangeSpan, SERIES_BATCH, SERIES_STATUS_LABEL, seriesParts,
+  seriesProblem, seriesStatus, seriesWindow, type AppNoMode, type SeriesStatus,
 } from '@investoyard/shared-types';
 
 export const ALLOTMENT_TMP_DIR = join(UPLOAD_DIR, 'allotment-tmp');
@@ -393,10 +395,11 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     if (from || to) {
       const problem = rangeProblem(from, to);
       if (problem) throw new BadRequestException(problem);
-      /* Inside one fixed-width series text order IS numeric order, so this is
-         exact — and it resolves to an Index Scan on (ipoId, applicationNo),
-         measured at 0.036 ms against 1.60 crore rows. */
-      where.applicationNo = { gte: from, lte: to };
+      /* THE MATCH MODE APPLIES TO A RANGE TOO (operator, 2026-11-02): every
+         number in the range is a NEEDLE and each stored number the HAYSTACK.
+         One builder, so the table, its CSV and the series export cannot
+         disagree about what the mode meant. */
+      this.applyRangeFilter(where, from, to, isAppNoMode(q.appNoMode) ? q.appNoMode : 'exact');
     } else {
       const appNo = cleanAppNo(q.appNo);
       if (appNo) {
@@ -422,15 +425,61 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     return where;
   }
 
+  /**
+   * The range's two ends, RESOLVED - re-padded to the width the file actually
+   * uses when the operator wrote the numbers without their leading zeros.
+   *
+   * ONE resolver for the table, its CSV and the series export. Resolving it in
+   * the export alone would put 20,000 rows on screen and the right 728 in the
+   * file, which is the disagreement the single filter builder exists to stop.
+   *
+   * THE TEST IS 'IS THERE ANYTHING AT THE WIDTH TYPED', and it needs raw SQL
+   * for the length filter. The obvious test - did the window match nothing -
+   * is useless here: a string window at width 9 also admits 13-character
+   * values whose first 9 characters fall inside it, so it always matches
+   * something (measured: UPJPL0001..UPJPL1000 returns 20,000 rows of width
+   * 13), and the re-padding would never fire.
+   *
+   * Skipped for a digits-only series: the prefix is empty, so there is nothing
+   * to anchor a width lookup on, and `LIKE '%'` would scan the whole table.
+   * `AllotmentRecord` carries no RLS policy, so no tenant GUC is involved.
+   */
+  private async resolveRangeEnds(ipoId: string, fromRaw?: string, toRaw?: string) {
+    const from = cleanAppNo(fromRaw);
+    const to = cleanAppNo(toRaw);
+    const plain = { from, to, normalised: false };
+    if (!from && !to) return plain;
+
+    const problem = rangeProblem(from, to);
+    if (problem) throw new BadRequestException(problem);
+
+    const p = seriesParts(from, to);
+    if (!p || !p.prefix) return plain;
+
+    const atWidth = await this.prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT count(*) AS c
+        FROM "AllotmentRecord"
+       WHERE "ipoId" = ${ipoId}
+         AND "applicationNo" >= ${from}
+         AND "applicationNo" <= ${to}
+         AND length("applicationNo") = ${p.width}`;
+    if (atWidth.length && Number(atWidth[0].c) > 0) return plain;
+
+    const stored = await this.seriesStoredWidth(ipoId, p.prefix);
+    const re = stored != null ? normaliseEnds(p, stored) : null;
+    return re ? { from: re.from, to: re.to, normalised: true } : plain;
+  }
+
   async searchRecords(q: RecordFilter & { page?: number }) {
     const pageSize = 50;
     const page = Math.max(1, q.page ?? 1);
-    const where = this.recordWhere(q);
+    const ends = await this.resolveRangeEnds(q.ipoId, q.appFrom, q.appTo);
+    const where = this.recordWhere({ ...q, appFrom: ends.from, appTo: ends.to });
     /* A RANGE READS IN SERIES ORDER, "start to end" as the operator asked.
        Everything else keeps insertion order, which is what it has always
        shown. Sorting by applicationNo is free for a range: it is the order of
        the index the range already scans. */
-    const ranged = !!cleanAppNo(q.appFrom) || !!cleanAppNo(q.appTo);
+    const ranged = !!ends.from || !!ends.to;
     const orderBy = ranged
       ? ({ applicationNo: 'asc' } as const)
       : ({ id: 'asc' } as const);
@@ -441,8 +490,16 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     /* How many numbers the range COVERS, so the screen can say "8,240 of
        10,000" and a gap is visible without listing it. Null when it cannot be
        stated honestly — a Groww hex tail has no count. */
-    const span = ranged ? rangeSpan(q.appFrom, q.appTo) : null;
-    return { total, page, pageSize, rangeSpan: span, rows: rows.map(moneyToNumber) };
+    const span = ranged ? rangeSpan(ends.from, ends.to) : null;
+    return {
+      total, page, pageSize, rangeSpan: span,
+      /* What the range was actually read as, so the screen can say it was
+         re-padded rather than leaving the operator to wonder. */
+      rangeFrom: ends.from || undefined,
+      rangeTo: ends.to || undefined,
+      rangeNormalised: ends.normalised,
+      rows: rows.map(moneyToNumber),
+    };
   }
 
   /**
@@ -461,7 +518,8 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     q: RecordFilter,
     write: (chunk: string) => unknown,
   ): Promise<number> {
-    const where = this.recordWhere(q);
+    const ends = await this.resolveRangeEnds(q.ipoId, q.appFrom, q.appTo);
+    const where = this.recordWhere({ ...q, appFrom: ends.from, appTo: ends.to });
     const esc = (v: unknown) => {
       const s = v == null ? '' : String(v);
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -473,15 +531,24 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
        (ipoId, applicationNo), advancing its lower bound keeps the whole export
        inside that one index. Everything else keeps the `id` cursor it has
        always used. */
-    const ranged = !!cleanAppNo(q.appFrom) || !!cleanAppNo(q.appTo);
-    const rangeTo = cleanAppNo(q.appTo);
+    const rangeMode: AppNoMode = isAppNoMode(q.appNoMode) ? q.appNoMode : 'exact';
+    const rangeTo = ends.to;
+    /* PREFIX carries an OPEN upper bound and exact a CLOSED one, so the
+       cursor has to advance against the right one or it re-reads and skips.
+       CONTAINS has no bound at all - its filter is an OR of terms - so it
+       keeps the `id` cursor it has always used. */
+    const rangeStop = rangeMode === 'prefix' ? bumpByte(rangeTo) : null;
+    const upper = rangeStop ? { lt: rangeStop } : { lte: rangeTo };
+    const ranged = (!!ends.from || !!ends.to)
+      && rangeMode !== 'contains'
+      && (rangeMode !== 'prefix' || rangeStop !== null);
     let cursor: number | undefined;
     let afterAppNo: string | undefined;
     let sent = 0;
     for (;;) {
       const batch = await this.prisma.allotmentRecord.findMany({
         where: ranged && afterAppNo !== undefined
-          ? { ...where, applicationNo: { gt: afterAppNo, lte: rangeTo } }
+          ? { ...where, applicationNo: { gt: afterAppNo, ...upper } }
           : where,
         orderBy: ranged ? { applicationNo: 'asc' } : { id: 'asc' },
         take: 5000,
@@ -499,6 +566,266 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
       if (batch.length < 5000) break;
     }
     return sent;
+  }
+
+  /**
+   * The MOST COMMON stored width for a series, so a list written without the
+   * leading zeros can be re-padded to what the file actually holds.
+   *
+   * Only ever called when the typed window matched NOTHING, which is the
+   * signal that the width is wrong — so it costs nothing in the normal case.
+   * Skipped for a digits-only series, where the prefix is empty and `LIKE '%'`
+   * is a full scan of 1.6 crore rows to answer a question nobody asked.
+   *
+   * Raw SQL because `length()` is not expressible in a Prisma filter.
+   * `AllotmentRecord` carries no RLS policy (`setup-rls.sql` names six tables
+   * and this is not one), so no tenant GUC is involved.
+   */
+  private async seriesStoredWidth(ipoId: string, prefix: string): Promise<number | null> {
+    if (!prefix) return null;
+    const rows = await this.prisma.$queryRaw<{ len: number }[]>`
+      SELECT length("applicationNo")::int AS len
+        FROM "AllotmentRecord"
+       WHERE "ipoId" = ${ipoId}
+         AND "applicationNo" LIKE ${prefix + '%'}
+       GROUP BY 1
+       ORDER BY count(*) DESC
+       LIMIT 1`;
+    return rows.length ? Number(rows[0].len) : null;
+  }
+
+  /** What one series export found, reported at the top of the file. */
+  private seriesCounts() {
+    return { members: 0, full: 0, partial: 0, missing: 0, rows: 0, truncated: false };
+  }
+
+  /**
+   * ONE LINE PER APPLICATION NUMBER IN THE RANGE — the reconciliation the
+   * operator asked for, not a second opinion about the rows on screen.
+   *
+   * The table above answers "what is between these two numbers"; this answers
+   * "which of my numbers are in the file, which are not, and where the file
+   * holds a longer number under the same opening digits, which one matched".
+   * So a member with no match still gets a line, which is the only way a gap
+   * is visible without counting.
+   *
+   * ENUMERATED IN BATCHES, never member by member and never all at once.
+   * `SERIES_BATCH` members become ONE index window, the rows that come back
+   * are attributed by a fixed-length slice, and the batch is then written in
+   * member order — so memory is bounded by one batch and the file reads in
+   * series order. A query per member would be a million round trips; one query
+   * for the whole span would hold every matching row in memory.
+   *
+   * CONTEXT AT THE TOP, TALLY AT THE BOTTOM, and that split is forced rather
+   * than chosen: what the range IS can be written before a single row is read,
+   * while the match counts are only known once every batch has been. Buffering
+   * a million lines to put the counts first is not an option, so they close the
+   * file instead. Both blocks are labelled, so neither reads as data.
+   */
+  async exportSeriesCsv(
+    q: { ipoId: string; from?: string; to?: string; mode?: string },
+    write: (chunk: string) => unknown,
+  ) {
+    const ipo = await this.prisma.ipo.findUnique({
+      where: { id: q.ipoId }, select: { symbol: true, name: true },
+    });
+    if (!ipo) throw new NotFoundException('IPO not found.');
+
+    const mode: AppNoMode = isAppNoMode(q.mode) ? q.mode : 'exact';
+    /* Refused BEFORE anything runs, with the figure that caused it named - a
+       span of a crore is not something to discover from a stalled download. */
+    const problem = seriesProblem(q.from, q.to, mode);
+    if (problem) throw new BadRequestException(problem);
+
+    let parts = seriesParts(q.from, q.to);
+    if (!parts) throw new BadRequestException('This range is not a series that can be listed.');
+
+    /* THE SAME RESOLVER THE TABLE USES, so a short-typed range reads as the
+       same two ends on the screen and in the file. */
+    const ends = await this.resolveRangeEnds(q.ipoId, q.from, q.to);
+    if (ends.normalised) {
+      const next = seriesParts(ends.from, ends.to);
+      if (next) parts = next;
+    }
+    const normalisedFrom = ends.normalised ? ends.from : null;
+
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const n = this.seriesCounts();
+    n.members = parts.span;
+
+    /* Buffered, because the stats are only known at the end and they belong at
+       the top. One batch's lines at a time, never the whole file. */
+    const body: string[] = [];
+
+    const MODE_LABEL: Record<AppNoMode, string> = {
+      exact: 'Exact', prefix: 'Starts with', contains: 'Contains',
+    };
+    const ctx: [string, string][] = [
+      ['IPO', `${ipo.symbol}${ipo.name ? ' - ' + ipo.name : ''}`],
+      ['Series from', padMember(parts.prefix, parts.from, parts.tailWidth)],
+      ['Series to', padMember(parts.prefix, parts.to, parts.tailWidth)],
+      ['Application numbers in series', String(parts.span)],
+      ['Match mode', MODE_LABEL[mode]],
+    ];
+    if (normalisedFrom != null) {
+      ctx.push(['Note', 'The range as typed matched nothing at its own width, so both ends were'
+        + ' re-padded to the width this file uses.']);
+    }
+    for (const [k, v] of ctx) write(`${esc(k)},${esc(v)}\n`);
+    write('\n');
+    write('Application no,Matched application no,Status,PAN,Name,DP/Client ID,Category,TM Name,'
+      + 'Applied Shares,Amount,Allotted Shares,Allotted Amount,Refund Amount,Reason\n');
+
+    const select = {
+      applicationNo: true, pan: true, name: true, dpClientId: true, category: true, tmName: true,
+      appliedShares: true, amount: true, allottedShares: true, allottedAmount: true,
+      refundAmount: true, reason: true,
+    } as const;
+    type Rec = { applicationNo: string } & Record<string, unknown>;
+
+    const line = (member: string, r: Rec | null) => {
+      const status: SeriesStatus = r ? seriesStatus(r.applicationNo, member) : 'missing';
+      if (status === 'full') n.full++;
+      else if (status === 'partial') n.partial++;
+      else n.missing++;
+      if (r) n.rows++;
+      body.push([
+        member,
+        r ? r.applicationNo : '',
+        SERIES_STATUS_LABEL[status],
+        r ? r.pan : '', r ? r.name : '', r ? r.dpClientId : '', r ? r.category : '', r ? r.tmName : '',
+        r ? r.appliedShares : '', r ? r.amount : '', r ? r.allottedShares : '',
+        r ? r.allottedAmount : '', r ? r.refundAmount : '', r ? r.reason : '',
+      ].map(esc).join(','));
+    };
+
+    for (let start = 0; start < parts.span; start += SERIES_BATCH) {
+      const count = Math.min(SERIES_BATCH, parts.span - start);
+      const lo = parts.from + BigInt(start);
+      const hi = lo + BigInt(count - 1);
+
+      let found: Rec[];
+      if (mode === 'contains') {
+        /* No index to use, so this is one scan with the terms OR'd together -
+           which is why `seriesProblem` caps it at a handful of numbers. */
+        const terms: string[] = [];
+        for (let i = 0; i < count; i++) terms.push(padMember(parts.prefix, lo + BigInt(i), parts.tailWidth));
+        found = await this.prisma.allotmentRecord.findMany({
+          where: { ipoId: q.ipoId, OR: terms.map((t) => ({ applicationNo: { contains: t } })) },
+          select, take: APP_NO_ROW_MAX + 1, orderBy: { applicationNo: 'asc' },
+        }) as Rec[];
+      } else {
+        const w = seriesWindow(parts, mode, lo, hi)!;
+        found = await this.prisma.allotmentRecord.findMany({
+          where: { ipoId: q.ipoId, applicationNo: this.windowFilter(w) },
+          select, take: APP_NO_ROW_MAX + 1, orderBy: { applicationNo: 'asc' },
+        }) as Rec[];
+      }
+      if (found.length > APP_NO_ROW_MAX) { n.truncated = true; found.length = APP_NO_ROW_MAX; }
+
+      /* Attribution: a fixed-length slice for exact and prefix, a scan over the
+         handful of terms for contains. NOT members x rows - that is the
+         quadratic shape already fixed once in the bulk search. */
+      const byMember = new Map<string, Rec[]>();
+      for (const r of found) {
+        let member: string | null = null;
+        if (mode === 'contains') {
+          for (let i = 0; i < count && member === null; i++) {
+            const t = padMember(parts.prefix, lo + BigInt(i), parts.tailWidth);
+            if (r.applicationNo.includes(t)) member = t;
+          }
+        } else {
+          member = memberFor(r.applicationNo, parts);
+        }
+        if (member === null) continue;
+        const list = byMember.get(member);
+        if (list) list.push(r); else byMember.set(member, [r]);
+      }
+
+      for (let i = 0; i < count; i++) {
+        const member = padMember(parts.prefix, lo + BigInt(i), parts.tailWidth);
+        const rows = byMember.get(member);
+        if (!rows || rows.length === 0) line(member, null);
+        else for (const r of rows) line(member, r);
+      }
+
+      write(body.join('\n') + '\n');
+      body.length = 0;
+    }
+
+    /* `missing` counts MEMBERS with no match; full and partial count LINES,
+       because one member can match several rows under prefix or contains. So
+       the two are labelled differently rather than being summed. */
+    write('\n');
+    const tally: [string, string][] = [
+      ['Application numbers matched', String(parts.span - n.missing)],
+      ['Application numbers not found', String(n.missing)],
+      ['Rows - matched (full)', String(n.full)],
+      ['Rows - matched (partial)', String(n.partial)],
+      ['Rows written', String(n.rows)],
+    ];
+    if (n.truncated) {
+      tally.push(['Note', 'One batch matched more rows than this export returns, so some are'
+        + ' missing from the file. Narrow the range, or use Exact.']);
+    }
+    for (const [k, v] of tally) write(`${esc(k)},${esc(v)}\n`);
+
+    return {
+      symbol: ipo.symbol,
+      name: ipo.name,
+      mode,
+      from: padMember(parts.prefix, parts.from, parts.tailWidth),
+      to: padMember(parts.prefix, parts.to, parts.tailWidth),
+      normalised: normalisedFrom != null,
+      ...n,
+    };
+  }
+
+  /** A `SeriesWindow` as a Prisma filter. `lt` is absent unless prefix mode set it. */
+  private windowFilter(w: { gte: string; lte?: string; lt?: string }) {
+    if (w.lt !== undefined) return { gte: w.gte, lt: w.lt };
+    if (w.lte !== undefined) return { gte: w.gte, lte: w.lte };
+    return { gte: w.gte };
+  }
+
+  /**
+   * The application-number RANGE as a filter, in the mode the operator chose.
+   *
+   * Each number in the range is a NEEDLE and each stored number the HAYSTACK:
+   * exact means the stored number IS it, prefix means the stored number begins
+   * with it, contains means it appears anywhere inside.
+   *
+   * PREFIX COLLAPSES TO ONE RANGE and that is the whole reason it is as cheap
+   * as exact: the members are contiguous and the same width and the collation
+   * is C, so `>= first AND < bumpByte(last)` is the union of all of them -
+   * checked against the OR of 1,000 `startsWith` and identical, 2 ms against
+   * 92 ms. It needs no decimal tail either, so it works on a Groww id.
+   *
+   * CONTAINS cannot collapse, so it becomes an OR of its terms and is capped at
+   * a handful of numbers by `seriesProblem`.
+   */
+  private applyRangeFilter(where: any, from: string, to: string, mode: AppNoMode) {
+    if (mode === 'prefix') {
+      const stop = bumpByte(to);
+      where.applicationNo = stop ? { gte: from, lt: stop } : { gte: from };
+      return;
+    }
+    if (mode === 'contains') {
+      const problem = seriesProblem(from, to, mode);
+      if (problem) throw new BadRequestException(problem);
+      const p = seriesParts(from, to)!;
+      const terms: string[] = [];
+      for (let i = 0; i < p.span; i++) terms.push(memberAt(p, i));
+      where.OR = terms.map((t) => ({ applicationNo: { contains: t } }));
+      return;
+    }
+    /* Inside one fixed-width series text order IS numeric order, so this is
+       exact - and it resolves to an Index Scan on (ipoId, applicationNo),
+       measured at 0.036 ms against 1.60 crore rows. */
+    where.applicationNo = { gte: from, lte: to };
   }
 
   // ── archive / restore / retention ──────────────────────────────────────────

@@ -8,7 +8,7 @@ import type {
 } from '@investoyard/shared-types';
 import {
   APP_NO_BULK_CONTAINS_MAX, APP_NO_BULK_MAX, APP_NO_MODE_LABEL, APP_NO_MODES,
-  appNoBulkMax, rangeProblem,
+  RANGE_SERIES_MAX_SPAN, appNoBulkMax, rangeProblem, rangeSpan, seriesProblem,
 } from '@investoyard/shared-types';
 /* Re-exported so the admin pages read one module — they already import
    everything else tenant-shaped through `* as api`. */
@@ -17,7 +17,7 @@ export type { TenantContent, TenantIdentity, TenantContact, ContentGap, AppNoMod
    API enforces rather than a second copy of them. */
 export {
   APP_NO_BULK_CONTAINS_MAX, APP_NO_BULK_MAX, APP_NO_MODE_LABEL, APP_NO_MODES,
-  appNoBulkMax, rangeProblem,
+  RANGE_SERIES_MAX_SPAN, appNoBulkMax, rangeProblem, rangeSpan, seriesProblem,
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
@@ -815,12 +815,60 @@ export interface AllotmentRecordRow {
    *  imported before 2026-10-13 — only a re-import can fill it. */
   tmName?: string | null;
 }
-/** The download URL for the list's Export button — the SAME query the table is
- *  showing, so the file is the rows on screen rather than a second reading of
- *  the filters. A plain link, not a fetch: the response streams and may run to
- *  hundreds of MB, which is not something to hold in a browser variable. */
-export const allotmentCsvUrl = (q: AllotmentRecordQuery) =>
-  `${API}/admin/allotment/records.csv?${qstr(q)}`;
+/**
+ * Download a CSV from a GET route, through the Authorization header.
+ *
+ * IT HAS TO BE A FETCH RATHER THAN A PLAIN LINK, and that is not a style
+ * choice. These routes sit behind `@UseGuards(JwtAuthGuard, PermissionsGuard)`
+ * and that guard reads `Authorization: Bearer` and nothing else - no cookie,
+ * no query-string token. An <a href> cannot send a header, so it answers 401
+ * "Missing token"; this page's Export button did exactly that, measured over
+ * loopback, for as long as it has existed. Every other CSV export in the admin
+ * already does it this way.
+ *
+ * The cost is that the body lands in a blob rather than streaming to disk, so a
+ * million-row export is held in memory for a moment. That is the trade against
+ * delivering nothing at all; a signed one-time download URL is the way to get
+ * the streaming back, and it is not built.
+ */
+async function downloadCsv(url: string, filename: string) {
+  const token = await adminToken();
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({} as any));
+    throw new Error((e as any).message || `${res.status} ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(href);
+}
+
+/** The list's Export button - the SAME query the table is showing, so the file
+ *  is the rows on screen rather than a second reading of the filters. */
+export const exportAllotmentRecordsCsv = (q: AllotmentRecordQuery, symbol: string) =>
+  downloadCsv(
+    `${API}/admin/allotment/records.csv?${qstr(q)}`,
+    `${symbol || 'allotment'}-records-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
+
+/** The download URL for the Range tab's "Export series" button - ONE LINE PER
+ *  APPLICATION NUMBER in the range, matched or not, with the match stats
+ *  closing the file. A different question from the Export beside it, which
+ *  sends the rows that matched and says nothing about the numbers that did
+ *  not; hence a second button rather than a mode of the first. A plain link,
+ *  never a fetch, for the same reason - it streams. */
+export const exportAllotmentSeriesCsv = (
+  q: { ipoId: string; appFrom?: string; appTo?: string; appNoMode?: AppNoMode },
+  symbol: string,
+) =>
+  downloadCsv(
+    `${API}/admin/allotment/series.csv?${qstr(q)}`,
+    `${symbol || 'allotment'}-series-${(q.appFrom ?? '').replace(/[^A-Za-z0-9]/g, '')}`
+    + `-to-${(q.appTo ?? '').replace(/[^A-Za-z0-9]/g, '')}.csv`,
+  );
 
 export interface AllotmentArchiveInfo { fileName: string; rows: number; fileSize: number; createdAt: string }
 export interface AllotmentSummary {
@@ -854,15 +902,26 @@ export const fetchAllotmentImport = (id: string) =>
   authed<AllotmentImportRow>(`${API}/admin/allotment/imports/${id}`, { method: 'GET' });
 export const fetchAllotmentSummary = (ipoId: string) =>
   authed<AllotmentSummary>(`${API}/admin/allotment/summary?ipoId=${ipoId}`, { method: 'GET' });
+/** The allotment-record search answer. NAMED, because the page holds it in
+ *  state and an inline shape in both places means a new field has to be added
+ *  twice or the screen simply cannot see it. */
+export interface AllotmentRecordPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  /** How many application numbers the range COVERS, so the screen can say
+   *  "8,240 of 10,000". Null when there is no range, or when the span cannot
+   *  be stated - a Groww hex tail has no count. */
+  rangeSpan: number | null;
+  /** The ends the server actually READ, and whether it had to re-pad them
+   *  because the numbers were written without their leading zeros. */
+  rangeFrom?: string;
+  rangeTo?: string;
+  rangeNormalised?: boolean;
+  rows: AllotmentRecordRow[];
+}
 export const searchAllotmentRecords = (q: AllotmentRecordQuery & { page?: number }) =>
-  authed<{
-    total: number; page: number; pageSize: number;
-    /** How many application numbers the range COVERS, so the screen can say
-     *  "8,240 of 10,000". Null when there is no range, or when the span
-     *  cannot be stated — a Groww hex tail has no count. */
-    rangeSpan: number | null;
-    rows: AllotmentRecordRow[];
-  }>(`${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
+  authed<AllotmentRecordPage>(`${API}/admin/allotment/records?${qstr(q)}`, { method: 'GET' });
 export const archiveAllotment = (ipoId: string) =>
   authed<AllotmentArchiveInfo | null>(`${API}/admin/allotment/archive/${ipoId}`, { method: 'POST' });
 /**

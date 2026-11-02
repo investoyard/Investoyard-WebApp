@@ -2,7 +2,7 @@
 /**
  * The Host-header forwarder the WEB BUILD depends on.
  *
- * `apps/web/.env.production` sets `API_INTERNAL_URL=http://localhost:3000/api`,
+ * `apps/web/.env.production` sets `API_INTERNAL_URL` to this port (127.0.0.1,
  * and `apps/web/lib/api.ts` fetches every baked page through it. Nothing of
  * ours listens there on its own: under iisnode the API gets a NAMED PIPE and
  * IIS routes to it by `Host` header, so there is no TCP port to point at. This
@@ -60,10 +60,43 @@ const args = process.argv.slice(2);
 const checkOnly = args.includes('--check');
 const port = Number(args.find((a) => /^\d+$/.test(a)) || DEFAULT_PORT);
 
-/** Ask the port whether it is really us. */
-function probe(cb) {
+/**
+ * The address the WEB BUILD will actually fetch, read out of its own env.
+ *
+ * NOT a hardcoded 127.0.0.1, and that is the whole point: on 2026-11-02 a
+ * deploy collapsed to 6 ipo pages while `--check` reported the forwarder
+ * healthy, because the check probed 127.0.0.1 and the build's
+ * `API_INTERNAL_URL` said `localhost`, which Node resolves to ::1 FIRST.
+ * A CHECK THAT DOES NOT USE THE SAME ADDRESS AS THE THING IT CHECKS IS NOT
+ * A CHECK. The fallback matches the env default so a missing file is not a
+ * silent pass.
+ */
+function buildTarget() {
+  const path = require('path');
+  const fs = require('fs');
+  const p = path.join(__dirname, '..', 'apps', 'web', '.env.production');
+  /* THE CATCH NAMES THE REASON. A bare one folded 'the file is missing' into
+     'this function is broken' - which is how a ReferenceError here spent a
+     run masquerading as a clean default that happened to be correct. */
+  let why = null;
+  try {
+    const line = fs.readFileSync(p, 'utf8').split(/\r?\n/)
+      .find((l) => /^\s*API_INTERNAL_URL\s*=/.test(l));
+    if (!line) why = `no API_INTERNAL_URL in ${p}`;
+    else {
+      const u = new URL(line.split('=').slice(1).join('=').trim());
+      return { host: u.hostname, port: Number(u.port) || 80, from: p, why: null };
+    }
+  } catch (e) {
+    why = `could not read ${p}: ${e.message}`;
+  }
+  return { host: '127.0.0.1', port: DEFAULT_PORT, from: null, why };
+}
+
+/** Ask one address whether it is really us. */
+function probe(host, port, cb) {
   const req = http.get(
-    { host: '127.0.0.1', port, path: '/api/health', timeout: 8000 },
+    { host, port, path: '/api/health', timeout: 8000 },
     (res) => {
       let body = '';
       res.on('data', (d) => { body += d; });
@@ -85,15 +118,37 @@ function probe(cb) {
 }
 
 if (checkOnly) {
-  probe((ok, status, body) => {
-    if (ok) {
-      console.log(`ok: port ${port} is serving the Investoyard API`);
-      process.exit(0);
+  /* EVERY address, not the first one that works. `localhost` has two, and a
+     build fetching it may land on either - undici follows the resolver's own
+     order, which puts ::1 first here. One good address out of two is exactly
+     the state that produced the collapsed export, so it must FAIL. */
+  const t = buildTarget();
+  console.log(`checking what the build fetches: http://${t.host}:${t.port}`
+    + (t.from ? `  (from ${t.from})` : `  (FALLBACK - ${t.why})`));
+  require('dns').lookup(t.host, { all: true }, (err, addrs) => {
+    const list = err || !addrs.length ? [{ address: t.host }] : addrs;
+    let left = list.length;
+    let bad = 0;
+    for (const a of list) {
+      probe(a.address, t.port, (ok, status, body) => {
+        const shown = a.address.includes(':') ? `[${a.address}]` : a.address;
+        if (ok) console.log(`  ok    ${shown}:${t.port} is the Investoyard API`);
+        else {
+          bad++;
+          console.error(`  FAIL  ${shown}:${t.port} is NOT the Investoyard API (http ${status}): ${body}`);
+        }
+        if (--left === 0) {
+          if (!bad) { console.log(`ok: port ${t.port} is serving the Investoyard API on every address the build can reach`); process.exit(0); }
+          console.error('');
+          console.error(`${bad} of ${list.length} address(es) answer with something else.`);
+          console.error('Start the forwarder with:  node scripts/api-forward.js');
+          console.error('If another app holds the port on one stack, point API_INTERNAL_URL at');
+          console.error('the address the forwarder binds (127.0.0.1) rather than `localhost`.');
+          console.error('Without this the build bakes placeholder pages and the publish gate refuses them.');
+          process.exit(1);
+        }
+      });
     }
-    console.error(`NOT the Investoyard API on port ${port} (http ${status}): ${body}`);
-    console.error('Start it with:  node scripts/api-forward.js');
-    console.error('Without it the web build bakes placeholder pages and the publish gate refuses them.');
-    process.exit(1);
   });
 } else {
   let served = 0;
