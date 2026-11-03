@@ -78,5 +78,5 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 14,
   },
   title: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.3, color: ui.title, textAlign: 'center' },
-  body: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, textAlign: 'center', marginTop: 6, lineHeight: 20, paddingHorizontal: 12 },
+  body: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.slate, textAlign: 'center', marginTop: 6, lineHeight: 20, paddingHorizontal: 12 },
 });

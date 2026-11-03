@@ -356,7 +356,9 @@ export default function IpoDetailScreen() {
                   points={gmpLog.map((e) => e.gmp)}
                   first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
                   lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}
-                  color={gmpLog[gmpLog.length - 1].gmp >= 0 ? ui.green : ui.red}
+                  /* Brand colour, not gain/loss: GMP is indicative and a green trend
+                     line reads as a gain already made. (QC C2) */
+                  color={ui.indigo}
                 />
               ) : null}
               {subLog.length ? (
@@ -608,20 +610,20 @@ const styles = StyleSheet.create({
   pinShadow: { ...shadowCard, elevation: 6 },
   pinRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16 },
   pinName: { fontSize: 15.5, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.3, color: ui.title },
-  pinSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  pinSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2 },
   // scrolled (compact) mode — no logo, name one line, key metrics strip
   pinCompact: { paddingHorizontal: 16 },
   pinMetrics: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, marginTop: 3, fontVariant: ['tabular-nums'] },
   content: { paddingHorizontal: 16, paddingTop: 12 },
   datesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, marginBottom: 2 },
-  heroDatesTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  heroDatesTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   para: { fontFamily: fonts.regular, fontSize: 14, color: ui.body, lineHeight: 21 },
   kv: {
     flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: ui.divider,
   },
-  kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.muted },
-  trendDay: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.slate },
+  trendDay: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   kvV: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flexShrink: 1, textAlign: 'right' },
   applyBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

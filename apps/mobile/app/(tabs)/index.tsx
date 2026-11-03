@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   browseAllTxt: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   todayRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingTop: 12 },
   todayLbl: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 12, color: ui.title, letterSpacing: 0.3, textTransform: 'uppercase' },
-  todayItem: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted },
+  todayItem: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.slate },
   fchip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, height: 36, borderRadius: 999, backgroundColor: '#ffffff', ...shadowCard, elevation: 1,
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   fchipOn: { backgroundColor: ui.indigo },
   fchipTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   fchipTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },
-  fchipN: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.muted, fontVariant: ['tabular-nums'] },
+  fchipN: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.slate, fontVariant: ['tabular-nums'] },
   fchipNOn: { color: 'rgba(255,255,255,0.85)' },
   // board segment
   seg: {
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', borderRadius: 20, marginHorizontal: 16,
     paddingHorizontal: 14, paddingVertical: 4, ...shadowCard,
   },
-  compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  compactMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   compactPrice: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   gain: { fontSize: 11.5, fontFamily: fonts.extrabold, fontWeight: '800', marginTop: 1, fontVariant: ['tabular-nums'] },
 });

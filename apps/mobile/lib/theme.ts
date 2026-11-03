@@ -15,6 +15,12 @@ const light = {
   /** body text */
   body: '#3D4060',
   /** micro-labels / secondary — indigo-grey, higher legibility than flat grey */
+  /* ICONS, PLACEHOLDERS AND DISABLED STATES ONLY - never body, meta or
+     helper TEXT. Measured: 4.05:1 on white and 3.73:1 on the canvas,
+     against the 4.5:1 AA bar for text; it passes the 3:1 bar for icons
+     and other non-text UI. It was the colour of every date, sub-line,
+     note and disclaimer in the app until 2026-11-03 (QC A1); those all
+     read `slate` now, which is 5.97 and 5.50. Use `slate` for text. */
   muted: '#767CA3',
   indigo: '#3C2E7E',
   indigoTint: '#EEEBFA',
@@ -85,7 +91,7 @@ export const microLabel: TextStyle = {
   fontWeight: '700',
   letterSpacing: 0.6,
   textTransform: 'uppercase',
-  color: ui.muted,
+  color: ui.slate,
 };
 
 /** Enable LayoutAnimation on Android (call once from the root layout). */

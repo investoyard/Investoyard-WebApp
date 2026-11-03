@@ -36,6 +36,6 @@ const styles = StyleSheet.create({
   iconWrap: { width: 84, height: 84, marginBottom: 16, alignItems: 'center', justifyContent: 'center' },
   icon: { alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 16.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, textAlign: 'center' },
-  body: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  body: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.slate, textAlign: 'center', marginTop: 6, lineHeight: 20 },
   cta: { marginTop: 18, alignSelf: 'stretch' },
 });

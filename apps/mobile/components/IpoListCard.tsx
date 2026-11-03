@@ -20,6 +20,7 @@ import { fonts, animateNext, microLabel, ui } from '../lib/theme';
 import { listingInfo, type IpoFull } from '../lib/ipoCalc';
 import { demandWord, gmpGainPct, stageOf, PANEL_LABEL, type PanelKey } from '../lib/ipoStage';
 import { fmtDate, inr, priceBand, titleCase } from '../lib/format';
+import { LABEL } from '@investoyard/shared-types';
 import { tapSelect } from '../lib/haptics';
 import { Card } from './ui/Card';
 import { Chip } from './ui/Chip';
@@ -96,14 +97,18 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
           </View>
         </View>
       ) : ipo.gmp != null ? (
-        <View style={[styles.market, { backgroundColor: ipo.gmp >= 0 ? ui.greenTint : ui.redTint }]}>
+        /* INDICATIVE, so NEUTRAL INK - never the greenTint/green the LISTING
+           RESULT branch above uses. Identical styling made a projection read
+           as an outcome in the same slot on the same card (QC C2). Direction
+           survives without colour through the sign and the arrow (QC A6). */
+        <View style={[styles.market, { backgroundColor: ui.slateTint }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.marketK, { color: ipo.gmp >= 0 ? ui.green : ui.red }]}>GREY MARKET PREMIUM</Text>
+            <Text style={[styles.marketK, { color: ui.slate }]}>{LABEL.gmp.toUpperCase()}</Text>
             <Text style={styles.marketV}>
               {ipo.gmp >= 0 ? '+' : '−'}₹{Math.abs(ipo.gmp)}
               {gainPct != null ? (
                 <Text style={styles.marketGain}>
-                  {'   '}{gainPct >= 0 ? '▲ +' : '▼ '}{Math.abs(gainPct)}% est. gain
+                  {'   '}{gainPct >= 0 ? '▲ +' : '▼ '}{Math.abs(gainPct)}% indicative
                 </Text>
               ) : null}
             </Text>
@@ -223,7 +228,7 @@ const styles = StyleSheet.create({
   boardTagSme: { backgroundColor: ui.indigoTint },
   boardTagTxt: { fontSize: 9.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.slate, letterSpacing: 0.4 },
   boardTagTxtSme: { color: ui.indigo },
-  symbol: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, letterSpacing: 0.3 },
+  symbol: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, letterSpacing: 0.3 },
   topRight: { alignItems: 'flex-end', gap: 7 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   pulse: { width: 7, height: 7, borderRadius: 4 },
@@ -232,13 +237,13 @@ const styles = StyleSheet.create({
   marketK: { fontSize: 9.5, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.7 },
   marketV: { fontSize: 22, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
   marketGain: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
-  marketNote: { fontSize: 9.5, fontFamily: fonts.regular, color: ui.muted, marginTop: 3 },
+  marketNote: { fontSize: 9.5, fontFamily: fonts.regular, color: ui.slate, marginTop: 3 },
   // stat grid
   stats: { flexDirection: 'row', marginTop: 14 },
   stat: { flex: 1, paddingRight: 10 },
   statK: { ...microLabel, fontSize: 9.5 },
   statV: { fontSize: 16, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.3, color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
-  statSub: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 1 },
+  statSub: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 1 },
   statDiv: { width: 1, backgroundColor: ui.divider, marginRight: 10 },
   statsDivH: { height: 1, backgroundColor: ui.divider, marginTop: 12 },
   note: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, marginTop: 12 },
@@ -257,6 +262,6 @@ const styles = StyleSheet.create({
   topicTxt: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   topicTxtOn: { color: '#ffffff' },
   panel: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider },
-  dates: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  dates: { fontSize: 12, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
   cta: { marginTop: 12 },
 });

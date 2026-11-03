@@ -46,6 +46,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   title: { fontSize: 14.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   right: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  value: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  value: { fontSize: 13, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
   body: { paddingBottom: 14 },
 });

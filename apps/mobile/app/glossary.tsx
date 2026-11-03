@@ -70,5 +70,5 @@ const styles = StyleSheet.create({
   itemDiv: { borderBottomWidth: 1, borderBottomColor: ui.divider },
   term: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   def: { fontSize: 13.5, fontFamily: fonts.regular, color: ui.body, lineHeight: 20, marginTop: 3 },
-  foot: { fontSize: 10.5, fontFamily: fonts.regular, color: ui.muted, textAlign: 'center', marginTop: 4 },
+  foot: { fontSize: 10.5, fontFamily: fonts.regular, color: ui.slate, textAlign: 'center', marginTop: 4 },
 });

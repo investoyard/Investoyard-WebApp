@@ -172,7 +172,7 @@ export default function ProfilesScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   h1: { fontSize: 24, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
-  count: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
+  count: { fontSize: 13, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
   note: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
     backgroundColor: ui.indigoTint, borderRadius: 14, padding: 12,
@@ -185,11 +185,11 @@ const styles = StyleSheet.create({
   },
   avatarTxt: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo },
   name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  meta: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
+  meta: { fontSize: 12, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
   detail: { marginTop: 14, paddingTop: 6, borderTopWidth: 1, borderTopColor: ui.divider },
   dRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 7 },
-  dK: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  dK: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   dV: { flex: 1, textAlign: 'right', fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   actions: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
   deleteBtn: {

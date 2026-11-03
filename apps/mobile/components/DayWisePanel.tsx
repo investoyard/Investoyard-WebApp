@@ -167,7 +167,7 @@ const s = StyleSheet.create({
   dayOpen: { backgroundColor: ui.canvas, borderRadius: 12, paddingHorizontal: 10, marginHorizontal: -10 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dayNo: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  dayDate: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.muted, marginTop: 1 },
+  dayDate: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.slate, marginTop: 1 },
   dayTotal: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
 
   /* Two columns rather than five across: four categories at 375px leaves ~80px
@@ -184,5 +184,5 @@ const s = StyleSheet.create({
   hour: { paddingVertical: 6 },
   hourT: { ...microLabel, fontSize: 10, color: ui.indigo },
 
-  note: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.muted, marginTop: 14 },
+  note: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.slate, marginTop: 14 },
 });

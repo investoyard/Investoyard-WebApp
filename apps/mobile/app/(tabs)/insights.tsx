@@ -4,7 +4,7 @@
  *   2. Explore tiles → GMP · Subscription · Performance · News · Glossary · Calendar
  */
 import { useCallback, useEffect, useState } from 'react';
-import { istToday } from '@investoyard/shared-types';
+import { istToday, LABEL } from '@investoyard/shared-types';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fonts, animateNext, microLabel, ui } from '../../lib/theme';
@@ -93,7 +93,7 @@ export default function InsightsScreen() {
       <SectionTitle label="Allotment Status" meta="any PAN · registrar data" />
       <Card>
         {checkable.length === 0 ? (
-          <Text style={styles.mutedTxt}>No issue is in its allotment window right now — check back once the next one closes.</Text>
+          <Text style={styles.subtleTxt}>No issue is in its allotment window right now — check back once the next one closes.</Text>
         ) : (
           <>
             <Text style={styles.inK}>SELECT IPO</Text>
@@ -134,7 +134,7 @@ export default function InsightsScreen() {
             {result ? (
               <View style={styles.resWrap}>
                 {!result.found ? (
-                  <Text style={styles.mutedTxt}>
+                  <Text style={styles.subtleTxt}>
                     No application found for this PAN in {result.ipo.symbol}
                     {!result.allotmentOut ? ' yet — registrar data arrives on allotment day.' : '.'}
                   </Text>
@@ -166,7 +166,7 @@ export default function InsightsScreen() {
       {/* ── Explore ── */}
       <SectionTitle label="Explore" style={{ marginTop: 22 }} />
       <View style={styles.grid}>
-        <Tile label="GMP Trends" sub="grey market · day-wise" Icon={TrendUpIcon} onPress={() => router.push('/gmp')} />
+        <Tile label={`${LABEL.gmp} Trends`} sub="day-wise · unofficial" Icon={TrendUpIcon} onPress={() => router.push('/gmp')} />
         <Tile label="Live Subscription" sub="category-wise demand" Icon={BarsIcon} onPress={() => router.push('/subscription')} />
         <Tile label="Listing Performance" sub="listing-day gains" Icon={SearchIcon} onPress={() => router.push('/performance')} />
         <Tile label="News & Updates" sub="IPO coverage" Icon={NewsIcon} onPress={() => router.push('/news')} />
@@ -207,11 +207,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold, fontWeight: '700', color: ui.title, backgroundColor: ui.canvas,
   },
   errTxt: { marginTop: 8, fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.red },
-  mutedTxt: { fontSize: 13.5, fontFamily: fonts.regular, color: ui.muted, lineHeight: 20 },
+  subtleTxt: { fontSize: 13.5, fontFamily: fonts.regular, color: ui.slate, lineHeight: 20 },
   resWrap: { marginTop: 14, borderTopWidth: 1, borderTopColor: ui.divider, paddingTop: 4 },
   resRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
   resName: { fontSize: 14.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  resMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, textTransform: 'capitalize' },
+  resMeta: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, textTransform: 'capitalize' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     width: '48%', flexGrow: 1, backgroundColor: ui.card, borderRadius: 18, padding: 14,
@@ -221,6 +221,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
   tileLabel: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, letterSpacing: -0.2 },
-  tileSub: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
-  foot: { marginTop: 16, fontSize: 10.5, fontFamily: fonts.regular, color: ui.muted, textAlign: 'center' },
+  tileSub: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2 },
+  foot: { marginTop: 16, fontSize: 10.5, fontFamily: fonts.regular, color: ui.slate, textAlign: 'center' },
 });

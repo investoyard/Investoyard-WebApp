@@ -174,9 +174,9 @@ const styles = StyleSheet.create({
   seg: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 10, padding: 3, gap: 3 },
   segBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 32, borderRadius: 8 },
   segBtnOn: { backgroundColor: '#ffffff' },
-  segTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  segTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   segTxtOn: { color: ui.title, fontFamily: fonts.bold, fontWeight: '700' },
-  count: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  count: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   list: { paddingHorizontal: 16, paddingBottom: 32 },
-  when: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, fontVariant: ['tabular-nums'] },
+  when: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
 });

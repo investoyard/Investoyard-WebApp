@@ -302,11 +302,11 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
         <View>
           <View style={s.kv}>
             <Text style={s.kvK}>Premium / share</Text>
-            <Text style={[s.kvV, ipo.gmp >= 0 ? s.pos : s.neg]}>{ipo.gmp >= 0 ? '▲ +' : '▼ '}₹{ipo.gmp}</Text>
+            <Text style={s.kvV}>{ipo.gmp >= 0 ? '▲ +' : '▼ '}₹{Math.abs(ipo.gmp)}</Text>
           </View>
           <View style={s.kv}>
             <Text style={s.kvK}>{LABEL.gmp} %</Text>
-            <Text style={[s.kvV, ipo.gmp >= 0 ? s.pos : s.neg]}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? '—'}%</Text>
+            <Text style={s.kvV}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? '—'}%</Text>
           </View>
           <View style={[s.kv, { borderBottomWidth: 0 }]}>
             <Text style={s.kvK}>Est. listing price</Text>
@@ -322,21 +322,21 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
 }
 
 const s = StyleSheet.create({
-  muted: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.muted, lineHeight: 19 },
+  muted: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.slate, lineHeight: 19 },
   /* subscription */
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 7 },
   subCat: { ...microLabel, width: 64, fontSize: 11 },
   subMid: { flex: 1 },
   track: { height: 6, backgroundColor: ui.slateTint, borderRadius: 999, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 999 },
-  subBook: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, marginTop: 4, fontVariant: ['tabular-nums'] },
+  subBook: { fontFamily: fonts.regular, fontSize: 11, color: ui.slate, marginTop: 4, fontVariant: ['tabular-nums'] },
   subX: { width: 56, textAlign: 'right', fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   /* 82px rather than 56: the widest compact figure in the catalogue is
      "₹2,01,472" at ~77px. The room comes from `subMid`, which is flex and
      only loses bar width. A rupee figure is never dimmed the way a
      sub-1x multiple is — a small book is not an under-subscription. */
   subXMoney: { width: 82 },
-  subUnder: { color: ui.muted },
+  subUnder: { color: ui.slate },
   subTotal: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider,
@@ -359,19 +359,19 @@ const s = StyleSheet.create({
   legRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
   legWho: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  legNum: { fontFamily: fonts.regular, fontSize: 12, color: ui.muted, marginTop: 1, fontVariant: ['tabular-nums'] },
+  legNum: { fontFamily: fonts.regular, fontSize: 12, color: ui.slate, marginTop: 1, fontVariant: ['tabular-nums'] },
   legPct: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   /* lots */
   lotCard: { backgroundColor: ui.canvas, borderRadius: 14, padding: 13, borderLeftWidth: 3 },
   lotHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   lotWho: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  lotBand: { fontSize: 12, fontFamily: fonts.medium, fontWeight: '500', color: ui.muted },
+  lotBand: { fontSize: 12, fontFamily: fonts.medium, fontWeight: '500', color: ui.slate },
   lotTag: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, fontVariant: ['tabular-nums'] },
   lotGrid: { flexDirection: 'row', gap: 12, marginTop: 10 },
   lotCell: { flex: 1 },
   lotK: { ...microLabel, fontSize: 10.5 },
   lotV: { fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
-  lotSm: { fontSize: 11.5, fontFamily: fonts.medium, fontWeight: '500', color: ui.muted },
+  lotSm: { fontSize: 11.5, fontFamily: fonts.medium, fontWeight: '500', color: ui.slate },
   /* timeline */
   tlRow: { flexDirection: 'row', gap: 12 },
   tlCol: { width: 20, alignItems: 'center' },
@@ -385,7 +385,7 @@ const s = StyleSheet.create({
   tlNodeNow: { borderColor: ui.indigo },
   tlBody: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingBottom: 14, marginTop: 8 },
   tlLbl: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  tlRel: { fontFamily: fonts.regular, fontSize: 11.5, color: ui.muted, marginTop: 1 },
+  tlRel: { fontFamily: fonts.regular, fontSize: 11.5, color: ui.slate, marginTop: 1 },
   tlDate: { fontSize: 12.5, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
   /* gmp */
   kv: {
@@ -394,9 +394,11 @@ const s = StyleSheet.create({
   },
   kvK: { fontFamily: fonts.regular, fontSize: 14, color: ui.body },
   kvV: { fontSize: 15, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  pos: { color: ui.green },
-  neg: { color: ui.red },
-  disclaimer: { fontFamily: fonts.regular, fontSize: 10, color: ui.muted, marginTop: 10 },
+  /* No pos/neg pair here on purpose. GMP was their only user, and a
+     green/red pair sitting beside an indicative figure is an invitation
+     to re-apply it. Realised gains are coloured where they are realised:
+     the listing result on the card and in applications. (QC C2) */
+  disclaimer: { fontFamily: fonts.regular, fontSize: 10, color: ui.slate, marginTop: 10 },
   /* Same weight as the GMP disclaimer: a caveat, not a figure. */
-  anchorNote: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.muted, marginTop: 10 },
+  anchorNote: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.slate, marginTop: 10 },
 });

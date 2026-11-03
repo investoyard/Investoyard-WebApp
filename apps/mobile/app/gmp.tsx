@@ -43,10 +43,12 @@ function Row({ ipo, last }: { ipo: IpoFull; last: boolean }) {
           {ipo.symbol} · {ipo.type === 'sme' ? 'SME' : 'Mainboard'}{est != null ? ` · est. listing ₹${est}` : ''}
         </Text>
       </View>
-      {log.length >= 2 ? <Sparkline values={log} color={pos ? ui.green : ui.red} /> : null}
-      <View style={[styles.gmpPill, { backgroundColor: pos ? ui.greenTint : ui.redTint }]}>
-        <Text style={[styles.gmpTxt, { color: pos ? ui.green : ui.red }]}>
-          {pos ? '+' : ''}₹{gmp}{ipo.gmpPct != null ? `\n${pos ? '+' : ''}${ipo.gmpPct}%` : ''}
+      {/* The SHAPE carries the direction; a green line would read as a gain
+          already made. Sparkline defaults to the brand indigo. (QC C2) */}
+      {log.length >= 2 ? <Sparkline values={log} /> : null}
+      <View style={[styles.gmpPill, { backgroundColor: ui.slateTint }]}>
+        <Text style={[styles.gmpTxt, { color: ui.body }]}>
+          {pos ? '▲ +' : '▼ '}₹{Math.abs(gmp)}{ipo.gmpPct != null ? `\n${pos ? '+' : ''}${ipo.gmpPct}%` : ''}
         </Text>
       </View>
     </Pressable>
@@ -107,11 +109,11 @@ export default function GmpScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  disclaimer: { fontSize: 11, fontFamily: fonts.regular, color: ui.muted, lineHeight: 16 },
+  disclaimer: { fontSize: 11, fontFamily: fonts.regular, color: ui.slate, lineHeight: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
   rowDiv: { borderBottomWidth: 1, borderBottomColor: ui.divider },
   name: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   gmpPill: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, minWidth: 62, alignItems: 'center' },
   gmpTxt: { fontSize: 12, fontFamily: fonts.extrabold, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
 });

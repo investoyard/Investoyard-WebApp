@@ -574,17 +574,17 @@ function Field(props: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  note: { fontFamily: fonts.regular, color: ui.muted, fontSize: 13, lineHeight: 18 },
-  hint: { fontFamily: fonts.regular, color: ui.muted, fontSize: 12.5, marginBottom: 4 },
+  note: { fontFamily: fonts.regular, color: ui.slate, fontSize: 13, lineHeight: 18 },
+  hint: { fontFamily: fonts.regular, color: ui.slate, fontSize: 12.5, marginBottom: 4 },
   upiWarn: { fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, fontSize: 12, marginTop: 2, lineHeight: 17 },
   // demat explainer
-  dematNote: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
+  dematNote: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   /* Sits under its input, pulled up against it — the gap below belongs to the
      NEXT label (`label` carries marginTop 16), so no margin is added here. */
-  fieldHelp: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
+  fieldHelp: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
   fieldErr: { fontFamily: fonts.medium, fontWeight: '500', color: ui.red, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
   /* The relationship control is not a `Field`, so it carries its own. */
-  segHelp: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
+  segHelp: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   /* A STATEMENT, not an input — see the note at the call site. */
   ifscShow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingVertical: 4 },
   ifscK: { ...microLabel, fontSize: 11 },

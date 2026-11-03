@@ -67,7 +67,7 @@ export default function NewsPostScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   cover: { width: '100%', height: 200, backgroundColor: ui.slateTint },
-  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, letterSpacing: 0.2 },
+  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, letterSpacing: 0.2 },
   title: { fontSize: 21, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, letterSpacing: -0.4, lineHeight: 28, marginTop: 6 },
   ipoLink: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: ui.indigoTint, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   ipoLinkTxt: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },

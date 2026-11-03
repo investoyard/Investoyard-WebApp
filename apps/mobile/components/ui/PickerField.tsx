@@ -264,8 +264,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 13, height: 46, backgroundColor: '#ffffff',
   },
   fieldTxt: { flex: 1, fontSize: 15, fontFamily: fonts.medium, fontWeight: '500', color: ui.title },
-  fieldPlaceholder: { color: ui.muted, fontFamily: fonts.regular, fontWeight: '400' },
-  help: { fontFamily: fonts.regular, color: ui.muted, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
+  fieldPlaceholder: { color: ui.slate, fontFamily: fonts.regular, fontWeight: '400' },
+  help: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
   err: { fontFamily: fonts.medium, fontWeight: '500', color: ui.red, fontSize: 11.5, lineHeight: 16, marginTop: 6 },
 
   backdrop: { flex: 1, backgroundColor: 'rgba(17,17,27,0.45)', justifyContent: 'flex-end' },
@@ -287,7 +287,7 @@ const s = StyleSheet.create({
   },
   rowTyped: { borderBottomWidth: 1, borderBottomColor: ui.divider },
   rowTxt: { fontSize: 14.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title },
-  rowSub: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.muted, marginTop: 2 },
+  rowSub: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.slate, marginTop: 2 },
   state: { paddingVertical: 26, alignItems: 'center', gap: 8 },
-  stateTxt: { fontSize: 13, fontFamily: fonts.regular, color: ui.muted },
+  stateTxt: { fontSize: 13, fontFamily: fonts.regular, color: ui.slate },
 });

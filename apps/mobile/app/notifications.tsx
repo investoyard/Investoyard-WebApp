@@ -78,5 +78,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, flex: 1, lineHeight: 20 },
   dot: { width: 9, height: 9, borderRadius: 999, backgroundColor: ui.indigo, marginTop: 5 },
   body: { fontFamily: fonts.regular, color: ui.body, fontSize: 13.5, marginTop: 5, lineHeight: 19 },
-  date: { color: ui.muted, fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 9, fontVariant: ['tabular-nums'] },
+  date: { color: ui.slate, fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 9, fontVariant: ['tabular-nums'] },
 });

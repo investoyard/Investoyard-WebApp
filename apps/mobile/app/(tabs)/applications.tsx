@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   title: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   name: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   steps: { flexDirection: 'row', marginTop: 16 },
   stepCol: { flex: 1, alignItems: 'center' },
   stepDotRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
@@ -438,15 +438,15 @@ const styles = StyleSheet.create({
   stepLineOn: { backgroundColor: ui.indigo },
   stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: ui.divider, marginHorizontal: 2 },
   stepDotOn: { backgroundColor: ui.indigo },
-  stepLbl: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 6 },
+  stepLbl: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 6 },
   stepLblOn: { color: ui.indigo },
   amountRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider, gap: 10,
   },
-  amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, flex: 1 },
+  amountK: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, flex: 1 },
   amountV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  result: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, marginTop: 8, lineHeight: 19 },
+  result: { fontFamily: fonts.regular, fontSize: 13, color: ui.slate, marginTop: 8, lineHeight: 19 },
   /* The positive fill with an INK-weight label, matching the web chip: the
      lighter green on this tint measures 3.50:1 and fails AA for text. */
   vfyRow: {
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   },
   upiDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
   upiTxt: { fontFamily: fonts.semibold, fontSize: 12.5, fontWeight: '600', color: ui.title, lineHeight: 17 },
-  upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  upiAsOf: { fontFamily: fonts.semibold, fontSize: 11, fontWeight: '600', color: ui.slate, marginTop: 2 },
   upiChangeLink: { fontFamily: fonts.bold, fontSize: 13, fontWeight: '700', color: ui.indigo },
   unblock: {
     marginTop: 9, padding: 11, borderRadius: 12,
@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   missingBanner: { backgroundColor: ui.redTint, borderRadius: 12, padding: 12, marginTop: 10, gap: 4 },
   missingTxt: { fontSize: 12.5, color: ui.red, fontFamily: fonts.semibold, fontWeight: '600', lineHeight: 18 },
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8 },
-  oddsK: { fontFamily: fonts.regular, fontSize: 13, color: ui.muted, flexShrink: 1 },
+  oddsK: { fontFamily: fonts.regular, fontSize: 13, color: ui.slate, flexShrink: 1 },
   oddsV: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   gainTxt: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });

@@ -26,5 +26,5 @@ const styles = StyleSheet.create({
   left: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tick: { width: 4, height: 16, borderRadius: 2, backgroundColor: '#FFCB32' },
   label: { fontSize: 16, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, letterSpacing: -0.2 },
-  meta: { fontSize: 12, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  meta: { fontSize: 12, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });

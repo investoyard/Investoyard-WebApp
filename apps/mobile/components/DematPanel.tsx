@@ -169,7 +169,7 @@ export function DematPanel({ p }: { p: ProfileRecord }) {
 const s = StyleSheet.create({
   wrap: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.5, color: ui.muted },
+  title: { fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.5, color: ui.slate },
   addLink: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   err: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.red, marginTop: 8, lineHeight: 17 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 9 },
@@ -177,7 +177,7 @@ const s = StyleSheet.create({
     flex: 1, fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600',
     color: ui.title, fontVariant: ['tabular-nums'],
   },
-  defaultTag: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.muted },
+  defaultTag: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   retire: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.red },
   form: { marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: ui.canvas, gap: 9 },
   seg: { flexDirection: 'row', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: ui.divider },
@@ -191,7 +191,7 @@ const s = StyleSheet.create({
     backgroundColor: ui.slateTint, borderWidth: 1, borderRightWidth: 0, borderColor: ui.divider,
     borderTopLeftRadius: 10, borderBottomLeftRadius: 10,
   },
-  dpPrefixTxt: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.muted },
+  dpPrefixTxt: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   dpInput: { flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
   input: {
     borderWidth: 1, borderColor: ui.divider, borderRadius: 10, backgroundColor: ui.card,
@@ -205,5 +205,5 @@ const s = StyleSheet.create({
   btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: ui.divider },
   btnTxt: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: '#FFFFFF' },
   btnGhostTxt: { color: ui.body },
-  note: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, lineHeight: 16 },
+  note: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, lineHeight: 16 },
 });

@@ -381,15 +381,15 @@ const styles = StyleSheet.create({
   idAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
   idAvatarTxt: { fontSize: 17, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo },
   signinTitle: { fontSize: 15, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  signinSub: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.muted, marginTop: 2 },
+  signinSub: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.slate, marginTop: 2 },
   /* sign-in & security — mirrors the web panel's .sec-way / .sec-pwrow */
   secBody: { paddingHorizontal: 14, paddingBottom: 16, paddingTop: 2 },
   secChips: { flexDirection: 'row', gap: 8 },
   secChip: { paddingHorizontal: 16, height: 36, borderRadius: 10, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
   secChipOn: { backgroundColor: ui.indigoTint },
-  secChipTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  secChipTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   secChipTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
-  secHint: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.muted },
+  secHint: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.slate },
   secInput: {
     marginTop: 10, height: 48, borderRadius: 12, paddingHorizontal: 14, backgroundColor: ui.canvas,
     fontSize: 15, fontFamily: fonts.semibold, fontWeight: '600', color: ui.title,
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   rowDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
   iconChip: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   rowLbl: { flex: 1, fontSize: 15, fontFamily: fonts.medium, fontWeight: '500', color: ui.title },
-  rowVal: { fontSize: 13, color: ui.muted, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  rowVal: { fontSize: 13, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', fontVariant: ['tabular-nums'] },
   langs: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,
     paddingTop: 4, paddingBottom: 12, paddingLeft: 48,
@@ -419,6 +419,6 @@ const styles = StyleSheet.create({
   langTxtOn: { color: '#ffffff' },
   langTxtOff: { color: ui.muted },
   langSoon: { fontSize: 9.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  version: { fontSize: 12, color: ui.muted, textAlign: 'center', marginTop: 28, fontFamily: fonts.semibold, fontWeight: '600' },
-  foot: { fontFamily: fonts.regular, fontSize: 11, color: ui.muted, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
+  version: { fontSize: 12, color: ui.slate, textAlign: 'center', marginTop: 28, fontFamily: fonts.semibold, fontWeight: '600' },
+  foot: { fontFamily: fonts.regular, fontSize: 11, color: ui.slate, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
 });

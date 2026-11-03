@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   post: { marginHorizontal: 16, marginBottom: 12, padding: 0, overflow: 'hidden' },
   cover: { width: '100%', height: 150, backgroundColor: ui.slateTint },
   postBody: { padding: 14 },
-  postMeta: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, letterSpacing: 0.2 },
+  postMeta: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, letterSpacing: 0.2 },
   postTitle: { fontSize: 15.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, letterSpacing: -0.2, marginTop: 5, lineHeight: 21 },
   postExcerpt: { fontSize: 13, fontFamily: fonts.regular, color: ui.slate, marginTop: 5, lineHeight: 19 },
 });

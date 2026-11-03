@@ -29,10 +29,10 @@ export const printCategory = (c: PrintChoice) => (c.q.category === 'retail' ? 'R
 /** Form badge for a print choice (mirrors the server's template pick). */
 export function printFormBadge(c: PrintChoice, isMainboard: boolean): { label: string; bg: string; color: string } {
   if (c.sha) return { label: 'Shareholder form', bg: ui.indigoTint, color: ui.indigo };
-  if (!isMainboard) return { label: 'Application form', bg: ui.canvas, color: ui.muted };
+  if (!isMainboard) return { label: 'Application form', bg: ui.canvas, color: ui.slate };
   return c.q.formType === 'syndicate'
     ? { label: 'Syndicate form', bg: '#FFF4DC', color: '#8A6D1F' }
-    : { label: 'Normal form', bg: ui.canvas, color: ui.muted };
+    : { label: 'Normal form', bg: ui.canvas, color: ui.slate };
 }
 
 /* ---------------------------------------------------------------- Apply picker */
@@ -250,7 +250,7 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
           <View style={[s.shaCheck, choice.sha && s.shaCheckOn]}>
             {choice.sha ? <CheckIcon size={12} color="#ffffff" strokeWidth={3} /> : null}
           </View>
-          <Text style={s.shaTxt}>Shareholder category <Text style={{ color: ui.muted }}>(reserved quota · max ₹2,00,000)</Text></Text>
+          <Text style={s.shaTxt}>Shareholder category <Text style={{ color: ui.slate }}>(reserved quota · max ₹2,00,000)</Text></Text>
         </Pressable>
       )}
     </View>
@@ -263,12 +263,12 @@ const s = StyleSheet.create({
   tab: { paddingHorizontal: 14, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   tabCompact: { paddingHorizontal: 11, height: 26 },
   tabOn: { backgroundColor: '#ffffff', elevation: 2, shadowColor: '#1A1440', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  tabTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  tabTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   tabTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   chip: { paddingHorizontal: 10, height: 26, borderRadius: 999, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   chipOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
-  chipTxt: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  chipTxt: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   chipTxtOn: { color: ui.indigo },
   fieldHint: { ...microLabel, fontSize: 10.5, marginTop: 12, marginBottom: 6, textTransform: 'none', letterSpacing: 0 },
   select: {
@@ -282,17 +282,17 @@ const s = StyleSheet.create({
   optTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   optTxtOn: { color: ui.indigo },
   warn: { marginTop: 12, fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: '#8A6D1F', backgroundColor: '#FFF4DC', borderRadius: 10, padding: 10, lineHeight: 18 },
-  note: { marginTop: 8, fontSize: 11.5, fontFamily: fonts.regular, color: ui.muted, lineHeight: 16 },
+  note: { marginTop: 8, fontSize: 11.5, fontFamily: fonts.regular, color: ui.slate, lineHeight: 16 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { flexGrow: 1, flexBasis: '30%', borderRadius: 12, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', paddingHorizontal: 11, paddingVertical: 9 },
   tileCompact: { paddingHorizontal: 9, paddingVertical: 7 },
   tileOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
   tileT: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  tileS: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  tileS: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   modes: { flexDirection: 'row', gap: 6, marginBottom: 8 },
   mode: { paddingHorizontal: 12, height: 28, borderRadius: 999, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
   modeOn: { backgroundColor: ui.indigoTint },
-  modeTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted },
+  modeTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   customRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' },
   inputBox: {
     minWidth: 120, maxWidth: 140, height: 42, borderRadius: 12, paddingHorizontal: 12,
@@ -300,7 +300,7 @@ const s = StyleSheet.create({
   },
   sug: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   sugOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
-  sugTag: { fontSize: 10, fontFamily: fonts.bold, fontWeight: '700', color: ui.muted, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 38 },
+  sugTag: { fontSize: 10, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 38 },
   sugTxt: { flex: 1, fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   sugAmt: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   shaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 12 },

@@ -44,5 +44,5 @@ const styles = StyleSheet.create({
   compactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   compactDivider: { borderTopWidth: 1, borderTopColor: ui.divider },
   compactName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, marginTop: 2 },
+  compactSym: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2 },
 });
