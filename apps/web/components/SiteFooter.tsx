@@ -150,7 +150,12 @@ export function SiteFooter() {
             </p>
           ) : null}
 
-          <p style={{ marginTop: 10 }}>© {new Date().getFullYear()} {name}. All rights reserved.</p>
+          {/* suppressHydrationWarning, not an effect: a copyright year is static
+              text that happens to be derived, so blanking it for crawlers to dodge
+              a mismatch that can only occur between 1 January and the next build
+              would be the worse trade. The baked year ships; the client corrects
+              it without React treating the difference as an error. */}
+          <p style={{ marginTop: 10 }} suppressHydrationWarning>© {new Date().getFullYear()} {name}. All rights reserved.</p>
         </div>
       </div>
     </footer>

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { istToday } from '@investoyard/shared-types';
+import { istDateLabel, istToday } from '@investoyard/shared-types';
 import { getIpos, type IpoFull } from '@/lib/api';
 
 /**
@@ -26,7 +26,13 @@ export function TodayStrip({ ipos: baked, langQuery = '' }: { ipos: IpoFull[]; l
     listing: ipos.filter((i) => i.listingDate === today).length,
   }), [ipos, today]);
 
-  const dateLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  /* CLIENT-ONLY, and in IST. Evaluated during render this baked the BUILD
+     day's label into the static export and disagreed with the client on every
+     later day - React #418, then #423 and a full client re-render of the whole
+     page. Null on the first render so server and client agree; the date
+     appears a tick later. Same shape as IpoCard's OpensIn. */
+  const [dateLabel, setDateLabel] = useState<string | null>(null);
+  useEffect(() => { setDateLabel(istDateLabel()); }, []);
   const items: { n: number; label: string; dot: string; href: string }[] = [
     { n: counts.open, label: 'Open now', dot: 'live', href: '#ipos' },
     { n: counts.closing, label: 'Closing today', dot: 'closing', href: '#ipos' },

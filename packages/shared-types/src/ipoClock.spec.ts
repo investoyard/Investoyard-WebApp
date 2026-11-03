@@ -7,7 +7,7 @@
    have gone on passing if the code read the reader's zone instead, which is
    the exact bug the IST pinning exists to fix. A test that only holds in one
    timezone cannot catch a timezone bug. */
-import { DEFAULT_CLOSE_TIME, DEFAULT_OPEN_TIME, IST_OFFSET, IST_OFFSET_MIN, closeAt, istClock, istDayMs, istToday, istTodayMs, milestoneAt, openAt } from './ipoClock';
+import { DEFAULT_CLOSE_TIME, DEFAULT_OPEN_TIME, IST_OFFSET, IST_OFFSET_MIN, closeAt, istClock, istDateLabel, istDayMs, istToday, istTodayMs, milestoneAt, openAt } from './ipoClock';
 
 /* JPL is the record this was written for: the operator corrected its close to
    19:00 in the IPO form, which lands in `extra.closeDate`, while the column
@@ -175,5 +175,43 @@ describe('istDayMs — IST midnight of a given date', () => {
 
   it('takes the day off a full ISO string', () => {
     expect(istDayMs('2026-10-28T13:45:00.000Z')).toBe(istDayMs('2026-10-28'));
+  });
+});
+
+describe('istDateLabel', () => {
+  /* The instant the live export was built: Monday 2 Nov 2026, 16:47 IST. The
+     page shipped "Mon, 2 Nov" from the old local-zone call, so this pins the
+     replacement to the same string rather than a prettier one. */
+  const BUILD = Date.parse('2026-11-02T16:47:08+05:30');
+
+  it('reproduces the label the old en-IN call produced', () => {
+    expect(istDateLabel(BUILD)).toBe('Mon, 2 Nov');
+  });
+
+  it('rolls at IST midnight, not at the reader\'s', () => {
+    /* 18:29:59Z is 23:59:59 IST on the 2nd; one second later is the 3rd. */
+    expect(istDateLabel(Date.parse('2026-11-02T18:29:59Z'))).toBe('Mon, 2 Nov');
+    expect(istDateLabel(Date.parse('2026-11-02T18:30:00Z'))).toBe('Tue, 3 Nov');
+  });
+
+  it('gives a London reader the INDIAN date, which is the point', () => {
+    /* 2026-11-02T19:30Z is 19:30 in London and 01:00 on the 3rd in Mumbai. */
+    expect(istDateLabel(Date.parse('2026-11-02T19:30:00Z'))).toBe('Tue, 3 Nov');
+  });
+
+  it('agrees with istToday on which day it is', () => {
+    for (const iso of [
+      '2026-01-01T00:00:00Z', '2026-06-15T18:29:00Z', '2026-06-15T18:31:00Z',
+      '2026-12-31T19:00:00Z',
+    ]) {
+      const ms = Date.parse(iso);
+      const day = Number(istToday(ms).slice(8, 10));
+      expect(istDateLabel(ms).endsWith(String(day) + istDateLabel(ms).slice(-4))).toBe(true);
+      expect(istDateLabel(ms)).toContain(String(day));
+    }
+  });
+
+  it('does not crash on a year boundary', () => {
+    expect(istDateLabel(Date.parse('2026-12-31T19:00:00Z'))).toBe('Fri, 1 Jan');
   });
 });

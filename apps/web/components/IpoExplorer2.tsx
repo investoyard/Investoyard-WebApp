@@ -7,7 +7,7 @@ import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
 import { Lang } from '@investoyard/i18n';
-import { compareForList, isRecent, LABEL, istToday } from '@investoyard/shared-types';
+import { compareForList, isRecent, LABEL, istDateLabel, istToday } from '@investoyard/shared-types';
 
 const VIEW_KEY = 'investoyard.ipoView';
 
@@ -117,7 +117,13 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
     };
   }, [ipos, query, type, status]);
 
-  const dateLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  /* CLIENT-ONLY, and in IST. Evaluated during render this baked the BUILD
+     day's label into the static export and disagreed with the client on every
+     later day - React #418, then #423 and a full client re-render of the whole
+     page. Null on the first render so server and client agree; the date
+     appears a tick later. Same shape as IpoCard's OpensIn. */
+  const [dateLabel, setDateLabel] = useState<string | null>(null);
+  useEffect(() => { setDateLabel(istDateLabel()); }, []);
 
   // Counting a status is also a way to filter by it — clicking a count applies
   // the matching filter rather than being decoration.

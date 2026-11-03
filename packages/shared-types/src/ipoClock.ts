@@ -148,6 +148,36 @@ export function istTodayMs(now: number = Date.now()): number {
   return istDayMs(istToday(now)) as number;
 }
 
+/* Weekday and month names, hard-coded rather than taken from Intl.
+   `toLocaleDateString` output depends on the runtime's ICU build, and Node at
+   build time and V8 in a browser are not guaranteed to agree - which is the
+   last thing a hydration-sensitive string needs. Verified byte-identical to
+   the `en-IN` output it replaces: "Mon, 2 Nov". */
+const IST_WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const IST_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Today's date on the Mumbai wall clock, as "Mon, 2 Nov".
+ *
+ * The date an Indian IPO platform prints is a fact about Mumbai, not about
+ * the reader - the same reasoning as `istClock` for the hour. A reader in
+ * London at 01:00 IST is on the previous day locally and was being shown it.
+ *
+ * CALL THIS FROM AN EFFECT, NEVER DURING RENDER on a statically exported
+ * page. The export bakes whatever the clock said at BUILD time, so a label
+ * rendered server-side disagrees with the client on every later day and React
+ * reports it as a hydration mismatch (#418), then abandons the server HTML
+ * for a full client render (#423). That is what this helper was added to fix.
+ *
+ * `now` is injectable because TZ does nothing to Node on this box, so an
+ * assertion against an absolute instant is the only honest way to exercise a
+ * non-IST reader.
+ */
+export function istDateLabel(now: number = Date.now()): string {
+  const d = new Date(now + IST_OFFSET_MIN * 60_000);
+  return `${IST_WEEKDAY[d.getUTCDay()]}, ${d.getUTCDate()} ${IST_MONTH[d.getUTCMonth()]}`;
+}
+
 /**
  * Midnight IST of a GIVEN date, in ms — the counterpart to `istTodayMs`.
  *
