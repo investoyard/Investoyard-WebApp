@@ -264,15 +264,72 @@ try {
   console.warn('\n(could not run git status in mirror — is it a git repo?)');
 }
 
-if (COMMIT && (stats.copied || stats.updated || stats.deleted)) {
-  console.log('\ncommitting and pushing…');
-  const iso = new Date().toISOString().slice(0, 10);
+if (COMMIT) {
+  /* git add FIRST, then ask GIT whether anything is actually staged.
+
+     WHY NOT TRUST OUR OWN stats: the copy above compares BYTES, while git
+     normalises line endings (core.autocrlf is true on this box and on the
+     mirror). The two legitimately disagree on a line-ending-only copy - and
+     `git commit` exits 1 on an empty commit, which execSync turns into a
+     throw, which exits this script 1, which the pre-push hook turns into a
+     BLOCKED monorepo push. That happened on 2026-11-03: one file came back
+     from a `git checkout` with CRLF, the byte copy called it an update, git
+     called it nothing, and an unrelated push was refused with no real change
+     to find. "Nothing to commit" is a no-op, never a failure. */
   execSync('git add -A', { cwd: TARGET, stdio: 'inherit' });
-  execSync(`git commit -m "Sync from monorepo — ${iso}"`, { cwd: TARGET, stdio: 'inherit' });
-  execSync('git push origin main', { cwd: TARGET, stdio: 'inherit' });
-  console.log('\n✓ pushed.');
-} else if (COMMIT) {
-  console.log('\n(--commit passed but nothing changed; nothing to commit.)');
+
+  let staged = '';
+  try {
+    staged = execSync('git diff --cached --name-only', { cwd: TARGET }).toString().trim();
+  } catch (e) {
+    /* Cannot tell: fall through to attempting the commit, which either works
+       or fails loudly. Guessing "nothing staged" would silently skip a real
+       sync, which is the worse direction. */
+    staged = '?';
+  }
+
+  if (staged) {
+    console.log('\ncommitting' + (staged === '?' ? '' : ' ' + staged.split('\n').length + ' file(s)') + '...');
+    const iso = new Date().toISOString().slice(0, 10);
+    execSync(`git commit -m "Sync from monorepo — ${iso}"`, { cwd: TARGET, stdio: 'inherit' });
+  } else if (stats.copied || stats.updated || stats.deleted) {
+    /* The case that used to be fatal. Say which it was, so it does not read
+       as the script having lost a change. */
+    console.log('\nbytes differed but git sees no change in them: a line-ending-only copy.');
+    console.log('Nothing committed, and nothing was lost - the content is already in step.');
+  } else {
+    console.log('\n(--commit passed but nothing changed; nothing to commit.)');
+  }
+
+  /* PUSH WHENEVER THE MIRROR IS AHEAD, whether or not this run committed.
+
+     The old code pushed only inside the "something changed" branch, so a
+     commit left behind by an earlier run whose push failed stayed unpushed
+     for ever while the hook reported the mobile repo in step - the same
+     fault as the one above, reporting success for something that did not
+     happen.
+
+     It reads the LOCAL origin/main ref rather than asking the remote, which
+     is accurate because this script is the only thing that pushes the mirror.
+     That keeps the nothing-changed path free of any network call, so a
+     GitHub blip on the MOBILE remote cannot block an unrelated monorepo
+     push. If the ref cannot be read we push anyway: it is idempotent, and a
+     failure there is a genuine out-of-step worth blocking on. */
+  let ahead = 1;
+  try {
+    ahead = Number(execSync('git rev-list --count origin/main..HEAD', { cwd: TARGET }).toString().trim());
+    if (!Number.isFinite(ahead)) ahead = 1;
+  } catch (e) {
+    ahead = 1;
+  }
+
+  if (ahead > 0) {
+    console.log('\npushing ' + ahead + ' commit(s) to the mobile repo...');
+    execSync('git push origin main', { cwd: TARGET, stdio: 'inherit' });
+    console.log('\n' + String.fromCharCode(10003) + ' pushed.');
+  } else {
+    console.log('\n' + String.fromCharCode(10003) + ' mirror already in step with its remote.');
+  }
 } else if (stats.copied || stats.updated || stats.deleted) {
   console.log('\nnext:  cd', TARGET, '&&  git add -A  &&  git commit  &&  git push');
   console.log('or:    node scripts/sync-mobile.js --commit');
