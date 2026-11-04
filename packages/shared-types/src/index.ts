@@ -291,6 +291,9 @@ export * from './shareWise';
 /* The subscription tone ladder + the two money formatters, shared because the
    detail page had drifted from the hub about both the WORD and the COLOUR. */
 export * from './subTone';
+/* The subscription disclaimer, operator-locked 2026-09-18. Shared because a
+   legal notice is the last thing that should exist in two copies. */
+export * from './subDisclaimer';
 export * from './applicantForm';
 export * from './dayWise';
 export * from './ipoClock';

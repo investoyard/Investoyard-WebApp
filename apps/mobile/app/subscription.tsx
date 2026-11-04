@@ -8,7 +8,11 @@ import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import * as calc from '../lib/ipoCalc';
-import { istToday, orderShareRows, shareWiseLabel, subCatLabel, type DayEntry, type HourEntry } from '@investoyard/shared-types';
+import {
+  istToday, orderShareRows, shareWiseLabel, subCatLabel,
+  SUBSCRIPTION_DISCLAIMER, SUBSCRIPTION_DISCLAIMER_HEADING,
+  type DayEntry, type HourEntry,
+} from '@investoyard/shared-types';
 import { getIposResult } from '../lib/api';
 import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
@@ -124,6 +128,23 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
   );
 }
 
+/**
+ * The operator-locked subscription disclaimer (2026-09-18), from shared-types
+ * so a copy edit lands on web and mobile at once. Web renders the same string
+ * at the foot of /subscription and /subscription/v2.
+ *
+ * Plain `Text`, not the rich-text renderer: it is one paragraph and the
+ * sanitiser is for operator-entered prose, not for a constant.
+ */
+function Disclaimer() {
+  return (
+    <View style={styles.disc}>
+      <Text style={styles.discH}>{SUBSCRIPTION_DISCLAIMER_HEADING}</Text>
+      <Text style={styles.discP}>{SUBSCRIPTION_DISCLAIMER}</Text>
+    </View>
+  );
+}
+
 export default function SubscriptionScreen() {
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
   /* distinct from `null` (still loading) and from an empty list. */
@@ -146,7 +167,7 @@ export default function SubscriptionScreen() {
   const withSub = (i: IpoFull) => (i.subscription ?? []).length > 0 || i.subscriptionTimes != null;
   const todayIso = istToday();
 
-  const { open, recent } = useMemo(() => {
+  const { open } = useMemo(() => {
     const q = query.trim().toLowerCase();
     /* One predicate for both lists, so a filter cannot mean two things on one
        screen. 'closing' legitimately empties the closed list - an issue that
@@ -165,13 +186,13 @@ export default function SubscriptionScreen() {
        worth knowing: in a quiet fortnight this section now renders NOTHING,
        where the count cap always found something to show. That is correct for
        a heading that says "final subscription". */
-    const cutoff = sevenDaysAgoIso();
+    /* OPEN ONLY, matching web's `isOpenLive`. A "recently closed" section used
+       to sit below this one; it is gone because a hub of LIVE figures that also
+       shows settled ones invites a reader to act on a number that can no longer
+       move. A closed issue keeps its own detail page, which is where its final
+       subscription belongs. */
     return {
       open: all.filter((i) => i.status === 'open' && withSub(i) && passes(i)),
-      recent: all
-        .filter((i) => (i.status === 'closed' || i.status === 'listed') && withSub(i)
-          && (i.closeDate ?? '') >= cutoff && passes(i))
-        .sort((a, b) => (b.closeDate ?? '').localeCompare(a.closeDate ?? '')),
     };
   }, [ipos, filter, query, todayIso]);
 
@@ -224,7 +245,7 @@ export default function SubscriptionScreen() {
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
       ) : offline ? (
         <OfflineState onRetry={load} />
-      ) : open.length === 0 && recent.length === 0 ? (
+      ) : open.length === 0 ? (
         <EmptyState
           title={query.trim() || filter !== 'all' ? 'Nothing matches those filters' : 'No subscription data yet'}
           body={query.trim() || filter !== 'all'
@@ -233,18 +254,13 @@ export default function SubscriptionScreen() {
         />
       ) : (
         <>
-          {open.length > 0 ? (
-            <>
-              <SectionTitle label="Open now — live demand" />
-              {open.map((i) => <SubCard key={i.symbol} ipo={i} />)}
-            </>
-          ) : null}
-          {recent.length > 0 ? (
-            <>
-              <SectionTitle label="Closed — final subscription" style={{ marginTop: open.length ? 20 : 0 }} />
-              {recent.map((i) => <SubCard key={i.symbol} ipo={i} />)}
-            </>
-          ) : null}
+          <SectionTitle label="Open now — live demand" />
+          {open.map((i) => <SubCard key={i.symbol} ipo={i} />)}
+          {/* UNDER THE LIST, never on the empty state: it exists to sit beneath
+              live figures, and under "No subscription data yet" it would be a
+              page of legal text about nothing. Web places it the same way, at
+              the foot of the hub. */}
+          <Disclaimer />
         </>
       )}
       </ScrollView>
@@ -260,20 +276,20 @@ const SUB_FILTERS: { key: SubFilter; label: string }[] = [
   { key: 'sme', label: 'SME' },
 ];
 
-/**
- * Seven days back from today, in IST.
- *
- * Both ends are UTC midnight of a plain date string, so the subtraction cannot
- * drift across a timezone boundary - parsing the IST day as +05:30 and then
- * formatting in UTC silently yields EIGHT days, which is the class of
- * off-by-one this project has already paid for once.
- */
-function sevenDaysAgoIso(): string {
-  const today = istToday();
-  return new Date(Date.parse(today + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
-}
+/* `sevenDaysAgoIso` lived here and is DELETED with its only caller, the
+   recently-closed section. It was correct - both ends were UTC midnight of a
+   plain date string, so the subtraction could not drift across a timezone
+   boundary - and dead code is dead however careful it is. The reasoning is
+   recorded in CLAUDE.md if a seven-day window is ever wanted again.
+
+*/
 
 const styles = StyleSheet.create({
+  /* 11px is the A3 floor and `slate` not `muted`, which fails AA for text -
+     a disclaimer is the last thing to set in a colour that fails the bar. */
+  disc: { marginTop: 22, paddingHorizontal: 2 },
+  discH: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, marginBottom: 5 },
+  discP: { fontSize: 11, fontFamily: fonts.regular, color: ui.slate, lineHeight: 16 },
   screen: { flex: 1, backgroundColor: ui.canvas },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   subHead: {

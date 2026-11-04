@@ -1,36 +1,36 @@
+import {
+  SUBSCRIPTION_DISCLAIMER,
+  SUBSCRIPTION_DISCLAIMER_HEADING,
+} from '@investoyard/shared-types';
+
 /**
  * SubscriptionDisclaimer — legal boilerplate rendered at the bottom of
- * /subscription and /subscription/v2. Same text on both pages so we render
- * it from one place; a copy edit lands on both surfaces at once.
+ * /subscription and /subscription/v2.
  *
- * Wording locked by the operator on 2026-09-18. Do not change without
- * an explicit re-sign-off — this is the disclaimer users read before
- * acting on live figures.
+ * Wording locked by the operator on 2026-09-18. Do not change without an
+ * explicit re-sign-off — this is the disclaimer users read before acting on
+ * live figures.
+ *
+ * THE TEXT MOVED TO shared-types/subDisclaimer.ts, because MOBILE renders the
+ * same pages and had no disclaimer at all. This file's own note already gave
+ * the reason — "same text on both pages so we render it from one place; a copy
+ * edit lands on both surfaces at once" — and that argument reaches across
+ * SURFACES exactly as it reached across routes. A legal notice is the last
+ * thing that should exist in two copies: one edited and one not is worse than
+ * one merely out of date, because nothing on either screen says which is
+ * which.
+ *
+ * Proved byte-identical to the JSX it replaces before the move — normalising
+ * the entities and the JSX whitespace collapse, both come to 1,259 characters
+ * and compare equal, so nothing a reader sees changed. A spec in shared-types
+ * now asserts that exact length, so any later edit fails a test and forces the
+ * re-sign-off this docblock asks for.
  */
 export function SubscriptionDisclaimer() {
   return (
     <section className="sub-disclaimer" aria-labelledby="sub-disclaimer-h">
-      <h4 id="sub-disclaimer-h">Disclaimer</h4>
-      <p>
-        The above-mentioned information / data are sourced from the websites of
-        National Stock Exchange (NSE) and Bombay Stock Exchange (BSE) and are subject
-        to change on real time basis. For updated information / data you can visit
-        their respective website. The information / data provided herein above are
-        for information purpose only and provided &ldquo;AS IS&rdquo; and &ldquo;AS
-        AVAILABLE&rdquo; basis and without warranty, express or implied. We do not
-        guarantee or warrant the accuracy, adequacy or completeness of the
-        information received through the said websites. &ldquo;We&rdquo; hold not
-        responsibility of any kind as regard to any discrepancies, errors,
-        omissions, losses or damages. &ldquo;We&rdquo; including its affiliates and
-        any of its officers, directors, personnel and employees, shall not liable
-        for any loss, damage of any nature, including but not limited to direct,
-        indirect, punitive, special, exemplary, consequential, as also any loss of
-        profit in any way arising from the use of information / data received
-        through the said websites. The recipient alone shall be fully responsible /
-        are liable for any decision taken on the basis of such information / data.
-        All recipients should before acting upon the said information make their own
-        investigation, seek appropriate professional advice.
-      </p>
+      <h4 id="sub-disclaimer-h">{SUBSCRIPTION_DISCLAIMER_HEADING}</h4>
+      <p>{SUBSCRIPTION_DISCLAIMER}</p>
     </section>
   );
 }
