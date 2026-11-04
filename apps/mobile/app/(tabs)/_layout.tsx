@@ -8,7 +8,7 @@ import { AppHeader } from '../../components/ui/AppHeader';
 import {
   DocsIcon, DocsIconFill, GearIcon, GearIconFill,
   HomeIcon, HomeIconFill, InsightsIcon, InsightsIconFill,
-  UsersIcon, UsersIconFill, IconProps,
+  IconProps,
 } from '../../components/ui/icons';
 
 /**
@@ -78,13 +78,15 @@ export default function TabsLayout() {
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 8 },
         },
-        /* 10, NOT the 11 floor (QC A3), and it is measured rather than guessed:
-           the pill is inset left:14 right:14, so a tab is (screen-28)/5 = 66.4px
-           at 360, and "Applications" at 11px in Inter SemiBold is 66.6px. It
-           fits at 375 and up and not on a narrow Android. THE DESIGN HANDOFF
-           CUTS THIS BAR TO 4 TABS, which makes a tab 83px and the floor
-           reachable - so raising this is gated on that nav decision. */
-        tabBarLabelStyle: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
+        /* 11 - the A3 floor, reachable now the bar is FOUR tabs, and measured
+           rather than guessed. The pill is inset left:14 right:14, so a tab is
+           (screen-28)/4 = 83px at 360 and the widest label, "Account", is
+           44.7px in Inter SemiBold: 38.3px spare, and it still fits at a 1.3x
+           font scale (58.1px), which the column does not grow for. At five tabs
+           this could not be done - "Applications" was 66.6px in a 66.4px tab -
+           so THE RENAME TO "Applied" (40.9px) IS LOAD-BEARING for the floor,
+           not cosmetic. */
+        tabBarLabelStyle: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
       }}
     >
       <Tabs.Screen
@@ -95,25 +97,22 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={HomeIcon} Fill={HomeIconFill} />,
         }}
       />
+      {/* "Applied", not "Applications" - the handoff's own label, and the
+          reason the 11sp floor above is reachable. Second, ahead of Insights:
+          an investor opens this app to check a bid far more often than to
+          browse, and the handoff orders it that way too. */}
+      <Tabs.Screen
+        name="applications"
+        options={{
+          title: 'Applied',
+          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={DocsIcon} Fill={DocsIconFill} />,
+        }}
+      />
       <Tabs.Screen
         name="insights"
         options={{
           title: 'Insights',
           tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={InsightsIcon} Fill={InsightsIconFill} />,
-        }}
-      />
-      <Tabs.Screen
-        name="applications"
-        options={{
-          title: 'Applications',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={DocsIcon} Fill={DocsIconFill} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profiles"
-        options={{
-          title: 'Profiles',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} Line={UsersIcon} Fill={UsersIconFill} />,
         }}
       />
       <Tabs.Screen

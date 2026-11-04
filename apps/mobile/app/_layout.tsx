@@ -45,6 +45,9 @@ function RootStack() {
       <Stack.Screen name="apply/[symbol]" options={{ title: t('apply.title'), headerRight: () => <HeaderIcons boxed={false} /> }} />
       <Stack.Screen name="print/[symbol]" options={{ title: 'Print Forms', headerRight: () => <HeaderIcons boxed={false} /> }} />
       <Stack.Screen name="login" options={{ headerShown: false, presentation: 'modal' }} />
+      {/* Moved out of the tab group by the handoff's 5->4 cut, so it needs a
+          stack entry to get the back header. Reached from Account. */}
+      <Stack.Screen name="profiles/index" options={{ title: t('profiles.title') }} />
       <Stack.Screen name="profiles/new" options={{ title: t('profile.new') }} />
       <Stack.Screen name="notifications" options={{ title: t('notif.title') }} />
       <Stack.Screen name="calendar" options={{ title: 'IPO Calendar' }} />

@@ -62,12 +62,14 @@ export default function ProfilesScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ padding: 16, paddingBottom: 110 /* clear the floating tab bar */ }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
       }
     >
-      <Text style={styles.h1}>{t('profiles.title')}</Text>
+      {/* No h1: this is a stack screen now and the native header carries
+          `profiles.title`. Every other secondary screen here does the same;
+          keeping it would print the same words twice. */}
       <Text style={styles.count}>
         {mobile ? `+91 ${mobile} · ` : ''}{profiles.length} profile{profiles.length !== 1 ? 's' : ''} · {verifiedN} PAN-verified
       </Text>
@@ -171,7 +173,6 @@ export default function ProfilesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  h1: { fontSize: 24, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.5, color: ui.title },
   count: { fontSize: 13, color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
   note: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
