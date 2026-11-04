@@ -174,7 +174,7 @@ const s = StyleSheet.create({
      each, which a multiple and its label do not fit into side by side. */
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
   cell: { width: '50%', paddingVertical: 5, paddingRight: 8 },
-  cellK: { ...microLabel, fontSize: 10 },
+  cellK: { ...microLabel },
   /* The two HNI bands are sub-rows of the NII quota, indented as they are in
      the table on web rather than reading as two more peers. */
   cellKSub: { paddingLeft: 9 },
@@ -182,7 +182,7 @@ const s = StyleSheet.create({
 
   hours: { marginTop: 8, borderTopWidth: 1, borderTopColor: ui.divider, paddingTop: 4 },
   hour: { paddingVertical: 6 },
-  hourT: { ...microLabel, fontSize: 10, color: ui.indigo },
+  hourT: { ...microLabel, color: ui.indigo },
 
-  note: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.slate, marginTop: 14 },
+  note: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 15, color: ui.slate, marginTop: 14 },
 });

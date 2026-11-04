@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   statsCard: { flexDirection: 'row', alignItems: 'center', padding: 0, paddingVertical: 14 },
   stat: { flex: 1, alignItems: 'center' },
   statV: { fontSize: 19, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
-  statK: { fontSize: 10.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 3 },
+  statK: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 3 },
   statDiv: { width: 1, height: 30, backgroundColor: ui.divider },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
   rowDiv: { borderBottomWidth: 1, borderBottomColor: ui.divider },

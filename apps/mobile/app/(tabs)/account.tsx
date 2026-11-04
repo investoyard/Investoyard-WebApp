@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   langTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   langTxtOn: { color: '#ffffff' },
   langTxtOff: { color: ui.muted },
-  langSoon: { fontSize: 9.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  langSoon: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
   version: { fontSize: 12, color: ui.slate, textAlign: 'center', marginTop: 28, fontFamily: fonts.semibold, fontWeight: '600' },
   foot: { fontFamily: fonts.regular, fontSize: 11, color: ui.slate, lineHeight: 16, marginTop: 10, textAlign: 'center', paddingHorizontal: 8 },
 });

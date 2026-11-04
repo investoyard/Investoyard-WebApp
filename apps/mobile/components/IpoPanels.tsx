@@ -355,7 +355,7 @@ const s = StyleSheet.create({
   /* reservation */
   alloc: { flexDirection: 'row', height: 28, borderRadius: 9, overflow: 'hidden', marginBottom: 12 },
   allocSeg: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  allocTxt: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700' },
+  allocTxt: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700' },
   legRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
   legWho: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
@@ -369,6 +369,11 @@ const s = StyleSheet.create({
   lotTag: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, fontVariant: ['tabular-nums'] },
   lotGrid: { flexDirection: 'row', gap: 12, marginTop: 10 },
   lotCell: { flex: 1 },
+  /* The one microLabel override left in place (QC A3). The 3-cell lotGrid
+     is 91px wide at 360 and "MAX · 130 LOTS" ALREADY measures 90.3px at
+     10.5; there is no numberOfLines, so it wraps. The cell is too narrow
+     for the string it holds, which is a layout fault rather than a type
+     one - raising this would deepen a wrap that already happens. */
   lotK: { ...microLabel, fontSize: 10.5 },
   lotV: { fontSize: 14.5, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 3, fontVariant: ['tabular-nums'] },
   lotSm: { fontSize: 11.5, fontFamily: fonts.medium, fontWeight: '500', color: ui.slate },
@@ -398,7 +403,7 @@ const s = StyleSheet.create({
      green/red pair sitting beside an indicative figure is an invitation
      to re-apply it. Realised gains are coloured where they are realised:
      the listing result on the card and in applications. (QC C2) */
-  disclaimer: { fontFamily: fonts.regular, fontSize: 10, color: ui.slate, marginTop: 10 },
+  disclaimer: { fontFamily: fonts.regular, fontSize: 11, color: ui.slate, marginTop: 10 },
   /* Same weight as the GMP disclaimer: a caveat, not a figure. */
-  anchorNote: { fontFamily: fonts.regular, fontSize: 10.5, lineHeight: 15, color: ui.slate, marginTop: 10 },
+  anchorNote: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 15, color: ui.slate, marginTop: 10 },
 });

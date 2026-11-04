@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
   },
   sumCol: { flex: 1, alignItems: 'center', gap: 3 },
   sumDiv: { width: 1, height: 30, backgroundColor: ui.divider },
-  sumK: { ...microLabel, fontSize: 10.5 },
+  sumK: { ...microLabel },
   sumV: { fontSize: 20, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   title: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -438,6 +438,10 @@ const styles = StyleSheet.create({
   stepLineOn: { backgroundColor: ui.indigo },
   stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: ui.divider, marginHorizontal: 2 },
   stepDotOn: { backgroundColor: ui.indigo },
+  /* 10, NOT the 11 floor (QC A3): four STEPS across a card is 74.0px per
+     column at 360, and "Refund/Credit" at 11px measures 74.7px. It carries
+     numberOfLines={1}, so the floor would ellipsize a word the reader needs
+     in order to know what the step IS. Shorten the label and it can rise. */
   stepLbl: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 6 },
   stepLblOn: { color: ui.indigo },
   amountRow: {

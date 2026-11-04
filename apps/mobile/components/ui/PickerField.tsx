@@ -280,7 +280,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: ui.divider, borderRadius: 12, paddingHorizontal: 13, height: 44,
     backgroundColor: '#ffffff', fontSize: 15, fontFamily: fonts.regular, color: ui.title, marginBottom: 8,
   },
-  group: { ...microLabel, fontSize: 10, marginTop: 14, marginBottom: 4 },
+  group: { ...microLabel, marginTop: 14, marginBottom: 4 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: ui.divider,

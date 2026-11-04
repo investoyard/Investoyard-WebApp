@@ -373,11 +373,11 @@ const styles = StyleSheet.create({
   pickerHint: { fontSize: 12, fontFamily: fonts.regular, color: ui.slate, lineHeight: 17, marginBottom: 12 },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: ui.divider },
   memberName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  own: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
+  own: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   memberSub: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   editBtn: { width: 30, height: 30, borderRadius: 9, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
   dematPick: { marginBottom: 10 },
-  dematK: { fontSize: 10, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.5, color: ui.slate },
+  dematK: { fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: 0.5, color: ui.slate },
   dematChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   dematChip: {
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9,
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: ui.divider,
     ...shadowCard,
   },
-  barK: { ...microLabel, fontSize: 10.5 },
+  barK: { ...microLabel },
   barV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
-  barHint: { fontFamily: fonts.regular, color: ui.slate, fontSize: 10.5, marginTop: 2 },
+  barHint: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11, marginTop: 2 },
 });

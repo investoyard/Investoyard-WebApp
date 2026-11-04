@@ -360,10 +360,10 @@ const styles = StyleSheet.create({
   pickerHint: { fontSize: 12, fontFamily: fonts.regular, color: ui.slate, lineHeight: 17, marginBottom: 12 },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderTopWidth: 1, borderTopColor: ui.divider },
   memberName: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
-  own: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
+  own: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
   memberSub: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   badge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  badgeTxt: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700' },
+  badgeTxt: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700' },
   editBtn: { width: 30, height: 30, borderRadius: 9, backgroundColor: ui.indigoTint, alignItems: 'center', justifyContent: 'center' },
   editBox: { backgroundColor: ui.canvas, borderRadius: 14, padding: 12, marginBottom: 10 },
   resetBtn: {
@@ -398,7 +398,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: ui.divider,
     ...shadowCard,
   },
-  barK: { fontSize: 10.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, letterSpacing: 0.8 },
+  barK: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, letterSpacing: 0.8 },
   barV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, marginTop: 2, fontVariant: ['tabular-nums'] },
-  barHint: { fontFamily: fonts.regular, color: ui.slate, fontSize: 10.5, marginTop: 2 },
+  barHint: { fontFamily: fonts.regular, color: ui.slate, fontSize: 11, marginTop: 2 },
 });

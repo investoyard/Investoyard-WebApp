@@ -196,7 +196,7 @@ function Tile({ label, sub, Icon, onPress }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
-  inK: { ...microLabel, fontSize: 10.5 },
+  inK: { ...microLabel },
   ipoChip: { paddingHorizontal: 13, height: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
   ipoChipOn: { backgroundColor: ui.indigo },
   ipoChipTxt: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
@@ -222,5 +222,5 @@ const styles = StyleSheet.create({
   },
   tileLabel: { fontSize: 14, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, letterSpacing: -0.2 },
   tileSub: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2 },
-  foot: { marginTop: 16, fontSize: 10.5, fontFamily: fonts.regular, color: ui.slate, textAlign: 'center' },
+  foot: { marginTop: 16, fontSize: 11, fontFamily: fonts.regular, color: ui.slate, textAlign: 'center' },
 });

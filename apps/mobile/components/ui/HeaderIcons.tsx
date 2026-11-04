@@ -64,8 +64,12 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6, transform: [{ scale: 0.96 }] },
   badge: {
-    position: 'absolute', top: 1, right: 1, minWidth: 16, height: 16, borderRadius: 8,
+    /* 18, not 16: the count is 11px now (QC A3) and 11px Inter needs a 13.3px
+       line box, which left 2.7px of leading in a 16px circle. minWidth grows
+       with the text, so "99+" has always made this a pill rather than a
+       circle - at 11px it is 30.1px wide. Only single digits are round. */
+    position: 'absolute', top: 1, right: 1, minWidth: 18, height: 18, borderRadius: 9,
     paddingHorizontal: 4, backgroundColor: '#E5484D', alignItems: 'center', justifyContent: 'center',
   },
-  badgeTxt: { color: '#ffffff', fontSize: 9, fontFamily: fonts.extrabold, fontWeight: '800' },
+  badgeTxt: { color: '#ffffff', fontSize: 11, fontFamily: fonts.extrabold, fontWeight: '800' },
 });

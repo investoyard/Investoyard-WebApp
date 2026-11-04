@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   meta: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2 },
   totalBox: { alignItems: 'flex-end' },
   totalV: { fontSize: 18, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.indigo, fontVariant: ['tabular-nums'] },
-  totalK: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 1 },
+  totalK: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 1 },
   catRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   catK: { width: 80, fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   track: { flex: 1, height: 6, borderRadius: 999, backgroundColor: ui.slateTint, overflow: 'hidden' },

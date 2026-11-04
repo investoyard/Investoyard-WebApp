@@ -270,7 +270,7 @@ const s = StyleSheet.create({
   chipOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
   chipTxt: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   chipTxtOn: { color: ui.indigo },
-  fieldHint: { ...microLabel, fontSize: 10.5, marginTop: 12, marginBottom: 6, textTransform: 'none', letterSpacing: 0 },
+  fieldHint: { ...microLabel, marginTop: 12, marginBottom: 6, textTransform: 'none', letterSpacing: 0 },
   select: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
     minHeight: 46, paddingHorizontal: 13, borderRadius: 12, backgroundColor: ui.canvas, marginTop: 2,
@@ -300,7 +300,7 @@ const s = StyleSheet.create({
   },
   sug: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   sugOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
-  sugTag: { fontSize: 10, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 38 },
+  sugTag: { fontSize: 11, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 38 },
   sugTxt: { flex: 1, fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
   sugAmt: { fontSize: 12, fontFamily: fonts.bold, fontWeight: '700', color: ui.title, fontVariant: ['tabular-nums'] },
   shaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 12 },

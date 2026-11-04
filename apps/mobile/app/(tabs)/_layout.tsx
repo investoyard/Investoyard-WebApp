@@ -67,6 +67,12 @@ export default function TabsLayout() {
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 8 },
         },
+        /* 10, NOT the 11 floor (QC A3), and it is measured rather than guessed:
+           the pill is inset left:14 right:14, so a tab is (screen-28)/5 = 66.4px
+           at 360, and "Applications" at 11px in Inter SemiBold is 66.6px. It
+           fits at 375 and up and not on a narrow Android. THE DESIGN HANDOFF
+           CUTS THIS BAR TO 4 TABS, which makes a tab 83px and the floor
+           reachable - so raising this is gated on that nav decision. */
         tabBarLabelStyle: { fontSize: 10, fontFamily: fonts.semibold, fontWeight: '600', marginTop: 2 },
       }}
     >
