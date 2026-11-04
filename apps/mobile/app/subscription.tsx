@@ -163,6 +163,7 @@ export default function SubscriptionScreen() {
             const on = filter === key;
             return (
               <Pressable
+                hitSlop={{ top: 6, bottom: 6 }}
                 key={key}
                 onPress={() => { tapLight(); setFilter(key); }}
                 style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && { opacity: 0.8 }]}

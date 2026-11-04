@@ -189,6 +189,7 @@ export default function LoginScreen() {
                     ['password', t('login.wayPassword')],
                   ] as const).map(([k, label]) => (
                     <Pressable
+                      hitSlop={{ top: 3, bottom: 3 }}
                       key={k}
                       accessibilityRole="button"
                       accessibilityState={{ selected: way === k }}

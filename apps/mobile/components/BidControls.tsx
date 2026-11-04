@@ -74,7 +74,7 @@ export function ApplyBidPicker({ engine, choice, onChange, allowShareholder, sym
           {tabs.filter((t) => !t.hidden).map((t) => {
             const on = choice.tab === t.key;
             return (
-              <Pressable key={t.key} onPress={() => switchTab(t.key)} style={[s.tab, compact && s.tabCompact, on && s.tabOn]}>
+              <Pressable hitSlop={{ top: 7, bottom: 7 }} key={t.key} onPress={() => switchTab(t.key)} style={[s.tab, compact && s.tabCompact, on && s.tabOn]}>
                 <Text style={[s.tabTxt, compact && { fontSize: 11.5 }, on && s.tabTxtOn]}>{t.label}</Text>
               </Pressable>
             );
@@ -84,7 +84,7 @@ export function ApplyBidPicker({ engine, choice, onChange, allowShareholder, sym
           {chips.filter((c) => !c.hidden && c.q).map((c) => {
             const on = choice.q.lots === c.q!.lots && ((c.tab === 'hni') === (choice.tab === 'hni'));
             return (
-              <Pressable key={c.label} onPress={() => { onChange({ tab: c.tab, q: c.q! }); setListOpen(false); }} style={[s.chip, on && s.chipOn]}>
+              <Pressable hitSlop={{ top: 3, bottom: 3 }} key={c.label} onPress={() => { onChange({ tab: c.tab, q: c.q! }); setListOpen(false); }} style={[s.chip, on && s.chipOn]}>
                 <Text style={[s.chipTxt, on && s.chipTxtOn]}>{c.label}</Text>
               </Pressable>
             );
@@ -186,13 +186,13 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
         {tiles.filter((t) => !t.hidden && t.q).map((t) => {
           const on = !customOn && choice.q.lots === t.q!.lots;
           return (
-            <Pressable key={t.key} onPress={() => { setCustomOn(false); setQuote(t.q); }} style={[s.tile, compact && s.tileCompact, on && s.tileOn]}>
+            <Pressable hitSlop={{ top: 4, bottom: 4 }} key={t.key} onPress={() => { setCustomOn(false); setQuote(t.q); }} style={[s.tile, compact && s.tileCompact, on && s.tileOn]}>
               <Text style={[s.tileT, on && { color: ui.indigo }]}>{t.label}</Text>
               <Text style={s.tileS}>{t.q!.lots.toLocaleString('en-IN')} {t.q!.lots === 1 ? 'lot' : 'lots'} · {inr(t.q!.amount)}</Text>
             </Pressable>
           );
         })}
-        <Pressable onPress={() => setCustomOn(true)} style={[s.tile, compact && s.tileCompact, customOn && s.tileOn]}>
+        <Pressable hitSlop={{ top: 4, bottom: 4 }} onPress={() => setCustomOn(true)} style={[s.tile, compact && s.tileCompact, customOn && s.tileOn]}>
           <Text style={[s.tileT, customOn && { color: ui.indigo }]}>Custom</Text>
           <Text style={s.tileS}>by amount / lots</Text>
         </Pressable>
@@ -202,7 +202,7 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
         <View style={{ marginTop: 12 }}>
           <View style={s.modes}>
             {(['amount', 'lots'] as const).map((m) => (
-              <Pressable key={m} onPress={() => setMode(m)} style={[s.mode, mode === m && s.modeOn]}>
+              <Pressable hitSlop={{ top: 8, bottom: 8 }} key={m} onPress={() => setMode(m)} style={[s.mode, mode === m && s.modeOn]}>
                 <Text style={[s.modeTxt, mode === m && { color: ui.indigo }]}>{m === 'amount' ? 'By amount (₹ Cr)' : 'By lots'}</Text>
               </Pressable>
             ))}
@@ -218,7 +218,7 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
                   const on = choice.q.lots === q!.lots;
                   const dis = !pickable(q!);
                   return (
-                    <Pressable key={tag} disabled={dis} onPress={() => setQuote(q!)} style={[s.sug, on && s.sugOn, dis && { opacity: 0.45 }]}>
+                    <Pressable key={tag} disabled={dis} hitSlop={{ top: 3, bottom: 3 }} onPress={() => setQuote(q!)} style={[s.sug, on && s.sugOn, dis && { opacity: 0.45 }]}>
                       <Text style={s.sugTag}>{tag}</Text>
                       <Text style={s.sugTxt}>{q!.lots.toLocaleString('en-IN')} lots · {q!.shares.toLocaleString('en-IN')} sh</Text>
                       <Text style={[s.sugAmt, on && { color: ui.indigo }]}>{inr(q!.amount)}</Text>
@@ -235,6 +235,7 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
               />
               {lotsQuote && (
                 <Pressable disabled={!pickable(lotsQuote)} onPress={() => setQuote(lotsQuote)}
+                  hitSlop={{ top: 4, bottom: 4 }}
                   style={[s.sug, choice.q.lots === lotsQuote.lots && s.sugOn, !pickable(lotsQuote) && { opacity: 0.45 }, { flex: 1 }]}>
                   <Text style={s.sugTxt}>{lotsQuote.lots.toLocaleString('en-IN')} lots · {lotsQuote.shares.toLocaleString('en-IN')} sh</Text>
                   <Text style={[s.sugAmt, choice.q.lots === lotsQuote.lots && { color: ui.indigo }]}>{inr(lotsQuote.amount)}</Text>

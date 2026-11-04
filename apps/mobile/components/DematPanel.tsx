@@ -101,6 +101,7 @@ export function DematPanel({ p }: { p: ProfileRecord }) {
           <View style={s.seg}>
             {(['NSDL', 'CDSL'] as const).map((d) => (
               <Pressable
+                hitSlop={{ top: 5, bottom: 5 }}
                 key={d}
                 onPress={() => { setDep(d); setDpId(''); setClientId(''); }}
                 style={[s.segBtn, dep === d && s.segOn]}
@@ -145,13 +146,14 @@ export function DematPanel({ p }: { p: ProfileRecord }) {
 
           <View style={s.btnRow}>
             <Pressable
+              hitSlop={{ top: 3, bottom: 3 }}
               onPress={add}
               disabled={!ready || busy === 'add'}
               style={[s.btn, (!ready || busy === 'add') && s.btnOff]}
             >
               <Text style={s.btnTxt}>{busy === 'add' ? 'Adding…' : 'Add demat'}</Text>
             </Pressable>
-            <Pressable onPress={() => { setOpen(false); setErr(null); reset(); }} style={[s.btn, s.btnGhost]}>
+            <Pressable hitSlop={{ top: 3, bottom: 3 }} onPress={() => { setOpen(false); setErr(null); reset(); }} style={[s.btn, s.btnGhost]}>
               <Text style={[s.btnTxt, s.btnGhostTxt]}>Cancel</Text>
             </Pressable>
           </View>

@@ -174,13 +174,14 @@ export default function HomeScreen() {
               autoCorrect={false}
               returnKeyType="search"
             />
-            <Pressable onPress={closeSearch} hitSlop={8} style={({ pressed }) => [styles.searchClose, pressed && { opacity: 0.6 }]}>
+            <Pressable onPress={closeSearch} hitSlop={9} style={({ pressed }) => [styles.searchClose, pressed && { opacity: 0.6 }]}>
               <XIcon size={16} color={ui.slate} strokeWidth={2.2} />
             </Pressable>
           </View>
         ) : (
           <View style={styles.headRow}>
             <Pressable
+              hitSlop={{ top: 5, bottom: 5 }}
               onPress={() => { tapLight(); router.push('/subscription'); }}
               accessibilityRole="button"
               accessibilityLabel="Live subscription of open IPOs"
@@ -235,6 +236,7 @@ export default function HomeScreen() {
             const on = filter === key;
             return (
               <Pressable
+                hitSlop={{ top: 4, bottom: 4 }}
                 key={key}
                 onPress={() => { animateNext(); setFilter(key); }}
                 style={({ pressed }) => [styles.fchip, on && styles.fchipOn, pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }]}
@@ -253,6 +255,7 @@ export default function HomeScreen() {
             const on = board === key;
             return (
               <Pressable
+                hitSlop={{ top: 6, bottom: 6 }}
                 key={key}
                 onPress={() => { animateNext(); setBoard(key); }}
                 style={({ pressed }) => [styles.segBtn, on && styles.segBtnOn, pressed && { opacity: 0.8 }]}

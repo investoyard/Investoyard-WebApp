@@ -177,7 +177,7 @@ export default function CalendarScreen() {
               {(['month', 'week'] as const).map((v) => {
                 const on = view === v;
                 return (
-                  <Pressable key={v} onPress={() => switchView(v)} style={({ pressed }) => [styles.viewBtn, on && styles.viewBtnOn, pressed && { opacity: 0.8 }]}>
+                  <Pressable hitSlop={{ top: 9, bottom: 9 }} key={v} onPress={() => switchView(v)} style={({ pressed }) => [styles.viewBtn, on && styles.viewBtnOn, pressed && { opacity: 0.8 }]}>
                     <Text style={[styles.viewTxt, on && styles.viewTxtOn]}>{v === 'month' ? 'Month' : 'Week'}</Text>
                   </Pressable>
                 );

@@ -85,6 +85,7 @@ export function DayWisePanel({
         <View style={s.seg}>
           {([['shares', 'Share-wise'], ['apps', 'Application-wise']] as const).map(([k, label]) => (
             <Pressable
+              hitSlop={{ top: 7, bottom: 7 }}
               key={k}
               onPress={() => setView(k)}
               style={({ pressed }) => [s.segBtn, shown === k && s.segBtnOn, pressed && { opacity: 0.8 }]}

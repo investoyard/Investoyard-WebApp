@@ -177,6 +177,7 @@ export default function PrintScreen() {
                     <Text style={[styles.badgeTxt, { color: badge.color }]}>{badge.label}</Text>
                   </View>
                   <Pressable
+                    hitSlop={5}
                     disabled={formBusy != null}
                     onPress={() => shareForms([a.id], a.name.split(' ')[0])}
                     style={({ pressed }) => [styles.dlBtn, (pressed || formBusy === a.name.split(' ')[0]) && { opacity: 0.8 }]}
@@ -276,6 +277,7 @@ export default function PrintScreen() {
                           <Text style={[styles.badgeTxt, { color: badge.color }]}>{badge.label}</Text>
                         </View>
                         <Pressable
+                          hitSlop={7}
                           onPress={() => setEditing(editing === p.id ? null : p.id)}
                           style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}
                         >

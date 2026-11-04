@@ -94,6 +94,7 @@ export default function AccountScreen() {
               const ready = TRANSLATED_LANGS.includes(l.code);
               return (
                 <Pressable
+                  hitSlop={{ top: 4, bottom: 4 }}
                   key={l.code}
                   onPress={() => ready && setLang(l.code)}
                   disabled={!ready}
@@ -323,6 +324,7 @@ function SecurityCard({ token, t }: { token: string; t: (k: string) => string })
                 const on = st.otpChannel === k;
                 return (
                   <Pressable
+                    hitSlop={{ top: 4, bottom: 4 }}
                     key={k}
                     disabled={!can || busy}
                     onPress={() => pick(k)}

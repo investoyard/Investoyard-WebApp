@@ -254,6 +254,7 @@ export default function NewProfileScreen() {
           <View style={styles.segs}>
             {options.map((r) => (
               <Pressable
+                hitSlop={{ top: 2, bottom: 2 }}
                 key={r}
                 onPress={() => setRelationship(r)}
                 style={({ pressed }) => [styles.seg, relationship === r && styles.segOn, pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] }]}
@@ -282,6 +283,7 @@ export default function NewProfileScreen() {
           <View style={styles.segs}>
             {(['NSDL', 'CDSL'] as const).map((d) => (
               <Pressable
+                hitSlop={{ top: 2, bottom: 2 }}
                 key={d}
                 onPress={() => { setDepository(d); setDpId(''); setClientId(''); }}
                 style={({ pressed }) => [styles.seg, styles.segWide, depository === d && styles.segOn, pressed && { opacity: 0.75 }]}
@@ -351,6 +353,7 @@ export default function NewProfileScreen() {
                         <Text style={styles.hint}>No handle matches “{handleQuery}”.</Text>
                       ) : handleMatches.map((h) => (
                         <Pressable
+                          hitSlop={{ top: 3, bottom: 3 }}
                           key={h}
                           onPress={() => { tapSelect(); setUpiHandle(h); setHandleOpen(false); setHandleQuery(''); }}
                           style={({ pressed }) => [styles.handleItem, h === upiHandle && styles.handleItemOn, pressed && { opacity: 0.7 }]}

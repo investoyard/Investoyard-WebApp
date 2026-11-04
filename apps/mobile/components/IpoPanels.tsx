@@ -85,6 +85,7 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
           : ([['shares', 'Share-wise'], ['money', '₹ Crore']] as const)
         ).map(([k, label]) => (
           <Pressable
+            hitSlop={{ top: 7, bottom: 7 }}
             key={k}
             onPress={() => setView(k)}
             style={({ pressed }) => [s.subSegBtn, shown === k && s.subSegBtnOn, pressed && { opacity: 0.8 }]}

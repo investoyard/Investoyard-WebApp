@@ -260,6 +260,7 @@ export default function ApplyScreen() {
                           </Text>
                         </View>
                         <Pressable
+                          hitSlop={7}
                           onPress={() => setEditing(editing === p.id ? null : p.id)}
                           style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.8 }]}
                         >
@@ -276,6 +277,7 @@ export default function ApplyScreen() {
                               const on = (dematBy[p.id] ?? null) === (d.id ?? null);
                               return (
                                 <Pressable
+                                  hitSlop={{ top: 3, bottom: 3 }}
                                   key={d.id ?? 'default'}
                                   onPress={() => setDematBy((m) => ({ ...m, [p.id]: d.id ?? null }))}
                                   style={[styles.dematChip, on && styles.dematChipOn]}

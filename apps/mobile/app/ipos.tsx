@@ -110,6 +110,7 @@ export default function AllIposScreen() {
             const on = board === key;
             return (
               <Pressable
+                hitSlop={{ top: 6, bottom: 6 }}
                 key={key}
                 onPress={() => { tapLight(); setBoard(key); }}
                 style={({ pressed }) => [styles.segBtn, on && styles.segBtnOn, pressed && { opacity: 0.8 }]}
