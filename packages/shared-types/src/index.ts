@@ -187,6 +187,18 @@ export interface ProfileView {
 export interface ApplicationView {
   id: string;
   ipoId: string;
+  /**
+   * Which applicant placed it. `toView` has always sent this and the interface
+   * never declared it, so web read it off the row through a local type — and a
+   * field the API populates but the type does not declare is the same hazard as
+   * one the type declares and nothing populates: the next surface that needs it
+   * reaches for `any`. The apply picker needs it to tell an applicant who has
+   * already applied for this issue from one who has not.
+   *
+   * Optional because a partner-API print carries no profile (`investorProfileId`
+   * is nullable with ON DELETE SET NULL).
+   */
+  investorProfileId?: string;
   ipoSymbol?: string;
   ipoName?: string;
   status: ApplicationStatus;

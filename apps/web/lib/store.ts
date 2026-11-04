@@ -53,7 +53,6 @@ export interface Profile {
   ifsc?: string;
   nominee?: string;
   kycStatus?: KycStatus;
-  consent: boolean;
 }
 
 /**
@@ -80,7 +79,6 @@ export function mapApiProfile(p: ApiProfile): Profile {
     bankAccount: p.hasBank ? 'set' : undefined,
     ifsc: p.ifsc,
     kycStatus: (p.kycStatus as KycStatus) ?? 'unverified',
-    consent: true,
   };
 }
 
@@ -242,7 +240,16 @@ export function useStore<T>(selector: (s: State) => T): T {
   );
 }
 
-/** Everything an applicant needs before a bid can be built from them. */
-export function profileReady(p: Profile): boolean {
-  return Boolean(p.fullName && p.pan && p.dpId && p.clientId && p.upiId && p.consent);
-}
+/*
+ * `profileReady` WAS HERE AND IS DELETED: zero callers, and it tested
+ * `p.dpId && p.clientId`, which is the CDSL fault — a CDSL account has no DP ID
+ * and stores `dpId: ''`, so it would have reported every CDSL applicant as
+ * not ready. Latent while nothing called it, and no longer hypothetical: there
+ * are CDSL profiles in the database now where there were none when that rule
+ * was first fixed in `dematAccountsFor`.
+ *
+ * Dead code carrying a known-bad pattern is worse than no code — it is the
+ * version waiting for the first caller. The live test is `applyReady` in
+ * ApplyWizard, which is depository-aware; mobile's apply screen uses the same
+ * expression.
+ */

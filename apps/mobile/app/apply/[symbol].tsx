@@ -16,7 +16,7 @@ import type { IpoFull } from '../../lib/ipoCalc';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
 import { useProfiles, type ProfileRecord } from '../../components/profiles';
-import { getIpo, getUpiCap, createApplication, getConsentNotices } from '../../lib/api';
+import { getIpo, getUpiCap, createApplication, getConsentNotices, listApplications } from '../../lib/api';
 import { inr } from '../../lib/format';
 import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
@@ -27,10 +27,43 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
 import { SuccessMoment } from '../../components/ui/Celebration';
 import { ApplyBidPicker, applyCategory, applyTabLabel, type ApplyChoice } from '../../components/BidControls';
-import { UPI_MANDATE_MAX, dematLabel } from '@investoyard/shared-types';
+import { UPI_MANDATE_MAX, dematLabel, type ApplicationView } from '@investoyard/shared-types';
 
-/** Eligible for the UPI flow: own UPI on file and not a minor. */
-const upiReady = (p: ProfileRecord) => !!p.upiId && p.relationship !== 'child';
+/**
+ * Does this applicant hold a usable demat?
+ *
+ * DEPOSITORY-AWARE, and it has to be in BOTH directions. A CDSL account has NO
+ * DP ID and stores `dpId: ''`, so a flat `dpId && clientId` drops every CDSL
+ * applicant — the fault this codebase already paid for in `dematAccountsFor`.
+ * But an NSDL bid genuinely needs the DP ID, so accepting `clientId` alone
+ * there would pass the picker and then be REFUSED by the rail builder, which is
+ * strictly worse than being told at the picker.
+ *
+ * Deliberately the same expression web's ApplyWizard uses rather than a second
+ * reading of the rule. Known gap, shared with web: a profile whose own columns
+ * are empty while an EXTRA demat exists reads as having none. Not reachable
+ * today — a profile is created with its default account.
+ */
+const hasDemat = (p: ProfileRecord) =>
+  p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
+
+/**
+ * Everything the applicant needs before a bid can be built from them — the
+ * same set web's ApplyWizard requires. Mobile checked the UPI ID alone, so a
+ * profile with no PAN or no demat still read as selectable (QC U5).
+ */
+const applyReady = (p: ProfileRecord) => !!p.fullName && !!p.pan && hasDemat(p);
+
+/** Eligible for the UPI flow: ready, own UPI on file, and not a minor. */
+const upiReady = (p: ProfileRecord) => applyReady(p) && !!p.upiId && p.relationship !== 'child';
+
+/** What an unready applicant is missing, in the words the profile form uses. */
+const missingBits = (p: ProfileRecord) => {
+  const bits: string[] = [];
+  if (!p.pan) bits.push('PAN');
+  if (!hasDemat(p)) bits.push('demat details');
+  return bits.join(' & ') || 'details';
+};
 
 export default function ApplyScreen() {
   const t = useT();
@@ -51,12 +84,22 @@ export default function ApplyScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [noticeVersion, setNoticeVersion] = useState<string | undefined>(undefined);
+  const [myApps, setMyApps] = useState<ApplicationView[]>([]);
   const [placed, setPlaced] = useState<{ name: string; amount: number; cat: string }[] | null>(null);
   const [placing, setPlacing] = useState(false);
   const [placeErr, setPlaceErr] = useState<string | null>(null);
 
   useEffect(() => { if (symbol) getIpo(String(symbol)).then((v) => setIpo(v ?? null)); }, [symbol]);
   useEffect(() => { getUpiCap().then(setUpiCap); }, []);
+  /* The investor's own bids, so the picker can tell an applicant who has
+     ALREADY applied for this issue from one who has not. Worth the extra
+     request: the self-PAN rule is enforced server-side and `onPlace` loops one
+     applicant at a time, so without this a batch containing a duplicate
+     creates the earlier applications and THEN fails. `listApplications`
+     returns [] on any failure, which leaves every applicant selectable — the
+     server still refuses, so a missed check costs the old behaviour and never
+     a wrong allow. */
+  useEffect(() => { if (token) listApplications(token).then(setMyApps); }, [token]);
   useEffect(() => { getConsentNotices().then((ns) => setNoticeVersion(ns.find((n) => n.type === 'data_sharing_rail')?.version)); }, []);
 
   const engine = useMemo(
@@ -108,7 +151,28 @@ export default function ApplyScreen() {
 
   const allowShareholder = (ipo.reservations ?? []).includes('shareholder');
   const eligible = profiles.filter(upiReady);
-  const selected = eligible.filter((p) => selectedIds.includes(p.id));
+
+  /* TWO WAYS AN ELIGIBLE APPLICANT STILL CANNOT APPLY, both enforced
+     server-side and neither visible here until now (QC U5):
+       - ALREADY APPLIED for this issue. Keyed on `ipoId`, not the symbol, so a
+         renamed symbol cannot slip past it. Draft/failed/rejected bids do not
+         count, matching the server's own filter — a failed attempt must not
+         lock someone out of retrying.
+       - SAME PAN as an applicant already selected. One public application per
+         PAN per IPO, so two profiles sharing a PAN cannot both go in one batch;
+         the server raises this per batch. PANs arrive MASKED (ABC****4F), which
+         is what web compares too — a UI pre-check in front of an authoritative
+         panHash check, not a substitute for it. */
+  const DEAD: string[] = ['draft', 'failed', 'rejected'];
+  const appliedIds = new Set(
+    myApps.filter((a) => a.ipoId === ipo.id && !DEAD.includes(a.status) && a.investorProfileId)
+      .map((a) => a.investorProfileId as string),
+  );
+  const selected = eligible.filter((p) => selectedIds.includes(p.id) && !appliedIds.has(p.id));
+  const panClash = (p: ProfileRecord) =>
+    !selectedIds.includes(p.id) && !!p.pan && selected.some((s) => s.pan === p.pan);
+  const blockedWhy = (p: ProfileRecord) =>
+    (appliedIds.has(p.id) ? 'Already applied' : panClash(p) ? 'Same PAN' : null);
   const choiceFor = (p: ProfileRecord): ApplyChoice | null => overrides[p.id] ?? master;
   const totalAmount = selected.reduce((s, p) => s + (choiceFor(p)?.q.amount ?? 0), 0);
   const toggleApplicant = (id: string) =>
@@ -191,16 +255,32 @@ export default function ApplyScreen() {
         <Card>
           <View style={styles.applicants}>
             {eligible.map((p) => {
-              const on = selectedIds.includes(p.id);
+              /* A chip that can only fail is worse than no chip: the server
+                 refuses both of these, and `onPlace` loops one applicant at a
+                 time, so letting it through creates the earlier applications
+                 and then errors. Disabled and labelled instead. (QC U5) */
+              const why = blockedWhy(p);
+              /* `&& !why` because `myApps` ARRIVES LATE: an applicant selected
+                 before it lands can turn out to have applied already, and
+                 would otherwise render as selected AND blocked at once. The
+                 bid math is unaffected either way — `selected` excludes them. */
+              const on = selectedIds.includes(p.id) && !why;
               return (
                 <Pressable
                   key={p.id}
+                  disabled={!!why}
                   onPress={() => toggleApplicant(p.id)}
-                  style={({ pressed }) => [styles.appChip, on && styles.appChipOn, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
+                  accessibilityState={{ disabled: !!why, selected: on }}
+                  accessibilityLabel={why ? `${p.fullName} — ${why}, cannot be selected` : undefined}
+                  style={({ pressed }) => [
+                    styles.appChip, on && styles.appChipOn,
+                    why && styles.appChipOff,
+                    pressed && !why && { opacity: 0.75, transform: [{ scale: 0.98 }] },
+                  ]}
                 >
                   {on ? <CheckIcon size={13} color="#ffffff" strokeWidth={2.6} /> : null}
-                  <Text style={[styles.appTxt, on && styles.appTxtOn]} numberOfLines={1}>
-                    {t(`rel.${p.relationship}`)} · {p.fullName}
+                  <Text style={[styles.appTxt, on && styles.appTxtOn, why && styles.appTxtOff]} numberOfLines={1}>
+                    {t(`rel.${p.relationship}`)} · {p.fullName}{why ? ` · ${why}` : ''}
                   </Text>
                 </Pressable>
               );
@@ -218,7 +298,15 @@ export default function ApplyScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.blockedName}>{p.fullName}</Text>
                 <Text style={styles.blockedWhy}>
-                  {p.relationship === 'child' ? 'Minor — no UPI mandate; use Print Forms (bank ASBA)' : 'No UPI ID saved — add it, or use Print Forms (bank ASBA)'}
+                  {/* `applyReady` FIRST: an applicant with no PAN is missing
+                      something they can fix, and telling them to use Print
+                      Forms instead would send them down a flow that needs the
+                      same details. Same order web states these in. */}
+                  {!applyReady(p)
+                    ? `Missing ${missingBits(p)} to apply`
+                    : p.relationship === 'child'
+                      ? 'Minor — no UPI mandate; use Print Forms (bank ASBA)'
+                      : 'No UPI ID saved — add it, or use Print Forms (bank ASBA)'}
                 </Text>
               </View>
               {printOpen ? (
@@ -365,8 +453,13 @@ const styles = StyleSheet.create({
     backgroundColor: ui.canvas, maxWidth: '100%',
   },
   appChipOn: { backgroundColor: ui.indigo },
+  /* Blocked: a DASHED outline as well as the dimming, so "cannot be selected"
+     is not carried by opacity alone — the same reasoning as A6, where a dot's
+     colour was the only thing saying "applied". */
+  appChipOff: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: ui.divider },
   appTxt: { color: ui.slate, fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', flexShrink: 1 },
   appTxtOn: { color: '#ffffff' },
+  appTxtOff: { color: ui.slate, opacity: 0.75 },
   blockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider },
   blockedName: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   blockedWhy: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.slate, marginTop: 2, lineHeight: 16 },

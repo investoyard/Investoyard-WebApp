@@ -35,7 +35,7 @@ const tabLabel = (c: Choice) => (c.tab === 'sha' ? 'Shareholder' : c.tab === 'hn
  */
 function applyReady(p: Profile): boolean {
   const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
-  return Boolean(p.fullName && p.pan && dematOk && p.consent);
+  return Boolean(p.fullName && p.pan && dematOk);
 }
 function upiReady(p: Profile): boolean {
   return applyReady(p) && !!p.upiId && p.relationship !== 'child';

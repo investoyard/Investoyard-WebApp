@@ -4,7 +4,7 @@ import { getIpoDetail, type IpoFull } from '@/lib/api';
 import { inr, priceBand } from '@/lib/format';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
-import { useStore, Profile } from '@/lib/store';
+import { useStore, Profile, mapApiProfile } from '@/lib/store';
 import { getConsumerToken, listProfiles, createApplication, downloadAsbaForm, downloadAsbaForms, type ApiProfile } from '@/lib/consumer-api';
 import { makeBidEngine, crToRupees, type BidQuote, type BidEngine } from '@investoyard/shared-types';
 
@@ -32,7 +32,7 @@ function formBadge(c: Choice, isMainboard: boolean): { label: string; tone: stri
 
 function applyReady(p: Profile): boolean {
   const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
-  return Boolean(p.fullName && p.pan && dematOk && p.consent);
+  return Boolean(p.fullName && p.pan && dematOk);
 }
 function missingBits(p: Profile): string {
   const bits: string[] = [];
@@ -40,14 +40,10 @@ function missingBits(p: Profile): string {
   if (p.depository === 'CDSL' ? !p.clientId : !(p.dpId && p.clientId)) bits.push('demat details');
   return bits.join(' & ') || 'details';
 }
-function mapApiProfile(p: ApiProfile): Profile {
-  return {
-    id: p.id, relationship: p.relationship as any, fullName: p.fullName, pan: p.pan,
-    depository: p.depository as any, dpId: p.dpId, clientId: p.clientId,
-    upiId: p.hasUpi ? 'upi-verified' : undefined, bankAccount: p.hasBank ? 'set' : undefined,
-    ifsc: p.ifsc, kycStatus: (p.kycStatus as any) ?? 'unverified', consent: true,
-  };
-}
+/* mapApiProfile lives in lib/store.ts beside the type it produces. This file
+   kept its own copy, and the two had already drifted: it omitted "demats",
+   which is precisely the field the shared one's docblock singles out as the
+   reason not to copy it. */
 
 /* ---------------- quantity picker (master + per-member, one control) ---------------- */
 
