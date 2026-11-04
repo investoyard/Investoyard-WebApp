@@ -74,3 +74,14 @@ data/
 *.p12
 *.key
 *.pem
+
+# Throwaway measuring and probe scripts. This box cannot render React Native and
+# cannot reach its own public address, so a lot of verification here is a small
+# script driving headless Chrome or fontkit against the built output - written,
+# run once, and of no use to anyone later. They accumulated in the repo ROOT
+# untracked, which puts them one `git add -A` from being committed, the same
+# shape as the .pfx above.
+#
+# Anything genuinely reusable belongs in scripts/ with a docblock saying what it
+# measures, not here.
+scratchpad/
