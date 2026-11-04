@@ -1549,6 +1549,8 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 
 ## The rest of the QC report — C1, U4, U5, A5/A6/A8 (2026-11-04)
 
+> **READ THIS BEFORE THE FOUR SUB-SECTIONS: THE WEB HALF OF U4, U5 AND A6/A8 WAS REVERTED ON THE OPERATOR'S INSTRUCTION, SO EVERY BULLET BELOW THAT DESCRIBES A WEB FIX AS DONE IS DESCRIBING SOMETHING THAT NO LONGER EXISTS.** The task was the MOBILE design handoff; I took its findings, went looking for the same shapes on web, and changed 16 web files nobody had asked about. **17 files are back at `3b021e5` byte-identical.** The reasoning stays recorded because the defects are real and will be found again — but **the code is not there.** See *The web revert* at the end of this file for what came back and the two changes that were kept.
+
 **SEVEN OF THE 23 FINDINGS ARE ABOUT THE DESIGNER'S OWN MOCKUP CANVAS AND ARE NOT WORK HERE** — D1 (one company telling three stories across three mockup screens), D2 (generate the mockup's dates from the T+3 rule), L2 ("fix the mock so review screenshots stay honest"), U2 (no iOS screens drawn), U3 (no first-run journey drawn), U6 ("mark Turn 1 superseded"), U7 (no design for clashing Moments). **A finding about a reviewer's artefact is feedback to send back**, and three of them were on my own to-do list before I read past the headline.
 
 ### C1 — the GMP consent flag gated nothing
@@ -1626,6 +1628,26 @@ cd apps/mobile && npx tsc --noEmit                 # mobile typecheck
 - **Applied sits SECOND, ahead of Insights** — the handoff's order and the better one: an investor opens this app to check a bid far more often than to browse.
 - Swept for anything else pointing at the old route: **`/profiles` is pushed from Account alone**, `/profiles/new` from apply, print and the list (all stack routes, untouched), the `lib/api.ts` hits are API paths rather than app routes, and no server-side notification deep-links it. **`UsersIcon` / `UsersIconFill` were left imported and unused by the cut** — `tsc` does not flag that without `noUnusedLocals`, which this package does not set, so it has to be grepped for.
 - **THE PRE-PUSH HOOK BLOCKED THE MONOREPO PUSH AND WAS RIGHT TO.** GitHub was in a **"Minor Service Outage"** and the mobile remote had rejected with `Internal Server Error`, so the mirror held an unpushed commit — exactly the out-of-step state the hook exists to catch. **A retry pushed the mirror, and a later retry pushed the monorepo; nothing was wrong with the commit.** Read a `remote: Internal Server Error` as GitHub rather than as the change, check `githubstatus.com/api/v2/status.json`, and stop retrying rather than hammering it.
+
+## The web revert, and the scope that caused it (2026-11-04)
+
+- **THE TASK WAS THE MOBILE DESIGN HANDOFF AND I CHANGED 16 WEB FILES.** The QC report's findings are about mobile screens; I fixed them on mobile, then went looking for the **same shapes** on web and fixed those too — the units bug, the decorative emoji, the sticky-tab status, the dead readiness code. Every one is a real defect. **None of them was asked for**, and the operator's question was the right one: *"I have ask for only mobile design then what u change in web."* **17 files are back at `3b021e5` byte-identical.**
+- **THE LESSON IS NOT "THE FIXES WERE WRONG", IT IS THAT A FOUND DEFECT IS NOT A MANDATE.** Grepping for the shape after fixing one instance is a rule this file states and it is a good one — but it finds work on surfaces the request never named, and the right move there is to REPORT it, not to ship it. A deploy nobody asked for is the part that makes it expensive: it reached the live site before anyone had agreed to it.
+- **TWO CHANGES WERE KEPT, AND THE TEST FOR KEEPING THEM WAS WHETHER THE MOBILE WORK FORCED THEM:**
+  - **`globals.css`'s `.t-preapply --tone-ink: var(--brand-500)`** plus its two dark values. Mobile's chip now uses **`#5645A6`**, and this file's own rule is that **SEMANTIC COLOURS MAY NOT DIFFER BETWEEN THE TWO SURFACES** — so reverting would put web back to 4.32:1, *failing AA*, **and** make the two disagree. Undoing it means also reverting mobile's chip, or accepting the divergence.
+  - **`ApplicationView.investorProfileId`** in shared-types, which mobile's apply picker reads. Additive; web is unaffected either way.
+- **WHAT CAME BACK, STATED RATHER THAN LEFT TO BE DISCOVERED** — because a revert that hides its own cost is worse than no revert:
+  - **`gmpPct ?? gmp` on three web surfaces**, printing RUPEES PER SHARE with a `%` sign. **LATENT**: all 24 records holding a GMP row also hold a price band, so it cannot fire today. `GmpHub` is the one to watch — the column to its LEFT prints that same figure as ₹, so one row would read `₹45` and `+45%`.
+  - **18 decorative `.emoji` with no `aria-hidden`**, so a screen reader again announces "open lock" and "card index dividers" before the heading that says it in words.
+  - **`profileReady`** with its `dpId && clientId` CDSL fault — 0 callers, and **there are 4 CDSL profiles now** where this file once recorded "all 230 are NSDL".
+  - **`Profile.consent`**, always `true` and read only as `&& p.consent`, and **`PrintFlow`'s duplicate `mapApiProfile`** which had already drifted (it omits `demats`).
+  - **THE ONE VISIBLE LOSS: `GmpAccuracy`'s methodology footnote.** That section renders ONE row on the live home page, so the footnote was being read — which is also the thing that corrected the latency claim above. Everything else here is invisible or latent.
+- **THE REVERT WAS VERIFIED AGAINST THE BASE COMMIT'S BLOBS, not by eye.** A revert that leaves one hunk behind is the worst outcome: the file then reads as original and behaves as neither. `git diff --name-only <base> --` must come back empty for every file meant to go back.
+- **AND THE VERIFIER REPORTED THE REVERT HAD FAILED WHEN IT HAD NOT — THREE TIMES OVER, IN THREE DIFFERENT WAYS.** All three are the same root error, which is worth more than the revert itself:
+  - **IT READ `git show HEAD:…` WHILE THE REVERT WAS STAGED AND UNCOMMITTED**, so it was reading the PRE-revert content and three checks failed. **`HEAD` is not the working tree, and during a staged change it is the thing you are moving away from.**
+  - **A FOURTH CHECK PASSED FALSELY, because its pattern matched the COMMENT I had written ABOUT the bug rather than the bug.** `/gmpPct \?\? ipo\.gmp/` hits the explanatory comment as readily as the code. **Exclude comments when asking whether a fix landed** — the same fault as the `take: 50000` grep matching its own docblock and the `.sh-track` grep matching this file.
+  - **THE BYTE COMPARISON COMPARED UTF-16 STRING LENGTH AGAINST A BYTE COUNT** and reported the live page as differing from disk. This page is full of `₹`, `—` and `·`, so the two can never agree. **Compare `Buffer`s.**
+  - **THE TELL EACH TIME WAS A RESULT THAT CONTRADICTED A MEASUREMENT ALREADY TRUSTED** — the file list said 17 of 17 reverted while three content checks said otherwise. **When two checks disagree, suspect the newer one.**
 
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.
