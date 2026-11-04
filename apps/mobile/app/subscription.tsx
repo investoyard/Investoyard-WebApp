@@ -8,12 +8,15 @@ import { useRouter } from 'expo-router';
 import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import * as calc from '../lib/ipoCalc';
-import { istToday, orderShareRows, shareWiseLabel, subCatLabel } from '@investoyard/shared-types';
+import { istToday, orderShareRows, shareWiseLabel, subCatLabel, type DayEntry, type HourEntry } from '@investoyard/shared-types';
 import { getIposResult } from '../lib/api';
 import { OfflineState } from '../components/ui/OfflineState';
 import { titleCase } from '../lib/format';
 import { demandWord } from '../lib/ipoStage';
 import { Card } from '../components/ui/Card';
+import { ExpandTile } from '../components/ui/ExpandTile';
+import { LotPanel, SubscriptionPanel } from '../components/IpoPanels';
+import { DayWisePanel } from '../components/DayWisePanel';
 import { SectionTitle } from '../components/ui/SectionTitle';
 import { CompanyLogo } from '../components/ui/CompanyLogo';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -49,6 +52,13 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
   const total = table?.total.times
     ?? ipo.subscriptionTimes ?? (ipo.subscription ?? []).find((r) => r.category === 'total')?.timesSubscribed;
   const maxX = Math.max(1, ...rows.map((r) => r.times));
+  const lotRows = calc.lotLadder(ipo);
+  /* The poller’s own keys. `subLog` is the daily row and `subLogHour` the
+     rolling 72-entry window; both are server-owned and already ride along
+     on every record from `getIpos()`, so neither expander costs a fetch. */
+  const ex: any = ipo.extra ?? {};
+  const subLog: DayEntry[] = Array.isArray(ex.subLog) ? ex.subLog : [];
+  const subLogHour: HourEntry[] = Array.isArray(ex.subLogHour) ? ex.subLogHour : [];
   return (
     <Card style={{ marginTop: 10 }} onPress={() => router.push(`/ipo/${ipo.symbol}`)}>
       <View style={styles.head}>
@@ -64,7 +74,19 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
           </View>
         ) : null}
       </View>
-      {rows.length > 0 ? (
+      {table ? (
+        /* THE PANEL, not a bar list: it is web's Share-wise, Application-wise
+           and ₹-crore tables behind one toggle, so the hub now carries Book
+           Size, the share counts, Req 1×, the application counts and the
+           anchor note - every figure web's hub tables show. */
+        <View style={{ marginTop: 12 }}>
+          <SubscriptionPanel ipo={ipo} />
+        </View>
+      ) : rows.length > 0 ? (
+        /* The 11 records with no reservation table keep the bar list, because
+           `subscriptionTable` returns nothing for them and the panel would
+           render empty. A fallback firing only where there is no better
+           answer. */
         <View style={{ marginTop: 12, gap: 8 }}>
           {rows.map((r) => (
             <View key={r.key} style={styles.catRow}>
@@ -79,6 +101,25 @@ function SubCard({ ipo }: { ipo: IpoFull }) {
       ) : (
         <Text style={styles.mutedTxt}>Category-wise figures arrive once bidding opens.</Text>
       )}
+
+      {/* COLLAPSED, because a hub has to stay scannable. Web affords four
+          unfolded panels per card by being wide; a phone list of open issues
+          cannot be a sequence of walls. The figure each header shows while
+          shut is what the reader is usually after. */}
+      {lotRows.length > 0 ? (
+        <View style={{ marginTop: 10 }}>
+          <ExpandTile title="Lot details" value={`${lotRows[0].lots}+ lots`}>
+            <LotPanel ipo={ipo} />
+          </ExpandTile>
+        </View>
+      ) : null}
+      {subLog.length > 0 ? (
+        <View style={{ marginTop: 8 }}>
+          <ExpandTile title="Day-wise" value={`${subLog.length} day${subLog.length === 1 ? '' : 's'}`}>
+            <DayWisePanel subLog={subLog} subLogHour={subLogHour} closeDate={ipo.closeDate ?? undefined} />
+          </ExpandTile>
+        </View>
+      ) : null}
     </Card>
   );
 }

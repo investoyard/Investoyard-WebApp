@@ -101,3 +101,52 @@ export function anchorNote(
   }
   return `QIB Book Size EXCLUDES the anchor portion of ${fmt(anchorDeducted)} shares, from the actual anchor allotment.`;
 }
+
+/* ── QIB institutional split ─────────────────────────────────────────────── */
+
+/**
+ * The poller's `extra.qibSplit`: a PARTITION of the QIB row, not a second
+ * opinion on it.
+ *
+ * Probed on the live NSE feed 2026-10-13 and the answer is clean - the exchange
+ * sends the sub-rows ONLY, with no parent QIB row, and their sum equals the
+ * `qib` figure we already store to the share. So there is nothing to add and
+ * nothing to subtract, which was the one question that could have made this
+ * expensive. BSE ships the same five codes as top-level categories.
+ */
+export type QibSplit = Partial<Record<'fii' | 'dii' | 'mf' | 'oth', { sh: number; bids: number }>>;
+
+/**
+ * FIVE EXCHANGE CODES PRINT AS FOUR LINES: `FI` and `IC` - financial
+ * institutions and insurance companies - are both DIIs, which is why the
+ * poller folds them before storing. The order is foreign, domestic, mutual
+ * funds, then the remainder, which is the order the reference prints and the
+ * one a reader expects.
+ *
+ * Shared because web had it as a local const and mobile needed the same four
+ * labels in the same order: a second copy of a label list is how a category
+ * goes missing, which this project has already paid for four times over.
+ */
+export const QIB_SUB_ROWS: ReadonlyArray<[keyof QibSplit, string]> = [
+  ['fii', 'FIIs'],
+  ['dii', 'DIIs'],
+  ['mf', 'Mutual funds'],
+  ['oth', 'Others'],
+];
+
+/**
+ * The sub-rows worth printing, in order, as `[label, shares]`.
+ *
+ * A zero is DROPPED rather than shown: the exchange reports a code it has no
+ * bids for as 0, and a row reading "FIIs 0" is a statement about the feed
+ * rather than about the issue.
+ */
+export function qibSubRows(split: QibSplit | undefined): Array<[string, number]> {
+  if (!split) return [];
+  const out: Array<[string, number]> = [];
+  for (const [k, label] of QIB_SUB_ROWS) {
+    const sh = split[k]?.sh ?? 0;
+    if (sh > 0) out.push([label, sh]);
+  }
+  return out;
+}

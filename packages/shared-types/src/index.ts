@@ -288,6 +288,9 @@ export * from './sponsorBank';
 export * from './ipoDocs';
 export * from './appWise';
 export * from './shareWise';
+/* The subscription tone ladder + the two money formatters, shared because the
+   detail page had drifted from the hub about both the WORD and the COLOUR. */
+export * from './subTone';
 export * from './applicantForm';
 export * from './dayWise';
 export * from './ipoClock';

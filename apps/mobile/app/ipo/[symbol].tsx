@@ -30,9 +30,9 @@ import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard, Skeleton } from '../../components/ui/Skeleton';
 import { CalendarIcon, ShareIcon } from '../../components/ui/icons';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
+import { GmpPanel, LotPanel, ReservationPanel, SubscriptionHero, SubscriptionPanel, TimelinePanel } from '../../components/IpoPanels';
 import { RemindBell } from '../../components/RemindBell';
-import { exchangeLabels, LABEL, docLabel, isPublicDoc, type DayEntry, type HourEntry } from '@investoyard/shared-types';
+import { exchangeLabels, fmtDateTime, LABEL, docLabel, isPublicDoc, type DayEntry, type HourEntry } from '@investoyard/shared-types';
 import { DayWisePanel } from '../../components/DayWisePanel';
 
 /* No status->tone map here on purpose. The chip on this screen reads
@@ -329,10 +329,18 @@ export default function IpoDetailScreen() {
           <View onLayout={reg('subs')}>
             <SectionTitle
               label={t('detail.liveSubscription')}
-              meta={ipo.subscriptionAsOf ? `as of ${ipo.subscriptionAsOf.slice(0, 10)}` : undefined}
+              meta={ipo.subscriptionAsOf ? `Updated ${fmtDateTime(ipo.subscriptionAsOf)}` : undefined}
               style={{ marginTop: 24 }}
             />
-            <Card><SubscriptionPanel ipo={ipo} /></Card>
+            {/* The hero goes HERE and not inside SubscriptionPanel, because
+                the same panel renders inside the home list card, where a
+                100px headline would push the table off the first screen.
+                Web mounts it the same way: in LiveSubscription (the detail
+                page) and not in the hub card. */}
+            <Card>
+              <SubscriptionHero ipo={ipo} />
+              <SubscriptionPanel ipo={ipo} />
+            </Card>
           </View>
         ) : null}
 

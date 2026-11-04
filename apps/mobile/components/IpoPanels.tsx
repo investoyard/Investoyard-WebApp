@@ -11,7 +11,7 @@ import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
 import { GmpReveal } from './gmpConsent';
-import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel, istTodayMs } from '@investoyard/shared-types';
+import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel, istTodayMs, subTone, subToneLabel, fmtCrore, qibSubRows } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
 /**
@@ -30,6 +30,79 @@ import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel, istToda
  * is `APP_WISE_ORDER` in shared-types/appWise.ts, read by this panel and by
  * both web surfaces so a category cannot be dropped from two of three.
  */
+/* ── Subscription hero — the headline figure web's detail page leads with ──
+ *
+ * Web's `LiveSubscription` opens with a big times figure, a meter ticked
+ * 0x/1x/2x/3x+, the tone word, and three tiles: Book · Subscribed ·
+ * Applications. Mobile's detail page had NONE of it - it went straight to the
+ * table - so the one number a reader opens the page for was only available by
+ * reading a column.
+ *
+ * MOUNTED ON THE DETAIL PAGE ONLY, behind a prop, which is where web mounts
+ * it: the hub card has its own lighter strip. Mobile's home list card renders
+ * the same SubscriptionPanel inside a collapsible, and a 100px hero there
+ * would push the table itself off the first screen.
+ *
+ * THREE SIGNAL COLOURS WHERE WEB HAS FOUR, deliberately. Web ramps
+ * pos → gold-600 → warn → neg; mobile's palette carries green, amber and red
+ * and adding a fourth for this one figure would be a fifth signal colour on a
+ * surface whose palette is already the status legend's. So `warm` and `cool`
+ * share amber and THE WORD carries the distinction - which is the A6 rule
+ * anyway: a state a reader needs must not be carried by colour alone.
+ *
+ * The meter is the same 3x full-scale web uses, so a reader moving between the
+ * two is comparing like with like.
+ */
+export function SubscriptionHero({ ipo }: { ipo: IpoFull }) {
+  const t = calc.subscriptionTable(ipo);
+  if (!t) return null;
+  const times = t.total.times;
+  const tn = subTone(times);
+  /* 3x is full scale, matching web's meter, and the fill never disappears
+     entirely: a 2% stub reads as "bidding has started" where 0 reads as
+     broken. */
+  const pct = Math.max(times > 0 ? 2 : 0, Math.min(100, (times / 3) * 100));
+  const ink = tn === 'hot' ? ui.green : tn === 'cold' ? ui.red : ui.amber;
+  const bookCr = (t.total.bookAmount ?? 0) / 1e7;
+  const subCr = (t.total.subAmount ?? 0) / 1e7;
+  /* `total.bidCount` - the SAME expression web's tile prints, so the two
+     surfaces cannot disagree about how many applications there are. The old
+     derivation (forms-for-1x times the SHARE-wise multiple) was deleted on
+     2026-10-21 because it is not a count of applications at all. */
+  const apps = t.total.bidCount ?? 0;
+
+  return (
+    <View style={s.heroWrap}>
+      <View style={s.heroTop}>
+        <Text style={[s.heroTimes, { color: ink }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {times.toFixed(2)}<Text style={s.heroTimesX}>×</Text>
+        </Text>
+        <Text style={[s.heroTone, { color: ink }]} numberOfLines={1}>{subToneLabel(times)}</Text>
+      </View>
+
+      <View style={s.heroTrack}>
+        <View style={[s.heroFill, { width: `${pct}%`, backgroundColor: ink }]} />
+      </View>
+      <View style={s.heroTicks}>
+        {['0×', '1×', '2×', '3×+'].map((k) => <Text key={k} style={s.heroTick}>{k}</Text>)}
+      </View>
+
+      <View style={s.heroTiles}>
+        {([
+          ['Book', bookCr > 0 ? fmtCrore(bookCr) : '—', ui.title],
+          ['Subscribed', subCr > 0 ? fmtCrore(subCr) : '—', ink],
+          ['Applications', apps > 0 ? shC(apps) : '—', ui.title],
+        ] as const).map(([k, v, c]) => (
+          <View key={k} style={s.heroTile}>
+            <Text style={s.heroTileK} numberOfLines={1}>{k}</Text>
+            <Text style={[s.heroTileV, { color: c }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{v}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
   const [view, setView] = useState<'shares' | 'apps' | 'money'>('shares');
   const t = calc.subscriptionTable(ipo);
@@ -72,6 +145,13 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
     return '\u20b9' + v.toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
   };
   const totalApps = appRows.reduce((n, r) => n + (r.bidCount ?? 0), 0);
+  /* The poller-owned key. Rides along on every record from `getIpos()`, so
+     reading it costs no fetch. Valued at the QIB row's own price, which is the
+     band price unless that quota carries a discount - the same per-row price
+     `subscriptionTable` gives every other figure in this view. */
+  const qibRow = t.rows.find((r) => r.key === 'qib');
+  const qibPx = qibRow?.price && qibRow.price > 0 ? qibRow.price : 0;
+  const qibSubs = shown === 'money' ? qibSubRows((ipo.extra as any)?.qibSplit) : [];
 
   return (
     <View>
@@ -166,6 +246,22 @@ export function SubscriptionPanel({ ipo }: { ipo: IpoFull }) {
         );
       })}
 
+      {/* QIB's institutional split - INDENTED UNDER IT, never beside it. The
+          exchange sends these sub-rows with no parent and their sum IS the qib
+          figure above, so rendering them as peers would treble that quota, the
+          same reason the two HNI bands sit under NII. */}
+      {qibSubs.map(([label, sh]) => (
+        <View style={[s.subRow, s.qibSub]} key={label}>
+          <Text style={[s.subCat, s.qibSubCat]} numberOfLines={1}>{label}</Text>
+          <View style={s.subMid}>
+            <Text style={s.subBook}>{shC(sh)} sh</Text>
+          </View>
+          <Text style={[s.subX, s.subXMoney, s.qibSubX]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+            {money(qibPx > 0 ? sh * qibPx : 0, dpSub)}
+          </Text>
+        </View>
+      ))}
+
       <View style={s.subTotal}>
         <Text style={s.subTotalK}>
           {shown === 'apps' ? 'Total applications'
@@ -227,6 +323,20 @@ export function ReservationPanel({ ipo }: { ipo: IpoFull }) {
 export function LotPanel({ ipo }: { ipo: IpoFull }) {
   const rows = calc.lotLadder(ipo);
   if (!rows.length) return <Text style={s.muted}>Lot size not available.</Text>;
+  /* RESERVED - applications needed for 1x - and SME ONLY, which is where web
+     carries it. Web's mainboard ladder has no such column, and adding one here
+     would be a difference FROM web rather than parity with it.
+
+     Mapped exactly as web maps it, off the same `subscriptionTable`:
+     Individual -> retail, sHNI -> hni2, bHNI -> hni. `req1x` is undefined on a
+     pro-rata row by design, so `?? 0` is the same fallback web uses. */
+  const isSme = ipo.type === 'sme';
+  const subTable = isSme ? calc.subscriptionTable(ipo) : null;
+  const reqFor = (cat: string) => {
+    const key = cat === 'Individual' ? 'retail' : cat === 'sHNI' ? 'hni2' : cat === 'bHNI' ? 'hni' : null;
+    if (!key || !subTable) return 0;
+    return subTable.rows.find((r) => r.key === key)?.req1x ?? 0;
+  };
   const groups: { cat: string; sub: string; min: calc.LotRow; max: calc.LotRow }[] = [];
   for (const r of rows) {
     const g = groups.find((x) => x.cat === r.cat);
@@ -248,7 +358,16 @@ export function LotPanel({ ipo }: { ipo: IpoFull }) {
                 <Text style={s.lotK}>MIN · {g.min.lots} {g.min.lots > 1 ? 'LOTS' : 'LOT'}</Text>
                 <Text style={s.lotV}>{g.min.shares.toLocaleString('en-IN')} <Text style={s.lotSm}>sh · {calc.crOrInr(g.min.amount)}</Text></Text>
               </View>
-              {single ? (
+              {single && reqFor(g.cat) > 0 ? (
+                /* RESERVED, not ENTRY POINT: on a `single` card the entry point
+                   IS the MIN amount in the cell beside it, so that tile said the
+                   same thing twice. This is the figure web's SME ladder carries
+                   and mobile did not. */
+                <View style={s.lotCell}>
+                  <Text style={s.lotK}>RESERVED</Text>
+                  <Text style={s.lotV}>{shC(reqFor(g.cat))} <Text style={s.lotSm}>for 1×</Text></Text>
+                </View>
+              ) : single ? (
                 <View style={s.lotCell}>
                   <Text style={s.lotK}>ENTRY POINT</Text>
                   <Text style={s.lotV}>{calc.crOrInr(g.min.amount)} <Text style={s.lotSm}>onward</Text></Text>
@@ -328,6 +447,28 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
 }
 
 const s = StyleSheet.create({
+  /* QIB sub-rows: indented and dimmed, so they read as a breakdown of the
+     row above rather than four more categories. */
+  qibSub: { paddingLeft: 14 },
+  qibSubCat: { color: ui.slate, fontFamily: fonts.semibold, fontWeight: '600' },
+  qibSubX: { color: ui.slate },
+  /* --- subscription hero (fix 3) ---------------------------------------- */
+  heroWrap: { marginBottom: 14 },
+  heroTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
+  /* 30px: "264.70×" is 124.4px at this weight, well inside the 296px card
+     inner at 360. adjustsFontSizeToFit guards a figure we have not seen. */
+  heroTimes: { fontSize: 30, fontFamily: fonts.extrabold, fontWeight: '800', letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  heroTimesX: { fontSize: 19, fontFamily: fonts.bold, fontWeight: '700' },
+  heroTone: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', flexShrink: 1 },
+  heroTrack: { height: 7, borderRadius: 4, backgroundColor: ui.slateTint, overflow: 'hidden', marginTop: 8 },
+  heroFill: { height: '100%', borderRadius: 4 },
+  heroTicks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 },
+  /* 11px is the A3 floor; slate not muted, which fails AA for text. */
+  heroTick: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, fontVariant: ['tabular-nums'] },
+  heroTiles: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  heroTile: { flex: 1, backgroundColor: ui.canvas, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 },
+  heroTileK: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
+  heroTileV: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] },
   muted: { fontFamily: fonts.regular, fontSize: 13.5, color: ui.slate, lineHeight: 19 },
   /* subscription */
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 7 },

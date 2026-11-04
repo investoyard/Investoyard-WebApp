@@ -44,14 +44,19 @@ type ViewMode = 'full' | 'appwise';
  * cards, /subscription/v2 and the shared image — and only the detail page
  * differed.
  */
-export const tone = (t: number): 'hot' | 'warm' | 'cool' | 'cold' =>
-  t >= 2 ? 'hot' : t >= 1 ? 'warm' : t > 0 ? 'cool' : 'cold';
-export const toneLabel = (t: number) =>
-  t >= 2 ? 'Oversubscribed' : t >= 1 ? 'Fully subscribed' : t > 0 ? 'In progress' : 'Awaiting bids';
+/* MOVED TO shared-types/subTone.ts, because MOBILE now reads the same ladder.
+   Re-exported under the old names so no call site on this surface changes -
+   LiveSubscription and the share canvas both import { tone, toneLabel } from
+   here. The two formatters went with them: a local copy of a formatter is the
+   shape that produced the tone drift in the first place. */
+import { subTone, subToneLabel, fmtCrore, fmtIndian, qibSubRows } from '@investoyard/shared-types';
 
-const fmtIn = (n: number) => Math.round(n).toLocaleString('en-IN');
-/** "₹1644 Cr" for large, "₹32.15 Cr" for small — matches the ipopremium sample. */
-const fmtCr = (n: number) => `₹${n >= 1000 ? Math.round(n).toLocaleString('en-IN') : n.toFixed(2)} Cr`;
+/* Aliased rather than `export { x as y } from` — that form re-exports without
+   creating a local binding, and this file uses `tone` in four places itself. */
+export const tone = subTone;
+export const toneLabel = subToneLabel;
+const fmtIn = fmtIndian;
+const fmtCr = fmtCrore;
 
 
 /* `fmtDateTime` ("18-Sep-2026 4:16 PM", the format sir chose) moved to
@@ -829,24 +834,25 @@ export function AppWisePanel({ rows }: { rows: SubRowT[] }) {
  * FI and IC are both domestic institutions and share one line, which is why
  * five codes print as four.
  */
-export type QibSplit = Partial<Record<'fii' | 'dii' | 'mf' | 'oth', { sh: number; bids: number }>>;
+/* MOVED TO shared-types/shareWise.ts, because mobile needed the same four
+   labels in the same order. Re-exported so no call site here or in
+   LiveSubscription changes. */
+import type { QibSplit } from '@investoyard/shared-types';
+/* Re-exported so LiveSubscription keeps importing it from here. */
+export type { QibSplit };
 
-/* The reference's order, and the order a reader expects: foreign, domestic,
-   mutual funds, then the remainder. */
-const QIB_SUB_ROWS: ReadonlyArray<[keyof QibSplit, string]> = [
-  ['fii', 'FIIs'],
-  ['dii', 'DIIs'],
-  ['mf', 'Mutual funds'],
-  ['oth', 'Others'],
-];
+/* QIB_SUB_ROWS moved to shared-types/shareWise.ts with the type, because
+   mobile needed the same four labels in the same order. */
 
 export function DemandPanel({ rows, total, price, qibSplit }: {
   rows: SubRowT[]; total: SubRowT; price: number; qibSplit?: QibSplit;
 }) {
   if (!rows.length) return null;
-  const subRows = QIB_SUB_ROWS
-    .map(([k, label]) => [label, qibSplit?.[k]?.sh ?? 0] as const)
-    .filter(([, sh]) => sh > 0);
+  /* `qibSubRows` is the shared resolver: the same four labels in the same
+     order, with the same drop-a-zero rule, that mobile's ₹-crore view reads.
+     A zero is dropped because the exchange reports a code it has no bids for
+     as 0, and "FIIs 0" is a statement about the feed, not the issue. */
+  const subRows = qibSubRows(qibSplit);
   /* Prefer the row's own summed amount; fall back to shares x price only for a
      row that has none. The Total has no single price - see SubRowT.bookAmount. */
   const at = (shares: number, rowPrice?: number, amount?: number) => {
