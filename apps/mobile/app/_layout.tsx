@@ -11,6 +11,8 @@ import { HeaderIcons } from '../components/ui/HeaderIcons';
 import { LanguageProvider, useT } from '../components/i18n';
 import { AuthProvider } from '../components/auth';
 import { ProfilesProvider } from '../components/profiles';
+import { GmpConsentProvider } from '../components/gmpConsent';
+import { GmpDialog } from '../components/GmpDialog';
 import { LABEL } from '@investoyard/shared-types';
 
 // Hold the splash until the Inter faces are ready (no unstyled-text flash).
@@ -76,14 +78,21 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ProfilesProvider>
-        <LanguageProvider>
-          {/* SDK 58 removed translucent + backgroundColor from StatusBarProps.
-              Android edge-to-edge is the default from SDK 55, so the bar is
-              already translucent and the Home/Login gradients still render
-              under it. Gradient screens flip to 'light' via useFocusEffect. */}
-          <StatusBar style="dark" />
-          <RootStack />
-        </LanguageProvider>
+        <GmpConsentProvider>
+          <LanguageProvider>
+            {/* SDK 58 removed translucent + backgroundColor from StatusBarProps.
+                Android edge-to-edge is the default from SDK 55, so the bar is
+                already translucent and the Home/Login gradients still render
+                under it. Gradient screens flip to 'light' via useFocusEffect. */}
+            <StatusBar style="dark" />
+            <RootStack />
+            {/* ONE instance, at the root: the disclaimer has to be reachable
+                from whichever screen the reader asked to see a figure on, and
+                mounting it on Home alone is what let a deep link to /gmp show
+                GMP to someone who was never given it. */}
+            <GmpDialog />
+          </LanguageProvider>
+        </GmpConsentProvider>
       </ProfilesProvider>
     </AuthProvider>
   );

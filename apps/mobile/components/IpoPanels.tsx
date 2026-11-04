@@ -10,6 +10,7 @@ import * as calc from '../lib/ipoCalc';
 import type { IpoFull } from '../lib/ipoCalc';
 import { catColor, fmtDate, relText, segLabel, segTextColor, shC, timelineStates } from '../lib/format';
 import { CheckIcon, ClockIcon } from './ui/icons';
+import { GmpReveal } from './gmpConsent';
 import { LABEL, anchorNote, appWiseRows, orderShareRows, shareWiseLabel, istTodayMs } from '@investoyard/shared-types';
 
 /* ── Live subscription by category ──────────────────────────────────────── */
@@ -300,6 +301,9 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
   return (
     <View>
       {ipo.gmp != null ? (
+        /* `compact`: this panel already prints its own standing disclaimer
+           below, so the chip must not repeat it. */
+        <GmpReveal compact>
         <View>
           <View style={s.kv}>
             <Text style={s.kvK}>Premium / share</Text>
@@ -314,6 +318,7 @@ export function GmpPanel({ ipo, disclaimer }: { ipo: IpoFull; disclaimer: string
             <Text style={s.kvV}>₹{upper + ipo.gmp}</Text>
           </View>
         </View>
+        </GmpReveal>
       ) : (
         <Text style={s.muted}>No grey-market data yet.</Text>
       )}

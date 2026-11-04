@@ -22,6 +22,7 @@ import { stageOf } from '../../lib/ipoStage';
 import { Card } from '../../components/ui/Card';
 import { Chip } from '../../components/ui/Chip';
 import { SectionTitle } from '../../components/ui/SectionTitle';
+import { GmpReveal } from '../../components/gmpConsent';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
 import { BulletIY } from '../../components/BulletIY';
@@ -362,16 +363,22 @@ export default function IpoDetailScreen() {
           <View onLayout={reg('trends')}>
             <SectionTitle label="Day-wise trends" style={{ marginTop: 24 }} />
             <Card style={{ gap: 16 }}>
+              {/* The trend is a GMP figure too, and it sits OUTSIDE GmpPanel -
+                  which is its own gate - so it needs one of its own. Missing
+                  this is exactly how the premium band kept rendering after the
+                  disclaimer moved. (QC C1) */}
               {gmpLog.length >= 2 ? (
-                <TrendBlock
-                  label={`${LABEL.gmp} (₹)`}
-                  points={gmpLog.map((e) => e.gmp)}
-                  first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
-                  lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}
-                  /* Brand colour, not gain/loss: GMP is indicative and a green trend
-                     line reads as a gain already made. (QC C2) */
-                  color={ui.indigo}
-                />
+                <GmpReveal>
+                  <TrendBlock
+                    label={`${LABEL.gmp} (₹)`}
+                    points={gmpLog.map((e) => e.gmp)}
+                    first={gmpLog[0].d} lastDay={gmpLog[gmpLog.length - 1].d}
+                    lastValue={`₹${gmpLog[gmpLog.length - 1].gmp}`}
+                    /* Brand colour, not gain/loss: GMP is indicative and a green trend
+                       line reads as a gain already made. (QC C2) */
+                    color={ui.indigo}
+                  />
+                </GmpReveal>
               ) : null}
               {subLog.length ? (
                 <View>

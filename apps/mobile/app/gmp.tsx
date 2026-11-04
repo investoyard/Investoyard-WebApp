@@ -10,6 +10,7 @@ import { fonts, ui } from '../lib/theme';
 import { type IpoFull } from '../lib/ipoCalc';
 import { getIposResult } from '../lib/api';
 import { OfflineState } from '../components/ui/OfflineState';
+import { GmpReveal } from '../components/gmpConsent';
 import { titleCase } from '../lib/format';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
@@ -87,6 +88,9 @@ export default function GmpScreen() {
       <Text style={styles.disclaimer}>
         Grey-market premium is unofficial, unregulated and often wrong — information only, never investment advice.
       </Text>
+      {/* Wraps the whole chain, not each row: this screen is nothing BUT
+          grey-market figures, and one wrapper means no branch can leak one. */}
+      <GmpReveal>
       {ipos === null ? (
         <><SkeletonCard lines={3} /><SkeletonCard lines={3} /></>
       ) : offline ? (
@@ -103,6 +107,7 @@ export default function GmpScreen() {
           </View>
         ))
       )}
+      </GmpReveal>
     </ScrollView>
   );
 }

@@ -28,6 +28,7 @@ import { Button } from './ui/Button';
 import { CompanyLogo } from './ui/CompanyLogo';
 import { GmpPanel, LotPanel, ReservationPanel, SubscriptionPanel, TimelinePanel } from './IpoPanels';
 import { RemindBell } from './RemindBell';
+import { GmpReveal } from './gmpConsent';
 
 export function IpoListCard({ ipo }: { ipo: IpoFull }) {
   const router = useRouter();
@@ -101,6 +102,7 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
            RESULT branch above uses. Identical styling made a projection read
            as an outcome in the same slot on the same card (QC C2). Direction
            survives without colour through the sign and the arrow (QC A6). */
+        <GmpReveal>
         <View style={[styles.market, { backgroundColor: ui.slateTint }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.marketK, { color: ui.slate }]}>{LABEL.gmp.toUpperCase()}</Text>
@@ -115,6 +117,7 @@ export function IpoListCard({ ipo }: { ipo: IpoFull }) {
             <Text style={styles.marketNote}>Unofficial · not investment advice</Text>
           </View>
         </View>
+        </GmpReveal>
       ) : null}
 
       {/* ── stat grid — contents follow the stage ── */}

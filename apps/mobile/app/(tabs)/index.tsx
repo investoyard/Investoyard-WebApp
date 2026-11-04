@@ -22,7 +22,7 @@ import { useAuth } from '../../components/auth';
 import { fmtDate } from '../../lib/format';
 import { tapLight } from '../../lib/haptics';
 import { IpoListCard } from '../../components/IpoListCard';
-import { GmpDialog } from '../../components/GmpDialog';
+import { useGmpConsent } from '../../components/gmpConsent';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { IllusDocs } from '../../components/ui/illustrations';
@@ -90,6 +90,17 @@ export default function HomeScreen() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); }, []);
 
+  /* Home still offers the disclaimer unprompted on a first visit, which is the
+     behaviour the operator approved - the gate is ADDITIVE, not a replacement
+     for it. `ok === false` and not `!ok`, so nothing opens while the stored
+     flag is still unknown; and `asking` is read so a reader who closed it with
+     "Not now" is not re-prompted on every render of this screen. */
+  const { ok: gmpOk, ask: askGmp, asking: gmpAsking } = useGmpConsent();
+  const gmpAsked = useRef(false);
+  useEffect(() => {
+    if (gmpOk === false && !gmpAsking && !gmpAsked.current) { gmpAsked.current = true; askGmp(); }
+  }, [gmpOk, gmpAsking, askGmp]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -156,8 +167,8 @@ export default function HomeScreen() {
 
   return (
     <>
-      {/* one-time GMP awareness consent (compliance) */}
-      <GmpDialog />
+      {/* The GMP disclaimer is mounted ONCE at the root now (see
+          gmpConsent.tsx); this screen only asks for it on a first visit. */}
 
       {/* ── slim header: Live Subscription · search / calendar / alerts ── */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
