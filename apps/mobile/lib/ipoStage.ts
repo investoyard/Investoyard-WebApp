@@ -91,7 +91,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
       };
     }
     return {
-      stage: 'awaiting', label: 'Awaiting Allotment', tone: 'neutral', pulse: false,
+      stage: 'awaiting', label: 'Awaiting Allotment', tone: 'awaiting', pulse: false,
       note: a != null ? `Allotment ${a === 0 ? 'today' : inDays(a)}` : 'Basis of allotment awaited',
       panels: ['sub', 'timeline'],
       cta: { kind: 'allotment', label: 'Check Allotment' },
@@ -126,7 +126,7 @@ export function stageOf(ipo: IpoFull): StageInfo {
   const panels: PanelKey[] = ['lot', 'reservation', 'timeline'];
   if (startBid) {
     return {
-      stage: 'preapply', label: 'Pre Apply', tone: 'brand', pulse: false,
+      stage: 'preapply', label: 'Pre Apply', tone: 'preapply', pulse: false,
       note: `${openNote} · apply before the rush`, panels,
       cta: { kind: 'preapply', label: 'Pre Apply' },
     };

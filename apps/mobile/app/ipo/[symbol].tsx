@@ -20,7 +20,7 @@ import Svg, { Path, Polyline } from 'react-native-svg';
 import { fmtRange, inr, priceBand, stripHtml, closesInLabel, titleCase } from '../../lib/format';
 import { stageOf } from '../../lib/ipoStage';
 import { Card } from '../../components/ui/Card';
-import { Chip, ChipTone } from '../../components/ui/Chip';
+import { Chip } from '../../components/ui/Chip';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { ExpandTile } from '../../components/ui/ExpandTile';
@@ -34,12 +34,10 @@ import { RemindBell } from '../../components/RemindBell';
 import { exchangeLabels, LABEL, docLabel, isPublicDoc, type DayEntry, type HourEntry } from '@investoyard/shared-types';
 import { DayWisePanel } from '../../components/DayWisePanel';
 
-/* Mirrors STAGE_TONE in @investoyard/shared-types: live green · soon indigo ·
-   listed purple · quiet grey. Upcoming used to be 'warn' (yellow) and listed
-   plain grey, which put this screen out of step with the cards and with web. */
-const STATUS_TONE: Record<string, ChipTone> = {
-  open: 'success', upcoming: 'brand', closed: 'closing', listed: 'listed', withdrawn: 'closing',
-};
+/* No status->tone map here on purpose. The chip on this screen reads
+   stageOf(ipo).tone, so a second map was dead code that keyed off the
+   COARSE ipo.status and knew nothing of Pre Apply or Awaiting - exactly
+   the shape that drifts away from the one legend in Chip.tsx. */
 
 export default function IpoDetailScreen() {
   const t = useT();
