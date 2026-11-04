@@ -42,6 +42,27 @@ export default function PerformanceScreen() {
   const avg = gains.length ? Math.round((gains.reduce((a, b) => a + b, 0) / gains.length) * 10) / 10 : null;
   const posPct = gains.length ? Math.round((gains.filter((g) => g >= 0).length / gains.length) * 100) : null;
 
+  /* THE SAMPLE HAS TO BE STATED, because these three are the only CLAIMS the
+     app makes (QC U4) and none of them said what it was a claim about. Two
+     things were wrong beyond the omission:
+       - THE DISPLAYED DENOMINATOR WAS NOT THE AVERAGE'S. `listed` admits a
+         record with a listing price OR a gain, `gains` needs a gain - so an
+         issue with a listing price and no price band counted as a "listing
+         tracked" while contributing nothing to either percentage.
+       - "listings tracked" reads as a set somebody curated. It is whatever
+         this API response happened to carry with a computable gain, which is
+         a different and much weaker statement.
+     The range comes from the sample itself rather than from a fixed window:
+     the catalogue reaches back to 2016, and an average over ten years is not
+     the same claim as one over a season. Same house rule as `Total (net
+     offer)` and `QIB (Ex. Anchor)` - a figure states its own basis. */
+  const withGain = listed.filter((x) => x.li.gainPct != null);
+  const dates = withGain.map((x) => x.ipo.listingDate).filter((d): d is string => !!d);
+  const yr = (d: string) => d.slice(0, 4);
+  const span = dates.length
+    ? (yr(dates[dates.length - 1]) === yr(dates[0]) ? yr(dates[0]) : `${yr(dates[dates.length - 1])}–${yr(dates[0])}`)
+    : null;
+
   return (
     <ScrollView
       style={styles.screen}
@@ -70,10 +91,23 @@ export default function PerformanceScreen() {
               </View>
               <View style={styles.statDiv} />
               <View style={styles.stat}>
-                <Text style={styles.statV}>{listed.length}</Text>
-                <Text style={styles.statK}>listings tracked</Text>
+                {/* `gains.length`, NOT `listed.length` - this number is the
+                    denominator of the two percentages beside it, so it has to
+                    be the set they were computed over. */}
+                <Text style={styles.statV}>{gains.length}</Text>
+                {/* "listings averaged", not "listings in this average": the
+                    longer wording measures 118.6px in a 108.7px column at
+                    360px and wraps on a narrow Android. This one is 90.7px. */}
+                <Text style={styles.statK}>listings averaged</Text>
               </View>
             </Card>
+          ) : null}
+          {avg != null ? (
+            <Text style={styles.method}>
+              Simple average across the {gains.length} listing{gains.length === 1 ? '' : 's'} we
+              hold a listing price for{span ? `, ${span}` : ''} — not every IPO ever issued, and
+              not a forecast. One unusual debut moves it.
+            </Text>
           ) : null}
           <SectionTitle label="Listing day — issue by issue" style={{ marginTop: 16 }} />
           <Card style={{ paddingVertical: 4 }}>
@@ -117,6 +151,8 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center' },
   statV: { fontSize: 19, fontFamily: fonts.extrabold, fontWeight: '800', color: ui.title, fontVariant: ['tabular-nums'] },
   statK: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 3 },
+  /* 11px is the floor the A3 pass set; `slate` not `muted`, which fails AA. */
+  method: { fontSize: 11, fontFamily: fonts.regular, color: ui.slate, lineHeight: 16, marginTop: 8, paddingHorizontal: 2 },
   statDiv: { width: 1, height: 30, backgroundColor: ui.divider },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
   rowDiv: { borderBottomWidth: 1, borderBottomColor: ui.divider },

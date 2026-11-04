@@ -47,7 +47,15 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
     const base = i.priceBandMax ?? i.priceBandMin;
     return base != null && i.gmp != null ? `₹${Math.round(base + i.gmp).toLocaleString('en-IN')}` : '—';
   };
-  const pct = (i: IpoFull) => (i.gmpPct ?? i.gmp ?? 0);
+  /* NEVER `?? i.gmp`: gmpPct is a PERCENTAGE and gmp is RUPEES PER SHARE. The
+     API derives the first as `gmp / upper band` and leaves it undefined on a
+     record with no band, so that fallback printed the rupee figure with a %
+     sign — and the column immediately to the left of this one already prints
+     that same figure as ₹, so it would have read as ₹45 and +45% on one row.
+     `?? 0` was the second half of it: an issue with no GMP showed +0%, a real
+     measurement of no premium, beside a dash. Null now, rendered as a dash
+     like the two columns either side. (QC U4) */
+  const pct = (i: IpoFull) => i.gmpPct ?? null;
 
   return (
     <div className="gh">
@@ -101,7 +109,9 @@ export function GmpHub({ ipos: baked }: { ipos: IpoFull[] }) {
             </span>
             <span className="gh-col mono">{priceBand(i.priceBandMin, i.priceBandMax)}</span>
             <span className="gh-col mono gh-gmp">{i.gmp != null ? `${i.gmp >= 0 ? '+' : ''}₹${i.gmp}` : '—'}</span>
-            <span className="gh-col"><span className={`gmp-pill ${pct(i) >= 0 ? 'gp' : 'gn'}`}>{pct(i) >= 0 ? '+' : ''}{pct(i)}%</span></span>
+            <span className="gh-col">{pct(i) != null
+              ? <span className={`gmp-pill ${pct(i)! >= 0 ? 'gp' : 'gn'}`}>{pct(i)! >= 0 ? '+' : ''}{pct(i)}%</span>
+              : <span className="mono">—</span>}</span>
             <span className="gh-col mono gh-est">{est(i)}</span>
           </a>
         ))}
