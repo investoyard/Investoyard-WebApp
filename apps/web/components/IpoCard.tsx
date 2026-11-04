@@ -241,14 +241,7 @@ export function IpoCard({ ipo, lang = 'en', v2 = false }: { ipo: IpoFull; lang?:
               // v1 keeps the % here because the chip is the only place its card
               // shows GMP at all; on v2 the figure already sits beside the dates.
               : ipo.gmp != null && !v2
-              // `gmpPct ?? ipo.gmp` printed RUPEES PER SHARE with a % sign on a
-              // record with no price band, which is what leaves gmpPct
-              // undefined. Fall back to the figure in its OWN unit instead —
-              // the chip is the only place a v1 card shows GMP, so dropping to
-              // a bare label loses the number the chip exists for. (QC U4)
-              ? <>{LABEL.gmp} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmpPct != null
-                  ? `${ipo.gmpPct >= 0 ? '+' : ''}${ipo.gmpPct}%`
-                  : `${ipo.gmp >= 0 ? '+' : '−'}₹${Math.abs(ipo.gmp)}`}</span></>
+              ? <>{LABEL.gmp} <span className={`gmp-pill ${ipo.gmp >= 0 ? 'gp' : 'gn'}`}>{ipo.gmp >= 0 ? '+' : ''}{ipo.gmpPct ?? ipo.gmp}%</span></>
               : LABEL.gmp,
         }]
       : []),

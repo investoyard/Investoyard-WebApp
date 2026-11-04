@@ -35,9 +35,7 @@ export function PartnerActivate() {
   if (done) {
     return (
       <div className="panel" style={{ padding: 30, maxWidth: 460, margin: '0 auto', textAlign: 'center' }}>
-        {/* aria-hidden: decorative. Without it a screen reader announces "white
-            heavy check mark" before the heading that says the same thing. */}
-        <div aria-hidden="true" style={{ fontSize: 34, lineHeight: 1 }}>✅</div>
+        <div style={{ fontSize: 34, lineHeight: 1 }}>✅</div>
         <h2 style={{ margin: '12px 0 6px' }}>You&apos;re all set</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           Sign in with username <b className="mono">{done.username}</b> and the password you just chose.

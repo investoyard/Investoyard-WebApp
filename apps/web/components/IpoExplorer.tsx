@@ -119,7 +119,7 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
       {filtered.length === 0 ? (
         ipos.length === 0 ? (
           <div className="empty">
-            <div aria-hidden="true" className="emoji">🗓️</div>
+            <div className="emoji">🗓️</div>
             <h3>No IPOs available right now</h3>
             <p className="muted">
               We update the catalog as soon as new issues are announced.
@@ -132,7 +132,7 @@ export function IpoExplorer({ ipos: initial, lang = 'en', initialStatus = 'all',
           </div>
         ) : (
           <div className="empty">
-            <div aria-hidden="true" className="emoji">🔍</div>
+            <div className="emoji">🔍</div>
             <h3>No IPOs match your filters</h3>
             <p className="muted">Try clearing the search or switching the board / status tabs above.</p>
             <div style={{ marginTop: 14 }}>

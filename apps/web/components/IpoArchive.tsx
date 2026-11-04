@@ -94,7 +94,7 @@ export function IpoArchive() {
         <div className="panel" style={{ padding: 28, textAlign: 'center' }}><p className="muted">Loading the archive…</p></div>
       ) : total === 0 ? (
         <div className="empty">
-          <div aria-hidden="true" className="emoji">🗂️</div>
+          <div className="emoji">🗂️</div>
           {/* no years at all means nothing has been archived yet — a different
               thing from a filter that happens to match nothing */}
           <h3>{years.length === 0 ? 'The archive is still being built' : 'No issues match these filters'}</h3>

@@ -64,7 +64,7 @@ export function GmpEntryBoard() {
   if (state === 'anon') {
     return (
       <div className="empty">
-        <div aria-hidden="true" className="emoji">🔐</div>
+        <div className="emoji">🔐</div>
         <h3>Sign in to continue</h3>
         <p className="muted">GMP entry is available to authorised users only.</p>
         <a className="btn" href={`/login?next=${encodeURIComponent('/gmp/entry')}`} style={{ marginTop: 14 }}>Sign in</a>
@@ -74,7 +74,7 @@ export function GmpEntryBoard() {
   if (state === 'denied') {
     return (
       <div className="empty">
-        <div aria-hidden="true" className="emoji">🚫</div>
+        <div className="emoji">🚫</div>
         <h3>You don&apos;t have GMP access</h3>
         <p className="muted">{err ?? 'Ask the operator to add you as a GMP contributor.'}</p>
       </div>
@@ -91,7 +91,7 @@ export function GmpEntryBoard() {
       {msg && <div className="banner" style={{ marginBottom: 12, background: 'var(--pos-soft)' }}>{msg}</div>}
 
       {rows.length === 0 ? (
-        <div className="empty"><div aria-hidden="true" className="emoji">📭</div><h3>No open or upcoming IPOs</h3></div>
+        <div className="empty"><div className="emoji">📭</div><h3>No open or upcoming IPOs</h3></div>
       ) : (
         <>
           <div className="ct-wrap">

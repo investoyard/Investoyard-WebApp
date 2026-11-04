@@ -364,7 +364,7 @@ export function Portfolio() {
   if (!mobile) {
     return (
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">🔐</div>
+        <div className="emoji">🔐</div>
         <h3>{tr('apply.loginRequired')}</h3>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/portfolio${q}`)}`} style={{ marginTop: 14 }}>{tr('login.title')}</a>
       </div>
@@ -681,7 +681,7 @@ function Checker({ applications, profiles, q, tr }: {
 function Empty({ emoji, title, cta }: { emoji: string; title: string; cta: React.ReactNode }) {
   return (
     <div className="empty">
-      <div aria-hidden="true" className="emoji">{emoji}</div>
+      <div className="emoji">{emoji}</div>
       <h3>{title}</h3>
       <div style={{ marginTop: 14 }}>{cta}</div>
     </div>

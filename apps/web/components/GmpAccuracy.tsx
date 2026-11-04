@@ -28,27 +28,10 @@ function listedGainPct(ipo: IpoFull): number | null {
   return issue && listed ? Math.round(((listed - issue) / issue) * 1000) / 10 : null;
 }
 
-/**
- * THE THRESHOLDS ARE STATED ON THE PAGE (QC U4), because "on target" is a
- * JUDGEMENT rendered as a label and this site does not publish ratings — so the
- * reader has to be able to see the rule that produced it and disagree with it.
- * Named constants rather than literals inside the branches, so the footnote
- * cannot drift from the thresholds it describes.
- */
-const ON_TARGET_PTS = 3;
-const CLOSE_PTS = 8;
-
-/**
- * How many debuts the table shows. Named so the footnote can say what the rows
- * are a selection OF: six most-recent is a SAMPLE, and a sample presented
- * without its selection rule reads as a track record over everything.
- */
-const SHOWN = 6;
-
 function verdict(delta: number): { label: string; cls: string } {
   const a = Math.abs(delta);
-  if (a <= ON_TARGET_PTS) return { label: 'on target', cls: 'v-on' };
-  if (a <= CLOSE_PTS) return { label: 'close', cls: 'v-near' };
+  if (a <= 3) return { label: 'on target', cls: 'v-on' };
+  if (a <= 8) return { label: 'close', cls: 'v-near' };
   return { label: 'wide', cls: 'v-off' };
 }
 
@@ -61,22 +44,14 @@ export function GmpAccuracy({ ipos: baked }: { ipos: IpoFull[] }) {
     return ipos
       .filter((i) => i.status === 'listed')
       .map((ipo) => {
-        /* `gmpPct` ONLY, never `?? ipo.gmp`. gmpPct is a PERCENTAGE and gmp is
-           RUPEES PER SHARE: the API derives the first as `gmp / upper band` and
-           leaves it undefined when a record has no band, so the old fallback
-           printed a rupee figure with a % sign, diffed it against a real
-           listing-gain percentage and handed the result to `verdict()`. A GMP
-           with no price band HAS no percentage — the honest answer is to leave
-           the issue out, which the null below does. Latent today (every listed
-           record holds a band) and wrong in units whenever it fires. */
-        const gmpPct = ipo.gmpPct ?? null;
+        const gmpPct = ipo.gmpPct ?? ipo.gmp ?? null;
         const gainPct = listedGainPct(ipo);
         if (gmpPct == null || gainPct == null) return null;
         return { ipo, gmpPct, gainPct, delta: Math.round((gainPct - gmpPct) * 10) / 10 };
       })
       .filter(Boolean)
       .sort((a, b) => (String(b!.ipo.listingDate ?? '') < String(a!.ipo.listingDate ?? '') ? -1 : 1))
-      .slice(0, SHOWN) as Row[];
+      .slice(0, 6) as Row[];
   }, [ipos]);
 
   if (!tenant.flags.gmpEnabled || rows.length === 0) return null;
@@ -118,18 +93,8 @@ export function GmpAccuracy({ ipos: baked }: { ipos: IpoFull[] }) {
             </a>
           );
         })}
-        {/* THE METHODOLOGY IS ON THE PAGE, not in a policy document (QC U4).
-            Three things a reader could not previously see: which issues these
-            are, what the final GMP is a percentage OF, and what rule turns a
-            gap into "on target". The thresholds read from the constants, so
-            this sentence cannot drift from the code that produced the label. */}
         <p className="disclaimer" style={{ margin: '12px 2px 2px' }}>
-          GMP is unofficial, unregulated grey-market data shown for information only — not investment advice.
-          {' '}How this is worked out: the {rows.length === SHOWN ? `${SHOWN} most recent` : rows.length} debut{rows.length === 1 ? '' : 's'}{' '}
-          for which we hold both a final GMP and a listing price — not every listing, and not a selection by outcome.
-          {' '}GMP said is the final grey-market premium as a percentage of the upper band price; Listing did compares the issue price
-          with the actual listing price. The gap is the difference in percentage points: within {ON_TARGET_PTS} is
-          {' '}<i>on target</i>, within {CLOSE_PTS} is <i>close</i>, beyond that <i>wide</i>. Past gaps say nothing about the next issue.
+          GMP is unofficial, unregulated grey-market data shown for information only — not investment advice. Listing gain compares the issue price with the actual listing price.
         </p>
       </div>
     </>

@@ -35,7 +35,7 @@ const tabLabel = (c: Choice) => (c.tab === 'sha' ? 'Shareholder' : c.tab === 'hn
  */
 function applyReady(p: Profile): boolean {
   const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
-  return Boolean(p.fullName && p.pan && dematOk);
+  return Boolean(p.fullName && p.pan && dematOk && p.consent);
 }
 function upiReady(p: Profile): boolean {
   return applyReady(p) && !!p.upiId && p.relationship !== 'child';
@@ -158,7 +158,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   if (!mobile) {
     return (
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">🔐</div>
+        <div className="emoji">🔐</div>
         <h3>{tr('apply.loginRequired')}</h3>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/apply/${ipo.symbol}${q}`)}`} style={{ marginTop: 14 }}>
           {tr('login.title')}
@@ -171,7 +171,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   if ((ipo.status === 'open' || ipo.status === 'upcoming') && gates && !gates.bid) {
     return (
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">⏳</div>
+        <div className="emoji">⏳</div>
         <h3>Bidding hasn&apos;t started yet</h3>
         <p className="muted">Applications for {ipo.name} will open shortly — check back soon.</p>
         <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`} style={{ marginTop: 14 }}>View IPO details</a>

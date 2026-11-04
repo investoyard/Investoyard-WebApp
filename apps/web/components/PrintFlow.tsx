@@ -4,7 +4,7 @@ import { getIpoDetail, type IpoFull } from '@/lib/api';
 import { inr, priceBand } from '@/lib/format';
 import { IpoLogo } from '@/components/IpoLogo';
 import { Icon } from '@/components/Icon';
-import { useStore, Profile, mapApiProfile } from '@/lib/store';
+import { useStore, Profile } from '@/lib/store';
 import { getConsumerToken, listProfiles, createApplication, downloadAsbaForm, downloadAsbaForms, type ApiProfile } from '@/lib/consumer-api';
 import { makeBidEngine, crToRupees, type BidQuote, type BidEngine } from '@investoyard/shared-types';
 
@@ -32,7 +32,7 @@ function formBadge(c: Choice, isMainboard: boolean): { label: string; tone: stri
 
 function applyReady(p: Profile): boolean {
   const dematOk = p.depository === 'CDSL' ? !!p.clientId : !!(p.dpId && p.clientId);
-  return Boolean(p.fullName && p.pan && dematOk);
+  return Boolean(p.fullName && p.pan && dematOk && p.consent);
 }
 function missingBits(p: Profile): string {
   const bits: string[] = [];
@@ -40,10 +40,14 @@ function missingBits(p: Profile): string {
   if (p.depository === 'CDSL' ? !p.clientId : !(p.dpId && p.clientId)) bits.push('demat details');
   return bits.join(' & ') || 'details';
 }
-/* mapApiProfile lives in lib/store.ts beside the type it produces. This file
-   kept its own copy, and the two had already drifted: it omitted "demats",
-   which is precisely the field the shared one's docblock singles out as the
-   reason not to copy it. */
+function mapApiProfile(p: ApiProfile): Profile {
+  return {
+    id: p.id, relationship: p.relationship as any, fullName: p.fullName, pan: p.pan,
+    depository: p.depository as any, dpId: p.dpId, clientId: p.clientId,
+    upiId: p.hasUpi ? 'upi-verified' : undefined, bankAccount: p.hasBank ? 'set' : undefined,
+    ifsc: p.ifsc, kycStatus: (p.kycStatus as any) ?? 'unverified', consent: true,
+  };
+}
 
 /* ---------------- quantity picker (master + per-member, one control) ---------------- */
 
@@ -303,7 +307,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (!mobile && !hasToken) {
     return shell(
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">🔐</div>
+        <div className="emoji">🔐</div>
         <h3>Sign in to print application forms</h3>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/print/${ipo.symbol}`)}`} style={{ marginTop: 14 }}>Sign in</a>
       </div>,
@@ -312,7 +316,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (gates && !gates.print) {
     return shell(
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">🖨️</div>
+        <div className="emoji">🖨️</div>
         <h3>Form printing hasn&apos;t started yet</h3>
         <p className="muted">Prefilled ASBA forms for {ipo.name} will be available shortly — check back soon.</p>
         <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}`} style={{ marginTop: 14 }}>View IPO details</a>
@@ -322,7 +326,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (gates && !liveId) {
     return shell(
       <div className="empty fade-up">
-        <div aria-hidden="true" className="emoji">🖨️</div>
+        <div className="emoji">🖨️</div>
         <h3>Printing is available on live issues only</h3>
         <p className="muted">This demo listing has no live catalog entry to print against.</p>
       </div>,
