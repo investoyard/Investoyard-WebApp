@@ -5,21 +5,34 @@
     "scheme": "investoyard",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#3c2e7e"
+        }
+      ]
     ],
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#3c2e7e"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "co.finwave.investoyard"
     },
     "android": {
-      "package": "co.finwave.investoyard"
+      "package": "co.finwave.investoyard",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3c2e7e"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }
