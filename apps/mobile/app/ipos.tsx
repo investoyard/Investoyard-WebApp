@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 14.5, color: ui.title, padding: 0 },
   seg: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 10, padding: 3, gap: 3 },
-  segBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 32, borderRadius: 8 },
+  segBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 32, borderRadius: 8 },
   segBtnOn: { backgroundColor: '#ffffff' },
   segTxt: { fontSize: 13, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   segTxtOn: { color: ui.title, fontFamily: fonts.bold, fontWeight: '700' },

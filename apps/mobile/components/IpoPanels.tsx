@@ -348,7 +348,7 @@ const s = StyleSheet.create({
   subSeg: {
     flexDirection: 'row', backgroundColor: ui.slateTint, borderRadius: 11, padding: 3, marginBottom: 12,
   },
-  subSegBtn: { flex: 1, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  subSegBtn: { flex: 1, minHeight: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   subSegBtnOn: { backgroundColor: '#ffffff', ...shadowCard, elevation: 2 },
   subSegTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   subSegTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },

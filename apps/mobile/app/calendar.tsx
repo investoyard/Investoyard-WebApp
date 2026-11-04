@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   viewSeg: {
     flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 999, padding: 2.5,
   },
-  viewBtn: { height: 26, paddingHorizontal: 12, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  viewBtn: { minHeight: 26, paddingHorizontal: 12, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   viewBtnOn: { backgroundColor: '#ffffff', ...shadowCard, elevation: 2 },
   viewTxt: { fontSize: 11.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   viewTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },

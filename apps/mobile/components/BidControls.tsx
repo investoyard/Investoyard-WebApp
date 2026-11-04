@@ -260,13 +260,16 @@ export function PrintQuantityPicker({ engine, choice, onChange, allowShareholder
 const s = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   tabs: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 999, padding: 3, gap: 2 },
-  tab: { paddingHorizontal: 14, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  tabCompact: { paddingHorizontal: 11, height: 26 },
+  tab: { paddingHorizontal: 14, minHeight: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  /* minHeight, in step with `tab` above (QC A7). It is layered OVER tab, so a
+     plain height here would combine with tab's 30px floor and force every
+     compact tab to 30 - a modifier has to move with its base. */
+  tabCompact: { paddingHorizontal: 11, minHeight: 26 },
   tabOn: { backgroundColor: '#ffffff', elevation: 2, shadowColor: '#1A1440', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   tabTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   tabTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  chip: { paddingHorizontal: 10, height: 26, borderRadius: 999, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  chip: { paddingHorizontal: 10, minHeight: 26, borderRadius: 999, borderWidth: 1, borderColor: ui.divider, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   chipOn: { borderColor: ui.indigo, backgroundColor: ui.indigoTint },
   chipTxt: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   chipTxtOn: { color: ui.indigo },
@@ -290,7 +293,7 @@ const s = StyleSheet.create({
   tileT: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   tileS: { fontSize: 11, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, marginTop: 2, fontVariant: ['tabular-nums'] },
   modes: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  mode: { paddingHorizontal: 12, height: 28, borderRadius: 999, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
+  mode: { paddingHorizontal: 12, minHeight: 28, borderRadius: 999, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
   modeOn: { backgroundColor: ui.indigoTint },
   modeTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   customRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' },

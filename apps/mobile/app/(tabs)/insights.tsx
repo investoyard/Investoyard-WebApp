@@ -197,7 +197,7 @@ function Tile({ label, sub, Icon, onPress }: {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   inK: { ...microLabel },
-  ipoChip: { paddingHorizontal: 13, height: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
+  ipoChip: { paddingHorizontal: 13, minHeight: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
   ipoChipOn: { backgroundColor: ui.indigo },
   ipoChipTxt: { fontSize: 12.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.slate },
   ipoChipTxtOn: { color: '#ffffff' },

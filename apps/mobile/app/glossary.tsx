@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.canvas },
   jumpWrap: { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: ui.divider, paddingVertical: 8 },
   jumpRow: { paddingHorizontal: 12, gap: 6 },
-  jumpChip: { paddingHorizontal: 13, height: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
+  jumpChip: { paddingHorizontal: 13, minHeight: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
   jumpChipOn: { backgroundColor: ui.indigo },
   jumpTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   jumpTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },

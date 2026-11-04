@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
   /* sign-in & security — mirrors the web panel's .sec-way / .sec-pwrow */
   secBody: { paddingHorizontal: 14, paddingBottom: 16, paddingTop: 2 },
   secChips: { flexDirection: 'row', gap: 8 },
-  secChip: { paddingHorizontal: 16, height: 36, borderRadius: 10, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
+  secChip: { paddingHorizontal: 16, minHeight: 36, borderRadius: 10, backgroundColor: ui.canvas, alignItems: 'center', justifyContent: 'center' },
   secChipOn: { backgroundColor: ui.indigoTint },
   secChipTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   secChipTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },

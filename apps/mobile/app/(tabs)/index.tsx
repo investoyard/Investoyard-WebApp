@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', marginHorizontal: 16, marginBottom: 14,
     backgroundColor: ui.slateTint, borderRadius: 12, padding: 3,
   },
-  segBtn: { flex: 1, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  segBtn: { flex: 1, minHeight: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   segBtnOn: { backgroundColor: '#ffffff', ...shadowCard, elevation: 2 },
   segTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   segTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },

@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', fontFamily: fonts.medium, fontSize: 13.5, color: ui.title,
   },
   handleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  handleItem: { paddingHorizontal: 12, height: 34, borderRadius: 999, justifyContent: 'center', backgroundColor: '#ffffff' },
+  handleItem: { paddingHorizontal: 12, minHeight: 34, borderRadius: 999, justifyContent: 'center', backgroundColor: '#ffffff' },
   handleItemOn: { backgroundColor: ui.indigo },
   handleTxt: { fontFamily: fonts.semibold, fontWeight: '600', fontSize: 13, color: ui.slate },
   handleTxtOn: { color: '#ffffff' },

@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
   blockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: ui.divider },
   blockedName: { fontSize: 13.5, fontFamily: fonts.bold, fontWeight: '700', color: ui.title },
   blockedWhy: { fontSize: 11.5, fontFamily: fonts.regular, color: ui.slate, marginTop: 2, lineHeight: 16 },
-  printsm: { backgroundColor: ui.redTint, borderRadius: 10, paddingHorizontal: 12, height: 34, alignItems: 'center', justifyContent: 'center' },
+  printsm: { backgroundColor: ui.redTint, borderRadius: 10, paddingHorizontal: 12, minHeight: 34, alignItems: 'center', justifyContent: 'center' },
   printsmTxt: { color: ui.red, fontSize: 12, fontFamily: fonts.bold, fontWeight: '700' },
   pickerHint: { fontSize: 12, fontFamily: fonts.regular, color: ui.slate, lineHeight: 17, marginBottom: 12 },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: ui.divider },

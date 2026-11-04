@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   navRow: { paddingHorizontal: 12, gap: 6, alignItems: 'center' },
-  navChip: { paddingHorizontal: 14, height: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
+  navChip: { paddingHorizontal: 14, minHeight: 32, borderRadius: 999, justifyContent: 'center', backgroundColor: ui.canvas },
   navChipOn: { backgroundColor: ui.indigo },
   navTxt: { fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   navTxtOn: { color: '#ffffff', fontFamily: fonts.bold, fontWeight: '700' },

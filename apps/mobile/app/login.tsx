@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   /* The sign-in-method toggle. Mirrors web’s `.lg-way` + `.seg`; kept in step
      by hand, the same standing rule as the split UPI input and DematPanel. */
   wayRow: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 12, padding: 3, marginTop: 20, gap: 2 },
-  wayBtn: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  wayBtn: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   wayBtnOn: { backgroundColor: '#ffffff' },
   wayTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   wayTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },

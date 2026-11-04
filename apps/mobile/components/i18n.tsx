@@ -86,6 +86,6 @@ export function LangToggle() {
 }
 
 const styles = StyleSheet.create({
-  toggle: { paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: '#EEEBFA', alignItems: 'center', justifyContent: 'center' },
+  toggle: { paddingHorizontal: 12, minHeight: 32, borderRadius: 999, backgroundColor: '#EEEBFA', alignItems: 'center', justifyContent: 'center' },
   toggleText: { color: colors.brand.primary, fontFamily: fonts.bold, fontWeight: '700', fontSize: 12.5 },
 });

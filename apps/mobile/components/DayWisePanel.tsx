@@ -158,7 +158,7 @@ export function DayWisePanel({
 
 const s = StyleSheet.create({
   seg: { flexDirection: 'row', backgroundColor: ui.slateTint, borderRadius: 11, padding: 3, marginBottom: 12 },
-  segBtn: { flex: 1, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segBtn: { flex: 1, minHeight: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   segBtnOn: { backgroundColor: '#ffffff' },
   segTxt: { fontSize: 12, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
   segTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
