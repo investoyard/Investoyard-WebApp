@@ -52,6 +52,10 @@ export default function IpoDetailScreen() {
   // section under the reader. ALL hooks live above the early returns.
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const secY = useRef<Record<string, number>>({});
+  /* Measured x of each nav chip inside the horizontal scroller, so the active
+     one can be brought into view by where it ACTUALLY is. Same idiom as secY
+     above, which measures each section's y. (QC L1) */
+  const navX = useRef<Record<string, number>>({});
   const [navOn, setNavOn] = useState(false);
   const [active, setActive] = useState('overview');
   const navRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -151,6 +155,15 @@ export default function IpoDetailScreen() {
     .filter((k) => (k === 'subs' ? hasSubs : k === 'trends' ? hasTrends : k === 'company' ? hasCompany : true))
     .map((key) => ({ key, label: ALL[key] }));
   const reg = (k: string) => (e: { nativeEvent: { layout: { y: number } } }) => { secY.current[k] = e.nativeEvent.layout.y; };
+  const regNav = (k: string) => (e: { nativeEvent: { layout: { x: number } } }) => { navX.current[k] = e.nativeEvent.layout.x; };
+  /* onLayout has not fired on first paint, so fall back to the old stride
+     rather than refusing to scroll - it was never badly wrong, just wrong. */
+  const NAV_CHIP_STRIDE = 92;
+  const revealChip = (key: string, idx: number) => {
+    const x = navX.current[key];
+    const to = x != null ? x : idx * NAV_CHIP_STRIDE;
+    navRef.current?.scrollTo({ x: Math.max(0, to - 60), animated: true });
+  };
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     // Scrolled → the pinned bar COMPACTS: logo hidden, name to one line with …,
@@ -169,7 +182,7 @@ export default function IpoDetailScreen() {
       setActive(cur);
       // keep the active chip visible in the bar
       const idx = sections.findIndex((s) => s.key === cur);
-      navRef.current?.scrollTo({ x: Math.max(0, idx * 92 - 60), animated: true });
+      revealChip(cur, idx);
     }
   };
   const jump = (k: string) => {
@@ -225,6 +238,7 @@ export default function IpoDetailScreen() {
               <Pressable
                 key={s.key}
                 onPress={() => jump(s.key)}
+                onLayout={regNav(s.key)}
                 style={({ pressed }) => [styles.navChip, on && styles.navChipOn, pressed && { opacity: 0.8 }]}
               >
                 <Text style={[styles.navTxt, on && styles.navTxtOn]}>{s.label}</Text>
