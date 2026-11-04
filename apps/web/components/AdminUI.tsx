@@ -3,7 +3,7 @@
 export function NoAccess() {
   return (
     <div className="empty">
-      <div className="emoji">🔒</div>
+      <div aria-hidden="true" className="emoji">🔒</div>
       <h3>No permission</h3>
       <p className="muted">Your role doesn’t have access to this section.</p>
     </div>

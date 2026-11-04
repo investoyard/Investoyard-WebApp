@@ -303,7 +303,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (!mobile && !hasToken) {
     return shell(
       <div className="empty fade-up">
-        <div className="emoji">🔐</div>
+        <div aria-hidden="true" className="emoji">🔐</div>
         <h3>Sign in to print application forms</h3>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/print/${ipo.symbol}`)}`} style={{ marginTop: 14 }}>Sign in</a>
       </div>,
@@ -312,7 +312,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (gates && !gates.print) {
     return shell(
       <div className="empty fade-up">
-        <div className="emoji">🖨️</div>
+        <div aria-hidden="true" className="emoji">🖨️</div>
         <h3>Form printing hasn&apos;t started yet</h3>
         <p className="muted">Prefilled ASBA forms for {ipo.name} will be available shortly — check back soon.</p>
         <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}`} style={{ marginTop: 14 }}>View IPO details</a>
@@ -322,7 +322,7 @@ export function PrintFlow({ ipo: baked }: { ipo: IpoFull }) {
   if (gates && !liveId) {
     return shell(
       <div className="empty fade-up">
-        <div className="emoji">🖨️</div>
+        <div aria-hidden="true" className="emoji">🖨️</div>
         <h3>Printing is available on live issues only</h3>
         <p className="muted">This demo listing has no live catalog entry to print against.</p>
       </div>,

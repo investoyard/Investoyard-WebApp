@@ -63,11 +63,23 @@ export function SectionTabs({ items, title, logo, status, statusLabel, autoFocus
 
   return (
     <nav ref={navRef} className={`tabs sticky-tabs ${condensed ? 'condensed' : ''}`} aria-label="Sections">
+      {/* THE STATUS GOES IN THE LINK'S OWN NAME (QC A6). The dot carried it in
+          COLOUR with only a `title`, which many screen readers never announce
+          and no touch device shows — and it sits inside an element whose
+          `aria-label` OVERRIDES its contents, so the status was absent from
+          assistive tech altogether, whatever the dot contained. Named here and
+          the dot hidden, so the colour stays decoration over a label that
+          already exists rather than being the only thing that says it. */}
       {title && (
-        <a href="#" className="st-ident" onClick={toTop} aria-label={`${title} — back to top`}>
+        <a
+          href="#"
+          className="st-ident"
+          onClick={toTop}
+          aria-label={`${title}${status && statusLabel ? ` — ${statusLabel}` : ''} — back to top`}
+        >
           <IpoLogo logo={logo} name={title} size={26} />
           <span className="st-name">{title}</span>
-          {status && <span className={`ic-dot ${status}`} title={statusLabel} />}
+          {status && <span aria-hidden="true" className={`ic-dot ${status}`} title={statusLabel} />}
         </a>
       )}
       <div className="st-tablist">

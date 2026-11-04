@@ -158,7 +158,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   if (!mobile) {
     return (
       <div className="empty fade-up">
-        <div className="emoji">🔐</div>
+        <div aria-hidden="true" className="emoji">🔐</div>
         <h3>{tr('apply.loginRequired')}</h3>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/apply/${ipo.symbol}${q}`)}`} style={{ marginTop: 14 }}>
           {tr('login.title')}
@@ -171,7 +171,7 @@ export function ApplyWizard({ ipo, lang = 'en' }: { ipo: IpoDetail; lang?: Lang 
   if ((ipo.status === 'open' || ipo.status === 'upcoming') && gates && !gates.bid) {
     return (
       <div className="empty fade-up">
-        <div className="emoji">⏳</div>
+        <div aria-hidden="true" className="emoji">⏳</div>
         <h3>Bidding hasn&apos;t started yet</h3>
         <p className="muted">Applications for {ipo.name} will open shortly — check back soon.</p>
         <a className="btn" href={`/ipos/${ipo.slug ?? ipo.symbol}${q}`} style={{ marginTop: 14 }}>View IPO details</a>

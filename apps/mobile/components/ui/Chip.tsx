@@ -52,8 +52,12 @@ const TONES: Record<ChipTone, { bg: string; fg: string }> = {
   danger: { bg: ui.redTint, fg: ui.red },
   warn: { bg: ui.amberTint, fg: ui.amber },
   info: { bg: ui.indigoTint, fg: ui.indigo },
-  /** Pre Apply — the lighter indigo, so it cannot be read as Upcoming. */
-  preapply: { bg: '#F3F1FB', fg: '#6356AB' },
+  /** Pre Apply — a lighter indigo than Upcoming, so the two cannot be confused.
+   *  #5645A6 is web's own --brand-500, promoted to the ink there for the same
+   *  reason: --brand-400 (#7565BD) on this ground is 4.32:1 and fails AA. 6.72:1
+   *  here, dE 13.4 from Upcoming. Identical hex on both surfaces — a semantic
+   *  colour is one of the few things web and mobile may not differ on. */
+  preapply: { bg: '#F3F1FB', fg: '#5645A6' },
   /** Awaiting Allotment — teal, web's own --tone-soft / --tone-ink exactly. */
   awaiting: { bg: '#E2F2F4', fg: '#1C6570' },
   /** Allotment Out. Gold is this status ALONE — an earlier design grouped it

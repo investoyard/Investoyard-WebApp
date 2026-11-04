@@ -17,7 +17,10 @@ const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const STATUS_COPY: Record<string, { title: string; body: string; tone: string }> = {
   submitted: { title: 'Application received', tone: 'info', body: 'Our team is reviewing your details. We will email you as soon as there is an update.' },
   changes_requested: { title: 'Changes requested', tone: 'warn', body: 'Please update the details below and submit again.' },
-  approved: { title: 'Approved 🎉', tone: 'ok', body: 'Check your email for the link to set your password and sign in.' },
+  /* No emoji in a RESULT title (QC A8): it renders differently on every OS and
+     a screen reader says 'party popper' where the word Approved already says it.
+     The 'ok' tone does the celebrating. */
+  approved: { title: 'Approved', tone: 'ok', body: 'Check your email for the link to set your password and sign in.' },
   rejected: { title: 'Not approved', tone: 'warn', body: 'Your application was not approved this time.' },
 };
 

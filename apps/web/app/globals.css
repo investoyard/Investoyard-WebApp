@@ -1483,8 +1483,16 @@ a.ga-row:hover .ga-name { color: var(--brand); }
 .t-closing, .ic-dot.closed, .status.closed, .status.withdrawn, .ph.closed, .ph.withdrawn {
             --tone: var(--neg);        --tone-soft: var(--neg-soft);  --tone-ink: var(--neg);
             --tone-solid: var(--neg);  --tone-on: #fff;        --tone-acc: rgba(216,65,42,.24); }
+/* Pre Apply — the IDENTITY colour stays --brand-400 (the rail, the dot, the
+   swatch: graphics, 3:1 bar) while the TEXT ink darkens to --brand-500.
+   --brand-400 on --brand-50 is 4.32:1 and FAILS AA for the 12px/600 .status
+   chip; --brand-500 is 6.72:1. A token promotion, not a new colour — the same
+   move --pos-ink and --neg-ink already made, and --brand-500 was already in
+   the scale. It stays dE 13.4 from Upcoming's indigo, clear of the dE>=10 the
+   legend check requires, and mobile's chip uses the identical hex because
+   semantic colours may not differ between the two surfaces. */
 .t-preapply {
-            --tone: var(--brand-400);  --tone-soft: var(--brand-50);  --tone-ink: var(--brand-400);
+            --tone: var(--brand-400);  --tone-soft: var(--brand-50);  --tone-ink: var(--brand-500);
             --tone-solid: var(--brand-400); --tone-on: #fff;   --tone-acc: rgba(117,101,189,.20); }
 .t-upcoming, .ic-dot.upcoming, .status.upcoming, .ph.upcoming {
             --tone: var(--brand);      --tone-soft: var(--brand-50);  --tone-ink: var(--brand);
@@ -1959,6 +1967,14 @@ a.ga-row:hover .ga-name { color: var(--brand); }
     --text: #f3f2f7; --text-muted: #a6a3b5; --text-faint: #76738a;
     --border: #262232; --border-2: #332e44;
     --brand: #9a8ce0; --brand-700: #b6abec; --brand-600: #a99ce6; --brand-400: #8678cf;
+    /* --brand-500 HAD NO DARK VALUE because nothing used it until Pre Apply
+       took it as its chip ink. Left out, the LIGHT #5645a6 lands on this dark
+       ground at 2.28:1. The 700 hex is the nearest token that is both legible
+       here (8.18:1) and still dE 15.8 from Upcoming -- 600 and 400 are both
+       under dE 10 of it, so 400 meant Pre Apply and Upcoming were ALREADY
+       indistinguishable in dark mode. The dark scale is compressed, so 500
+       and 700 sharing a value is expected rather than a slip. */
+    --brand-500: #b6abec;
     --brand-50: #1d1830; --brand-100: #251f3c; --brand-200: #322a52;
     --pos: #3fcf80; --pos-soft: #11261a; --neg: #f4715f; --neg-soft: #2a1614;
     --warn: #e6b53e; --warn-soft: #261f10;
@@ -2048,6 +2064,9 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
   --text: #eceaf4; --text-muted: #a7a2b8; --text-faint: #746f86;
   --border: #2a2637; --border-2: #383246;
   --brand: #9581e6; --brand-700: #b6a9f0; --brand-400: #7d6cd0;
+  /* see the consumer dark block: 7.47:1 here, dE 22.6 from Upcoming. The old
+     --brand-400 ink was 3.71:1 on this ground, i.e. already failing. */
+  --brand-500: #b6a9f0;
   --brand-50: #241f38; --brand-100: #2a2444; --brand-200: #3a3260;
   --pos: #3ddc97; --pos-soft: #12281e; --neg: #f4766a; --neg-soft: #331613; --warn: #e6b74f; --warn-soft: #2c2410;
   --top-bg: rgba(26,24,36,.82);

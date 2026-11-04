@@ -77,7 +77,7 @@ export function Account() {
   if (!mobile) {
     return (
       <div className="empty fade-up">
-        <div className="emoji">🔐</div>
+        <div aria-hidden="true" className="emoji">🔐</div>
         <h3>{tr('apply.loginRequired')}</h3>
         <p className="muted">Sign in to manage your profiles and family applicants.</p>
         <a className="btn" href={`/login?next=${encodeURIComponent(`/account${q}`)}`} style={{ marginTop: 14 }}>{tr('login.title')}</a>
