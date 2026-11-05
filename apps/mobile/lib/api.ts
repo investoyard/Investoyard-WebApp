@@ -717,16 +717,31 @@ export interface AllotmentCheck {
   found: boolean;
   results: AllotmentResult[];
 }
-export async function checkAllotment(ipoId: string, pan: string): Promise<AllotmentCheck> {
-  const res = await fetch(`${API_BASE}/allotment/check`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId, pan }),
-  });
-  if (!res.ok) {
-    let msg = 'Could not check right now.';
-    try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
-    throw new Error(msg);
+/**
+ * `refused` carries the SERVER'S own message, which for this endpoint is worth
+ * keeping — a 400 names the field it rejected. `unreachable` carries ours,
+ * because React Native's "Network request failed" is a developer string and
+ * this is the one screen an investor refreshes hardest.
+ */
+export type AllotmentCheckResult =
+  | { ok: true; data: AllotmentCheck }
+  | { ok: false; reason: 'unreachable' | 'refused'; message: string };
+
+export async function checkAllotment(ipoId: string, pan: string): Promise<AllotmentCheckResult> {
+  try {
+    const res = await fetch(`${API_BASE}/allotment/check`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipoId, pan }),
+    });
+    if (!res.ok) {
+      let msg = 'The registrar lookup could not be completed. Please try again shortly.';
+      try { const b = await res.json(); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      return { ok: false, reason: 'refused', message: msg };
+    }
+    return { ok: true, data: (await res.json()) as AllotmentCheck };
+  } catch (e: any) {
+    if (__DEV__) console.warn(`[api] POST ${API_BASE}/allotment/check FAILED before any response: ${e?.message ?? e}`);
+    return { ok: false, reason: 'unreachable', message: 'We could not reach Investoyard. Check your connection and try again.' };
   }
-  return (await res.json()) as AllotmentCheck;
 }
 
 // ── News + banners (public) ──────────────────────────────────────────────────

@@ -22,6 +22,11 @@
  *
  * EN-LITERAL, matching `subscription.tsx`, `gmp.tsx` and `performance.tsx`,
  * which carry no `t()` calls either. The Hindi pass covers them together.
+ *
+ * AN UNREACHABLE API SHOWS OFFLINE, NEVER AN EMPTY WATCHLIST. `getIposResult()`
+ * and `listApplicationsResult()` say which happened, so the screen never has
+ * to infer it — the catalogue failing takes over, the applications failing
+ * only costs a bar.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -29,7 +34,7 @@ import { useRouter } from 'expo-router';
 import { isLiveApplication, istToday, momentPlan, shortName, type ActiveMomentKind } from '@investoyard/shared-types';
 import { fonts, ui } from '../lib/theme';
 import { useAuth } from '../components/auth';
-import { getIpos, listApplications } from '../lib/api';
+import { getIposResult, listApplicationsResult } from '../lib/api';
 import { invalidateWatched, setWatched, watchedIds } from '../lib/watchlist';
 import type { IpoFull } from '../lib/ipoCalc';
 import { stageOf } from '../lib/ipoStage';
@@ -39,7 +44,7 @@ import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { LoginGate } from '../components/ui/LoginGate';
 import { SkeletonCard } from '../components/ui/Skeleton';
-import { OfflineState } from '../components/ui/OfflineState';
+import { LoadFailure, LoadFailureBar, type FailureReason } from '../components/ui/LoadFailure';
 import { BellIcon } from '../components/ui/icons';
 import { fmtDate } from '../lib/format';
 
@@ -66,7 +71,7 @@ export default function WatchlistScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const [groups, setGroups] = useState<Group[] | null>(null);
-  const [offline, setOffline] = useState(false);
+  const [failed, setFailed] = useState<FailureReason | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -74,23 +79,25 @@ export default function WatchlistScreen() {
     async (fresh = false) => {
       if (!token) return;
       if (fresh) invalidateWatched();
-      const [ids, all, apps] = await Promise.all([
+      const [ids, iposR, appsR] = await Promise.all([
         watchedIds(token),
-        getIpos(),
-        listApplications(token),
+        getIposResult(),
+        listApplicationsResult(token),
       ]);
 
-      /* An empty catalogue with a non-empty watchlist is the API being
-         unreachable, not an investor with no reminders — `getIpos` returns []
-         on any failure by design, and an empty state over a list we simply
-         could not fetch is the fault this app removed its mock catalogue to
-         avoid. */
-      if (ids.size > 0 && all.length === 0) {
-        setOffline(true);
+      /* THE CATALOGUE IS FATAL: without it there is nothing to render, and an
+         empty state over a list we simply could not fetch is the fault this app
+         removed its mock catalogue to avoid. */
+      if (!iposR.ok) {
+        setFailed(iposR.reason);
         setGroups(null);
         return;
       }
-      setOffline(false);
+      const all = iposR.ipos;
+      /* THE APPLICATIONS ARE NOT. The rows still render; only the grouping is
+         less precise, so this takes the bar rather than the screen. */
+      const apps = appsR.ok ? appsR.data : [];
+      setFailed(appsR.ok ? null : appsR.reason);
 
       const byId = new Map(all.map((i) => [i.id, i]));
       const watched = [...ids].map((id) => ({ id, ipo: byId.get(id) }));
@@ -203,10 +210,9 @@ export default function WatchlistScreen() {
         We will tell you when an issue you follow opens, is about to close, has its allotment out, and lists.
       </Text>
 
-      {offline ? (
-        <View style={{ marginTop: 14 }}>
-          <OfflineState onRetry={() => load(true)} />
-        </View>
+      {failed && groups !== null ? <LoadFailureBar reason={failed} onRetry={() => load(true)} /> : null}
+      {failed && groups === null ? (
+        <LoadFailure reason={failed} onRetry={() => load(true)} />
       ) : groups === null ? (
         <View style={{ gap: 12, marginTop: 14 }}>
           <SkeletonCard lines={2} />

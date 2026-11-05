@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
@@ -137,7 +137,17 @@ export default function NewProfileScreen() {
   }, [pincode, dirReady]);
   // Allowed UPI handles (admin master) — a UPI ID saves only on a listed handle.
   const [upiHandles, setUpiHandles] = useState<string[]>([]);
-  useEffect(() => { getUpiHandles().then(setUpiHandles); }, []);
+  /* Told apart on purpose: an empty list we have NOT fetched yet is loading,
+     and an empty list we HAVE fetched is a master that did not arrive. The
+     first must not offer free text, the second must. */
+  const [handlesLoaded, setHandlesLoaded] = useState(false);
+  const loadHandles = useCallback(() => {
+    setHandlesLoaded(false);
+    getUpiHandles()
+      .then(setUpiHandles)
+      .finally(() => setHandlesLoaded(true));
+  }, []);
+  useEffect(() => { loadHandles(); }, [loadHandles]);
   // The handle master can run long — filter it rather than make people scan a wall of chips.
   const handleMatches = upiHandles.filter((h) => h.includes(handleQuery.trim().toLowerCase()));
 
@@ -347,8 +357,35 @@ export default function NewProfileScreen() {
             </View>
             {handleOpen ? (
               <View style={styles.handleList}>
-                {upiHandles.length === 0 ? (
-                  <Text style={styles.hint}>Handle list unavailable — try again in a moment.</Text>
+                {!handlesLoaded ? (
+                  <Text style={styles.hint}>Loading handles…</Text>
+                ) : upiHandles.length === 0 ? (
+                  /* DEGRADE TO FREE TEXT rather than leaving the investor with
+                     nowhere to go. The server checks the handle against its own
+                     master on save, so nothing is being waved through here. */
+                  <>
+                    <TextInput
+                      style={styles.handleSearch}
+                      value={upiHandle}
+                      onChangeText={(v) => setUpiHandle(v.replace(/@/g, '').trim().toLowerCase())}
+                      placeholder="Type the handle, e.g. okhdfcbank"
+                      placeholderTextColor={ui.muted}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      accessibilityLabel="UPI handle"
+                    />
+                    <Text style={styles.hint}>
+                      We could not load the handle list, so type it — we will check it when you save.
+                    </Text>
+                    <Pressable
+                      onPress={() => { tapSelect(); loadHandles(); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Try loading the handle list again"
+                      style={({ pressed }) => [styles.handleRetry, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.handleRetryTxt}>Try again</Text>
+                    </Pressable>
+                  </>
                 ) : (
                   <>
                     {/* Only worth a search box once scanning the chips costs more than typing. */}
@@ -626,6 +663,11 @@ const styles = StyleSheet.create({
     height: 38, borderRadius: 9, paddingHorizontal: 12, marginBottom: 6,
     backgroundColor: '#ffffff', fontFamily: fonts.medium, fontSize: 13.5, color: ui.title,
   },
+  /* minHeight, not height — A7: a raised font scale must grow this rather
+     than clip the label. No hitSlop: it sits inside the open handle list and
+     slop would reach across the rows above it. */
+  handleRetry: { minHeight: 32, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 2, marginTop: 2 },
+  handleRetryTxt: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 12, color: ui.indigo },
   handleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   handleItem: { paddingHorizontal: 12, minHeight: 34, borderRadius: 999, justifyContent: 'center', backgroundColor: '#ffffff' },
   handleItemOn: { backgroundColor: ui.indigo },

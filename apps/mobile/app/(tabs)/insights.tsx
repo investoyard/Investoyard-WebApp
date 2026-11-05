@@ -39,6 +39,7 @@ export default function InsightsScreen() {
   const [pan, setPan] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [errRetry, setErrRetry] = useState(false);
   const [result, setResult] = useState<AllotmentCheck | null>(null);
 
   const load = useCallback(async () => { setIpos(await getIpos()); }, []);
@@ -73,13 +74,18 @@ export default function InsightsScreen() {
     if (!id) return;
     if (!PAN_RE.test(pan)) { setErr('Enter the full 10-character PAN, e.g. ABCDE1234F.'); return; }
     tapSelect();
-    setBusy(true); setErr(null); setResult(null);
-    try {
-      const r = await checkAllotment(id, pan);
+    setBusy(true); setErr(null); setErrRetry(false); setResult(null);
+    const r = await checkAllotment(id, pan);
+    if (r.ok) {
       animateNext();
-      setResult(r);
-    } catch (e: any) { setErr(String(e?.message ?? e)); }
-    finally { setBusy(false); }
+      setResult(r.data);
+    } else {
+      setErr(r.message);
+      /* A RETRY IS OFFERED ONLY WHERE A RETRY COULD WORK — a refusal is the
+         server's considered answer and will be the same next time. */
+      setErrRetry(r.reason === 'unreachable');
+    }
+    setBusy(false);
   };
 
   return (
@@ -123,7 +129,21 @@ export default function InsightsScreen() {
               maxLength={10}
               onSubmitEditing={check}
             />
-            {err ? <Text style={styles.errTxt}>{err}</Text> : null}
+            {err ? (
+              <View style={styles.errRow}>
+                <Text style={styles.errTxt}>{err}</Text>
+                {errRetry ? (
+                  <Pressable
+                    onPress={() => { tapSelect(); check(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Check the allotment again"
+                    style={({ pressed }) => [styles.errAct, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.errActTxt}>Try again</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
             <Button
               label={busy ? 'Checking…' : 'Check Allotment'}
               onPress={check}
@@ -207,6 +227,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold, fontWeight: '700', color: ui.title, backgroundColor: ui.canvas,
   },
   errTxt: { marginTop: 8, fontSize: 12.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.red },
+  errRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  /* minHeight, not height — A7. No hitSlop: it sits beside the message in a
+     wrapping row, so slop would reach into the text. */
+  errAct: { minHeight: 32, justifyContent: 'center', paddingHorizontal: 2, marginTop: 6 },
+  errActTxt: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 12.5, color: ui.indigo },
   subtleTxt: { fontSize: 13.5, fontFamily: fonts.regular, color: ui.slate, lineHeight: 20 },
   resWrap: { marginTop: 14, borderTopWidth: 1, borderTopColor: ui.divider, paddingTop: 4 },
   resRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
