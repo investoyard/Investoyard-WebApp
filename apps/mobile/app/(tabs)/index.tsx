@@ -163,12 +163,6 @@ export default function HomeScreen() {
   /* The web home's today strip, same expressions and the same IST day, so the
      two surfaces cannot report different numbers for the same morning.
      `liveCount` above IS web's `open`, so only the other three are new. */
-  const today = {
-    closing: (ipos ?? []).filter((i) => i.status === 'open' && i.closeDate === todayIso).length,
-    allotment: (ipos ?? []).filter((i) => i.allotmentDate === todayIso).length,
-    listing: (ipos ?? []).filter((i) => i.listingDate === todayIso).length,
-  };
-  const todayTotal = today.closing + today.allotment + today.listing;
 
   const openSearch = () => {
     tapLight(); animateNext(); setSearchOn(true);
@@ -248,15 +242,6 @@ export default function HomeScreen() {
         {/* The Moments hero — the handoff's centrepiece. It sits ABOVE the
             cards, which keep the cards-first layout the operator chose. */}
         <MomentHero ipos={ipos} applications={myApps} memberCount={profiles.length} />
-
-        {todayTotal > 0 ? (
-          <View style={styles.todayRow}>
-            <Text style={styles.todayLbl}>Today</Text>
-            {today.closing > 0 ? <Text style={styles.todayItem}>{today.closing} closing</Text> : null}
-            {today.allotment > 0 ? <Text style={styles.todayItem}>{today.allotment} allotment</Text> : null}
-            {today.listing > 0 ? <Text style={styles.todayItem}>{today.listing} listing</Text> : null}
-          </View>
-        ) : null}
 
         {/* ── status chips WITH counts (summary + filter in one control) ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
@@ -470,9 +455,6 @@ const styles = StyleSheet.create({
     backgroundColor: ui.indigoTint,
   },
   browseAllTxt: { fontSize: 14, fontFamily: fonts.bold, fontWeight: '700', color: ui.indigo },
-  todayRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingTop: 12 },
-  todayLbl: { fontFamily: fonts.bold, fontWeight: '700', fontSize: 12, color: ui.title, letterSpacing: 0.3, textTransform: 'uppercase' },
-  todayItem: { fontFamily: fonts.regular, fontSize: 12.5, color: ui.slate },
   fchip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, height: 36, borderRadius: 999, backgroundColor: '#ffffff', ...shadowCard, elevation: 1,

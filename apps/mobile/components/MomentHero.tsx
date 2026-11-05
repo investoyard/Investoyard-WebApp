@@ -37,6 +37,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import {
   LABEL,
   istClock,
+  istToday,
   momentPlan,
   type ApplicationView,
   type MomentCandidate,
@@ -46,6 +47,7 @@ import {
   shortName,
 } from '@investoyard/shared-types';
 import { fonts, ui } from '../lib/theme';
+import { Chip } from './ui/Chip';
 import { inr, priceBand } from '../lib/format';
 import type { IpoFull } from '../lib/ipoCalc';
 import { GmpReveal } from './gmpConsent';
@@ -223,7 +225,9 @@ export function MomentHero({
 
       {/* U7 — the second Moment of the day, never hidden further down. */}
       {plan.also ? <AlsoCard c={plan.also} ipo={bySymbol.get(plan.also.symbol)} now={now} /> : null}
-      {byId.size === 0 ? null : null}
+
+      {/* The day's BREADTH, minus whatever the two above already said. */}
+      <AlsoToday ipos={ipos} covered={[plan.kind, plan.also?.kind]} />
     </View>
   );
 }
@@ -302,6 +306,55 @@ function AlsoCard({ c, ipo, now }: { c: MomentCandidate; ipo?: IpoFull; now: num
   );
 }
 
+/**
+ * "Also today" — every event in the catalogue today that the hero and the
+ * clash card have NOT already named.
+ *
+ * It renders nothing when there is nothing left to add, which is most days:
+ * on a morning whose only event is the one in the hero, a second line saying
+ * so is the repetition this row was rebuilt to stop.
+ */
+function AlsoToday({ ipos, covered }: { ipos: IpoFull[]; covered: (MomentKind | undefined)[] }) {
+  const router = useRouter();
+  const day = istToday();
+  const seen = new Set(covered.filter(Boolean) as MomentKind[]);
+
+  type Row = { kind: MomentKind; n: number; label: string; tone: 'closing' | 'gold' | 'listed'; to: string };
+  const rows: Row[] = ([
+    { kind: 'closing', n: ipos.filter((i) => i.status === 'open' && i.closeDate === day).length,
+      label: 'closing', tone: 'closing', to: '/ipos' },
+    { kind: 'allotment', n: ipos.filter((i) => i.allotmentDate === day).length,
+      label: 'allotment', tone: 'gold', to: '/insights' },
+    { kind: 'listing', n: ipos.filter((i) => i.listingDate === day).length,
+      label: 'listing', tone: 'listed', to: '/performance' },
+  ] as Row[]).filter((r) => r.n > 0 && !seen.has(r.kind));
+
+  if (!rows.length) return null;
+
+  return (
+    <View style={styles.alsoToday}>
+      <Text style={styles.alsoTodayLbl}>Also today</Text>
+      {rows.map((r) => (
+        <Pressable
+          key={r.kind}
+          onPress={() => router.push(r.to as never)}
+          /* The pill is 36dp and the row's gap is 8, so 4 each way reaches 44
+             without the slop crossing into a neighbour — the per-axis rule
+             A4 follows everywhere else. */
+          hitSlop={{ top: 4, bottom: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={`${r.n} ${r.label}${r.n === 1 || r.label === 'closing' ? '' : 's'} today`}
+          style={({ pressed }) => [styles.alsoTodayHit, pressed && { opacity: 0.65 }]}
+        >
+          {/* Chip carries the status legend's own pairs, so these cannot
+              invent a colour for a status that already has one. */}
+          <Chip label={`${r.n} ${r.label}${r.n === 1 || r.label === 'closing' ? '' : 's'}`} tone={r.tone} />
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 /** U9's skeleton. Same height as the hero, so the page does not jump. */
 function HeroSkeleton() {
   return (
@@ -355,6 +408,14 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch', textAlign: 'center',
   },
   updated: { fontFamily: fonts.semibold, fontWeight: '600', fontSize: 11, color: 'rgba(255,255,255,0.6)', flexShrink: 1, textAlign: 'right' },
+
+  alsoToday: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  alsoTodayLbl: {
+    fontFamily: fonts.bold, fontWeight: '700', fontSize: 11.5, letterSpacing: 0.6,
+    textTransform: 'uppercase', color: ui.slate,
+  },
+  /* 36dp so a 4dp slop reaches 44 without crossing the row's own gap. */
+  alsoTodayHit: { minHeight: 36, justifyContent: 'center' },
 
   also: {
     flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44,
