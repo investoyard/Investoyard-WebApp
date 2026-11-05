@@ -328,7 +328,12 @@ const styles = StyleSheet.create({
   wayRow: { flexDirection: 'row', backgroundColor: ui.canvas, borderRadius: 12, padding: 3, marginTop: 20, gap: 2 },
   wayBtn: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   wayBtnOn: { backgroundColor: '#ffffff' },
-  wayTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate },
+  /* alignSelf + textAlign, not a width: the button is a column with
+     alignItems 'center', which shrink-wraps this label to its own measurement
+     — and a measurement one glyph short of the draw cut the tail off "All",
+     "Mainboard" and "SME" alike inside a button with 46px to spare. Filling
+     the button and centring the text means any such error lands in the slack. */
+  wayTxt: { fontSize: 13.5, fontFamily: fonts.semibold, fontWeight: '600', color: ui.slate, alignSelf: 'stretch', textAlign: 'center' },
   wayTxtOn: { color: ui.indigo, fontFamily: fonts.bold, fontWeight: '700' },
   forgot: { marginTop: 10, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: ui.slate },
   newUser: { marginTop: 18, padding: 14, borderRadius: 12, backgroundColor: ui.canvas },

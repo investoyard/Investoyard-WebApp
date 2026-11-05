@@ -68,14 +68,32 @@ export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
   });
-  // Never block the app on fonts: after 3s (or on a load error) render with
-  // system fonts — Android silently falls back per-style, which is acceptable.
+  /* NEVER BLOCK THE APP ON FONTS, but do not lose the race either.
+   *
+   * This used to open after 3s and the comment called the fallback
+   * "acceptable". It is not: the family names stay applied, and on Android an
+   * unresolvable `fontFamily` makes text measure a glyph short of what it
+   * draws — the board segment rendered "Al / Mainboar / SM" inside buttons
+   * with 46px to spare, because the label shrink-wraps to its measurement.
+   *
+   * Five font files over a LAN dev server on a cold Metro cache can take
+   * longer than 3s; in a production build they are local and resolve in
+   * milliseconds, so a generous hatch costs real users nothing and only stops
+   * a dev session rendering in the wrong typeface. */
+  const FONT_TIMEOUT_MS = 12_000;
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setTimedOut(true), 3000);
+    const timer = setTimeout(() => setTimedOut(true), FONT_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, []);
   const ready = fontsLoaded || !!fontError || timedOut;
+  /* SAY SO. The fallback was silent, which is why "why is the text cut off?"
+     was not answerable from the device. */
+  useEffect(() => {
+    if (!__DEV__ || fontsLoaded) return;
+    if (fontError) console.warn('[fonts] Inter failed to load; text will render in the system font:', fontError);
+    else if (timedOut) console.warn(`[fonts] Inter did not load within ${FONT_TIMEOUT_MS}ms; rendering in the system font — expect clipped labels`);
+  }, [fontsLoaded, fontError, timedOut]);
   useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
   if (!ready) return null; // splash stays visible
 

@@ -412,24 +412,47 @@ export async function withdrawApplication(token: string, id: string): Promise<bo
  * …" is the whole value of this call, and a generic failure message would lose
  * the one sentence that tells the investor what to do instead.
  */
-export async function changeApplicationUpi(
-  token: string,
-  id: string,
-  upiId: string,
-): Promise<{ restatedToExchange: number; note: string }> {
-  const res = await fetch(`${API_BASE}/applications/${id}/change-upi`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ upiId }),
-  });
+/**
+ * A mutating request that fails with a message an investor can act on.
+ *
+ * A STATUS means the server considered it and refused: its own message is the
+ * useful one, and for these endpoints it names the field or the rule. NO
+ * status means the request never completed — DNS, TLS, a blocked port, a
+ * dropped connection — which React Native reports as "Network request
+ * failed", a developer string that was reaching real screens.
+ *
+ * `verb` completes both sentences, so a caller reads "Could not save" /
+ * "...and save again" rather than a generic apology.
+ */
+async function sendJson(path: string, init: RequestInit, verb: string): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch (e: any) {
+    if (__DEV__) console.warn(`[api] ${init.method ?? 'POST'} ${API_BASE}${path} FAILED before any response: ${e?.message ?? e}`);
+    throw new Error(`We could not reach Investoyard. Check your connection and ${verb} again.`);
+  }
   if (!res.ok) {
-    let msg = `Could not save (HTTP ${res.status})`;
+    let msg = `Could not ${verb} (HTTP ${res.status})`;
     try {
       const b = await res.json();
       if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
     } catch {}
     throw new Error(msg);
   }
+  return res;
+}
+
+export async function changeApplicationUpi(
+  token: string,
+  id: string,
+  upiId: string,
+): Promise<{ restatedToExchange: number; note: string }> {
+  const res = await sendJson(`/applications/${id}/change-upi`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ upiId }),
+  }, 'save');
   const b = await res.json();
   return b?.upiChange ?? { restatedToExchange: 0, note: 'Saved.' };
 }
@@ -445,19 +468,11 @@ export async function requestUnblock(
   token: string,
   id: string,
 ): Promise<{ sent: boolean; dev: boolean; to: string; stuckAmount?: number; note: string }> {
-  const res = await fetch(`${API_BASE}/applications/${id}/unblock-request`, {
+  const res = await sendJson(`/applications/${id}/unblock-request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: '{}',
-  });
-  if (!res.ok) {
-    let msg = `Could not send (HTTP ${res.status})`;
-    try {
-      const b = await res.json();
-      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
-    } catch {}
-    throw new Error(msg);
-  }
+  }, 'send');
   return res.json();
 }
 
@@ -662,37 +677,21 @@ export async function listProfiles(token: string): Promise<ProfileView[]> {
 }
 
 export async function createProfile(token: string, input: CreateProfileInput): Promise<ProfileView> {
-  const res = await fetch(`${API_BASE}/profiles`, {
+  const res = await sendJson('/profiles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    let msg = `Could not save (HTTP ${res.status})`;
-    try {
-      const b = await res.json();
-      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
-    } catch {}
-    throw new Error(msg);
-  }
+  }, 'save');
   return (await res.json()) as ProfileView;
 }
 
 /** Partial edit — omitted fields keep their values; PAN/bank/UPI replaced only when non-empty. */
 export async function updateProfile(token: string, id: string, input: Partial<CreateProfileInput>): Promise<ProfileView> {
-  const res = await fetch(`${API_BASE}/profiles/${id}`, {
+  const res = await sendJson(`/profiles/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    let msg = `Could not save (HTTP ${res.status})`;
-    try {
-      const b = await res.json();
-      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
-    } catch {}
-    throw new Error(msg);
-  }
+  }, 'save');
   return (await res.json()) as ProfileView;
 }
 

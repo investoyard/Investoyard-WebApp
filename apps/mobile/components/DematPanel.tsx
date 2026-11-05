@@ -185,7 +185,12 @@ const s = StyleSheet.create({
   seg: { flexDirection: 'row', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: ui.divider },
   segBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', backgroundColor: ui.card },
   segOn: { backgroundColor: ui.indigo },
-  segTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.body },
+  /* alignSelf + textAlign, not a width: the button is a column with
+     alignItems 'center', which shrink-wraps this label to its own measurement
+     — and a measurement one glyph short of the draw cut the tail off "All",
+     "Mainboard" and "SME" alike inside a button with 46px to spare. Filling
+     the button and centring the text means any such error lands in the slack. */
+  segTxt: { fontSize: 13, fontFamily: fonts.bold, fontWeight: '700', color: ui.body, alignSelf: 'stretch', textAlign: 'center' },
   segTxtOn: { color: '#FFFFFF' },
   dpRow: { flexDirection: 'row', alignItems: 'stretch' },
   dpPrefix: {
