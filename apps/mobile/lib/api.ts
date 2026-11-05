@@ -461,14 +461,70 @@ export async function requestUnblock(
   return res.json();
 }
 
-export async function listApplications(token: string): Promise<ApplicationView[]> {
+/**
+ * A READ THAT CAN SAY WHY IT FAILED, for the four lists where an empty array
+ * is a FALSE STATEMENT ABOUT THE INVESTOR rather than an answer.
+ *
+ * `listApplications` returned `[]` on a dead network, a 500 and an expired
+ * session alike, and the Applied tab renders `[]` as *"Your first application
+ * will show up here — pick an open IPO and go for it."* So an investor with
+ * money blocked, on a day the API is down, was told they had never applied for
+ * anything and invited to apply again. The same shape told the apply screen
+ * *"no applicant — add one"* on an issue closing that afternoon.
+ *
+ * The comment those functions carried was not wrong — `[]` genuinely does beat
+ * a stale local store — it just never addressed the other half: **`[]` is
+ * indistinguishable from "none".** This is `IposResult` generalised, built for
+ * exactly this on 2026-10-26 after two test devices showed an empty home
+ * screen and the only way to tell was the IIS access log.
+ *
+ * 401 IS ITS OWN REASON, AND THE RECOVERY IS WHAT SEPARATES THEM. Mobile
+ * checks the session ONCE, during hydration in `components/auth.tsx`, so a
+ * session that expires while the app is open turns every authed read into
+ * `[]` with nothing signing the user out until the next launch. A dead network
+ * wants a Retry; an expired session wants a sign-in, and offering Retry there
+ * is a button that can only fail.
+ */
+export type Fetched<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: 'unreachable' | 'signedout' };
+
+/**
+ * ONE implementation, because four copies of a try/catch/status check is how
+ * two of them end up disagreeing about what a 503 means.
+ *
+ * A STATUS means we reached something and it refused us — a Cloudflare
+ * challenge (403/503) looks nothing like a dead network. NO status means the
+ * request never completed: DNS, TLS trust, a blocked port, a dropped
+ * connection. React Native reports most of those as the same "Network request
+ * failed", so the dev warning is the only clue there is.
+ */
+async function authedGet<T>(path: string, token: string): Promise<Fetched<T>> {
   try {
-    const res = await fetch(`${API_BASE}/applications`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) return res.json();
-  } catch {}
-  /* Empty, not a stale local store — an investor must never be shown an
-     application list that is missing bids they really placed. */
-  return [];
+    const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401 || res.status === 403) return { ok: false, reason: 'signedout' };
+    if (!res.ok) {
+      if (__DEV__) console.warn(`[api] GET ${API_BASE}${path} -> HTTP ${res.status} ${res.statusText}`);
+      return { ok: false, reason: 'unreachable' };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch (e: any) {
+    if (__DEV__) console.warn(`[api] GET ${API_BASE}${path} FAILED before any response: ${e?.message ?? e}`);
+    return { ok: false, reason: 'unreachable' };
+  }
+}
+
+export const listApplicationsResult = (token: string) =>
+  authedGet<ApplicationView[]>('/applications', token);
+
+/**
+ * Unchanged contract. Empty, not a stale local store — an investor must never
+ * be shown an application list that is missing bids they really placed. Use
+ * the Result form anywhere `[]` would be RENDERED as "you have none".
+ */
+export async function listApplications(token: string): Promise<ApplicationView[]> {
+  const r = await listApplicationsResult(token);
+  return r.ok ? r.data : [];
 }
 
 export async function registerDevice(token: string, deviceToken: string): Promise<void> {
@@ -480,12 +536,12 @@ export async function registerDevice(token: string, deviceToken: string): Promis
   } catch {}
 }
 
+export const getNotificationsResult = (token: string) =>
+  authedGet<NotificationView[]>('/notifications', token);
+
 export async function getNotifications(token: string): Promise<NotificationView[]> {
-  try {
-    const res = await fetch(`${API_BASE}/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) return (await res.json()) as NotificationView[];
-  } catch {}
-  return [];
+  const r = await getNotificationsResult(token);
+  return r.ok ? r.data : [];
 }
 
 export async function markNotificationRead(token: string, id: string): Promise<void> {
@@ -494,12 +550,12 @@ export async function markNotificationRead(token: string, id: string): Promise<v
   } catch {}
 }
 
+export const listConsentsResult = (token: string) =>
+  authedGet<ConsentView[]>('/consents', token);
+
 export async function listConsents(token: string): Promise<ConsentView[]> {
-  try {
-    const res = await fetch(`${API_BASE}/consents`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) return (await res.json()) as ConsentView[];
-  } catch {}
-  return [];
+  const r = await listConsentsResult(token);
+  return r.ok ? r.data : [];
 }
 
 export async function withdrawConsent(token: string, type: string): Promise<boolean> {
@@ -597,12 +653,12 @@ export async function getRelationships(): Promise<RelationshipOption[]> {
   }
 }
 
+export const listProfilesResult = (token: string) =>
+  authedGet<ProfileView[]>('/profiles', token);
+
 export async function listProfiles(token: string): Promise<ProfileView[]> {
-  try {
-    const res = await fetch(`${API_BASE}/profiles`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) return (await res.json()) as ProfileView[];
-  } catch {}
-  return [];
+  const r = await listProfilesResult(token);
+  return r.ok ? r.data : [];
 }
 
 export async function createProfile(token: string, input: CreateProfileInput): Promise<ProfileView> {

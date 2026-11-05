@@ -22,6 +22,7 @@ import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { LoadFailure } from '../../components/ui/LoadFailure';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
@@ -70,7 +71,7 @@ export default function ApplyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { profiles } = useProfiles();
+  const { failure: profilesFailure, refresh: refreshProfiles, profiles } = useProfiles();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const [ipo, setIpo] = useState<IpoFull | null | undefined>(undefined);
   const [upiCap, setUpiCap] = useState(UPI_MANDATE_MAX);
@@ -133,6 +134,16 @@ export default function ApplyScreen() {
           body={`Applications for ${ipo.name} will open shortly — check back soon.`}
           cta={<Button label="View IPO details" variant="ghost" onPress={() => router.push(`/ipo/${ipo.symbol}`)} />}
         />
+      </View>
+    );
+  }
+  /* A FAILED READ IS NOT AN EMPTY FAMILY. This branch used to be reached
+     by both, and told an investor on closing day to go and add an applicant
+     they already had. */
+  if (profilesFailure && profiles.length === 0) {
+    return (
+      <View style={styles.screen}>
+        <LoadFailure reason={profilesFailure} onRetry={refreshProfiles} />
       </View>
     );
   }

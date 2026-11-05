@@ -13,6 +13,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { IllusUsers } from '../../components/ui/illustrations';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
+import { LoadFailure, LoadFailureBar } from '../../components/ui/LoadFailure';
 import { FadeInUp } from '../../components/ui/motion';
 import { ChevronDownIcon, ShieldIcon, UsersIcon } from '../../components/ui/icons';
 import { DematPanel } from '../../components/DematPanel';
@@ -30,7 +31,7 @@ export default function ProfilesScreen() {
   const t = useT();
   const router = useRouter();
   const { token, mobile } = useAuth();
-  const { profiles, loading, refresh, removeProfile } = useProfiles();
+  const { profiles, loading, refresh, removeProfile, failure: profilesFailure } = useProfiles();
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null); // tap a card → view details
 
@@ -80,7 +81,10 @@ export default function ProfilesScreen() {
         <Text style={styles.noteTxt}>{t('profile.note')}</Text>
       </View>
 
-      {loading && profiles.length === 0 ? (
+      {profilesFailure && profiles.length > 0 ? <LoadFailureBar reason={profilesFailure} onRetry={refresh} /> : null}
+      {profilesFailure && profiles.length === 0 ? (
+        <LoadFailure reason={profilesFailure} onRetry={refresh} />
+      ) : loading && profiles.length === 0 ? (
         <View style={{ gap: 12, marginTop: 16 }}>
           <SkeletonCard lines={1} />
           <SkeletonCard lines={1} />

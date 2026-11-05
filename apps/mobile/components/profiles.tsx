@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './auth';
-import { listProfiles, createProfile, updateProfile, deleteProfile, type CreateProfileInput } from '../lib/api';
+import { listProfilesResult, createProfile, updateProfile, deleteProfile, type CreateProfileInput } from '../lib/api';
+import type { FailureReason } from './ui/LoadFailure';
 import type { ProfileView, DematAccountView } from '@investoyard/shared-types';
 
 /** Admin-managed via Masters → Relationships; stored/compared lowercase. */
@@ -41,6 +42,15 @@ export interface ProfileRecord extends AsbaContact {
 type Ctx = {
   profiles: ProfileRecord[];
   loading: boolean;
+  /**
+   * WHY the list is empty, when it is empty because the read FAILED.
+   *
+   * Without this, every consumer reads `[]` as "this investor has no family":
+   * the apply screen said *"no applicant — add one"* on an issue closing that
+   * afternoon, and Account showed no count. A screen that can tell the two
+   * apart renders `LoadFailure` instead, which is the point of U1.
+   */
+  failure: FailureReason | null;
   /** POST /profiles → PII vault. Throws on failure (e.g. duplicate PAN) so the form can show why. */
   addProfile: (rec: Omit<ProfileRecord, 'id'> & AsbaContact) => Promise<void>;
   /** PATCH /profiles/:id — omitted fields keep their values; secrets replace only when typed. */
@@ -52,6 +62,7 @@ type Ctx = {
 const ProfilesContext = createContext<Ctx>({
   profiles: [],
   loading: false,
+  failure: null,
   addProfile: async () => {},
   editProfile: async () => {},
   removeProfile: async () => {},
@@ -90,15 +101,27 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [failure, setFailure] = useState<FailureReason | null>(null);
 
   const refresh = useCallback(() => {
     if (!token) {
+      /* Signed out is not a failure — it is the honest empty. */
       setProfiles([]);
+      setFailure(null);
       return;
     }
     setLoading(true);
-    listProfiles(token)
-      .then((rows) => setProfiles(rows.map(fromView)))
+    listProfilesResult(token)
+      .then((r) => {
+        if (r.ok) {
+          setProfiles(r.data.map(fromView));
+          setFailure(null);
+        } else {
+          /* The rows already loaded are KEPT. A refresh that fails must not
+             make a family vanish mid-apply; the screen shows a bar instead. */
+          setFailure(r.reason);
+        }
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -110,6 +133,7 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       profiles,
+      failure,
       loading,
       refresh,
       addProfile: async (rec) => {
@@ -146,7 +170,7 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
         refresh();
       },
     }),
-    [profiles, loading, token, refresh],
+    [profiles, loading, failure, token, refresh],
   );
 
   return <ProfilesContext.Provider value={value}>{children}</ProfilesContext.Provider>;

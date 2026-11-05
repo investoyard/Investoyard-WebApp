@@ -4,11 +4,12 @@ import type { NotificationView } from '@investoyard/shared-types';
 import { fonts, shadowCard, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
-import { getNotifications, markNotificationRead } from '../lib/api';
+import { getNotificationsResult, markNotificationRead } from '../lib/api';
 import { EmptyState } from '../components/ui/EmptyState';
 import { IllusBell } from '../components/ui/illustrations';
 import { LoginGate } from '../components/ui/LoginGate';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { LoadFailure, LoadFailureBar, type FailureReason } from '../components/ui/LoadFailure';
 import { BellIcon } from '../components/ui/icons';
 import { fmtDate } from '../lib/format';
 
@@ -16,9 +17,14 @@ export default function NotificationsScreen() {
   const t = useT();
   const { token } = useAuth();
   const [items, setItems] = useState<NotificationView[] | null>(null);
+  const [failed, setFailed] = useState<FailureReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => { if (token) setItems(await getNotifications(token)); }, [token]);
+  const load = useCallback(async () => {
+    if (!token) return;
+    const r = await getNotificationsResult(token);
+    if (r.ok) { setItems(r.data); setFailed(null); } else setFailed(r.reason);
+  }, [token]);
   useEffect(() => { load(); }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -38,7 +44,10 @@ export default function NotificationsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
       }
     >
-      {items === null ? (
+      {failed && items !== null ? <LoadFailureBar reason={failed} onRetry={load} /> : null}
+      {failed && items === null ? (
+        <LoadFailure reason={failed} onRetry={load} />
+      ) : items === null ? (
         <View style={{ gap: 12 }}>
           <SkeletonCard lines={1} />
           <SkeletonCard lines={1} />

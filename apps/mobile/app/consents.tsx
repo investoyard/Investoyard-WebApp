@@ -4,13 +4,14 @@ import type { ConsentView } from '@investoyard/shared-types';
 import { fonts, ui } from '../lib/theme';
 import { useT } from '../components/i18n';
 import { useAuth } from '../components/auth';
-import { listConsents, withdrawConsent } from '../lib/api';
+import { listConsentsResult, withdrawConsent } from '../lib/api';
 import { Card } from '../components/ui/Card';
 import { Chip } from '../components/ui/Chip';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { LoginGate } from '../components/ui/LoginGate';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { LoadFailure, LoadFailureBar, type FailureReason } from '../components/ui/LoadFailure';
 import { ShieldIcon } from '../components/ui/icons';
 import { fmtDate } from '../lib/format';
 
@@ -19,11 +20,14 @@ export default function ConsentsScreen() {
   const t = useT();
   const { token } = useAuth();
   const [items, setItems] = useState<ConsentView[] | null>(null);
+  const [failed, setFailed] = useState<FailureReason | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    if (token) setItems(await listConsents(token));
+    if (!token) return;
+    const r = await listConsentsResult(token);
+    if (r.ok) { setItems(r.data); setFailed(null); } else setFailed(r.reason);
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -52,7 +56,10 @@ export default function ConsentsScreen() {
     >
       <Text style={styles.note}>{t('consents.note')}</Text>
 
-      {items === null ? (
+      {failed && items !== null ? <LoadFailureBar reason={failed} onRetry={load} /> : null}
+      {failed && items === null ? (
+        <LoadFailure reason={failed} onRetry={load} />
+      ) : items === null ? (
         <View style={{ gap: 12, marginTop: 14 }}>
           <SkeletonCard lines={1} />
           <SkeletonCard lines={1} />

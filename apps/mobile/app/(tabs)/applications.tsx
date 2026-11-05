@@ -5,7 +5,7 @@ import { fmtDateTime, type ApplicationView } from '@investoyard/shared-types';
 import { fonts, microLabel, shadowCard, ui } from '../../lib/theme';
 import { useT } from '../../components/i18n';
 import { useAuth } from '../../components/auth';
-import { changeApplicationUpi, listApplications, requestUnblock, withdrawApplication } from '../../lib/api';
+import { changeApplicationUpi, listApplicationsResult, requestUnblock, withdrawApplication } from '../../lib/api';
 import { inr } from '../../lib/format';
 import { Card } from '../../components/ui/Card';
 import { Chip, ChipTone } from '../../components/ui/Chip';
@@ -15,6 +15,7 @@ import { IllusDocs } from '../../components/ui/illustrations';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { CompanyLogo } from '../../components/ui/CompanyLogo';
 import { SkeletonCard } from '../../components/ui/Skeleton';
+import { LoadFailure, LoadFailureBar, type FailureReason } from '../../components/ui/LoadFailure';
 import { CountUp, FadeInUp } from '../../components/ui/motion';
 import { DocsIcon } from '../../components/ui/icons';
 
@@ -91,6 +92,7 @@ export default function ApplicationsScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const [apps, setApps] = useState<ApplicationView[] | null>(null);
+  const [failed, setFailed] = useState<FailureReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   /** Which application's UPI ID is being edited inline, and the typed value. */
@@ -102,7 +104,13 @@ export default function ApplicationsScreen() {
   const [unblockErr, setUnblockErr] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    if (token) setApps(await listApplications(token));
+    if (!token) return;
+    const r = await listApplicationsResult(token);
+    /* On failure the apps already on screen are KEPT and the bar says they
+       may be stale — an investor mid-refresh should not watch their bids
+       disappear. Only a first load with nothing to show hands over to
+       LoadFailure. */
+    if (r.ok) { setApps(r.data); setFailed(null); } else setFailed(r.reason);
   }, [token]);
 
   // refresh whenever the tab regains focus (fresh statuses after applying)
@@ -168,7 +176,10 @@ export default function ApplicationsScreen() {
     >
       <Text style={styles.h1}>{t('apps.title')}</Text>
 
-      {apps === null ? (
+      {failed && apps !== null ? <LoadFailureBar reason={failed} onRetry={load} /> : null}
+      {failed && apps === null ? (
+        <LoadFailure reason={failed} onRetry={load} />
+      ) : apps === null ? (
         <View style={{ gap: 12, marginTop: 16 }}>
           <SkeletonCard lines={3} />
           <SkeletonCard lines={2} />
