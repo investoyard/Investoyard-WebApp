@@ -15,10 +15,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { fonts, animateNext, shadowCard, ui } from '../../lib/theme';
 import { listingInfo, type IpoFull } from '../../lib/ipoCalc';
+import type { ApplicationView } from '@investoyard/shared-types';
+import { MomentHero } from '../../components/MomentHero';
 import { stageOf } from '../../lib/ipoStage';
-import { getIposResult, getNotifications } from '../../lib/api';
+import { getIposResult, getNotifications, listApplicationsResult } from '../../lib/api';
 import { OfflineState } from '../../components/ui/OfflineState';
 import { useAuth } from '../../components/auth';
+import { useProfiles } from '../../components/profiles';
 import { fmtDate } from '../../lib/format';
 import { tapLight } from '../../lib/haptics';
 import { IpoListCard } from '../../components/IpoListCard';
@@ -61,10 +64,18 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
+  /* The provider is already mounted at the root, so this costs no fetch. A
+     failed profiles read is not rendered here: the hero simply drops its
+     who-has-applied tile, which is the honest degradation. */
+  const { profiles } = useProfiles();
   const [ipos, setIpos] = useState<IpoFull[] | null>(null);
   /* distinct from `null` (still loading) and from an empty list. */
   const [offline, setOffline] = useState(false);
   const [unread, setUnread] = useState(0);
+  /* The hero's RESULT states (allotment evening, listing morning) are withheld
+     from a family that did not apply, so the engine needs these. A failed read
+     yields [], which means no result Moment — the safe direction. */
+  const [myApps, setMyApps] = useState<ApplicationView[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [justRefreshed, setJustRefreshed] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,13 +89,15 @@ export default function HomeScreen() {
   useFocusEffect(useCallback(() => { setStatusBarStyle('dark'); }, []));
 
   const load = useCallback(async () => {
-    const [res, notifs] = await Promise.all([
+    const [res, notifs, apps] = await Promise.all([
       getIposResult(),
       token ? getNotifications(token).catch(() => []) : Promise.resolve([]),
+      token ? listApplicationsResult(token) : Promise.resolve({ ok: true as const, data: [] }),
     ]);
     setOffline(!res.ok);
     setIpos(res.ok ? res.ipos : []);
     setUnread(notifs.filter((n: any) => !(n.readAt ?? n.read)).length);
+    setMyApps(apps.ok ? apps.data : []);
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -232,6 +245,10 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ui.indigo} colors={[ui.indigo]} />
         }
       >
+        {/* The Moments hero — the handoff's centrepiece. It sits ABOVE the
+            cards, which keep the cards-first layout the operator chose. */}
+        <MomentHero ipos={ipos} applications={myApps} memberCount={profiles.length} />
+
         {todayTotal > 0 ? (
           <View style={styles.todayRow}>
             <Text style={styles.todayLbl}>Today</Text>
