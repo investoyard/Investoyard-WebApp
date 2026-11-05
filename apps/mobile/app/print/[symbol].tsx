@@ -24,6 +24,7 @@ import { Card } from '../../components/ui/Card';
 import { SectionTitle } from '../../components/ui/SectionTitle';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { LoadFailure } from '../../components/ui/LoadFailure';
 import { LoginGate } from '../../components/ui/LoginGate';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, FilePdfIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
@@ -35,7 +36,7 @@ export default function PrintScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { profiles } = useProfiles();
+  const { profiles, failure: profilesFailure, refresh: refreshProfiles } = useProfiles();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const [ipo, setIpo] = useState<IpoFull | null | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -81,6 +82,15 @@ export default function PrintScreen() {
           body={`Prefilled ASBA forms for ${ipo.name} will be available shortly — check back soon.`}
           cta={<Button label="View IPO details" variant="ghost" onPress={() => router.push(`/ipo/${ipo.symbol}`)} />}
         />
+      </View>
+    );
+  }
+  /* A FAILED READ IS NOT AN EMPTY FAMILY — the same branch apply had, on
+     the path the operator's brokers use. */
+  if (profilesFailure && profiles.length === 0) {
+    return (
+      <View style={styles.screen}>
+        <LoadFailure reason={profilesFailure} onRetry={refreshProfiles} />
       </View>
     );
   }

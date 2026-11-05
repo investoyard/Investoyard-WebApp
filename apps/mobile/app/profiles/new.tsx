@@ -15,6 +15,7 @@ import { APPLICANT_ERR as ERR, APPLICANT_HELP as HELP } from '@investoyard/share
 import { PickerField, type PickOption } from '../../components/ui/PickerField';
 import { fetchBanks, fetchStates, searchBranches, searchCities, lookupPincode, type BankOption } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
+import { LoadFailure } from '../../components/ui/LoadFailure';
 import { CheckIcon, ChevronDownIcon } from '../../components/ui/icons';
 
 /** Fallback when the relationships master can't be fetched (offline). */
@@ -29,7 +30,7 @@ export default function NewProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { addProfile, editProfile, profiles } = useProfiles();
+  const { addProfile, editProfile, profiles, failure: profilesFailure, refresh: refreshProfiles } = useProfiles();
 
   // Edit mode: same form, prefilled. PAN/UPI/bank are vaulted — fields start
   // blank and only REPLACE the saved value when typed. PAN locks once the
@@ -238,6 +239,20 @@ export default function NewProfileScreen() {
       setSaving(false);
     }
   };
+
+  /* REFUSE THE FORM when the read failed and we hold no rows, because this
+     screen derives two things from the list that are wrong when it is empty:
+     `editing` resolves to undefined, so an EDIT silently becomes an INSERT
+     and creates a second profile for the same person; and `taken` goes
+     empty, so the form offers a relationship that is already used. Both are
+     duplicate profiles, which is the damage PAN-key churn already caused once. */
+  if (profilesFailure && profiles.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: ui.canvas }}>
+        <LoadFailure reason={profilesFailure} onRetry={refreshProfiles} />
+      </View>
+    );
+  }
 
   return (
     // 'padding' on BOTH platforms — SDK 54 Android is edge-to-edge (same fix as login)
