@@ -27,7 +27,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { CheckIcon, PencilIcon, RefreshIcon, UsersIcon, XIcon } from '../../components/ui/icons';
 import { SuccessMoment } from '../../components/ui/Celebration';
 import { ApplyBidPicker, applyCategory, applyTabLabel, type ApplyChoice } from '../../components/BidControls';
-import { UPI_MANDATE_MAX, dematLabel, type ApplicationView } from '@investoyard/shared-types';
+import { UPI_MANDATE_MAX, dematLabel, isLiveApplication, type ApplicationView } from '@investoyard/shared-types';
 
 /**
  * Does this applicant hold a usable demat?
@@ -163,9 +163,8 @@ export default function ApplyScreen() {
          the server raises this per batch. PANs arrive MASKED (ABC****4F), which
          is what web compares too — a UI pre-check in front of an authoritative
          panHash check, not a substitute for it. */
-  const DEAD: string[] = ['draft', 'failed', 'rejected'];
   const appliedIds = new Set(
-    myApps.filter((a) => a.ipoId === ipo.id && !DEAD.includes(a.status) && a.investorProfileId)
+    myApps.filter((a) => a.ipoId === ipo.id && isLiveApplication(a.status) && a.investorProfileId)
       .map((a) => a.investorProfileId as string),
   );
   const selected = eligible.filter((p) => selectedIds.includes(p.id) && !appliedIds.has(p.id));

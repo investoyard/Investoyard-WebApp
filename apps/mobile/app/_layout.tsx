@@ -50,6 +50,7 @@ function RootStack() {
       <Stack.Screen name="profiles/index" options={{ title: t('profiles.title') }} />
       <Stack.Screen name="profiles/new" options={{ title: t('profile.new') }} />
       <Stack.Screen name="notifications" options={{ title: t('notif.title') }} />
+      <Stack.Screen name="watchlist" options={{ title: 'Watchlist' }} />
       <Stack.Screen name="calendar" options={{ title: 'IPO Calendar' }} />
       <Stack.Screen name="consents" options={{ title: t('consents.title') }} />
       {/* Insights hub screens */}

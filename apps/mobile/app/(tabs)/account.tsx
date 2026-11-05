@@ -15,8 +15,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import {
   BellIcon, BookIcon, ChevronDownIcon, ChevronRightIcon, DocsIcon, GlobeIcon, LockIcon,
-  NewsIcon, ShieldIcon, SignOutIcon, UsersIcon,
-} from '../../components/ui/icons';
+  NewsIcon, ShieldIcon, SignOutIcon, UsersIcon, ClockIcon } from '../../components/ui/icons';
 import { siteUrl } from '../../lib/site';
 import { getSecurity, setOtpChannel, setPassword, clearPassword, type SecuritySettings } from '../../lib/api';
 
@@ -171,6 +170,13 @@ export default function AccountScreen() {
               label={t('profiles.title')}
               value={profiles.length ? `${profiles.length}` : undefined}
               onPress={() => router.push('/profiles')}
+            />
+            <Row
+              icon={<ClockIcon size={19} color={ui.amber} strokeWidth={1.8} />}
+              iconBg={ui.amberTint}
+              label="Watchlist"
+              onPress={() => router.push('/watchlist')}
+              divider
             />
             <Row
               icon={<BellIcon size={19} color={ui.amber} strokeWidth={1.8} />}

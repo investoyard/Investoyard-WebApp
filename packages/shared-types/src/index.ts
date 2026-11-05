@@ -11,6 +11,7 @@ export * from './format';
 export * from './issueRules';
 export * from './computeIssue';
 export * from './stage';
+export * from './moment';
 export * from './feedHealth';
 export * from './holidays';
 export * from './carveouts';
@@ -32,6 +33,31 @@ export type ApplicationStatus =
   | 'rejected' | 'failed'
   /** withdrawn by the operator or the investor — distinct from 'released' (money back) */
   | 'cancelled';
+
+/**
+ * Statuses that are NOT a live application — a bid that never reached the
+ * exchange or was turned away by it.
+ *
+ * LIFTED VERBATIM out of the apply screen, where it was an inline `DEAD` array.
+ * It decides whether an applicant has already applied for an issue, so a second
+ * reading of it elsewhere is how two screens come to disagree about whether a
+ * family is in an issue — and the Moments engine needs exactly this answer to
+ * decide whether to show them a result.
+ *
+ * `cancelled` IS DELIBERATELY ABSENT, because that is what the apply screen has
+ * always done and this change is meant to move the rule, not rewrite it. Worth
+ * settling: a cancelled application arguably should not block re-applying, but
+ * adding it here changes who the apply picker lets through, which is its own
+ * measured change.
+ */
+export const DEAD_APPLICATION_STATUSES: readonly ApplicationStatus[] = [
+  'draft',
+  'failed',
+  'rejected',
+] as const;
+
+export const isLiveApplication = (status: ApplicationStatus): boolean =>
+  !DEAD_APPLICATION_STATUSES.includes(status);
 
 export interface IpoListItem {
   id: string;

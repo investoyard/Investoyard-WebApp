@@ -8,20 +8,10 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ui } from '../lib/theme';
-import { addWatchlist, listWatchlist, removeWatchlist } from '../lib/api';
+import { setWatched, watchedIds } from '../lib/watchlist';
 import { tapSelect } from '../lib/haptics';
 import { useAuth } from './auth';
 import { BellIcon } from './ui/icons';
-
-let wlPromise: Promise<Set<string>> | null = null;
-let wlToken: string | null = null;
-function watchedIds(token: string): Promise<Set<string>> {
-  if (!wlPromise || wlToken !== token) {
-    wlToken = token;
-    wlPromise = listWatchlist(token).then((rows) => new Set(rows.map((r) => r.ipoId))).catch(() => new Set<string>());
-  }
-  return wlPromise;
-}
 
 export function RemindBell({ ipoId, size = 15 }: { ipoId?: string; size?: number }) {
   const router = useRouter();
@@ -44,9 +34,8 @@ export function RemindBell({ ipoId, size = 15 }: { ipoId?: string; size?: number
     setBusy(true);
     const next = !on;
     setOn(next); // optimistic
-    const ok = next ? await addWatchlist(token, ipoId) : await removeWatchlist(token, ipoId);
-    if (ok) (await watchedIds(token))[next ? 'add' : 'delete'](ipoId);
-    else setOn(!next); // revert
+    const ok = await setWatched(token, ipoId, next);
+    if (!ok) setOn(!next); // the server refused — put the bell back
     setBusy(false);
   };
 
