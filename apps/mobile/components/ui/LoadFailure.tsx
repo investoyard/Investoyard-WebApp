@@ -22,14 +22,19 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { fonts, ui } from '../../lib/theme';
+import { SESSION_EXPIRED, type FailureReason as Reason } from '../../lib/api';
 import { LoginGate } from './LoginGate';
 import { OfflineState } from './OfflineState';
 
-export type FailureReason = 'unreachable' | 'signedout';
+/* Re-exported so the dozens of `type FailureReason` imports in the screens
+   do not all have to move. The DECLARATION lives beside the code that
+   produces a failure, in lib/api.ts — it was written in both places, which is
+   a drift this component introduced. */
+export type { FailureReason } from '../../lib/api';
 
-export function LoadFailure({ reason, onRetry }: { reason: FailureReason; onRetry?: () => void }) {
+export function LoadFailure({ reason, onRetry }: { reason: Reason; onRetry?: () => void }) {
   if (reason === 'signedout') {
-    return <LoginGate body="Your session has expired. Sign in again to pick up where you left off." />;
+    return <LoginGate body={SESSION_EXPIRED} />;
   }
   return <OfflineState onRetry={onRetry} />;
 }
@@ -39,7 +44,7 @@ export function LoadFailure({ reason, onRetry }: { reason: FailureReason; onRetr
  * something went wrong — the house rule for every error string on this
  * platform.
  */
-export function LoadFailureBar({ reason, onRetry }: { reason: FailureReason; onRetry?: () => void }) {
+export function LoadFailureBar({ reason, onRetry }: { reason: Reason; onRetry?: () => void }) {
   const router = useRouter();
   const signedOut = reason === 'signedout';
   return (
@@ -47,7 +52,7 @@ export function LoadFailureBar({ reason, onRetry }: { reason: FailureReason; onR
       <View style={[styles.dot, signedOut && styles.dotOut]} />
       <Text style={styles.txt}>
         {signedOut
-          ? 'Your session has expired, so this may be out of date.'
+          ? 'Your session has expired, so this may be out of date.' /* shorter than SESSION_EXPIRED on purpose: the bar sits over real content */
           : 'We could not reach Investoyard, so this may be out of date.'}
       </Text>
       <Pressable

@@ -430,7 +430,14 @@ async function sendJson(path: string, init: RequestInit, verb: string): Promise<
     res = await fetch(`${API_BASE}${path}`, init);
   } catch (e: any) {
     if (__DEV__) console.warn(`[api] ${init.method ?? 'POST'} ${API_BASE}${path} FAILED before any response: ${e?.message ?? e}`);
-    throw new Error(`We could not reach Investoyard. Check your connection and ${verb} again.`);
+    throw new ApiError(`We could not reach Investoyard. Check your connection and ${verb} again.`, 'unreachable');
+  }
+  /* A DEAD SESSION IS NOT A REFUSAL TO EXPLAIN. The server says "Missing
+     token", which is true and useless to an investor mid-form; `authedGet`
+     already maps this to `signedout` on the read side, and this is the write
+     side of the same state. */
+  if (res.status === 401 || res.status === 403) {
+    throw new ApiError(SESSION_EXPIRED, 'signedout', res.status);
   }
   if (!res.ok) {
     let msg = `Could not ${verb} (HTTP ${res.status})`;
@@ -438,7 +445,7 @@ async function sendJson(path: string, init: RequestInit, verb: string): Promise<
       const b = await res.json();
       if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
     } catch {}
-    throw new Error(msg);
+    throw new ApiError(msg, 'refused', res.status);
   }
   return res;
 }
@@ -477,6 +484,44 @@ export async function requestUnblock(
 }
 
 /**
+ * WHY a read or a write failed, in the one vocabulary both halves use.
+ *
+ * Declared HERE because this is where failures are produced. It had been
+ * written twice — inline in `Fetched<T>` and again as `FailureReason` in
+ * `components/ui/LoadFailure.tsx` — and a type declared twice is a type that
+ * drifts from the thing it describes.
+ */
+export type FailureReason = 'unreachable' | 'signedout';
+
+/**
+ * ONE SENTENCE FOR AN EXPIRED SESSION, shared with the signed-out state
+ * `LoadFailure` renders, so a failed SAVE and a failed READ cannot tell the
+ * investor two different stories about the same thing.
+ */
+export const SESSION_EXPIRED = 'Your session has expired. Sign in again to pick up where you left off.';
+
+/**
+ * Thrown by `sendJson`. The `reason` is what a caller should branch on —
+ * **never the message**, which is translated and will be reworded. Web's
+ * client carries `status` and `code` for the same purpose and for the same
+ * stated reason.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly reason: FailureReason | 'refused',
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** True when the session is the thing that failed, whatever the wording says. */
+export const isSignedOut = (e: unknown): boolean =>
+  e instanceof ApiError && e.reason === 'signedout';
+
+/**
  * A READ THAT CAN SAY WHY IT FAILED, for the four lists where an empty array
  * is a FALSE STATEMENT ABOUT THE INVESTOR rather than an answer.
  *
@@ -502,7 +547,7 @@ export async function requestUnblock(
  */
 export type Fetched<T> =
   | { ok: true; data: T }
-  | { ok: false; reason: 'unreachable' | 'signedout' };
+  | { ok: false; reason: FailureReason };
 
 /**
  * ONE implementation, because four copies of a try/catch/status check is how
