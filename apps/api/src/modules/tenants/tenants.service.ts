@@ -42,7 +42,7 @@ export class TenantsService {
   private static warnedNoContentTable = false;
 
   /**
-   * Fold `TenantContent` rows into `{ identity, contact }` per tenant.
+   * Fold `TenantContent` rows into `{ identity, contact, site }` per tenant.
    *
    * Only the known keys are carried. An unrecognised row is DROPPED rather than
    * spread onto the object: this is a public response, and a key written by some

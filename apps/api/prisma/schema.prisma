@@ -735,7 +735,7 @@ model TenantContent {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  /// One of TENANT_CONTENT_KEYS — 'identity' | 'contact' today. The rich-text
+  /// One of TENANT_CONTENT_KEYS — 'identity' | 'contact' | 'site' today. The rich-text
   /// keys (about / terms / privacy / disclaimer) join the same table without a
   /// migration; those are fetched per page, never on the public list.
   key   String

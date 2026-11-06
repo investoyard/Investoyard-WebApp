@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { SITE_TEMPLATES, SITE_FONTS } from '@investoyard/shared-types';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { SuperadminGuard } from '../../common/superadmin.guard';
@@ -172,6 +173,49 @@ class TenantContactDto {
   @IsOptional() @IsString() @MaxLength(120) complianceName?: string;
   @IsOptional() @IsString() @MaxLength(160) complianceEmail?: string;
   @IsOptional() @IsString() @MaxLength(60) compliancePhone?: string;
+}
+/**
+ * Which layout the partner's public site renders in, and its hero copy.
+ *
+ * `template` AND `font` ARE VALIDATED AGAINST THE SHARED REGISTRIES, not against
+ * a list retyped here. The registry is what the web build reads to bake a
+ * layout and what the admin selector offers, so a third copy of those ids is a
+ * third thing to keep in step — and the failure would be quiet: a template the
+ * API accepts and the build cannot render leaves a partner on our own layout
+ * with a stored value that says otherwise.
+ *
+ * The three booleans are the only non-string values in any content row. They
+ * are why `mergeContentPatch` had to learn about booleans: it was string-only,
+ * so a posted `true` trimmed to undefined and DELETED its own key.
+ *
+ * Lengths are what a hero can actually hold rather than what a column allows —
+ * a 400-character headline is not a headline, and the layouts measure their
+ * type for a line that fits.
+ */
+class TenantSiteDto {
+  @IsOptional() @IsIn(SITE_TEMPLATES.map((t) => t.id)) template?: string;
+  @IsOptional() @IsIn(SITE_FONTS.map((f) => f.id)) font?: string;
+
+  @IsOptional() @IsString() @MaxLength(120) headline?: string;
+  @IsOptional() @IsString() @MaxLength(240) sub?: string;
+  @IsOptional() @IsString() @MaxLength(40) navCta?: string;
+  @IsOptional() @IsString() @MaxLength(40) applyCta?: string;
+  @IsOptional() @IsString() @MaxLength(120) applyNote?: string;
+
+  @IsOptional() @IsBoolean() showUtility?: boolean;
+  @IsOptional() @IsString() @MaxLength(600) mainSiteUrl?: string;
+  @IsOptional() @IsString() @MaxLength(600) supportUrl?: string;
+
+  @IsOptional() @IsBoolean() showApp?: boolean;
+  @IsOptional() @IsString() @MaxLength(600) appUrl?: string;
+
+  @IsOptional() @IsBoolean() showRm?: boolean;
+  @IsOptional() @IsString() @MaxLength(60) rmLabel?: string;
+  @IsOptional() @IsString() @MaxLength(80) rmName?: string;
+  @IsOptional() @IsString() @MaxLength(80) rmRole?: string;
+  @IsOptional() @IsString() @MaxLength(400) rmBlurb?: string;
+  @IsOptional() @IsString() @MaxLength(120) rmContact?: string;
+  @IsOptional() @IsString() @MaxLength(40) rmCta?: string;
 }
 /**
  * A published page. `html` only — the key is a path segment, checked against
@@ -458,6 +502,21 @@ export class AdminController {
   @RequirePermissions('tenant.site.manage')
   updateTenantContact(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantContactDto) {
     return this.admin.updateTenantContent(req.user.sub, slug, 'contact', dto as any);
+  }
+
+  /**
+   * The layout and its hero copy.
+   *
+   * A ROUTE OF ITS OWN, like identity and contact and unlike the pages: the
+   * body is a distinct typed shape, and class-validator's whitelist is the only
+   * thing between a posted key and the PUBLIC `/tenants` registry this block
+   * rides on. It needed no service change — `updateTenantContent` validates the
+   * key against TENANT_CONTENT_KEYS, which now carries 'site'.
+   */
+  @Patch('tenants/:slug/content/site')
+  @RequirePermissions('tenant.site.manage')
+  updateTenantSite(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantSiteDto) {
+    return this.admin.updateTenantContent(req.user.sub, slug, 'site', dto as any);
   }
 
   /**

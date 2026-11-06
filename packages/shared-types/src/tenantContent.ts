@@ -22,6 +22,8 @@
  * operating entity on its Account tab.
  */
 
+import { type TenantSite, siteGaps } from './tenantSite';
+
 /* ------------------------------------------------------------------ shapes */
 
 /**
@@ -82,13 +84,20 @@ export interface TenantContact {
  * object. Separate rows mean saving `contact` cannot touch `identity`, with no
  * whitelist to maintain.
  *
- * `identity` and `contact` are small scalar sets and ride on the public
+ * `identity`, `contact` and `site` are small scalar sets and ride on the public
  * `/tenants` registry the site already fetches once on mount. The rich-text keys
  * (about, terms, privacy, disclaimer) are deliberately NOT in that list — they
  * are fetched by the page that renders them, so a reader of the home page never
  * downloads every partner's legal prose.
+ *
+ * `site` BELONGS IN THE FIRST LIST AND NOT THE SECOND, which is worth stating
+ * because it is the judgement that decides whether this feature costs anything:
+ * it is a template id, a font id, three booleans and a dozen short strings —
+ * the same class of payload as `contact`, and the brand resolution on every page
+ * load already fetches this response. A reader of the home page downloading a
+ * partner's hero headline is free; downloading their Terms would not be.
  */
-export const TENANT_CONTENT_KEYS = ['identity', 'contact'] as const;
+export const TENANT_CONTENT_KEYS = ['identity', 'contact', 'site'] as const;
 export type TenantContentKey = (typeof TENANT_CONTENT_KEYS)[number];
 
 /**
@@ -142,10 +151,12 @@ export function hasPage(page?: TenantPage): boolean {
   return h.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '').length > 0;
 }
 
-/** Everything a site needs about its own operator. Both halves may be absent. */
+/** Everything a site needs about its own operator. Every part may be absent. */
 export interface TenantContent {
   identity?: TenantIdentity;
   contact?: TenantContact;
+  /** Which layout the public site renders in, and its hero copy. */
+  site?: TenantSite;
 }
 
 /* -------------------------------------------------------------- our own copy */
@@ -170,11 +181,31 @@ const trim = (v: unknown): string | undefined => {
   return s.length ? s : undefined;
 };
 
+/**
+ * The value to KEEP for a field, or undefined to drop it.
+ *
+ * A trimmed-empty string is an absence; a BOOLEAN IS ALWAYS A VALUE, including
+ * `false`. That distinction is the whole of this helper and it is load-bearing:
+ * the `site` row carries three toggles, and until this existed both readers
+ * below were string-only — so `trim(true)` returned undefined, `mergeContentPatch`
+ * took that as "cleared" and DELETED the key, and `compact` dropped any already
+ * stored. A toggle that silently refuses to switch on, with no error anywhere.
+ *
+ * `false` must be STORED rather than dropped, because a flag's default is not
+ * necessarily off: dropping it would make "the operator turned this off" and
+ * "the operator has not decided" the same stored state, which is the trailing-`""`
+ * ambiguity this module exists to avoid, wearing a boolean's clothes.
+ */
+function keep(v: unknown): string | boolean | undefined {
+  if (typeof v === 'boolean') return v;
+  return trim(v);
+}
+
 /** Drop empty strings so a blanked field reads as absent, not as "". */
 function compact<T extends object>(o: T | undefined): Partial<T> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o ?? {})) {
-    const s = trim(v);
+    const s = keep(v);
     if (s !== undefined) out[k] = s;
   }
   return out as Partial<T>;
@@ -242,6 +273,9 @@ export function legalEntity(input: IdentityInput): string | undefined {
  * Fields the patch does not mention are LEFT ALONE, so a panel that later
  * renders a subset of the block cannot wipe the rest. That is the same reasoning
  * as the per-key rows themselves, one level down.
+ *
+ * A BOOLEAN IS STORED AS SENT, `false` included — see `keep`. Only a string
+ * that trims to nothing deletes.
  */
 export function mergeContentPatch<T extends object>(
   existing: T | undefined,
@@ -250,7 +284,7 @@ export function mergeContentPatch<T extends object>(
   const out: Record<string, unknown> = { ...compact(existing ?? ({} as T)) };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
-    const s = trim(v);
+    const s = keep(v);
     if (s === undefined) delete out[k];
     else out[k] = s;
   }
@@ -284,7 +318,11 @@ export interface ContentGap {
  * manage, and listing them beside a partner's would read as the same obligation.
  */
 export function contentGaps(
-  input: IdentityInput & { contact?: TenantContact; pages?: Partial<Record<TenantPageKey, TenantPage>> },
+  input: IdentityInput & {
+    contact?: TenantContact;
+    pages?: Partial<Record<TenantPageKey, TenantPage>>;
+    site?: TenantSite;
+  },
 ): ContentGap[] {
   if (input.isDefault) return [];
   const id = resolveIdentity(input);
@@ -317,12 +355,24 @@ export function contentGaps(
       severity: REQUIRED_PAGE_KEYS.includes(key) ? 'blocking' : 'advisory',
     });
   }
+
+  /* The chosen layout's own copy. ALL ADVISORY, and `siteGaps` says why: a
+     missing headline is a gap in the shop window, where everything blocking
+     above is a statement that would otherwise be WRONG. It returns nothing at
+     all while the tenant is on our default layout, which has no hero to fill. */
+  for (const g of siteGaps({ isDefault: input.isDefault, name: displayName(input), site: input.site })) {
+    gaps.push({ key: 'site', field: g.field, label: g.label, severity: 'advisory' });
+  }
   return gaps;
 }
 
 /** True when nothing blocking is outstanding — the Phase 1 half of go-live. */
 export function contentReady(
-  input: IdentityInput & { contact?: TenantContact; pages?: Partial<Record<TenantPageKey, TenantPage>> },
+  input: IdentityInput & {
+    contact?: TenantContact;
+    pages?: Partial<Record<TenantPageKey, TenantPage>>;
+    site?: TenantSite;
+  },
 ): boolean {
   return !contentGaps(input).some((g) => g.severity === 'blocking');
 }
