@@ -133,9 +133,35 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
     design: 'Broker Templates — 1a Terminal',
     ready: true,
   },
+  {
+    /*
+     * FOLIO — Sir's "1b Editorial", whose own caption names its audience:
+     * "for advisors and research-led brokers".
+     *
+     * A NEWSPAPER, and the only one of the three with no cards in it at all.
+     * The design is a broadsheet: a centred masthead over a 3px DOUBLE rule,
+     * uppercase letter-spaced nav, a 56px lead headline with a standfirst, a
+     * four-figure band bounded top and bottom by hairlines, and lists that are
+     * rule-separated ROWS. Where Meridian frames one live card and Onyx packs
+     * a desk's table, this one reads like something written.
+     *
+     * Measured off the design file: paper #FBF8F3, ink #211A17, a deep wine
+     * accent #7A1E3F, rules #E6DED2 and #CBBFAF, muted #6B5F57, IBM Plex Sans,
+     * and SQUARE corners — the design gives its buttons a height and a padding
+     * and no radius at all, which is most of why it reads as print.
+     *
+     * Folio is a page, which is the name rather than the description. Sir
+     * approves the names; this is the proposal.
+     */
+    id: 'folio',
+    label: 'Folio',
+    blurb: 'An editorial broadsheet. A centred masthead, one lead issue written up at length, and lists set as rule-separated rows rather than cards. Suits an advisor whose clients read before they apply.',
+    design: 'Broker Templates — 1b Editorial',
+    ready: true,
+  },
 ];
 
-export type SiteTemplate = 'default' | 'meridian' | 'onyx';
+export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'folio';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.

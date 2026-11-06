@@ -6342,6 +6342,415 @@ html[data-template='onyx'] .tpl-hcard-nm { letter-spacing: -.01em; }
 html[data-template='onyx'] .tpl-vw { border-radius: var(--r-sm); padding: 2px; }
 html[data-template='onyx'] .tpl-vw button { border-radius: var(--r-sm); padding: 7px 14px; font-size: 13px; }
 
+
+/* ===== FOLIO — Sir's "1b Editorial" ====================================
+ * "for advisors and research-led brokers", in the design's own caption. A
+ * broadsheet: paper ground, deep wine accent, a centred masthead over a double
+ * rule, uppercase letter-spaced nav, and lists set as rule-separated ROWS.
+ *
+ * SQUARE CORNERS ARE THE SIGNATURE, and they are a measurement rather than a
+ * taste: the design gives its buttons a height and a padding and NO radius at
+ * all. Against Meridian's 12-28 and Onyx's 2-8, a radius of 0-2 is most of why
+ * this one reads as print.
+ *
+ * Every hex is measured off the design file.
+ */
+html[data-template='folio'] {
+  --bg: #FBF8F3;
+  --bg-2: #F4EFE7;
+  --surface: #FFFDF9;
+  --surface-2: #F7F2EA;
+  --text: #211A17;
+  --text-muted: #6B5F57;
+  --text-faint: #9A8C81;
+  --border: #E6DED2;
+  --border-2: #CBBFAF;
+
+  /* THE ACCENT IS A DEEP WINE and it replaces the brand scale wholesale — a
+     theme that kept our indigo for buttons and took wine for rules would read
+     as two brands on one page. */
+  --brand: #7A1E3F;
+  --brand-700: #5C1630;
+  --brand-600: #6B1A37;
+  --brand-500: #7A1E3F;
+  --brand-400: #8E2A4D;
+  --brand-200: #E8D4DB;
+  --brand-100: #F2E5EA;
+  --brand-50: #F9F0F3;
+
+  /* Signals warmed to sit on paper rather than on white. */
+  --pos: #1F6B45;
+  --pos-ink: #1F6B45;
+  --pos-soft: #E6F0E9;
+  --neg: #9B2C1E;
+  --neg-ink: #9B2C1E;
+  --neg-soft: #F6E7E3;
+  --warn: #8A5A12;
+  --warn-soft: #F7EEDC;
+  --gold: #8A5A12;
+  --gold-600: #8A5A12;
+  --gold-ink: #8A5A12;
+  --gold-50: #F7EEDC;
+
+  /* PRINT HAS NO ROUNDED CORNERS. 2px on the largest surface only, so a panel
+     still reads as a panel and nothing reads as a chip. */
+  --r-sm: 0px; --r: 0px; --r-lg: 2px; --r-xl: 2px; --r-2xl: 2px;
+
+  /* and no depth: a broadsheet separates with rules, never with shadow */
+  --sh-xs: none; --sh-sm: none; --sh-md: none; --sh-lg: none;
+
+  --maxw: 1180px;
+  --header-h: 150px;
+
+  --ring: 0 0 0 3px rgba(122,30,63,.26);
+  --ink-grad: linear-gradient(150deg, #7A1E3F 0%, #5C1630 56%, #2E0B18 100%);
+  --thm-foot-bg: #211A17;
+}
+
+/* THE MASTHEAD. Centred column, brand set large in the accent, uppercase nav
+   beneath, over the design's 3px DOUBLE rule — which is the one border in the
+   whole sheet that says "newspaper" without any other help. */
+html[data-template='folio'] .thm-head { border-bottom: 3px double var(--border-2); }
+html[data-template='folio'] .thm-head-in {
+  flex-direction: column; align-items: center; gap: 13px;
+  padding: 26px 24px 16px; text-align: center;
+}
+/* no square mark: the design sets the NAME large and leaves it at that */
+html[data-template='folio'] .thm-mark { display: none; }
+html[data-template='folio'] .thm-brand { gap: 0; }
+html[data-template='folio'] .thm-brand-nm {
+  font-size: clamp(28px, 4vw, 40px); font-weight: 700;
+  letter-spacing: -.5px; color: var(--brand); line-height: 1.05;
+}
+html[data-template='folio'] .thm-nav {
+  justify-content: center; flex-wrap: wrap; gap: 6px 22px;
+  font-size: 13px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase;
+}
+/* the actions join the centred column rather than being pushed right */
+html[data-template='folio'] .thm-head-act { margin-left: 0; }
+
+/* SQUARE BUTTONS. The design's own: a height, a padding, no radius — the
+   filled one in the accent, the quiet one a 1.5px rule in the ink. */
+html[data-template='folio'] .btn { border-radius: 0; }
+html[data-template='folio'] .btn-ghost,
+html[data-template='folio'] .btn-secondary { border-width: 1.5px; border-color: var(--text); color: var(--text); }
+
+/* PROSE IS THE POINT on this theme, so the type scale is a broadsheet's. */
+html[data-template='folio'] .container { padding: 32px 24px 72px; }
+html[data-template='folio'] h1 { font-size: clamp(34px, 5vw, 56px); line-height: 1.02; letter-spacing: -1px; }
+html[data-template='folio'] h2 { font-size: 30px; letter-spacing: -.3px; }
+html[data-template='folio'] h3 { font-size: 18px; }
+html[data-template='folio'] .section-head { margin: 40px 0 14px; border-bottom: 1px solid var(--border-2); padding-bottom: 10px; }
+
+/* flatten the surfaces that hardcode a shadow — a token cannot reach a literal */
+html[data-template='folio'] .panel,
+html[data-template='folio'] .panel:hover,
+html[data-template='folio'] .card,
+html[data-template='folio'] .card:hover,
+html[data-template='folio'] .ipocard,
+html[data-template='folio'] .ipocard:hover,
+html[data-template='folio'] .subv2-card,
+html[data-template='folio'] .subv2-det-panel,
+html[data-template='folio'] .feature,
+html[data-template='folio'] .stepcard { box-shadow: none; }
+html[data-template='folio'] .panel { border-radius: var(--r-lg); }
+
+html[data-template='folio'] .tpl-stat-i b,
+html[data-template='folio'] .tbl-num,
+html[data-template='folio'] td[data-num],
+html[data-template='folio'] .tpl-hero-fig { font-variant-numeric: tabular-nums; }
+
+/* FOLIO's page order. A paper leads with the written piece, then the week
+   ahead, then the lists. Ordered in tens so a section can be slipped between
+   two without renumbering. */
+html[data-template='folio'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='folio'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='folio'] .tpl-sec[data-sec='news']       { order: 30; }
+html[data-template='folio'] .tpl-sec[data-sec='gmp']        { order: 40; }
+html[data-template='folio'] .tpl-sec[data-sec='allotment']  { order: 50; }
+html[data-template='folio'] .tpl-sec[data-sec='rm']         { order: 60; }
+html[data-template='folio'] .tpl-sec[data-sec='steps']      { order: 70; }
+html[data-template='folio'] .tpl-sec[data-sec='features']   { order: 80; }
+html[data-template='folio'] .tpl-sec[data-sec='whatsapp']   { order: 90; }
+html[data-template='folio'] .tpl-sec[data-sec='app']        { order: 100; }
+
+/* THE LEAD. The design's hero is a written piece, not a split with a data card
+   in it: an eyebrow, a 56px headline, a standfirst, a band of four figures
+   bounded top and bottom by hairlines, then the actions. The live issue card
+   has no slot, so it goes — operator's call, "follow the design", and nothing
+   is lost: the issue it describes is the one the headline is about. */
+html[data-template='folio'] .tpl-hero { padding: 40px 0 34px; border-bottom: 1px solid var(--border); }
+html[data-template='folio'] .tpl-hero-in { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 48px; }
+html[data-template='folio'] .tpl-hcard { display: none; }
+html[data-template='folio'] .tpl-hero-eyebrow {
+  font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--brand);
+}
+html[data-template='folio'] .tpl-hero-sub { font-size: 19px; line-height: 1.55; color: #4A3F39; max-width: 46ch; }
+
+/* the four figures as a band ruled top and bottom, which is the design's own
+   treatment and the reason they read as a masthead strip rather than as tiles */
+html[data-template='folio'] .tpl-stat {
+  grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;
+  border-top: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2);
+  margin-top: 18px;
+}
+html[data-template='folio'] .tpl-stat-i {
+  background: transparent; border: 0; border-radius: 0; padding: 13px 0; gap: 4px;
+}
+html[data-template='folio'] .tpl-stat-i b { font-size: 22px; font-weight: 600; }
+html[data-template='folio'] .tpl-stat-i span {
+  font-size: 11.5px; letter-spacing: .8px; font-weight: 600; text-transform: uppercase;
+}
+html[data-template='folio'] .tpl-stat-asba { grid-column: auto; }
+
+/* the view switch as uppercase rules rather than a pill group */
+html[data-template='folio'] .tpl-vw { background: transparent; padding: 0; gap: 0; border-bottom: 1px solid var(--border-2); border-radius: 0; }
+html[data-template='folio'] .tpl-vw button {
+  border-radius: 0; background: transparent; padding: 9px 18px;
+  font-size: 12.5px; letter-spacing: .8px; text-transform: uppercase;
+  border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+html[data-template='folio'] .tpl-vw button.is-on { background: transparent; color: var(--brand); border-bottom-color: var(--brand); }
+
+
+/* ===== THE CARD, PER THEME =============================================
+ * Operator ask: a theme must differ in LAYOUT — "card design, detail and all"
+ * — not only in colour and type. This is the card half.
+ *
+ * ONE MECHANISM, AND IT NEEDS NO MARKUP CHANGE. `IpoCard` nests its pieces two
+ * deep: `.ic-top > .grow > (.ic-name, .ic-meta)`, with the logo and the
+ * countdown ring as siblings of `.grow`. CSS can only re-place SIBLINGS — so
+ * `display: contents` flattens both wrappers, every piece becomes a direct
+ * child of the card, and `order` rebuilds it into whatever the design asks
+ * for. The same idiom the section flow already uses, applied one level down.
+ *
+ * WHY NOT A SECOND CARD COMPONENT. The established pattern for a theme is
+ * "both in the DOM, CSS shows one" — right for a hero and a header, which
+ * appear once. A card appears sixteen times on the home page and in the
+ * hundreds on the archive, so a second component would double the heaviest
+ * repeated markup on the site. Flattening costs nothing.
+ *
+ * WHAT EACH THEME DROPS IS THE DESIGN'S DECISION, confirmed by the operator
+ * ("follow the design"). Meridian and Folio have no slot for the countdown
+ * ring or the chip row that opens the GMP / subscription / allocation panels.
+ * Neither reading is lost: the ring restates the status chip and the date row
+ * beside it, and both themes carry Allotment and Live subscription as full
+ * views in the section below. The detail page is unchanged on every theme.
+ *
+ * `.ic-top` loses `position: relative` when it is flattened. Nothing depends
+ * on it once `.ic-ring` is hidden, which every theme here does — so if a
+ * theme ever keeps the ring, it keeps `.ic-top` as a box too.
+ */
+
+/* ---- the shared flattening ------------------------------------------- */
+html[data-template] .ipocard > .ic-top,
+html[data-template] .ipocard > .ic-top > .grow { display: contents; }
+/* `.grow` carried the min-width:0 that stops a long name widening the row;
+   with the wrapper gone the name has to carry it itself. */
+html[data-template] .ipocard .ic-name { min-width: 0; }
+/* the ring and the chip row have no slot in any of the three designs */
+html[data-template] .ipocard .ic-ring,
+html[data-template] .ipocard .ic-topics,
+html[data-template] .ipocard .ic-corner { display: none; }
+/* ...and the logo plate and the two decorative pseudo-elements, which all
+   three designs leave out: a flat bordered box, a name, figures, an action.
+   Written once rather than three times — a theme that wants any of them back
+   re-enables it in its own block, where it reads as the exception it is. */
+html[data-template] .ipocard .ic-logo-link { display: none; }
+html[data-template] .ipocard::before,
+html[data-template] .ipocard::after { display: none; }
+
+/* ---- MERIDIAN: the design's own card --------------------------------- */
+/* Measured off the file: an auto-fill grid at a 280px floor, gap 14; the card
+   a flex column, gap 12, padding 18; then segment-against-status, the name at
+   17/800, a three-up Price/Lot/Size, dates-against-subscription, and one
+   full-width action. */
+html[data-template='meridian'] .ipo-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
+}
+html[data-template='meridian'] .ipocard {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px;
+}
+html[data-template='meridian'] .ipocard .ic-meta { order: 1; justify-content: space-between; margin: 0; width: 100%; }
+html[data-template='meridian'] .ipocard .ic-name { order: 2; font-size: 17px; font-weight: 800; line-height: 1.25; }
+html[data-template='meridian'] .ipocard .ic-specs {
+  order: 3; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0;
+}
+/* the default divider rule is `:nth-child(odd)`, which is written for TWO
+   columns and leaves the middle cell of three unruled */
+html[data-template='meridian'] .ipocard .ic-specs > div:nth-child(odd) { border-right: 0; }
+html[data-template='meridian'] .ipocard .ic-specs > div:not(:last-child) { border-right: 1px solid var(--border); }
+/* the v2 card rules EVERY cell, last one included, which draws a line
+   against the card's own inner edge once the grid is three wide */
+html[data-template='meridian'] .ipocard .ic-specs > div:last-child { border-right: 0; }
+html[data-template='meridian'] .ipocard .ic-keys { order: 4; margin: 0; }
+html[data-template='meridian'] .ipocard .ic-foot { order: 5; margin: 0; }
+/* the design ends on ONE action that fills the card */
+html[data-template='meridian'] .ipocard .ic-foot .btn { flex: 1 1 auto; justify-content: center; }
+
+/* ---- ONYX: a desk's row ---------------------------------------------- */
+/* The Terminal design is a TABLE — ISSUE / STATUS / DATES / PRICE / LOT /
+   SUBS — so on this theme a card IS a row, and the list is ruled rather than
+   gapped. `.ic-specs` is flattened too, so its three cells become three
+   columns of the row instead of a block inside one. */
+html[data-template='onyx'] .ipo-list { grid-template-columns: minmax(0, 1fr); gap: 0; }
+html[data-template='onyx'] .ipocard {
+  display: grid; align-items: center; gap: 0 14px;
+  grid-template-columns: minmax(0, 1fr) 120px 148px 64px repeat(3, 92px) 168px;
+  padding: 9px 12px; border-width: 0 0 1px; border-radius: 0; background: transparent;
+}
+html[data-template='onyx'] .ipocard:hover { background: var(--surface); }
+html[data-template='onyx'] .ipocard .ic-name { grid-column: 1; font-size: 14px; font-weight: 600; }
+html[data-template='onyx'] .ipocard .ic-meta { grid-column: 2; margin: 0; }
+html[data-template='onyx'] .ipocard .ic-dates { grid-column: 3; font-size: 12px; }
+html[data-template='onyx'] .ipocard .ic-subx2 { grid-column: 4; font-size: 12px; justify-content: flex-end; }
+/* `order` ON A `display: contents` ELEMENT DOES NOTHING, and that is the whole
+   bug. Flattening `.ic-specs` promotes its three cells to grid items in their
+   own right, and each carries its OWN order — which defaults to 0, ahead of
+   everything I had numbered. Measured: on Onyx the three spec cells took the
+   first three tracks and the company name landed at x=362 of its own row; on
+   Folio at x=472. The order has to go on the CHILDREN once the parent has
+   stopped being a box. */
+html[data-template='onyx'] .ipocard .ic-specs { display: contents; }
+html[data-template='onyx'] .ipocard .ic-specs > div:nth-child(1) { grid-column: 5; }
+html[data-template='onyx'] .ipocard .ic-specs > div:nth-child(2) { grid-column: 6; }
+html[data-template='onyx'] .ipocard .ic-specs > div:nth-child(3) { grid-column: 7; }
+html[data-template='onyx'] .ipocard .ic-specs > div {
+  border: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; text-align: right;
+}
+html[data-template='onyx'] .ipocard .ic-specs > div .k { font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+html[data-template='onyx'] .ipocard .ic-specs > div .v { font-size: 12.5px; }
+html[data-template='onyx'] .ipocard .ic-foot { grid-column: 8; margin: 0; justify-content: flex-end; min-width: 0; }
+html[data-template='onyx'] .ipocard .ic-closed,
+html[data-template='folio'] .ipocard .ic-closed { text-align: right; line-height: 1.3; }
+html[data-template='onyx'] .ipocard .ic-foot .btn { padding: 5px 10px; font-size: 12px; }
+
+/* ---- FOLIO: a ruled list row ----------------------------------------- */
+/* The Editorial design has no card anywhere in it: its lists are
+   `minmax(0,1fr) 110px 110px 90px`, hairline-topped and baseline-aligned, on
+   the paper itself rather than on a surface. */
+html[data-template='folio'] .ipo-list { grid-template-columns: minmax(0, 1fr); gap: 0; }
+html[data-template='folio'] .ipocard {
+  display: grid; align-items: baseline; gap: 4px 16px;
+  grid-template-columns: minmax(0, 1fr) 118px 118px 104px 164px;
+  padding: 14px 0; border: 0; border-top: 1px solid var(--border);
+  border-radius: 0; background: transparent;
+}
+html[data-template='folio'] .ipocard .ic-name { grid-column: 1; grid-row: 1; font-size: 18px; font-weight: 600; line-height: 1.25; }
+/* the status sits UNDER the name rather than beside it, the way a standfirst
+   sits under a headline */
+/* `grid-column` and `grid-row` cannot apply to a `display: contents`
+   element either — it has no box to place. The cells place themselves, in
+   their own order. */
+html[data-template='folio'] .ipocard .ic-specs { display: contents; }
+html[data-template='folio'] .ipocard .ic-specs > div:nth-child(1) { grid-column: 2; grid-row: 1; }
+html[data-template='folio'] .ipocard .ic-specs > div:nth-child(2) { grid-column: 3; grid-row: 1; }
+html[data-template='folio'] .ipocard .ic-specs > div:nth-child(3) { grid-column: 4; grid-row: 1; }
+/* the status sits UNDER the name, the way a standfirst sits under a
+   headline, and the date line runs the full measure beneath both */
+html[data-template='folio'] .ipocard .ic-meta { grid-column: 1; grid-row: 2; margin: 3px 0 0; }
+html[data-template='folio'] .ipocard .ic-specs > div {
+  border: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
+}
+html[data-template='folio'] .ipocard .ic-specs > div .k {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+}
+html[data-template='folio'] .ipocard .ic-specs > div .v { font-size: 15px; font-weight: 600; }
+/* the dates and the multiple run under the row, the way a dateline sits
+   under a headline, rather than competing with the figures above */
+/* the date and the multiple are one dateline, set beside the status chips
+   rather than on a line of their own */
+html[data-template='folio'] .ipocard .ic-keys {
+  grid-column: 2 / -1; grid-row: 2; margin: 3px 0 0;
+  justify-content: flex-start; gap: 18px; font-size: 13px;
+}
+html[data-template='folio'] .ipocard .ic-foot { grid-column: 5; grid-row: 1; margin: 0; justify-content: flex-end; min-width: 0; }
+
+/* ---- what a ROW theme has to undo, measured not guessed ---------------
+ * Shot at 1440 and read back: the date pill OVERLAPPED the Offer Price label
+ * on Onyx, because `.ic-keys` is a nowrap flex pair sitting in one fixed
+ * track; and the Lot Size cell carried a brand tint, because
+ * `.ic-specs > div.hi` paints one cell to pick it out of a 2x2 block — which
+ * is a card gesture and reads as a highlighted table cell in a row.
+ *
+ * `.ic-keys` IS FLATTENED TOO, which is the same idiom one level further: its
+ * two children become their own DATES and SUBS columns, exactly the shape the
+ * Terminal design draws. A pair that will not fit one track fits two.
+ */
+html[data-template='onyx'] .ipocard,
+html[data-template='folio'] .ipocard { gap: 4px 12px; }
+
+/* the pair becomes two columns rather than one crowded cell */
+html[data-template='onyx'] .ipocard .ic-keys { display: contents; }
+
+/* a date is a column of text here, not a chip */
+html[data-template='onyx'] .ipocard .ic-dates,
+html[data-template='folio'] .ipocard .ic-dates {
+  background: transparent; border: 0; border-radius: 0; padding: 0;
+  font-weight: 500; white-space: nowrap;
+}
+html[data-template='onyx'] .ipocard .ic-dates svg,
+html[data-template='folio'] .ipocard .ic-dates svg { display: none; }
+
+/* one tinted cell picks a figure out of a 2x2 block; in a row it reads as a
+   highlighted table cell */
+html[data-template='onyx'] .ipocard .ic-specs > div.hi,
+html[data-template='folio'] .ipocard .ic-specs > div.hi { background: transparent; }
+html[data-template='onyx'] .ipocard .ic-specs > div.hi .v,
+html[data-template='folio'] .ipocard .ic-specs > div.hi .v { color: var(--text); }
+html[data-template='onyx'] .ipocard .ic-specs > div.hi .k,
+html[data-template='folio'] .ipocard .ic-specs > div.hi .k { color: var(--text-muted); }
+
+/* the per-row icon buttons have no slot in either design's table, and the
+   actions they duplicate are on the detail page the row opens */
+html[data-template='onyx'] .ipocard .ic-foot .ghost-btn,
+html[data-template='folio'] .ipocard .ic-foot .ghost-btn { display: none; }
+
+/* ---- a table needs its columns to LINE UP, and its full measure -------
+ * Shot at 1440 and read back: the columns did not align across rows. Each
+ * card is its OWN grid, so a track sized `auto` resolves to that row's own
+ * content — the dates column was one width on a short date range and another
+ * on a long one, and everything after it shifted. Across four rows it read as
+ * four slightly different tables. EVERY TRACK IN A ROW THEME IS THEREFORE
+ * FIXED OR `fr`; none is `auto`.
+ *
+ * AND THE SIDEBAR GOES. `.h2-side` carries the app teaser beside the card
+ * grid, which is a card-view gesture; with it there the row had 910px and the
+ * name column collapsed to 34px once the other tracks were pinned. Hidden, the
+ * row gets the full ~1190 and the name gets 294. The sidebar is still on the
+ * default and on Meridian, which are card themes.
+ */
+html[data-template='onyx'] .h2-grid,
+html[data-template='folio'] .h2-grid { grid-template-columns: minmax(0, 1fr); }
+html[data-template='onyx'] .h2-side,
+html[data-template='folio'] .h2-side { display: none; }
+
+/* ---- the row themes collapse to a stack on a phone ------------------- */
+/* A six-column row cannot be read at 375, and a row that scrolls sideways
+   takes the page with it — so below 760 the card goes back to a block and
+   keeps its own rule. */
+@media (max-width: 760px) {
+  html[data-template='onyx'] .ipocard,
+  html[data-template='folio'] .ipocard {
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+    padding: 14px 0;
+  }
+  html[data-template='onyx'] .ipocard .ic-specs,
+  html[data-template='folio'] .ipocard .ic-specs {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  }
+  /* and the date pair goes back to being a pair */
+  html[data-template='onyx'] .ipocard .ic-keys {
+    display: flex; justify-content: space-between; gap: 10px; margin: 0;
+  }
+  html[data-template='onyx'] .ipocard .ic-specs > div,
+  html[data-template='folio'] .ipocard .ic-specs > div { text-align: left; }
+  html[data-template='onyx'] .ipocard .ic-foot,
+  html[data-template='folio'] .ipocard .ic-foot { justify-content: flex-start; }
+}
+
 /* ---- the three-view IPO section ---------------------------------------
  * The design's `#ipos` block: IPO Calendar / Allotment / Live subscription,
  * with the Table/Cards switch living inside the first.
@@ -6662,6 +7071,10 @@ html[data-template] .footer { display: none; }
   .thm-head-act .btn { padding: 7px 11px; font-size: 12.5px; }
   /* the name ellipsizes on the narrowest handsets instead of pushing */
   .thm-brand-nm { max-width: 118px; }
+  /* except on a CENTRED masthead, where the name has its own row and
+     nothing beside it to push — capping it truncated the nameplate, which
+     on this theme is the design */
+  html[data-template='folio'] .thm-brand-nm { max-width: none; }
 
   /* ITS OWN ROW, SCROLLING IN ITS OWN BOX — not `display: none`, which is what
      this block used to say. The four destinations are in the footer as well,
