@@ -109,9 +109,33 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
     design: 'Broker Website v2',
     ready: true,
   },
+  {
+    /*
+     * ONYX — Sir's "1a Terminal", whose own caption names its audience:
+     * "for trading-first brokers".
+     *
+     * UNCONDITIONALLY DARK, which is the point and not a dark MODE. The design
+     * is a trading desk: a near-black ground, dense rows, tight corners and one
+     * teal accent. Our own dark mode is a preference a reader sets; this is the
+     * design, so it looks the same whatever the operating system says —
+     * `html[data-template]` is (0,1,1) and beats the (0,1,0) `:root` the dark
+     * block uses, which is what makes that possible without a second mechanism.
+     *
+     * Measured off the file rather than invented: ground #0E1417, ink #E4ECEE,
+     * surfaces #141C1F and #1A2427, muted #7F9499, accent #13A39A, signals
+     * #5FD39A and #F2A33A, IBM Plex Sans, and radii of 2-8px against
+     * Meridian's 12-28. Where Meridian is a calm frame around one live card,
+     * this is a dense table a desk reads all day.
+     */
+    id: 'onyx',
+    label: 'Onyx',
+    blurb: 'Dark and dense, built for a trading desk. Tight rows, a teal accent and an issue table that reads at a glance. Suits a broker whose clients already trade.',
+    design: 'Broker Templates — 1a Terminal',
+    ready: true,
+  },
 ];
 
-export type SiteTemplate = 'default' | 'meridian';
+export type SiteTemplate = 'default' | 'meridian' | 'onyx';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.
@@ -200,9 +224,22 @@ export const SITE_FONTS: readonly SiteFontMeta[] = [
     body: 'Inter',
     cssVar: '--font-fraunces',
   },
+  {
+    /*
+     * IBM Plex Sans — what the Terminal design declares, and the reason it
+     * reads as a desk rather than a brochure: it carries a true monospace
+     * sibling and its figures sit on a consistent width, which is what a page
+     * of multiples and rupee amounts needs.
+     */
+    id: 'ibmplex',
+    label: 'IBM Plex Sans',
+    display: 'IBM Plex Sans',
+    body: 'IBM Plex Sans',
+    cssVar: '--font-ibmplex',
+  },
 ];
 
-export type SiteFont = 'default' | 'figtree' | 'manrope' | 'fraunces';
+export type SiteFont = 'default' | 'figtree' | 'manrope' | 'fraunces' | 'ibmplex';
 
 export const DEFAULT_FONT: SiteFont = 'default';
 

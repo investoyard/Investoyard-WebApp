@@ -4,6 +4,7 @@
  */
 import {
   SITE_TEMPLATES,
+  SiteFont,
   SITE_FONTS,
   SITE_TEXT_FIELDS,
   SITE_FLAG_FIELDS,
@@ -40,8 +41,19 @@ describe('the template registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
     /* Compile-time already pins this; the runtime check is what catches an id
        added to the list and never added to the union (or the reverse). */
-    const union: SiteTemplate[] = ['default', 'meridian'];
+    const union: SiteTemplate[] = ['default', 'meridian', 'onyx'];
     expect([...ids].sort()).toEqual([...union].sort());
+  });
+
+  it('pins the FONT list against its union too', () => {
+    /* The templates have had this guard since the registry existed and the
+       fonts never did — the same drift is possible on both, and `ibmplex` is
+       the first addition that could have shown it. */
+    const ids = SITE_FONTS.map((f) => f.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const union: SiteFont[] = ['default', 'figtree', 'manrope', 'fraunces', 'ibmplex'];
+    expect([...ids].sort()).toEqual([...union].sort());
+    expect(SITE_FONTS.some((f) => f.id === DEFAULT_FONT)).toBe(true);
   });
 
   it('carries the default as a REAL member, not as the absence of one', () => {

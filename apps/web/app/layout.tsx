@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Plus_Jakarta_Sans, Figtree, Manrope, Fraunces } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans, Figtree, Manrope, Fraunces, IBM_Plex_Sans } from 'next/font/google';
 import { ChromeWrapper } from '@/components/ChromeWrapper';
 import { PwaRegister } from '@/components/PwaRegister';
 import { OWN_HOSTS, SITE_ORIGIN, SITE_HOST } from '@/lib/site';
@@ -39,6 +39,10 @@ const jakarta = Plus_Jakarta_Sans({
 const figtree = Figtree({ subsets: ['latin'], display: 'swap', variable: '--font-figtree', weight: ['400', '500', '600', '700', '800'] });
 const manrope = Manrope({ subsets: ['latin'], display: 'swap', variable: '--font-manrope', weight: ['400', '500', '600', '700', '800'] });
 const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', weight: ['600', '700'] });
+/* Onyx's face. Four weights because this theme carries 500 and 600 through
+   dense table rows; a weight the font was not loaded with gets synthesised,
+   which on a page of figures reads as a smear. */
+const plex = IBM_Plex_Sans({ subsets: ['latin'], display: 'swap', variable: '--font-ibmplex', weight: ['400', '500', '600', '700'] });
 
 /**
  * The share card every forward renders.
@@ -137,7 +141,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const hostMap = flattenHostMap(await hostTemplateMap());
 
   return (
-    <html lang="en" className={`${inter.variable} ${jakarta.variable} ${figtree.variable} ${manrope.variable} ${fraunces.variable}`}>
+    <html lang="en" className={`${inter.variable} ${jakarta.variable} ${figtree.variable} ${manrope.variable} ${fraunces.variable} ${plex.variable}`}>
       <body>
         {/*
           * EVERYTHING THAT MUST BE RIGHT BEFORE THE BROWSER PAINTS, in one pass.

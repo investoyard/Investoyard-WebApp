@@ -5935,8 +5935,12 @@ html[data-template='meridian'] .detail-layout {
  */
 .tpl-flow, .tpl-sec { display: contents; }
 
-html[data-template='meridian'] .tpl-flow { display: flex; flex-direction: column; }
-html[data-template='meridian'] .tpl-sec { display: block; min-width: 0; }
+/* ANY theme, not Meridian's: every one of them wants a column of blocks, and
+   a second copy of these two rules is where two themes start to disagree about
+   what a section is. `html[data-template]` never matches our own pages,
+   because the default REMOVES the attribute rather than setting it. */
+html[data-template] .tpl-flow { display: flex; flex-direction: column; }
+html[data-template] .tpl-sec { display: block; min-width: 0; }
 
 /* GmpAccuracy, HomeNews, WhatsAppCta, RmCard and AppBand all legitimately
    render nothing, and a wrapper around nothing is still a flex item that still
@@ -5948,8 +5952,8 @@ html[data-template='meridian'] .tpl-sec { display: block; min-width: 0; }
    every page because a static export cannot branch on the host, so exactly one
    shows. */
 .tpl-sec[data-sec='brokerhero'] { display: none; }
-html[data-template='meridian'] .tpl-sec[data-sec='brokerhero'] { display: block; }
-html[data-template='meridian'] .tpl-sec[data-sec='hero'] { display: none; }
+html[data-template] .tpl-sec[data-sec='brokerhero'] { display: block; }
+html[data-template] .tpl-sec[data-sec='hero'] { display: none; }
 
 /* MERIDIAN's page order, from the design file top to bottom: hero, the issue
    table, the allotment + RM two-up, four steps, the pillars, then the app band.
@@ -6145,6 +6149,199 @@ html[data-template='meridian'] .tpl-sec[data-sec='app']        { order: 90; }
 }
 
 
+
+/* ===== ONYX — Sir's "1a Terminal" ======================================
+ * "for trading-first brokers", in the design's own caption. A trading desk:
+ * near-black ground, dense rows, tight corners, one teal accent.
+ *
+ * UNCONDITIONALLY DARK, which is not the same as a dark MODE. Our dark mode is
+ * a preference a reader sets at `:root`, specificity (0,1,0); this block is
+ * `html[data-template='onyx']` at (0,1,1) and therefore wins in both system
+ * settings. That one fact is what lets a dark DESIGN exist without a second
+ * mechanism — and it is also why every token the dark block redefines has to
+ * be redefined here, including the ones it only sets because the page went
+ * dark.
+ *
+ * Every hex is measured off the design file.
+ */
+html[data-template='onyx'] {
+  /* ground and ink */
+  --bg: #0E1417;
+  --bg-2: #111A1D;
+  --surface: #141C1F;
+  --surface-2: #1A2427;
+  --text: #E4ECEE;
+  --text-muted: #A3B4B8;
+  --text-faint: #7F9499;
+  --border: #1E292D;
+  --border-2: #2A383D;
+
+  /* THE ACCENT IS TEAL, and it replaces the brand scale wholesale. A theme
+     that kept our indigo for buttons and took teal for highlights would read
+     as two brands on one page. `--brand` is what every CTA, focus ring and
+     active chip resolves through. */
+  --brand: #13A39A;
+  --brand-700: #5FD3C8;
+  --brand-600: #2FBDB2;
+  --brand-500: #4FCABF;
+  --brand-400: #13A39A;
+  --brand-200: #0E3C3A;
+  --brand-100: #0B2E2C;
+  --brand-50: #04211F;
+
+  /* SIGNALS. The design states #5FD39A and #F2A33A; the loss red is derived
+     to sit beside them at the same lightness rather than borrowed from our
+     light palette, where #d8412a is far too dark on this ground. */
+  --pos: #5FD39A;
+  --pos-ink: #5FD39A;
+  --pos-soft: #0D2A1E;
+  --neg: #F4715F;
+  --neg-ink: #F4715F;
+  --neg-soft: #2E1614;
+  --warn: #F2A33A;
+  --warn-soft: #2C1F0C;
+  --gold: #F2A33A;
+  --gold-600: #F2A33A;
+  --gold-ink: #F2A33A;
+  --gold-50: #2C1F0C;
+
+  /* TIGHT CORNERS ARE THE SIGNATURE. The design's radii run 2 to 8 against
+     Meridian's 12 to 28 — it is most of why one reads as a desk and the other
+     as a brochure. */
+  --r-sm: 4px; --r: 6px; --r-lg: 8px; --r-xl: 10px; --r-2xl: 12px;
+
+  /* FLAT: depth on a near-black ground reads as smudge, not elevation. */
+  --sh-xs: none; --sh-sm: none; --sh-md: none;
+  --sh-lg: 0 24px 56px rgba(0,0,0,.6);
+
+  --maxw: 1280px;
+  --header-h: 65px;
+
+  --ring: 0 0 0 3px rgba(19,163,154,.32);
+  --ink-grad: linear-gradient(150deg, #13A39A 0%, #0B5F5A 52%, #04211F 100%);
+
+  /* the theme chrome's footer, darker still than the page */
+  --thm-foot-bg: #0A0F11;
+}
+
+/* THE FIVE RULES OUR DARK MODE NEEDS BESIDES TOKENS, mirrored here. They were
+   found by reading that block rather than guessing: it redefines 35 tokens AND
+   carries five rules that do more, and a dark theme that skipped them would
+   have a light body behind a dark page and a white-on-white button. */
+html[data-template='onyx'] body { background: var(--bg); color: var(--text); }
+html[data-template='onyx'] .btn-white { background: var(--surface-2); color: var(--text); }
+html[data-template='onyx'] .t-listed {
+  --tone: #7FB2D9; --tone-soft: #122332; --tone-ink: #A8CDEA;
+  --tone-solid: #7FB2D9; --tone-on: #0A1620; --tone-acc: rgba(127,178,217,.22);
+}
+html[data-template='onyx'] .t-awaiting {
+  --tone: #56B8C4; --tone-soft: #0F2A2E; --tone-ink: #9DDBE3;
+  --tone-solid: #56B8C4; --tone-on: #06181B; --tone-acc: rgba(86,184,196,.22);
+}
+/* ALLOTMENT OUT HAD TO BE MIRRORED TOO, and finding out why is the lesson: the
+   tone rule hardcodes --tone-ink: #8a6d1f, a dark gold measured against a
+   LIGHT tint, so it does not follow --gold-ink and landed at 3.28:1 on this
+   ground — the one status in the legend that failed here. The design's own
+   amber is 7.64:1 on the same tint. Measured by rendering a chip per status
+   and resolving it, not by reading the sheet. */
+html[data-template='onyx'] .t-allotment {
+  --tone: #F2A33A; --tone-soft: #2C1F0C; --tone-ink: #F2A33A;
+  --tone-solid: #F2A33A; --tone-on: #1A1204; --tone-acc: rgba(242,163,58,.24);
+}
+/* the remaining four read through --pos / --neg / --brand above, so a colour
+   cannot drift from the legend here */
+/* the other five statuses read through --pos/--neg/--brand/--gold above, so a
+   colour cannot drift from the legend here */
+
+/* THE NINE SURFACES THAT PIN THEMSELVES WHITE. Swept from the sheet: 26 rules
+   hardcode a white background and 17 are CORRECT in any theme — logo plates, a
+   white chip on a brand fill, and the share canvas, which is rasterised and
+   forwarded and must stay white wherever it is read. These nine are real
+   surfaces. Scoped to the theme rather than converted at the source, because
+   converting them would change OUR dark mode, which is not this theme's to
+   touch. */
+html[data-template='onyx'] .login2,
+html[data-template='onyx'] .login2 .inp,
+html[data-template='onyx'] .login2 .alt button,
+html[data-template='onyx'] .login2 .badge,
+html[data-template='onyx'] .login2 .core,
+html[data-template='onyx'] .login2 .lg-feat,
+html[data-template='onyx'] .fi-panel,
+html[data-template='onyx'] .fi-tile { background: var(--surface); color: var(--text); }
+html[data-template='onyx'] .fi-tl-dot { background: var(--brand); }
+
+/* A TOKEN CANNOT REACH A LITERAL, so the surfaces that hardcode a shadow are
+   flattened by hand — the same 67-against-81 split that had `.panel` still
+   shadowed on the IPO detail page while everything around it went flat. */
+html[data-template='onyx'] .panel,
+html[data-template='onyx'] .panel:hover,
+html[data-template='onyx'] .card,
+html[data-template='onyx'] .card:hover,
+html[data-template='onyx'] .ipocard,
+html[data-template='onyx'] .ipocard:hover,
+html[data-template='onyx'] .subv2-card,
+html[data-template='onyx'] .subv2-det-panel,
+html[data-template='onyx'] .feature,
+html[data-template='onyx'] .stepcard { box-shadow: none; }
+html[data-template='onyx'] .panel { border-radius: var(--r); }
+/* THE IPO CARD IS DECLARED TWICE in this sheet and the later one hardcodes
+   18px, so it has never read --r-lg for anyone — invisible on Meridian, whose
+   --r-lg is also 18. Tight corners are this theme's signature, so it is forced
+   here; the duplicate itself is a separate job, because repairing it changes
+   our own default card. */
+html[data-template='onyx'] .ipocard { border-radius: var(--r-lg); }
+
+/* DENSE. The design runs 11 to 22px where ours runs to 52 — a desk reads a
+   table, not a headline. */
+html[data-template='onyx'] .container { padding: 28px 24px 64px; }
+html[data-template='onyx'] h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.015em; }
+html[data-template='onyx'] h2 { font-size: 22px; letter-spacing: -.01em; }
+html[data-template='onyx'] h3 { font-size: 15px; }
+html[data-template='onyx'] .section-head { margin: 32px 0 14px; }
+
+/* FIGURES IN THE MONOSPACE SIBLING. IBM Plex ships one, and on a page of
+   multiples and rupee amounts a consistent figure width is the detail that
+   makes a column readable — the same reason Meridian does it. */
+html[data-template='onyx'] .tpl-stat-i b,
+html[data-template='onyx'] .tbl-num,
+html[data-template='onyx'] td[data-num],
+html[data-template='onyx'] .tpl-hero-fig {
+  font-family: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+/* ONYX's page order. A desk wants the table first: the hero is a thin band
+   over it, not a split screen. Ordered in tens so a section can be slipped
+   between two without renumbering. */
+html[data-template='onyx'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='onyx'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='onyx'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='onyx'] .tpl-sec[data-sec='rm']         { order: 40; }
+html[data-template='onyx'] .tpl-sec[data-sec='gmp']        { order: 50; }
+html[data-template='onyx'] .tpl-sec[data-sec='steps']      { order: 60; }
+html[data-template='onyx'] .tpl-sec[data-sec='features']   { order: 70; }
+html[data-template='onyx'] .tpl-sec[data-sec='news']       { order: 80; }
+html[data-template='onyx'] .tpl-sec[data-sec='whatsapp']   { order: 90; }
+html[data-template='onyx'] .tpl-sec[data-sec='app']        { order: 100; }
+
+/* ONYX's hero is a BAND, not a split. The design puts a utility strip, a
+   search and a dense table at the top; the statement is one line above them,
+   so the live issue card sits beside a much shorter column. */
+html[data-template='onyx'] .tpl-hero { padding: 32px 0 28px; }
+html[data-template='onyx'] .tpl-hero-in { gap: 32px; }
+html[data-template='onyx'] .tpl-hero-eyebrow { letter-spacing: .06em; text-transform: uppercase; font-size: 11.5px; }
+html[data-template='onyx'] .tpl-hero-sub { font-size: 15px; }
+html[data-template='onyx'] .tpl-hero-note { font-size: 12px; }
+
+/* the card's head takes the teal gradient rather than the brand indigo */
+html[data-template='onyx'] .tpl-hcard-top { background: var(--ink-grad); }
+html[data-template='onyx'] .tpl-hcard-nm { letter-spacing: -.01em; }
+
+/* the view switch, tighter and squarer */
+html[data-template='onyx'] .tpl-vw { border-radius: var(--r-sm); padding: 2px; }
+html[data-template='onyx'] .tpl-vw button { border-radius: var(--r-sm); padding: 7px 14px; font-size: 13px; }
+
 /* ---- the three-view IPO section ---------------------------------------
  * The design's `#ipos` block: IPO Calendar / Allotment / Live subscription,
  * with the Table/Cards switch living inside the first.
@@ -6302,6 +6499,7 @@ html[data-template] .tpl-vw {
 html[data-font='figtree']  { --font-display: var(--font-figtree);  --font-sans: var(--font-figtree); }
 html[data-font='manrope']  { --font-display: var(--font-manrope);  --font-sans: var(--font-manrope); }
 html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: var(--font-manrope); }
+html[data-font='ibmplex']  { --font-display: var(--font-ibmplex);  --font-sans: var(--font-ibmplex); }
 
 /* THE ADMIN CONSOLE KEEPS ITS OWN SCALE UNDER ANY THEME.
    `.admin-shell` sets its radii at (0,1,0), which LOSES to the theme block
@@ -6404,11 +6602,17 @@ html[data-template] .modal-overlay {
  * chrome is PAINTED first rather than swapped after hydration.
  */
 .thm-chrome, .thm-foot { display: none; }
-html[data-template='meridian'] .thm-chrome { display: block; }
-html[data-template='meridian'] .thm-foot { display: block; }
-html[data-template='meridian'] > body .header,
-html[data-template='meridian'] .header,
-html[data-template='meridian'] .footer { display: none; }
+/* ANY theme, not Meridian's. Every theme brings its own chrome; which one it
+   is, is not what these two rules decide — and keyed to one name they left
+   Onyx rendering OUR header on a near-black page. */
+html[data-template] .thm-chrome { display: block; }
+html[data-template] .thm-foot { display: block; }
+/* ANY theme hides our header, because any theme brings its own. Audited:
+   this was the last structural rule still keyed to one theme's name, and it
+   left Onyx rendering both. */
+html[data-template] > body .header,
+html[data-template] .header,
+html[data-template] .footer { display: none; }
 
 /* MERIDIAN's header: a 1240px bar, a square brand mark, 14.5px nav. Sticky at
    the top like ours, but its own object — white, hairline-bottomed, no
@@ -6492,7 +6696,12 @@ html[data-template='meridian'] .footer { display: none; }
    on its own with `auto-fit`, then the legal base. The ink is a literal rather
    than a token because the footer is the one surface that does NOT follow the
    page's light/dark theme in this design — it is dark in both. */
-.thm-foot { background: #14162A; color: rgba(255,255,255,.72); }
+/* THE INK IS A TOKEN, defaulting to Meridian's #14162A. The chrome is shared
+   by every theme and this footer is dark in both light and dark mode by
+   design, so the value belongs to the THEME rather than to the component —
+   Onyx's is darker still. A second footer component for the second theme is
+   how two of them come to disagree about the other twenty rules in here. */
+.thm-foot { background: var(--thm-foot-bg, #14162A); color: rgba(255,255,255,.72); }
 .thm-foot-in {
   max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 32px;
   display: flex; flex-direction: column; gap: 32px;
