@@ -629,6 +629,111 @@ export function PagesPanel({ slug, tenant, onSaved }: { slug: string; tenant: ap
  * The text boxes are the opposite and deliberately so: every box this panel
  * renders is posted, and an emptied one DELETES its field.
  */
+/**
+ * THE LIVE PREVIEW, as Sir drew it on the "admin partner site" screen: a
+ * browser-framed view of the partner's OWN site at the selected layout, with
+ * an "Open full page" link beside it.
+ *
+ * IT IS THE REAL SITE IN AN IFRAME, NOT A MOCK-UP. A mock-up of a layout is a
+ * second implementation of it, and it would start lying the first time the
+ * layout changed — which is exactly the trap a hand-copied `check.html` fell
+ * into when the featured panel was built: it rendered a perfect figure the real
+ * component could never produce. Same origin, so this is the shipped CSS, the
+ * shipped components and the partner's real brand colours.
+ *
+ * IT IS LAZY, AND THE REASON IS A MEASUREMENT. The home page is ~10 MB of baked
+ * markup, so auto-loading it would cost the operator that on every visit to
+ * this screen whether or not they wanted to look. The frame renders empty with
+ * a Show button; once mounted it stays, so switching layouts re-navigates one
+ * iframe rather than mounting a new one.
+ *
+ * THE PAGE PICKER IS THE POINT, not a nicety. A template is a site-wide look —
+ * chrome, type scale, density, surfaces — so a preview that could only ever
+ * show the home page would be unable to demonstrate the thing being chosen.
+ * Home shows the arrangement; the IPO detail page and a trust page show that
+ * the look carries.
+ *
+ * `preview=1` STOPS THE IFRAME WRITING THE PARTNER'S BRAND INTO THE OPERATOR'S
+ * OWN SESSION — see TenantProvider: sessionStorage is shared across a tab's
+ * same-origin frames.
+ */
+const PREVIEW_PAGES: { path: string; label: string }[] = [
+  { path: '/', label: 'Home' },
+  { path: '/ipos/open/', label: 'IPO list' },
+  { path: '/subscription/', label: 'Subscription' },
+  { path: '/terms/', label: 'Terms' },
+];
+
+/* Rendered at a desktop width and scaled down, so what the operator sees is the
+   DESKTOP layout rather than the mobile one a narrow iframe would trigger —
+   the templates differ most above the 1100px breakpoint, and a preview that
+   silently showed the phone layout would be worse than none. */
+const PREVIEW_W = 1280;
+const PREVIEW_H = 860;
+
+function SitePreview({ slug, template, font, domain }: {
+  slug: string; template: string; font: string; domain?: string;
+}) {
+  const [show, setShow] = useState(false);
+  const [page, setPage] = useState(PREVIEW_PAGES[0]!.path);
+
+  const q = `brand=${encodeURIComponent(slug)}&template=${encodeURIComponent(template)}`
+    + `&font=${encodeURIComponent(font)}&preview=1`;
+  const src = `${page}?${q}`;
+  const full = `${page}?${q.replace('&preview=1', '')}`;
+
+  return (
+    <div className="tplp-prev">
+      <div className="tplp-prev-head">
+        <span className="tplp-prev-ttl">Live preview</span>
+        <div className="tplp-prev-pages">
+          {PREVIEW_PAGES.map((p) => (
+            <button
+              key={p.path}
+              type="button"
+              className={page === p.path ? 'on' : ''}
+              onClick={() => setPage(p.path)}
+            >{p.label}</button>
+          ))}
+        </div>
+        <a className="linklike" href={full} target="_blank" rel="noreferrer">Open full page ↗</a>
+      </div>
+
+      {/* The browser frame from Sir's design: the three dots and the padlock
+          with the partner's own host, so it reads as THEIR site rather than a
+          panel in ours. Falls back to the slug when no domain is set — which is
+          honest, because without a domain this layout never reaches anyone. */}
+      <div className="tplp-prev-chrome">
+        <span className="tplp-prev-dots"><i /><i /><i /></span>
+        <span className="tplp-prev-url">{domain ? `🔒 ${domain}` : `${slug} — no domain set`}</span>
+      </div>
+
+      <div className="tplp-prev-body" style={{ height: Math.round(PREVIEW_H * 0.42) }}>
+        {show ? (
+          <iframe
+            title={`Preview of the ${slug} site`}
+            src={src}
+            className="tplp-prev-frame"
+            style={{ width: PREVIEW_W, height: PREVIEW_H }}
+            sandbox="allow-same-origin allow-scripts"
+          />
+        ) : (
+          <button type="button" className="btn btn-secondary tplp-prev-go" onClick={() => setShow(true)}>
+            Show preview
+          </button>
+        )}
+      </div>
+      {show ? (
+        <p className="hint tplp-prev-note">
+          The real site at this layout and brand, scaled to fit. Nothing here is saved, and the
+          preview cannot change your own session.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+
 export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void }) {
   const stored: api.TenantSite = tenant.content?.site ?? {};
   const [d, setD] = useState<api.TenantSite>(() => ({ ...stored }));
@@ -808,6 +913,17 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
           )}
         </>
       )}
+
+      {/* THE PREVIEW SHOWS THE DRAFT, NOT THE SAVED ROW — `template` and `d.font`
+          are the controls' current values, so picking a layout updates the frame
+          before Save is pressed. A preview that only reflected what was already
+          stored would make choosing a layout a matter of saving and hoping. */}
+      <SitePreview
+        slug={slug}
+        template={template}
+        font={(d.font ?? DEFAULT_FONT) as string}
+        domain={tenant.customDomain}
+      />
 
       <div className="tplp-actions" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>

@@ -578,7 +578,14 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  /* `var(--r)` rather than the literal 14px it replaced — the token IS 14px, so
+     this is a no-op on our own site, and it makes the panel follow the
+     per-template radii and the admin scale instead of being the one main
+     surface that ignores them. `.card`, `.ipocard`, `.feature` and `.stepcard`
+     already read `var(--r-lg)`; this was the gap, found by a template check
+     measuring a panel that stayed rounded and shadowed when every other
+     surface had gone flat. */
+  border-radius: var(--r);
   padding: 22px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.03);
   transition: box-shadow .2s ease;
@@ -2661,10 +2668,10 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .anchor-row:first-of-type { border-top: 0; }
 .anchor-name { min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .anchor-head { padding-bottom: 4px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--muted); }
+  text-transform: uppercase; color: var(--text-muted); }
 .anchor-head .anchor-name { font-size: inherit; letter-spacing: inherit; color: inherit; }
 .anchor-tally { margin: 10px 0 0; font-size: 12.5px; }
-.anchor-tally.ok { color: var(--muted); }
+.anchor-tally.ok { color: var(--text-muted); }
 /* an off tally is a data-entry fault, not a financial signal — amber, not the
    loss red, which is reserved (see the colour-code rule in CLAUDE.md) */
 .anchor-tally.off { color: #a1670a; font-weight: 600; }
@@ -5935,7 +5942,7 @@ html[data-template='landing'] .tpl-sec[data-sec='app']        { order: 90; }
 .tpl-util-sp { flex: 1; }
 .tpl-util-link {
   display: inline-flex; align-items: center; gap: 4px;
-  color: var(--muted); text-decoration: none; white-space: nowrap;
+  color: var(--text-muted); text-decoration: none; white-space: nowrap;
 }
 .tpl-util-link:hover { color: var(--text); }
 
@@ -5946,16 +5953,16 @@ html[data-template='landing'] .tpl-sec[data-sec='app']        { order: 90; }
   margin: 0 0 14px; font-family: var(--font-display), var(--font-sans), sans-serif;
   font-size: 44px; line-height: 1.08; letter-spacing: -.02em; text-wrap: balance;
 }
-.tpl-hero-sub { margin: 0 0 24px; font-size: 17px; line-height: 1.55; color: var(--muted); max-width: 58ch; }
+.tpl-hero-sub { margin: 0 0 24px; font-size: 17px; line-height: 1.55; color: var(--text-muted); max-width: 58ch; }
 .tpl-hero-cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.tpl-hero-note { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
+.tpl-hero-note { margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
 .tpl-stat {
   margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 22px;
-  font-size: 13px; color: var(--muted);
+  font-size: 13px; color: var(--text-muted);
 }
 .tpl-stat-i { display: inline-flex; align-items: baseline; gap: 6px; }
 .tpl-stat-i b { font-size: 19px; color: var(--text); font-variant-numeric: tabular-nums; }
-.tpl-stat-asba { color: var(--muted); }
+.tpl-stat-asba { color: var(--text-muted); }
 
 /* DASHBOARD trims the hero so the cards clear the fold; LANDING centres it. */
 html[data-template='dashboard'] .tpl-hero { padding: 26px 0 22px; }
@@ -5985,18 +5992,18 @@ html[data-template='landing'] .tpl-stat { justify-content: center; }
   background: var(--brand-50); color: var(--brand-700);
   font-weight: 700; font-size: 15px; letter-spacing: .02em;
 }
-.tpl-rm-lbl { display: block; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tpl-rm-lbl { display: block; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
 .tpl-rm-name { margin: 2px 0 0; font-size: 18px; }
-.tpl-rm-role { margin: 1px 0 0; font-size: 13px; color: var(--muted); }
-.tpl-rm-blurb { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--muted); max-width: 64ch; }
+.tpl-rm-role { margin: 1px 0 0; font-size: 13px; color: var(--text-muted); }
+.tpl-rm-blurb { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text-muted); max-width: 64ch; }
 .tpl-rm-contact { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .tpl-rm-ct { font-weight: 600; font-variant-numeric: tabular-nums; }
-.tpl-rm-cta { font-size: 13px; color: var(--muted); }
+.tpl-rm-cta { font-size: 13px; color: var(--text-muted); }
 
 /* ---- the app band ------------------------------------------------------- */
 .tpl-app { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .tpl-app-txt h3 { margin: 0 0 4px; font-size: 18px; }
-.tpl-app-txt p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.tpl-app-txt p { margin: 0; font-size: 14.5px; color: var(--text-muted); }
 .tpl-app-cta { flex: none; display: inline-flex; align-items: center; gap: 7px; }
 
 /* ---- the fonts ---------------------------------------------------------
@@ -6038,7 +6045,7 @@ html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: 
 .tplp-opt.is-on { border-color: var(--brand-400); background: var(--brand-50); }
 .tplp-opt input { position: absolute; top: 14px; left: 13px; margin: 0; }
 .tplp-opt-h { font-weight: 650; font-size: 13.5px; }
-.tplp-opt-d { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.tplp-opt-d { font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
 .tplp-opt-src { justify-self: start; margin-top: 2px; }
 .tplp-tog {
   display: flex; align-items: center; gap: 9px;
@@ -6093,7 +6100,7 @@ html[data-template='detail'] .h2-grid { display: none; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tpl-split-st { flex: none; }
-.tpl-split-row-b { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.tpl-split-row-b { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-muted); }
 .tpl-split-brd { letter-spacing: .03em; }
 .tpl-split-sub { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
 
@@ -6106,16 +6113,16 @@ html[data-template='detail'] .h2-grid { display: none; }
   margin: 8px 0 2px; font-size: 22px; line-height: 1.2;
   font-family: var(--font-display), var(--font-sans), sans-serif;
 }
-.tpl-split-meta { margin: 0; font-size: 12.5px; color: var(--muted); letter-spacing: .02em; }
+.tpl-split-meta { margin: 0; font-size: 12.5px; color: var(--text-muted); letter-spacing: .02em; }
 .tpl-split-kv {
   margin: 0; display: grid; gap: 1px 18px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 .tpl-split-kv-i { padding: 9px 0; border-top: 1px solid var(--border); }
-.tpl-split-kv dt { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.tpl-split-kv dt { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
 .tpl-split-kv dd { margin: 3px 0 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tpl-split-act { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
-.tpl-split-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+.tpl-split-note { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
 
 /* A master/detail is a DESKTOP reading surface. On a phone there is no room for
    two panes, so the list becomes the whole surface and the pane follows it —
@@ -6130,6 +6137,233 @@ html[data-template='detail'] .h2-grid { display: none; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   margin-top: 2px; padding: 9px 12px;
   border: 1px dashed var(--border-2); border-radius: 10px;
-  font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted); text-decoration: none;
 }
 .tpl-split-all:hover { color: var(--text); border-color: var(--brand-400); }
+
+/* =========================================================================
+ * SITE-WIDE TEMPLATE LOOKS — what makes a template change all 43 pages
+ * rather than only the home page.
+ *
+ * WHY THIS IS TOKENS AND NOT A RULE PER PAGE. The stylesheet is already
+ * heavily tokenised: `--border` is consumed 198 times, `--text` 122,
+ * `--surface` 112, `--bg-2` 96, `--sh-sm` 35, `--r-lg` 24, `--maxw` 6,
+ * `--header-h` 10. Redefining a token therefore reaches hundreds of existing
+ * rules on every page at once — the header, the footer, every card, every
+ * panel, every table, the trust pages — with no per-page work and nothing new
+ * to keep in step. Writing four variants of 43 pages by hand is the
+ * alternative, and it would drift the week after it shipped.
+ *
+ * `html[data-template='x']` IS (0,1,1), WHICH BEATS BOTH EXISTING TOKEN
+ * SCOPES — the dark-mode block is a plain `:root` (0,1,0) and the admin shell
+ * is `.admin-shell` (0,1,0). That is what makes these overrides land, and it is
+ * also why the admin scale has to be restored explicitly at the bottom of this
+ * block: an operator opening /admin on a partner host would otherwise get that
+ * partner's radii in our own console.
+ *
+ * ONLY STRUCTURAL TOKENS ARE TOUCHED — radii, shadows, widths, header height,
+ * type scale, spacing. NOT colours: those are the tenant's brand (set by
+ * `applyBranding`) and the theme's (set by the dark block), and a template
+ * reaching into either would be a third opinion about what colour a surface is.
+ * ========================================================================= */
+
+/* BROKER — Sir's Broker Website v2: "a full hero, then the table. Best for a
+   broker introducing themselves to clients who have not met them yet."
+   Generous and marketing-led: a taller header, soft large radii, shadows kept. */
+html[data-template='broker'] {
+  --maxw: 1200px;
+  --header-h: 72px;
+  --r-sm: 12px; --r: 16px; --r-lg: 22px; --r-xl: 28px;
+}
+html[data-template='broker'] .container { padding: 40px 22px 104px; }
+html[data-template='broker'] h1 { font-size: clamp(32px, 5vw, 44px); }
+html[data-template='broker'] h2 { font-size: clamp(24px, 3.2vw, 30px); }
+html[data-template='broker'] .section-head { margin: 46px 0 18px; }
+
+/* DASHBOARD — 2a: "IPO cards first. Best for brokers whose clients come to
+   apply." Dense and functional: the widest container so tables and cards fit
+   more, a short header, tight radii, and SHADOWS OFF so surfaces are separated
+   by hairlines instead of depth. That is the single change that most makes a
+   site read as a tool rather than a brochure. */
+html[data-template='dashboard'] {
+  --maxw: 1340px;
+  --header-h: 56px;
+  --r-sm: 6px; --r: 8px; --r-lg: 10px; --r-xl: 12px;
+  --sh-xs: none; --sh-sm: none; --sh-md: none;
+}
+html[data-template='dashboard'] .container { padding: 20px 18px 72px; }
+html[data-template='dashboard'] h1 { font-size: clamp(24px, 3.4vw, 30px); }
+html[data-template='dashboard'] h2 { font-size: clamp(19px, 2.2vw, 22px); }
+html[data-template='dashboard'] .section-head { margin: 28px 0 12px; }
+
+/* DETAIL — 2b: "Pick an IPO on the left, read it all on the right. Best for
+   advisors and research-led brokers." A reading surface: flat hairline
+   surfaces, modest radii, and PROSE GIVEN ROOM — the line height and measure
+   are the whole point of a research look, and they are what the two-pane
+   layout on the home page is for. */
+html[data-template='detail'] {
+  --maxw: 1280px;
+  --header-h: 60px;
+  --r-sm: 8px; --r: 10px; --r-lg: 12px; --r-xl: 14px;
+  --sh-xs: none; --sh-sm: none;
+}
+html[data-template='detail'] .container { padding: 28px 22px 88px; }
+html[data-template='detail'] h1 { font-size: clamp(26px, 3.6vw, 32px); }
+html[data-template='detail'] h2 { font-size: clamp(20px, 2.4vw, 24px); }
+html[data-template='detail'] .section-head { margin: 34px 0 14px; }
+/* `.trust-page .prose p` already sets 1.75, so that is deliberately NOT
+   restated here — this reaches prose elsewhere (news posts, IPO about
+   sections) which has no such rule. */
+html[data-template='detail'] .prose p { line-height: 1.75; }
+
+/* LANDING — 2c: "Calm, centred, explains as it goes. Best for fintechs signing
+   up first-time investors." Airy: the NARROWEST container, the largest radii
+   and type, and the most room between sections. A first-time investor is
+   reading, not scanning a table. */
+html[data-template='landing'] {
+  --maxw: 1060px;
+  --header-h: 68px;
+  --r-sm: 14px; --r: 20px; --r-lg: 28px; --r-xl: 34px;
+}
+html[data-template='landing'] .container { padding: 48px 22px 112px; }
+html[data-template='landing'] h1 { font-size: clamp(34px, 5.4vw, 48px); }
+html[data-template='landing'] h2 { font-size: clamp(25px, 3.4vw, 32px); }
+html[data-template='landing'] .section-head { margin: 56px 0 20px; }
+
+/* THE ADMIN CONSOLE KEEPS ITS OWN SCALE UNDER ANY TEMPLATE.
+   `.admin-shell` sets `--r-lg: 12px; --r: 10px; --r-sm: 8px` at (0,1,0), which
+   LOSES to the blocks above — so without this, an operator who opens /admin on
+   a partner's host, or with `?template=`, would get that partner's radii in our
+   own console. (0,1,1) + (0,1,0) = (0,2,1), which wins. */
+html[data-template] .admin-shell,
+html[data-template] .modal-overlay {
+  --r-lg: 12px; --r: 10px; --r-sm: 8px;
+}
+
+/* ---- admin: the live preview ---------------------------------------------
+ * Sir's "admin partner site" screen: a browser-framed view of the partner's
+ * own site at the selected layout. `tplp-` so an admin rule can never reach
+ * the public layouts it is describing.
+ */
+.tplp-prev { margin-top: 18px; }
+.tplp-prev-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-bottom: 8px;
+}
+.tplp-prev-ttl {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tplp-prev-pages { display: flex; gap: 2px; margin-left: auto; }
+.tplp-prev-pages button {
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 4px 9px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-muted); border-radius: 7px;
+}
+.tplp-prev-pages button:hover { color: var(--text); }
+.tplp-prev-pages button.on { background: var(--brand-50); border-color: var(--brand-400); color: var(--brand-700); }
+
+/* the browser frame */
+.tplp-prev-chrome {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 11px; background: var(--bg-2);
+  border: 1px solid var(--border); border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+}
+.tplp-prev-dots { display: inline-flex; gap: 4px; flex: none; }
+.tplp-prev-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border-2); }
+.tplp-prev-url {
+  font-size: 11.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.tplp-prev-body {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 0 0 10px 10px;
+  background: var(--surface);
+  display: grid; place-items: center;
+}
+/* RENDERED AT 1280px AND SCALED, so the operator sees the DESKTOP layout. A
+   narrow iframe would trip the site's own breakpoints and quietly show the
+   phone layout — and the templates differ most ABOVE 1100px, which is the
+   measurement that caught a grid fault being invisible at every width the
+   browser pane happened to be. `transform` does not re-layout, so the page
+   inside still believes it is 1280 wide. */
+.tplp-prev-frame {
+  position: absolute; top: 0; left: 0;
+  border: 0; transform: scale(0.42); transform-origin: top left;
+  /* a preview is for looking at, not clicking through */
+  pointer-events: none;
+}
+.tplp-prev-go { position: relative; z-index: 1; }
+.tplp-prev-note { margin: 7px 0 0; }
+
+/* ---- per-template arrangement on the IPO DETAIL page --------------------
+ * The most-read consumer page after home, and the one where the four looks
+ * have genuinely different jobs. The token layer above already changed its
+ * surfaces, type and width; this changes its SHAPE.
+ *
+ * `.detail-layout` is `minmax(0, 1fr) 330px` by default — a reading column and
+ * a sticky rail. `minmax(0, …)` is kept in every override below, and not as a
+ * formality: a grid track's automatic minimum is its CONTENT, so a bare `1fr`
+ * grows to min-content and pushes the page sideways. That is exactly what made
+ * every IPO detail page scroll horizontally on a phone (600px of content in a
+ * 347px parent), and it is the one mistake to not re-introduce here.
+ *
+ * Nothing here touches the SECTION ORDER. The detail page's order is
+ * stage-driven — `IpoDetailView` reorders by whether the issue is open,
+ * awaiting or listed — and a template shuffling that would be a second opinion
+ * about what matters today, which is the stage engine's answer and not a
+ * partner's preference.
+ */
+
+/* BROKER — the default shape, just more air: a broker introducing themselves
+   has room to breathe. */
+html[data-template='broker'] .detail-layout {
+  grid-template-columns: minmax(0, 1fr) 340px; gap: 38px;
+}
+
+/* DASHBOARD — "clients come to apply": a narrower rail and a tighter gutter,
+   so the figures and the apply CTA get the width. Dense, not airy. */
+html[data-template='dashboard'] .detail-layout {
+  grid-template-columns: minmax(0, 1fr) 296px; gap: 22px;
+}
+
+/* DETAIL — "advisors and research-led brokers": the WIDEST rail, because on a
+   research surface the contents list and the key figures are navigation the
+   reader keeps coming back to, not decoration. */
+html[data-template='detail'] .detail-layout {
+  grid-template-columns: minmax(0, 1fr) 366px; gap: 34px;
+}
+
+/* LANDING — "first-time investors": ONE COLUMN. A rail of figures beside the
+   prose is a research affordance, and for someone reading their first IPO page
+   it competes with the thing they are trying to read. The rail's content still
+   renders, below, in the order it was written.
+   No `position: static` reset is needed and one is deliberately not written:
+   `.detail-aside` is `align-self: stretch` and nothing makes it sticky, so a
+   reset would be a line implying a behaviour that does not exist. */
+html[data-template='landing'] .detail-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The subscription card's three-column grid is the densest thing on the site;
+   dashboard tightens it, landing lets it fall to the stacked layout it already
+   has below 1100px. Both keep `minmax(0, …)` for the reason above. */
+html[data-template='dashboard'] .subv2-det-in { gap: 10px; }
+
+/* THE FLAT LOOKS HAVE TO FLATTEN THE SURFACES THAT HARDCODE A SHADOW.
+ * `--sh-sm: none` takes the 35 rules that READ the token flat, but 67 rules in
+ * this sheet write a literal box-shadow — `.panel` among them — so a template
+ * check caught a panel still shadowed on the IPO detail page while everything
+ * around it had gone flat. These are the surfaces a reader actually sees; the
+ * rest of the 67 are chips, segmented controls and focus rings, which are
+ * affordances rather than surfaces and are deliberately left alone. */
+html[data-template='dashboard'] .panel,
+html[data-template='dashboard'] .panel:hover,
+html[data-template='dashboard'] .subv2-card,
+html[data-template='dashboard'] .subv2-card:hover,
+html[data-template='detail'] .panel,
+html[data-template='detail'] .panel:hover,
+html[data-template='detail'] .subv2-card,
+html[data-template='detail'] .subv2-card:hover { box-shadow: none; }

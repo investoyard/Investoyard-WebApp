@@ -56,7 +56,17 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const params = new URLSearchParams(window.location.search);
     const brandParam = params.get('brand');
-    if (brandParam) {
+    /*
+     * `?preview=1` RESOLVES THE BRAND WITHOUT PERSISTING IT, and that is not a
+     * nicety — the admin panel's live preview is a SAME-ORIGIN IFRAME, and
+     * sessionStorage is shared across a tab's same-origin frames. Without this,
+     * previewing a partner would write `iy_brand` into the OPERATOR's own tab,
+     * and the next consumer page they opened would silently wear that
+     * partner's brand. The preview still gets the brand for this render; it
+     * just leaves no trace.
+     */
+    const ephemeral = params.get('preview') === '1';
+    if (brandParam && !ephemeral) {
       try { sessionStorage.setItem('iy_brand', brandParam); } catch { /* ignore */ }
     }
     let slug: string | null = brandParam;
