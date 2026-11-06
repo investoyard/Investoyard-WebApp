@@ -4,6 +4,7 @@ import { IpoExplorer } from '@/components/IpoExplorer';
 import { IpoExplorer2 } from '@/components/IpoExplorer2';
 import { HeroBanner } from '@/components/HeroBanner';
 import { BrokerHero } from '@/components/BrokerHero';
+import { ThemeIpoSection } from '@/components/ThemeIpoSection';
 import { FeaturedIpoModal } from '@/components/FeaturedIpoModal';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
@@ -71,7 +72,14 @@ export async function HomeView({ lang, v2 = false }: { lang: Lang; v2?: boolean 
              own layout that is this wrapper, which computes `display: contents`
              and therefore generates no box to scroll to. */}
         <div className="tpl-sec" data-sec="explorer">
-          {v2 ? <IpoExplorer2 ipos={ipos} lang={lang} /> : <IpoExplorer ipos={ipos} lang={lang} />}
+          {/* THE EXPLORER IS PASSED IN AS CHILDREN, so it mounts once. A theme
+              wraps it with the design's three-view switch (IPO Calendar /
+              Allotment / Live subscription); on our own layout that switch is
+              hidden by CSS and the default view is the calendar, so this
+              renders exactly what it rendered before the wrapper existed. */}
+          <ThemeIpoSection ipos={ipos as any} lang={lang}>
+            {v2 ? <IpoExplorer2 ipos={ipos} lang={lang} /> : <IpoExplorer ipos={ipos} lang={lang} />}
+          </ThemeIpoSection>
         </div>
 
         {/* ---------- allotment checker: did you get the shares? ---------- */}

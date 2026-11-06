@@ -32,72 +32,98 @@ import { shortName } from './format';
 /* --------------------------------------------------------------- templates */
 
 /**
- * The layouts a tenant may choose, and the ONE place their ids live.
+ * The THEMES a white-label may choose, and the ONE place their ids live.
  *
- * `design` records which of Sir's canvas variants each one is, so a layout can
- * be traced back to the artwork it came from after the canvas file is gone. The
- * ids themselves are SEMANTIC rather than canvas coordinates ('2a', '2b'): they
- * end up in a `data-template` attribute, in CSS selectors and in a stored
- * database value, and a position on someone's canvas is the worst of all
- * possible durable names.
+ * A THEME IS A COMPLETE WEBSITE DESIGN, NOT A RE-SKIN OF OURS — and that
+ * distinction is the whole point of this file, because the first attempt got it
+ * wrong. Sir's `.dc.html` files are not variations on investoyard.com; each is
+ * its own site that happens to show IPO data, with its own neutral palette, its
+ * own type, its own header and footer and its own components. The first version
+ * of this registry listed four entries named Broker / Dashboard / List and
+ * detail / Landing, which were our site with different radii and widths. Those
+ * were not themes and are gone.
  *
- * `blurb` is Sir's own caption, verbatim where he wrote one. It says who each
- * layout is FOR, which is the only thing that helps an operator choose, and it
- * is better copy than anything that would be written to replace it.
+ * THE ID IS THE DURABLE THING AND THE NAME IS NOT. `id` is stored in the
+ * database, baked into the host map, written into a `data-template` attribute
+ * and read by CSS selectors — so it never changes. `label` is a display name an
+ * operator may rename freely, which is why the two are separate fields and why
+ * a rename is never a migration.
+ *
+ * IDS ARE NAMES, NEVER CANVAS COORDINATES. '2a' and '2b' are positions on
+ * someone's canvas and are the worst possible durable identifier; `design`
+ * records that provenance instead, so a theme can be traced back to the artwork
+ * after the canvas file is gone.
+ *
+ * WHAT A THEME OWNS AND WHAT IT DOES NOT: it owns the NEUTRALS (ink, muted,
+ * borders, surfaces, page background), the radii, the widths, the type scale
+ * and its own chrome. It does NOT own the BRAND colour — that is the tenant's,
+ * set from `Tenant.brandColor` through `palette()`, so one theme carries every
+ * partner's own identity. The design files say the same thing: they parameterise
+ * P / PD / PL / T / A and hardcode their greys.
  */
 export interface SiteTemplateMeta {
   id: SiteTemplate;
+  /** The display name. An operator may rename this; the id is what persists. */
   label: string;
-  /** Who this layout is for. Shown in the admin selector. */
+  /** What this theme is and who it suits. Shown in the admin selector. */
   blurb: string;
-  /** The canvas variant this was built from, for traceability. */
+  /** The design file this was built from, for traceability. */
   design?: string;
+  /** False while a theme is only partly implemented — see `themeReady`. */
+  ready?: boolean;
 }
 
 /*
- * ANNOTATED `readonly SiteTemplateMeta[]`, NOT `as const satisfies`, and that is
- * a correction rather than a style choice. `as const` narrows each entry to its
- * OWN literal type, and a literal type does not carry an optional field that
- * entry happens to omit — so `t.design` was a compile error on the one entry
- * without a design, for every consumer that looped the list. It broke the spec
- * and then the admin panel, in the same way, twice. The narrow `id` literals
- * bought nothing here: `SiteTemplate` is declared on its own rather than
- * derived from this list.
+ * ANNOTATED `readonly SiteTemplateMeta[]`, NOT `as const satisfies`. `as const`
+ * narrows each entry to its OWN literal type, and a literal type does not carry
+ * an optional field that entry omits — so `t.design` was a compile error on the
+ * one entry without a design, for every consumer that looped the list. It broke
+ * the spec and then the admin panel, the same way, twice.
  */
 
 export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
   {
     id: 'default',
-    label: 'Investoyard (default)',
-    blurb: 'Our own layout, exactly as investoyard.com renders it. Chosen when nothing else is.',
+    label: 'Investoyard',
+    blurb: 'Our own site, exactly as investoyard.com renders it. Used when no theme is chosen.',
+    ready: true,
   },
   {
-    id: 'broker',
-    label: 'Broker',
-    blurb: 'A full hero, then the IPO table. Best for a broker introducing themselves to new clients.',
+    /*
+     * MERIDIAN — Sir's Broker Website v2, implemented as a theme.
+     *
+     * Named rather than described: "Broker" said what it was for, not what it
+     * is, and the operator asked for theme names. Meridian is the reference
+     * line a market reads its position against, which is what this design does
+     * — a calm institutional frame with one live data card at its centre.
+     *
+     * Its own world, measured off the design file rather than invented: a
+     * blue-grey slate scale (#181A2E ink, #5C6187 muted, #ECEDF6 borders,
+     * #F5F5FA page, #14162A footer) against our purple-grey; a 1240px measure
+     * against our 1160; Plus Jakarta Sans over Noto Sans; and card radii from
+     * 12 to 22px.
+     */
+    id: 'meridian',
+    label: 'Meridian',
+    blurb: 'Calm and institutional. A split hero with one live IPO card, then the issue table in four views. Suits a broker introducing themselves to clients who have not met them yet.',
     design: 'Broker Website v2',
-  },
-  {
-    id: 'dashboard',
-    label: 'Dashboard',
-    blurb: 'IPO cards first. Best for brokers whose clients come to apply.',
-    design: '2a',
-  },
-  {
-    id: 'detail',
-    label: 'List and detail',
-    blurb: 'Pick an IPO on the left, read it all on the right. Best for advisors and research-led brokers.',
-    design: '2b',
-  },
-  {
-    id: 'landing',
-    label: 'Landing',
-    blurb: 'Calm, centred, explains as it goes. Best for fintechs signing up first-time investors.',
-    design: '2c',
+    ready: true,
   },
 ];
 
-export type SiteTemplate = 'default' | 'broker' | 'dashboard' | 'detail' | 'landing';
+export type SiteTemplate = 'default' | 'meridian';
+
+/**
+ * Whether a theme is finished enough to hand a partner's customers.
+ *
+ * It exists so a half-built theme can be committed and reviewed WITHOUT being
+ * selectable in a way that would publish it — the alternative is either holding
+ * the work back or offering a control that produces a broken site, and this
+ * codebase has a standing rule against the second. `SITE_TEMPLATES` carries
+ * every theme; the admin selector reads this to decide what it may offer.
+ */
+export const themeReady = (id: SiteTemplate): boolean =>
+  SITE_TEMPLATES.find((t) => t.id === id)?.ready === true;
 
 /**
  * What a tenant gets when they have chosen nothing — our own layout.
@@ -334,9 +360,19 @@ const trim = (v: unknown): string | undefined => {
 export const defaultHeadline = (name: string): string =>
   `Every IPO, applied from your ${shortName(name)} account`;
 
+/**
+ * The theme header's quiet action, beside `navCta`. Exported so the component
+ * and the test that keeps the two apart read the same string rather than two
+ * copies of it.
+ */
+export const SIGN_IN_LABEL = 'Sign in';
+
 export const DEFAULT_SITE_COPY = Object.freeze({
   sub: 'Mainboard and SME issues, live subscription figures, and allotment — in one place.',
-  navCta: 'Sign in',
+  /* NOT 'Sign in': the button this labels points at /signup, and the theme
+     header already carries a ghost "Sign in" beside it — the default collided
+     with its own sibling and described the wrong action. */
+  navCta: 'Open an account',
   applyCta: 'Apply to an IPO',
 });
 

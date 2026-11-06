@@ -77,6 +77,21 @@ export interface IpoListItem {
   minAmount?: number;
   /** overall subscription (× times), for the list signal */
   subscriptionTimes?: number;
+  /**
+   * Per-category subscription rows, and when the poller last wrote them.
+   *
+   * THE LIST ENDPOINT HAS ALWAYS SENT BOTH and the type never declared them,
+   * so every reader cast through `any` — the same hazard as
+   * `ApplicationView.investorProfileId`, and the reason the day-wise modal
+   * could say "no fetch is added" while nothing documented why. Declared here
+   * because a hero card showing a live multiple needs them.
+   *
+   * `subscriptionAsOf` is a RAW ISO string: format it where it is rendered,
+   * never at the call site. Passing it already-formatted is what had the detail
+   * page printing "Updated 2026-10-22T09:48:09.015Z" to customers.
+   */
+  subscription?: SubscriptionRow[];
+  subscriptionAsOf?: string;
   /** grey-market premium per share (unofficial — always render with disclaimer) */
   gmp?: number;
   /** GMP as % of upper price band (semantic up/down color) */
@@ -91,9 +106,10 @@ export interface IpoDetail extends IpoListItem {
   registrar?: string;
   listingDate?: string;
   allotmentDate?: string;
-  subscription?: SubscriptionRow[];
-  /** when the live subscription figures were last refreshed by the NSE poller */
-  subscriptionAsOf?: string;
+  /* `subscription` and `subscriptionAsOf` are INHERITED from IpoListItem — the
+     list endpoint sends them too. They were declared here as well, identically,
+     which TS allows and which is how a parent and a child come to disagree
+     about a field the day one of them is widened. */
   /** admin per-IPO switch for the live subscription poller */
   autoPollSubscription?: boolean;
   financials?: { label: string; value: string }[];

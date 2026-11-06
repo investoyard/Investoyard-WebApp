@@ -2,7 +2,7 @@
 import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { SiteUtilityBar } from '@/components/SiteUtilityBar';
+import { ThemeHeader, ThemeFooter } from '@/components/ThemeChrome';
 import { SiteFooter } from '@/components/SiteFooter';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { TenantProvider } from '@/components/TenantProvider';
@@ -33,10 +33,13 @@ export function ChromeWrapper({ children }: { children: React.ReactNode }) {
           signs the browser out when it is not. Renders nothing; never blocks
           paint. Inside the provider only for tidiness — it needs no tenant. */}
       <SessionCheck />
-      <SiteUtilityBar />
+      {/* A theme brings its own header and footer; CSS shows one set. Both are
+          in the DOM because a static export cannot branch on the host. */}
+      <ThemeHeader />
       <Suspense fallback={<div className="header" />}><SiteHeader /></Suspense>
       <main className="container">{children}</main>
       <SiteFooter />
+      <ThemeFooter />
       <InstallPrompt />
     </TenantProvider>
   );

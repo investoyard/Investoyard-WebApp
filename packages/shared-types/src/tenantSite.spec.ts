@@ -10,6 +10,7 @@ import {
   DEFAULT_TEMPLATE,
   DEFAULT_FONT,
   DEFAULT_SITE_COPY,
+  SIGN_IN_LABEL,
   isSiteTemplate,
   isSiteFont,
   templateMeta,
@@ -39,7 +40,7 @@ describe('the template registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
     /* Compile-time already pins this; the runtime check is what catches an id
        added to the list and never added to the union (or the reverse). */
-    const union: SiteTemplate[] = ['default', 'broker', 'dashboard', 'detail', 'landing'];
+    const union: SiteTemplate[] = ['default', 'meridian'];
     expect([...ids].sort()).toEqual([...union].sort());
   });
 
@@ -133,7 +134,7 @@ describe('resolveSite — the identity rule', () => {
        Pinned as KNOWN rather than left to surprise someone: it is survivable
        only because `siteGaps` chases the partner for their own headline. */
     expect(defaultHeadline('N.V.INVESTMENTS')).toContain('N.v.investments');
-    expect(siteGaps(partner({ template: 'broker' })).map((g) => g.field)).toContain('headline');
+    expect(siteGaps(partner({ template: 'meridian' })).map((g) => g.field)).toContain('headline');
   });
 
   it('prefers a supplied headline, and treats whitespace as absent', () => {
@@ -145,6 +146,11 @@ describe('resolveSite — the identity rule', () => {
     const r = resolveSite(partner());
     expect(r.sub).toBe(DEFAULT_SITE_COPY.sub);
     expect(r.navCta).toBe(DEFAULT_SITE_COPY.navCta);
+    /* THE TWO HEADER ACTIONS MUST NOT CARRY THE SAME LABEL. The default used
+       to be 'Sign in', which is the ghost link's own label, so an untouched
+       partner got two identical buttons — and the primary one points at
+       /signup, so it also named the wrong action. */
+    expect(r.navCta).not.toBe(SIGN_IN_LABEL);
     expect(r.applyCta).toBe(DEFAULT_SITE_COPY.applyCta);
     expect(r.template).toBe(DEFAULT_TEMPLATE);
     expect(r.font).toBe(DEFAULT_FONT);
@@ -153,8 +159,8 @@ describe('resolveSite — the identity rule', () => {
 
 describe('resolveSite — the template and font choice', () => {
   it('honours a partner choice', () => {
-    const r = resolveSite(partner({ template: 'detail', font: 'fraunces' }));
-    expect(r.template).toBe('detail');
+    const r = resolveSite(partner({ template: 'meridian', font: 'fraunces' }));
+    expect(r.template).toBe('meridian');
     expect(r.font).toBe('fraunces');
   });
 
@@ -167,7 +173,7 @@ describe('resolveSite — the template and font choice', () => {
   });
 
   it('pins the DEFAULT channel to our own layout whatever is stored', () => {
-    const r = resolveSite({ isDefault: true, name: 'Investoyard', site: { template: 'landing', font: 'figtree' } });
+    const r = resolveSite({ isDefault: true, name: 'Investoyard', site: { template: 'meridian', font: 'figtree' } });
     expect(r.template).toBe(DEFAULT_TEMPLATE);
     expect(r.font).toBe(DEFAULT_FONT);
   });
@@ -220,11 +226,11 @@ describe('siteGaps', () => {
   });
 
   it('says nothing for the default channel', () => {
-    expect(siteGaps({ isDefault: true, name: 'Investoyard', site: { template: 'broker' } })).toEqual([]);
+    expect(siteGaps({ isDefault: true, name: 'Investoyard', site: { template: 'meridian' } })).toEqual([]);
   });
 
   it('asks for the hero copy once a layout is chosen', () => {
-    const fields = siteGaps(partner({ template: 'broker' })).map((g) => g.field);
+    const fields = siteGaps(partner({ template: 'meridian' })).map((g) => g.field);
     expect(fields).toContain('headline');
     expect(fields).toContain('sub');
   });
@@ -232,7 +238,7 @@ describe('siteGaps', () => {
   it('is the ONLY thing that mentions a flag with nothing behind it', () => {
     /* The page silently renders no block, correctly — so if this did not report
        it, nothing ever would. */
-    const g = (s: TenantSite) => siteGaps(partner({ template: 'broker', ...s })).map((x) => x.field);
+    const g = (s: TenantSite) => siteGaps(partner({ template: 'meridian', ...s })).map((x) => x.field);
     expect(g({ showRm: true })).toContain('rmName');
     expect(g({ showApp: true })).toContain('appUrl');
     expect(g({ showUtility: true })).toContain('mainSiteUrl');
@@ -242,7 +248,7 @@ describe('siteGaps', () => {
   });
 
   it('does not ask about a block whose flag is off', () => {
-    const fields = siteGaps(partner({ template: 'broker' })).map((x) => x.field);
+    const fields = siteGaps(partner({ template: 'meridian' })).map((x) => x.field);
     expect(fields).not.toContain('rmName');
     expect(fields).not.toContain('appUrl');
   });
@@ -276,7 +282,7 @@ describe('the site key on the content row', () => {
     /* Ready with no site row at all... */
     expect(contentReady(base)).toBe(true);
     /* ...and still ready with a template chosen and none of its copy written. */
-    const withSite = { ...base, site: { template: 'broker' as SiteTemplate, showRm: true } };
+    const withSite = { ...base, site: { template: 'meridian' as SiteTemplate, showRm: true } };
     expect(contentReady(withSite)).toBe(true);
     const site = contentGaps(withSite).filter((g) => g.key === 'site');
     expect(site.length).toBeGreaterThan(0);
@@ -290,7 +296,7 @@ describe('the site key on the content row', () => {
       isDefault: false,
       name: 'kosha-securities',
       identity: { tradeName: 'Kosha' },
-      site: { template: 'broker', headline: 'x' },
+      site: { template: 'meridian', headline: 'x' },
     });
     expect(gaps.filter((g) => g.key === 'site').map((g) => g.field)).not.toContain('headline');
   });
@@ -342,7 +348,7 @@ describe('the field lists the admin DTO is built from', () => {
        never save — the whitelist IS the write surface. */
     const declared = new Set([...text, ...flags, 'template', 'font']);
     const sample: Required<TenantSite> = {
-      template: 'broker', font: 'figtree',
+      template: 'meridian', font: 'figtree',
       headline: '', sub: '', navCta: '', applyCta: '', applyNote: '',
       showUtility: false, mainSiteUrl: '', supportUrl: '',
       showApp: false, appUrl: '',

@@ -29,6 +29,12 @@ html {
   --brand-200: #d3ccec;
   --brand-ink: #ffffff;
   --gold: #ffcb32;
+  /* GOLD AS AN INK FOR TEXT, not a fill. --gold-600 on a white surface is far
+     under the 4.5 bar; this hex is already in the palette as .t-allotment's
+     --tone-ink and measures 4.90:1 on white, so this is a token promotion of
+     the kind --pos-ink and --neg-ink already made rather than a new colour.
+     Declared once because nothing redefines the gold family per theme. */
+  --gold-ink: #8a6d1f;
   --gold-600: #e6ad12;
   --gold-50: #fff7df;
 
@@ -5807,229 +5813,512 @@ html[data-foreign-host] [data-own-only] { display: none; }
   color: var(--text); font-size: 15px; letter-spacing: .04em;
 }
 
+
 /* =========================================================================
- * SITE TEMPLATES — the white-label layouts
+ * THEMES — a white-label's whole front site, in a design of its own
  *
- * WHY EVERY RULE IS PREFIXED `tpl-` AND WAS GREPPED FIRST. globals.css is one
- * global sheet and a name collision in it has bitten four times: `.sh`
- * inheriting a section utility's 76px padding and blowing the banner 302 -> 495px,
- * `.nav-link` defined for both the site header and the admin sidebar, a
- * candidate slide named `.steps` hitting the apply stepper's margin, and
- * `.gl-page` losing to `.trust-page`. The build catches none of it.
+ * A THEME IS A COMPLETE WEBSITE DESIGN, NOT A RE-SKIN OF OURS. The first
+ * version of this block was four entries — broker / dashboard / detail /
+ * landing — that redefined our radii and widths and left everything else ours.
+ * That is a re-skin, and it is not what the design files are: each `.dc.html`
+ * is its own site that happens to show IPO data, with its own neutral palette,
+ * its own type, its own chrome and its own components. Those four are gone.
  *
- * THE SAFETY PROPERTY THAT MATTERS MOST: ON OUR OWN LAYOUT NOTHING CHANGES, BY
- * CONSTRUCTION. `HomeView` now wraps each section in a div that was not there
- * before, and `display: contents` makes both the flow and those wrappers
- * generate no box at all — so the children are laid out as direct children of
- * `main.container`, exactly as they were, with the same margin collapsing. A
- * template only becomes a flex column when `data-template` says so, and that
- * attribute is never set on our own hosts.
+ * WHAT A THEME OWNS: the NEUTRALS (ink, muted, faint, surfaces, page
+ * background, borders), the radii, the measure, the type scale, and its own
+ * header and footer. WHAT IT DOES NOT OWN: the BRAND colour. That is the
+ * tenant's, derived from `Tenant.brandColor` by `palette()` — which is what
+ * lets one theme carry every partner's identity, and is exactly how the design
+ * files are built: they parameterise P / PD / PL / T / A and hardcode greys.
+ *
+ * `html[data-template='x']` is (0,1,1), which beats the dark-mode `:root`
+ * (0,1,0) and `.admin-shell` (0,1,0) — so these land, and the admin scale has
+ * to be restored explicitly at the end of this block.
  * ========================================================================= */
 
+/* ---- MERIDIAN -----------------------------------------------------------
+ * Sir's `Investoyard Broker Website v2.dc.html`, implemented as a theme.
+ *
+ * EVERY VALUE BELOW IS MEASURED OFF THE DESIGN FILE, not chosen. The palette is
+ * its hex frequency list (#5C6187 31 uses, #3D4060 29, #ECEDF6 25, #C9CBDB 19,
+ * #181A2E 11, #F5F5FA 7, #F0F1F7 6); the measure is its `max-width: 1240px`;
+ * the radii are the set it actually uses (12 on tiles and tables, 14 on stat
+ * cards, 16 on cards, 18 on the big two-up, 20 on the hero card, 22 on the app
+ * band).
+ *
+ * IT IS BORDER-DEFINED, NOT SHADOW-DEFINED, and that is the single most
+ * characteristic thing about it: 24 `1px solid` borders against exactly ONE
+ * box-shadow in the whole design. So the shadow tokens go to `none` and the
+ * borders do the separating — which also means the ~60 rules in this sheet that
+ * write a LITERAL shadow have to be flattened by hand further down, because a
+ * token cannot reach a literal.
+ */
+html[data-template='meridian'] {
+  /* its own blue-grey slate, cooler and softer than our purple-grey */
+  --text: #181A2E;
+  --text-muted: #5C6187;
+  --text-faint: #A3A6BD;
+  --surface: #FFFFFF;
+  --surface-2: #FAFAFD;
+  --bg: #F5F5FA;
+  --bg-2: #F0F1F7;
+  --border: #ECEDF6;
+  --border-2: #C9CBDB;
+
+  --r-sm: 12px; --r: 16px; --r-lg: 18px; --r-xl: 22px; --r-2xl: 28px;
+  --maxw: 1240px;
+  /* MEASURED, not nominal: the sticky .thm-head renders 65px at 1440 — its
+     padding plus the hairline — and ten rules read this token for scroll
+     offsets. A token under the real bar parks every anchored heading just
+     beneath it. */
+  --header-h: 65px;
+
+  /* flat: the design separates surfaces with a hairline, never with depth */
+  --sh-xs: none; --sh-sm: none; --sh-md: none;
+
+  /* its semantic set, also measured rather than inherited */
+  --pos: #167A3D; --pos-ink: #167A3D;
+  --neg: #B42318; --neg-ink: #B42318;
+  --warn: #F2A33A;
+  --info: #2D5BD8;
+}
+
+html[data-template='meridian'] .container { padding: 40px 24px 72px; }
+html[data-template='meridian'] h1 { font-size: clamp(34px, 4.4vw, 52px); letter-spacing: -.02em; }
+html[data-template='meridian'] h2 { font-size: 30px; letter-spacing: -.01em; }
+html[data-template='meridian'] h3 { font-size: 17px; }
+html[data-template='meridian'] .section-head { margin: 44px 0 18px; }
+
+/* FIGURES IN A MONOSPACE, which the design calls for explicitly
+   (`font-family: ui-monospace, Menlo, monospace`). On a page of subscription
+   multiples and rupee amounts it is the detail that makes columns readable,
+   and it is why this theme feels institutional rather than marketing-led. */
+html[data-template='meridian'] .tpl-stat-i b,
+html[data-template='meridian'] .tbl-num,
+html[data-template='meridian'] td[data-num],
+html[data-template='meridian'] .tpl-hero-fig {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+/* A TOKEN CANNOT REACH A LITERAL, so the surfaces that hardcode a shadow are
+   flattened by hand. Measured: this sheet writes 67 literal `box-shadow`s
+   against 81 that read the token, and `.panel` was the one that stayed
+   shadowed on the IPO detail page while everything around it went flat. */
+html[data-template='meridian'] .panel,
+html[data-template='meridian'] .panel:hover,
+html[data-template='meridian'] .card,
+html[data-template='meridian'] .card:hover,
+html[data-template='meridian'] .ipocard,
+html[data-template='meridian'] .ipocard:hover,
+html[data-template='meridian'] .subv2-card,
+html[data-template='meridian'] .subv2-card:hover,
+html[data-template='meridian'] .feature,
+html[data-template='meridian'] .stepcard { box-shadow: none; }
+
+/* The IPO detail page's shape. Meridian is a reading-and-applying surface, so
+   the rail stays but loosens. `minmax(0, …)` on both tracks, always: a grid
+   track's automatic minimum is its CONTENT, which is what made every detail
+   page scroll sideways on a phone. */
+html[data-template='meridian'] .detail-layout {
+  grid-template-columns: minmax(0, 1fr) 340px; gap: 36px;
+}
+
+/* ---- the section flow (shared by every theme) ---------------------------
+ * `display: contents` by default is what keeps OUR OWN site byte-identical:
+ * `HomeView` wraps each section in a div that was not there before, and a
+ * contents box generates no box at all, so children lay out as direct children
+ * of `main.container` with the same margin collapsing. A theme only becomes a
+ * flex column when `data-template` says so, and that attribute is never set on
+ * our own hosts.
+ */
 .tpl-flow, .tpl-sec { display: contents; }
 
-/* Every template that is not ours becomes an ordered column. One selector list
-   rather than `:not([data-template="default"])`, because the attribute is also
-   ABSENT on our own host and an attribute selector cannot match an absence. */
-html[data-template='broker'] .tpl-flow,
-html[data-template='dashboard'] .tpl-flow,
-html[data-template='detail'] .tpl-flow,
-html[data-template='landing'] .tpl-flow {
-  display: flex; flex-direction: column;
-}
-html[data-template='broker'] .tpl-sec,
-html[data-template='dashboard'] .tpl-sec,
-html[data-template='detail'] .tpl-sec,
-html[data-template='landing'] .tpl-sec {
-  display: block; min-width: 0;
-}
+html[data-template='meridian'] .tpl-flow { display: flex; flex-direction: column; }
+html[data-template='meridian'] .tpl-sec { display: block; min-width: 0; }
 
-/* THE EMPTY-WRAPPER RULE. GmpAccuracy, HomeNews, WhatsAppCta, RmCard and
-   AppBand all legitimately render nothing, and a wrapper around nothing is
-   still a flex item — so without this the page grows a hole wherever a block is
-   unconfigured. `:empty` matches an element with no children at all, which is
-   exactly what a component returning null leaves behind. */
+/* GmpAccuracy, HomeNews, WhatsAppCta, RmCard and AppBand all legitimately
+   render nothing, and a wrapper around nothing is still a flex item that still
+   takes a gap — so without this the page grows a hole wherever a block is
+   unconfigured. */
 .tpl-flow > .tpl-sec:empty { display: none; }
 
-/* Our own layout keeps its carousel; the broker layouts keep their headline.
-   Both are in the DOM on every page because a static export cannot branch on
-   the host, so exactly one is shown. */
+/* Our carousel is OUR hero; a theme brings its own. Both are in the DOM on
+   every page because a static export cannot branch on the host, so exactly one
+   shows. */
 .tpl-sec[data-sec='brokerhero'] { display: none; }
-html[data-template='broker'] .tpl-sec[data-sec='brokerhero'],
-html[data-template='dashboard'] .tpl-sec[data-sec='brokerhero'],
-html[data-template='detail'] .tpl-sec[data-sec='brokerhero'],
-html[data-template='landing'] .tpl-sec[data-sec='brokerhero'] { display: block; }
-html[data-template='broker'] .tpl-sec[data-sec='hero'],
-html[data-template='dashboard'] .tpl-sec[data-sec='hero'],
-html[data-template='detail'] .tpl-sec[data-sec='hero'],
-html[data-template='landing'] .tpl-sec[data-sec='hero'] { display: none; }
+html[data-template='meridian'] .tpl-sec[data-sec='brokerhero'] { display: block; }
+html[data-template='meridian'] .tpl-sec[data-sec='hero'] { display: none; }
 
-/* ---- the arrangements ----------------------------------------------------
- * Ordered in TENS so a section can be slipped between two without renumbering
- * the rest. Reading one block top to bottom tells you that template's page
- * order, which is the whole point of doing this in CSS rather than in
- * conditionals in HomeView.
+/* MERIDIAN's page order, from the design file top to bottom: hero, the issue
+   table, the allotment + RM two-up, four steps, the pillars, then the app band.
+   Ordered in TENS so a section can be slipped between two without renumbering.
+   Reading this block is reading the page. */
+html[data-template='meridian'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='meridian'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='meridian'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='meridian'] .tpl-sec[data-sec='rm']         { order: 40; }
+html[data-template='meridian'] .tpl-sec[data-sec='steps']      { order: 50; }
+html[data-template='meridian'] .tpl-sec[data-sec='features']   { order: 60; }
+html[data-template='meridian'] .tpl-sec[data-sec='gmp']        { order: 65; }
+html[data-template='meridian'] .tpl-sec[data-sec='news']       { order: 70; }
+html[data-template='meridian'] .tpl-sec[data-sec='whatsapp']   { order: 80; }
+html[data-template='meridian'] .tpl-sec[data-sec='app']        { order: 90; }
+
+/* ---- the utility bar ----------------------------------------------------
+ * The design's top strip: the brand's DARK end, 13px, the way back to the
+ * broker's own platform. `var(--maxw)` and 24px to match the header below it,
+ * so the links line up with the logo — a hardcoded width that merely looks
+ * close reads as a bug on every page.
  */
-
-/* BROKER (from Sir's Broker Website v2): a full hero, then the table. For a
-   broker introducing themselves to clients who have not met them yet. */
-html[data-template='broker'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
-html[data-template='broker'] .tpl-sec[data-sec='explorer']   { order: 20; }
-html[data-template='broker'] .tpl-sec[data-sec='allotment']  { order: 30; }
-html[data-template='broker'] .tpl-sec[data-sec='rm']         { order: 40; }
-html[data-template='broker'] .tpl-sec[data-sec='steps']      { order: 50; }
-html[data-template='broker'] .tpl-sec[data-sec='features']   { order: 60; }
-html[data-template='broker'] .tpl-sec[data-sec='gmp']        { order: 65; }
-html[data-template='broker'] .tpl-sec[data-sec='news']       { order: 70; }
-html[data-template='broker'] .tpl-sec[data-sec='whatsapp']   { order: 80; }
-html[data-template='broker'] .tpl-sec[data-sec='app']        { order: 90; }
-
-/* DASHBOARD (2a): "IPO cards first. Best for brokers whose clients come to
-   apply." Same order as broker — what makes it cards-first is that the hero is
-   SLIM, so the table is on the first screen rather than below it. */
-html[data-template='dashboard'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
-html[data-template='dashboard'] .tpl-sec[data-sec='explorer']   { order: 20; }
-html[data-template='dashboard'] .tpl-sec[data-sec='allotment']  { order: 30; }
-html[data-template='dashboard'] .tpl-sec[data-sec='rm']         { order: 40; }
-html[data-template='dashboard'] .tpl-sec[data-sec='gmp']        { order: 50; }
-html[data-template='dashboard'] .tpl-sec[data-sec='news']       { order: 60; }
-html[data-template='dashboard'] .tpl-sec[data-sec='steps']      { order: 70; }
-html[data-template='dashboard'] .tpl-sec[data-sec='features']   { order: 80; }
-html[data-template='dashboard'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
-html[data-template='dashboard'] .tpl-sec[data-sec='app']        { order: 90; }
-
-/* DETAIL (2b): the list-and-detail reading surface. Arranged like broker; what
-   differs is the explorer itself, which renders as two panes. */
-html[data-template='detail'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
-html[data-template='detail'] .tpl-sec[data-sec='explorer']   { order: 20; }
-html[data-template='detail'] .tpl-sec[data-sec='allotment']  { order: 30; }
-html[data-template='detail'] .tpl-sec[data-sec='rm']         { order: 40; }
-html[data-template='detail'] .tpl-sec[data-sec='gmp']        { order: 50; }
-html[data-template='detail'] .tpl-sec[data-sec='steps']      { order: 60; }
-html[data-template='detail'] .tpl-sec[data-sec='features']   { order: 70; }
-html[data-template='detail'] .tpl-sec[data-sec='news']       { order: 80; }
-html[data-template='detail'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
-html[data-template='detail'] .tpl-sec[data-sec='app']        { order: 90; }
-
-/* LANDING (2c): "Calm, centred, explains as it goes. Best for fintechs signing
-   up first-time investors." EXPLAINS BEFORE IT LISTS — the steps and the
-   reasons come above the catalogue, which is the one arrangement here that is a
-   genuinely different reading order rather than a different hero. */
-html[data-template='landing'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
-html[data-template='landing'] .tpl-sec[data-sec='steps']      { order: 20; }
-html[data-template='landing'] .tpl-sec[data-sec='features']   { order: 30; }
-html[data-template='landing'] .tpl-sec[data-sec='explorer']   { order: 40; }
-html[data-template='landing'] .tpl-sec[data-sec='allotment']  { order: 50; }
-html[data-template='landing'] .tpl-sec[data-sec='rm']         { order: 60; }
-html[data-template='landing'] .tpl-sec[data-sec='gmp']        { order: 70; }
-html[data-template='landing'] .tpl-sec[data-sec='news']       { order: 80; }
-html[data-template='landing'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
-html[data-template='landing'] .tpl-sec[data-sec='app']        { order: 90; }
-
-/* ---- the utility bar ---------------------------------------------------- */
-.tpl-util {
-  background: var(--bg-2); border-bottom: 1px solid var(--border);
-  font-size: 12.5px;
-}
-/* `var(--maxw)` and 22px, matching `.header-inner` exactly rather than a
-   hardcoded width that happens to look close: the bar sits directly above the
-   header and its links must line up with the logo, or the misalignment reads
-   as a bug on every partner page. */
+.tpl-util { background: var(--brand-700); color: rgba(255,255,255,.82); font-size: 13px; }
 .tpl-util-in {
-  max-width: var(--maxw); width: 100%; margin: 0 auto; padding: 0 22px;
-  min-height: 34px; display: flex; align-items: center; gap: 14px;
+  max-width: var(--maxw); width: 100%; margin: 0 auto; padding: 8px 24px;
+  min-height: 34px; display: flex; align-items: center; gap: 8px 20px;
 }
 .tpl-util-sp { flex: 1; }
 .tpl-util-link {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--text-muted); text-decoration: none; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px;
+  color: rgba(255,255,255,.82); text-decoration: none; white-space: nowrap;
 }
-.tpl-util-link:hover { color: var(--text); }
+.tpl-util-link:hover { color: #fff; }
 
-/* ---- the broker hero ---------------------------------------------------- */
-.tpl-hero { padding: 56px 0 44px; }
-.tpl-hero-in { max-width: 760px; }
-.tpl-hero-h {
-  margin: 0 0 14px; font-family: var(--font-display), var(--font-sans), sans-serif;
-  font-size: 44px; line-height: 1.08; letter-spacing: -.02em; text-wrap: balance;
+/* ---- the hero ----------------------------------------------------------
+ * The design's two-up: a statement on the left, a live issue card on the
+ * right. `auto-fit` with a `min(100%, 460px)` floor is the design's own
+ * expression — it collapses to one column on a phone without a media query.
+ */
+.tpl-hero { padding: 56px 0 52px; }
+.tpl-hero-in {
+  display: grid; gap: 48px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
 }
-.tpl-hero-sub { margin: 0 0 24px; font-size: 17px; line-height: 1.55; color: var(--text-muted); max-width: 58ch; }
-.tpl-hero-cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+/* THE STATEMENT COLUMN NEEDS `min-width: 0` AND NOTHING ELSE. It is a grid
+   item of a track floored at `min(100%, 460px)`, and a grid item's automatic
+   minimum is its CONTENT — so one long unbroken word in a partner's headline
+   would push the track past the card beside it. Fourth place in this sheet
+   that mechanism has had to be guarded against. */
+.tpl-hero-say { min-width: 0; }
+
+.tpl-hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
+  color: var(--text-muted); letter-spacing: .02em;
+}
+.tpl-hero-h { margin: 14px 0 0; font-family: var(--font-display), var(--font-sans), sans-serif; line-height: 1.07; text-wrap: balance; }
+.tpl-hero-sub { margin: 16px 0 0; font-size: 16.5px; line-height: 1.6; color: var(--text-muted); max-width: 54ch; }
+.tpl-hero-cta { margin: 24px 0 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .tpl-hero-note { margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
+
+/* the stat tiles under the statement — the design's `#F5F5FA` r12 set */
 .tpl-stat {
-  margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 22px;
-  font-size: 13px; color: var(--text-muted);
+  margin: 28px 0 0; display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
-.tpl-stat-i { display: inline-flex; align-items: baseline; gap: 6px; }
-.tpl-stat-i b { font-size: 19px; color: var(--text); font-variant-numeric: tabular-nums; }
-.tpl-stat-asba { color: var(--text-muted); }
-
-/* DASHBOARD trims the hero so the cards clear the fold; LANDING centres it. */
-html[data-template='dashboard'] .tpl-hero { padding: 26px 0 22px; }
-html[data-template='dashboard'] .tpl-hero-h { font-size: 29px; }
-html[data-template='dashboard'] .tpl-hero-sub { margin-bottom: 18px; font-size: 15.5px; }
-html[data-template='dashboard'] .tpl-stat { margin-top: 18px; }
-
-html[data-template='landing'] .tpl-hero { padding: 76px 0 56px; text-align: center; }
-html[data-template='landing'] .tpl-hero-in { margin: 0 auto; }
-html[data-template='landing'] .tpl-hero-sub { margin-left: auto; margin-right: auto; }
-html[data-template='landing'] .tpl-hero-cta { justify-content: center; }
-html[data-template='landing'] .tpl-stat { justify-content: center; }
+/* SURFACE AND A HAIRLINE, NOT `--bg`. The design draws these as #F5F5FA
+   tiles, which works because its hero sits on WHITE; ours sits on `--bg`,
+   which under Meridian IS #F5F5FA — so a faithful hex gave tiles that measured
+   rgb(245,245,250) on an rgb(245,245,250) page and could not be seen at all.
+   The border is what makes this hold in ANY theme: a tile delineated only by
+   its fill disappears the moment a theme puts the hero on that same fill. */
+.tpl-stat-i {
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 12px; border-radius: var(--r-sm);
+}
+.tpl-stat-i b { font-size: 15px; color: var(--text); }
+.tpl-stat-i span { font-size: 12.5px; color: var(--text-muted); }
+.tpl-stat-asba { grid-column: 1 / -1; }
 
 @media (max-width: 720px) {
-  .tpl-hero { padding: 34px 0 28px; }
-  .tpl-hero-h { font-size: 31px; }
-  .tpl-hero-sub { font-size: 15.5px; }
-  html[data-template='landing'] .tpl-hero { padding: 40px 0 32px; }
+  .tpl-hero { padding: 32px 0 28px; }
+  .tpl-hero-in { gap: 28px; }
 }
 
-/* ---- the relationship-manager card ------------------------------------- */
-.tpl-rm { display: grid; gap: 12px; }
-.tpl-rm-who { display: flex; align-items: center; gap: 13px; }
-.tpl-rm-av {
-  flex: none; width: 46px; height: 46px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--brand-50); color: var(--brand-700);
-  font-weight: 700; font-size: 15px; letter-spacing: .02em;
+
+/* ---- the live issue card ----------------------------------------------
+ * The hero's right column and the design's centrepiece: a gradient head
+ * carrying the issue and its headline multiple, four key figures, then a
+ * per-category meter, the first rungs of the lot ladder and the way in.
+ *
+ * WHITE ON `--ink-grad` IS THE HOUSE PRACTICE rather than a new risk taken
+ * here. `palette()` builds that gradient as `base -> darken(base, 0.30)` from
+ * the tenant's own brand, and `.footer`, `.sub-hero`, `.hb-slide` and
+ * `.al-brand` have all put white text on it since long before the themes. A
+ * partner who picks a very light brand colour makes every one of those
+ * surfaces hard to read at once, which is a property of the palette helper and
+ * wants fixing there — not a fifth per-surface workaround.
+ */
+.tpl-hcard {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  /* the head's corners have to clip the gradient */
+  overflow: hidden;
 }
-.tpl-rm-lbl { display: block; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
-.tpl-rm-name { margin: 2px 0 0; font-size: 18px; }
-.tpl-rm-role { margin: 1px 0 0; font-size: 13px; color: var(--text-muted); }
-.tpl-rm-blurb { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text-muted); max-width: 64ch; }
-.tpl-rm-contact { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* THE PADDING IS A TOKEN BECAUSE THE FIGURE STRIP BLEEDS AGAINST IT. A
+   hardcoded negative margin and a padding that changes at a breakpoint is the
+   pair that put the theme header's tint 5px outside its own card on a phone —
+   derive one from the other and they cannot disagree. */
+.tpl-hcard-top {
+  --hc-px: 24px; --hc-pb: 20px;
+  background: var(--ink-grad); color: #fff;
+  padding: 22px var(--hc-px) var(--hc-pb);
+}
+.tpl-hcard-eye {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  font-size: 12px; color: rgba(255,255,255,.78);
+}
+.tpl-hcard-nm {
+  display: block; margin: 12px 0 0;
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 23px; font-weight: 650; line-height: 1.2; letter-spacing: -.015em;
+  color: #fff; text-decoration: none;
+}
+.tpl-hcard-nm:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.tpl-hcard-lead { margin: 14px 0 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; }
+.tpl-hcard-lead b { font-size: 34px; line-height: 1; color: #fff; }
+.tpl-hcard-lead span { font-size: 13px; color: rgba(255,255,255,.78); }
+
+/* The four figures, bled to the card's edge. The hairline is white at low
+   alpha and NOT `--border`: that token is a light-surface value and vanishes
+   on the gradient. */
+.tpl-hcard-figs {
+  margin: 20px calc(var(--hc-px) * -1) calc(var(--hc-pb) * -1);
+  padding: 16px var(--hc-px) 18px;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 10px;
+  border-top: 1px solid rgba(255,255,255,.16);
+}
+.tpl-hcard-figs > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tpl-hcard-figs span { font-size: 11.5px; color: rgba(255,255,255,.78); }
+.tpl-hcard-figs b { font-size: 15px; color: #fff; }
+
+.tpl-hcard-body { padding: 20px 24px 22px; display: grid; gap: 18px; }
+
+/* The per-category meter: label and figure on one line, the bar beneath.
+   PLACED BY GRID AREA because the markup order is bar, label, figure — the bar
+   is written first so a screen reader is not handed a decorative element
+   between a category and its number. */
+.tpl-hcard-meter { display: grid; gap: 12px; }
+.tpl-hcard-meter > div {
+  display: grid; grid-template-columns: 1fr auto;
+  grid-template-areas: 'cat fig' 'bar bar';
+  gap: 5px 10px; align-items: baseline;
+}
+.tpl-hcard-meter > div > span { grid-area: cat; font-size: 13px; color: var(--text-muted); }
+.tpl-hcard-meter > div > b { grid-area: fig; font-size: 13.5px; }
+.tpl-hcard-meter > div > i { grid-area: bar; }
+.tpl-hcard-meter i {
+  position: relative; display: block; height: 5px;
+  background: var(--bg-2); border-radius: 3px; overflow: hidden;
+}
+/* `--fill` is set inline on the `i`, and a custom property set on an element is
+   visible to that element's OWN pseudo-elements — so the fill needs no second
+   wrapper div. */
+.tpl-hcard-meter i::after {
+  content: ''; position: absolute; inset: 0 auto 0 0;
+  width: var(--fill, 0%); background: var(--brand-400); border-radius: 3px;
+}
+
+.tpl-hcard-tbl { overflow-x: auto; }
+.tpl-hcard-tbl table { width: 100%; border-collapse: collapse; }
+.tpl-hcard-tbl th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-muted);
+  padding: 0 0 7px; border-bottom: 1px solid var(--border);
+}
+.tpl-hcard-tbl td { font-size: 13.5px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.tpl-hcard-tbl tbody tr:last-child td { border-bottom: 0; padding-bottom: 0; }
+.tpl-hcard-tbl th + th, .tpl-hcard-tbl td + td { text-align: right; padding-left: 12px; }
+
+.tpl-hcard-act { display: flex; flex-wrap: wrap; gap: 10px; }
+.tpl-hcard-foot { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+@media (max-width: 560px) {
+  /* ONLY the two padding tokens move; the bleed follows them. */
+  .tpl-hcard-top { --hc-px: 18px; --hc-pb: 16px; padding-top: 18px; }
+  .tpl-hcard-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tpl-hcard-body { padding: 16px 18px 18px; }
+  .tpl-hcard-lead b { font-size: 29px; }
+  .tpl-hcard-nm { font-size: 21px; }
+}
+
+
+/* ---- the three-view IPO section ---------------------------------------
+ * The design's `#ipos` block: IPO Calendar / Allotment / Live subscription,
+ * with the Table/Cards switch living inside the first.
+ *
+ * THE SWITCH IS HIDDEN BY DEFAULT and shown only under a theme, which is how
+ * our own layout stays byte-identical: the component's default state is the
+ * calendar, so with the control absent the section renders the explorer and
+ * nothing else. Hidden in CSS rather than behind `useSite()` because the
+ * pre-paint script sets `data-template` during parse — a control that appears
+ * a tick after hydration is a layout shift at the top of the page.
+ */
+.tpl-vw { display: none; }
+html[data-template] .tpl-vw {
+  display: flex; flex-wrap: wrap; gap: 2px; margin: 0 0 18px;
+  background: var(--bg); padding: 3px; border-radius: var(--pill);
+  width: fit-content; max-width: 100%;
+}
+.tpl-vw button {
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  padding: 8px 16px; border: 0; border-radius: var(--pill);
+  background: transparent; color: var(--text-muted);
+  /* the label fills its own button and centres: a width fix that leaves the
+     text intrinsically sized is how a segment clipped its last letter */
+  min-height: 36px; white-space: nowrap;
+}
+.tpl-vw button:hover { color: var(--text); }
+.tpl-vw button.is-on { background: var(--brand); color: #fff; }
+
+.tpl-vw-body { display: grid; gap: 12px; }
+
+/* WIDE CONTENT SCROLLS IN ITS OWN BOX, never the page. Six columns of figures
+   cannot fit a phone and must not take the document sideways with them. */
+.tpl-vw-scroll { overflow-x: auto; }
+.tpl-vw-tbl { width: 100%; min-width: 620px; border-collapse: collapse; }
+.tpl-vw-tbl th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-muted);
+  padding: 0 12px 9px 0; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.tpl-vw-tbl td {
+  font-size: 13.5px; padding: 11px 12px 11px 0;
+  border-bottom: 1px solid var(--border); vertical-align: top;
+}
+.tpl-vw-tbl tbody tr:last-child td { border-bottom: 0; }
+.tpl-vw-tbl th:last-child, .tpl-vw-tbl td:last-child { padding-right: 0; }
+.tpl-vw-tbl th + th, .tpl-vw-tbl td + td { text-align: right; }
+.tpl-vw-tbl td[data-num] { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tpl-vw-nm {
+  display: block; font-weight: 650; color: var(--text); text-decoration: none;
+  letter-spacing: -.005em;
+}
+.tpl-vw-nm:hover { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+.tpl-vw-sub {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin-top: 5px; font-size: 11.5px; color: var(--text-muted);
+}
+
+/* A PENDING FIGURE IS A DIMMED DASH, never an absent column. `listingGainPct`
+   is populated on one record of 1,319, so this column is mostly dashes — which
+   is the operator-data gap stated rather than hidden, and the house rule that a
+   figure which is not known yet still holds its place. */
+.tpl-vw-pend { color: var(--text-faint); }
+
+/* REALISED OUTCOMES KEEP THE SEMANTIC GREEN AND RED. A listing gain is what
+   actually happened, which is the half of the premium rule that stays
+   coloured; an expected premium is a projection and reads neutral. */
+.tpl-vw-up { color: var(--pos-ink); }
+.tpl-vw-dn { color: var(--neg-ink); }
+
+.tpl-vw-act {
+  font-size: 12.5px; font-weight: 600; color: var(--brand);
+  text-decoration: none; white-space: nowrap;
+}
+.tpl-vw-act:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* The demand word, through the ONE ladder. The tier drives the colour so a
+   word and its shade cannot disagree; `--text-muted` for the two low tiers
+   because "Building up" is not a signal. */
+.tpl-vw-dem { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 600; white-space: nowrap; }
+.tpl-vw-dem.tier-0, .tpl-vw-dem.tier-1 { color: var(--text-muted); }
+.tpl-vw-dem.tier-2 { color: var(--pos-ink); }
+.tpl-vw-dem.tier-3 { color: var(--gold-ink); }
+.tpl-vw-fin {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.tpl-vw-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text-muted); max-width: 76ch; }
+
+.tpl-vw-empty {
+  display: grid; gap: 8px; justify-items: start;
+  padding: 28px; border: 1px dashed var(--border-2); border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.tpl-vw-empty p { margin: 0; }
+.tpl-vw-empty p:first-child { font-size: 16px; font-weight: 650; color: var(--text); }
+.tpl-vw-empty-sub { font-size: 13.5px; color: var(--text-muted); max-width: 56ch; }
+.tpl-vw-empty .btn { margin-top: 6px; }
+
+@media (max-width: 560px) {
+  html[data-template] .tpl-vw { width: 100%; }
+  .tpl-vw button { flex: 1 1 auto; padding: 8px 10px; font-size: 12.5px; }
+  .tpl-vw-empty { padding: 20px; }
+}
+
+/* ---- the relationship-manager card -------------------------------------
+ * The design's brand-TINT panel: r18, 28px of padding, a circular brand
+ * avatar, name over role, a blurb, then the action.
+ */
+.tpl-rm {
+  display: grid; gap: 14px;
+  background: var(--brand-50); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 28px;
+}
+.tpl-rm-lbl { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.tpl-rm-who { display: flex; align-items: center; gap: 14px; }
+.tpl-rm-av {
+  flex: none; width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--brand); color: #fff; font-weight: 700; font-size: 19px;
+}
+.tpl-rm-name { margin: 0; font-size: 19px; }
+.tpl-rm-role { margin: 2px 0 0; font-size: 14px; color: var(--text-muted); }
+.tpl-rm-blurb { margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-muted); max-width: 60ch; }
+.tpl-rm-contact { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .tpl-rm-ct { font-weight: 600; font-variant-numeric: tabular-nums; }
 .tpl-rm-cta { font-size: 13px; color: var(--text-muted); }
 
-/* ---- the app band ------------------------------------------------------- */
-.tpl-app { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
-.tpl-app-txt h3 { margin: 0 0 4px; font-size: 18px; }
-.tpl-app-txt p { margin: 0; font-size: 14.5px; color: var(--text-muted); }
+/* ---- the app band -----------------------------------------------------
+ * The design's gradient panel: `linear-gradient(160deg, PL, PD)`, r22, 32px.
+ * `--ink-grad` is the same gesture already derived from the tenant's brand by
+ * `palette()`, so this carries the partner's colour rather than a hardcoded one.
+ */
+.tpl-app {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 20px 32px; padding: 32px; border-radius: var(--r-xl);
+  background: var(--ink-grad); color: #fff;
+}
+.tpl-app-txt h3 { margin: 0 0 6px; font-size: 26px; color: #fff; }
+.tpl-app-txt p { margin: 0; font-size: 15px; color: rgba(255,255,255,.82); }
 .tpl-app-cta { flex: none; display: inline-flex; align-items: center; gap: 7px; }
 
 /* ---- the fonts ---------------------------------------------------------
  * `next/font` defines --font-sans and --font-display through a GENERATED CLASS
- * on <html>, specificity (0,1,0). A `:root` redeclaration ties on specificity
- * and loses on source order — which is exactly how this site shipped two
- * webfonts and painted neither for months. `html[data-font=…]` is (0,1,1) and
- * wins outright.
+ * on <html>, specificity (0,1,0). A `:root` redeclaration ties and loses on
+ * source order — which is how this site shipped two webfonts and painted
+ * neither for months. `html[data-font=…]` is (0,1,1) and wins outright.
  *
- * EACH PAIR IS DRAWN FROM THE ALTERNATES THEMSELVES, never from Inter. Inter's
+ * EACH PAIR IS DRAWN FROM THE ALTERNATES THEMSELVES, never from Inter: Inter's
  * own variable IS `--font-sans`, so there is no stable handle to point a
- * redefined `--font-sans` back at — `var(--font-inter)` does not exist, and
- * giving Inter a second name would mean either a duplicate @font-face set or
- * demoting the variable the whole site reads. Fraunces is a display serif and
- * would be punishing as body text, so it borrows Manrope, which is already
- * loaded for the pair above it.
+ * redefined `--font-sans` back at. Fraunces is a display serif and borrows
+ * Manrope for body.
  */
 html[data-font='figtree']  { --font-display: var(--font-figtree);  --font-sans: var(--font-figtree); }
 html[data-font='manrope']  { --font-display: var(--font-manrope);  --font-sans: var(--font-manrope); }
 html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: var(--font-manrope); }
 
-/* ---- admin: the site-layout selector ------------------------------------
+/* THE ADMIN CONSOLE KEEPS ITS OWN SCALE UNDER ANY THEME.
+   `.admin-shell` sets its radii at (0,1,0), which LOSES to the theme block
+   above — so without this, an operator who opens /admin on a partner's host,
+   or with `?template=`, would get that partner's theme in our own console. */
+html[data-template] .admin-shell,
+html[data-template] .modal-overlay {
+  --r-lg: 12px; --r: 10px; --r-sm: 8px;
+  --text: #101828; --text-muted: #596174;
+  --surface: #fff; --border: #e4e7ec;
+}
+
+/* ---- admin: the theme selector ----------------------------------------
  * `tplp-` (template panel) rather than `tpl-`, so an admin rule can never
- * reach the public layouts it is describing — the `.nav-link` collision
- * between the site header and the admin sidebar is the same shape, and it put
- * a hole between "IPOs" and its count badge on the live site.
+ * reach the public themes it is describing — the `.nav-link` collision between
+ * the site header and the admin sidebar is the same shape, and it put a hole
+ * between "IPOs" and its count badge on the live site.
  */
 .tplp-grid {
   display: grid; gap: 10px; margin: 4px 0 2px;
@@ -6039,7 +6328,7 @@ html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: 
   position: relative; display: grid; gap: 3px;
   padding: 12px 13px 12px 36px;
   border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg); cursor: pointer;
+  background: var(--surface); cursor: pointer;
 }
 .tplp-opt:hover { border-color: var(--border-2); }
 .tplp-opt.is-on { border-color: var(--brand-400); background: var(--brand-50); }
@@ -6057,199 +6346,9 @@ html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: 
    overflows it on a narrow admin column. */
 .tplp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 
-/* ---- the "list and detail" surface (2b) --------------------------------
- * HIDDEN EVERYWHERE EXCEPT the `detail` template, and the grid above it is
- * hidden there — both are in the DOM on every home page because a static
- * export cannot branch on the host, and showing one by attribute means the
- * right surface is laid out in the FIRST paint rather than reflowing after
- * hydration.
- *
- * `minmax(0, …)` ON BOTH TRACKS, which is not belt-and-braces here: a grid
- * track's automatic minimum is its CONTENT, so a bare `1fr` is
- * `minmax(auto, 1fr)` and grows to min-content — that is exactly what made
- * every IPO detail page scroll sideways on a phone (600px of content inside a
- * 347px parent) and what starved the Share-wise table to 69px. A long company
- * name in the left list would do it again.
- */
-.tpl-split { display: none; }
-html[data-template='detail'] .tpl-split {
-  display: grid; gap: 16px; align-items: start;
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-}
-html[data-template='detail'] .h2-grid { display: none; }
-
-.tpl-split-list {
-  display: flex; flex-direction: column; gap: 6px;
-  max-height: 620px; overflow-y: auto;
-  padding-right: 4px;
-}
-.tpl-split-row {
-  display: grid; gap: 5px; width: 100%; text-align: left;
-  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg); cursor: pointer; font: inherit; color: inherit;
-  /* The left rail carries the status colour, read from the `t-*` tone class on
-     the row — never written next to a status by hand. */
-  border-left: 3px solid var(--tone, var(--border));
-}
-.tpl-split-row:hover { border-color: var(--border-2); }
-.tpl-split-row.is-on { background: var(--brand-50); border-color: var(--brand-400); }
-.tpl-split-row:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 1px; }
-.tpl-split-row-t { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-.tpl-split-nm {
-  font-weight: 650; font-size: 13.5px; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.tpl-split-st { flex: none; }
-.tpl-split-row-b { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-muted); }
-.tpl-split-brd { letter-spacing: .03em; }
-.tpl-split-sub { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
-
-.tpl-split-pane {
-  border: 1px solid var(--border); border-radius: 14px; background: var(--bg);
-  padding: 20px 22px;
-}
-.tpl-split-head { margin-bottom: 16px; }
-.tpl-split-h {
-  margin: 8px 0 2px; font-size: 22px; line-height: 1.2;
-  font-family: var(--font-display), var(--font-sans), sans-serif;
-}
-.tpl-split-meta { margin: 0; font-size: 12.5px; color: var(--text-muted); letter-spacing: .02em; }
-.tpl-split-kv {
-  margin: 0; display: grid; gap: 1px 18px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-.tpl-split-kv-i { padding: 9px 0; border-top: 1px solid var(--border); }
-.tpl-split-kv dt { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
-.tpl-split-kv dd { margin: 3px 0 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.tpl-split-act { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
-.tpl-split-note { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
-
-/* A master/detail is a DESKTOP reading surface. On a phone there is no room for
-   two panes, so the list becomes the whole surface and the pane follows it —
-   which is also the order a reader expects after tapping a row. */
-@media (max-width: 900px) {
-  html[data-template='detail'] .tpl-split { grid-template-columns: minmax(0, 1fr); }
-  .tpl-split-list { max-height: 320px; }
-}
-/* The archive link under the split list. Inside the scroller, so it sits after
-   the last row rather than floating below a 620px column of its own. */
-.tpl-split-all {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  margin-top: 2px; padding: 9px 12px;
-  border: 1px dashed var(--border-2); border-radius: 10px;
-  font-size: 12.5px; font-weight: 600; color: var(--text-muted); text-decoration: none;
-}
-.tpl-split-all:hover { color: var(--text); border-color: var(--brand-400); }
-
-/* =========================================================================
- * SITE-WIDE TEMPLATE LOOKS — what makes a template change all 43 pages
- * rather than only the home page.
- *
- * WHY THIS IS TOKENS AND NOT A RULE PER PAGE. The stylesheet is already
- * heavily tokenised: `--border` is consumed 198 times, `--text` 122,
- * `--surface` 112, `--bg-2` 96, `--sh-sm` 35, `--r-lg` 24, `--maxw` 6,
- * `--header-h` 10. Redefining a token therefore reaches hundreds of existing
- * rules on every page at once — the header, the footer, every card, every
- * panel, every table, the trust pages — with no per-page work and nothing new
- * to keep in step. Writing four variants of 43 pages by hand is the
- * alternative, and it would drift the week after it shipped.
- *
- * `html[data-template='x']` IS (0,1,1), WHICH BEATS BOTH EXISTING TOKEN
- * SCOPES — the dark-mode block is a plain `:root` (0,1,0) and the admin shell
- * is `.admin-shell` (0,1,0). That is what makes these overrides land, and it is
- * also why the admin scale has to be restored explicitly at the bottom of this
- * block: an operator opening /admin on a partner host would otherwise get that
- * partner's radii in our own console.
- *
- * ONLY STRUCTURAL TOKENS ARE TOUCHED — radii, shadows, widths, header height,
- * type scale, spacing. NOT colours: those are the tenant's brand (set by
- * `applyBranding`) and the theme's (set by the dark block), and a template
- * reaching into either would be a third opinion about what colour a surface is.
- * ========================================================================= */
-
-/* BROKER — Sir's Broker Website v2: "a full hero, then the table. Best for a
-   broker introducing themselves to clients who have not met them yet."
-   Generous and marketing-led: a taller header, soft large radii, shadows kept. */
-html[data-template='broker'] {
-  --maxw: 1200px;
-  --header-h: 72px;
-  --r-sm: 12px; --r: 16px; --r-lg: 22px; --r-xl: 28px;
-}
-html[data-template='broker'] .container { padding: 40px 22px 104px; }
-html[data-template='broker'] h1 { font-size: clamp(32px, 5vw, 44px); }
-html[data-template='broker'] h2 { font-size: clamp(24px, 3.2vw, 30px); }
-html[data-template='broker'] .section-head { margin: 46px 0 18px; }
-
-/* DASHBOARD — 2a: "IPO cards first. Best for brokers whose clients come to
-   apply." Dense and functional: the widest container so tables and cards fit
-   more, a short header, tight radii, and SHADOWS OFF so surfaces are separated
-   by hairlines instead of depth. That is the single change that most makes a
-   site read as a tool rather than a brochure. */
-html[data-template='dashboard'] {
-  --maxw: 1340px;
-  --header-h: 56px;
-  --r-sm: 6px; --r: 8px; --r-lg: 10px; --r-xl: 12px;
-  --sh-xs: none; --sh-sm: none; --sh-md: none;
-}
-html[data-template='dashboard'] .container { padding: 20px 18px 72px; }
-html[data-template='dashboard'] h1 { font-size: clamp(24px, 3.4vw, 30px); }
-html[data-template='dashboard'] h2 { font-size: clamp(19px, 2.2vw, 22px); }
-html[data-template='dashboard'] .section-head { margin: 28px 0 12px; }
-
-/* DETAIL — 2b: "Pick an IPO on the left, read it all on the right. Best for
-   advisors and research-led brokers." A reading surface: flat hairline
-   surfaces, modest radii, and PROSE GIVEN ROOM — the line height and measure
-   are the whole point of a research look, and they are what the two-pane
-   layout on the home page is for. */
-html[data-template='detail'] {
-  --maxw: 1280px;
-  --header-h: 60px;
-  --r-sm: 8px; --r: 10px; --r-lg: 12px; --r-xl: 14px;
-  --sh-xs: none; --sh-sm: none;
-}
-html[data-template='detail'] .container { padding: 28px 22px 88px; }
-html[data-template='detail'] h1 { font-size: clamp(26px, 3.6vw, 32px); }
-html[data-template='detail'] h2 { font-size: clamp(20px, 2.4vw, 24px); }
-html[data-template='detail'] .section-head { margin: 34px 0 14px; }
-/* `.trust-page .prose p` already sets 1.75, so that is deliberately NOT
-   restated here — this reaches prose elsewhere (news posts, IPO about
-   sections) which has no such rule. */
-html[data-template='detail'] .prose p { line-height: 1.75; }
-
-/* LANDING — 2c: "Calm, centred, explains as it goes. Best for fintechs signing
-   up first-time investors." Airy: the NARROWEST container, the largest radii
-   and type, and the most room between sections. A first-time investor is
-   reading, not scanning a table. */
-html[data-template='landing'] {
-  --maxw: 1060px;
-  --header-h: 68px;
-  --r-sm: 14px; --r: 20px; --r-lg: 28px; --r-xl: 34px;
-}
-html[data-template='landing'] .container { padding: 48px 22px 112px; }
-html[data-template='landing'] h1 { font-size: clamp(34px, 5.4vw, 48px); }
-html[data-template='landing'] h2 { font-size: clamp(25px, 3.4vw, 32px); }
-html[data-template='landing'] .section-head { margin: 56px 0 20px; }
-
-/* THE ADMIN CONSOLE KEEPS ITS OWN SCALE UNDER ANY TEMPLATE.
-   `.admin-shell` sets `--r-lg: 12px; --r: 10px; --r-sm: 8px` at (0,1,0), which
-   LOSES to the blocks above — so without this, an operator who opens /admin on
-   a partner's host, or with `?template=`, would get that partner's radii in our
-   own console. (0,1,1) + (0,1,0) = (0,2,1), which wins. */
-html[data-template] .admin-shell,
-html[data-template] .modal-overlay {
-  --r-lg: 12px; --r: 10px; --r-sm: 8px;
-}
-
-/* ---- admin: the live preview ---------------------------------------------
- * Sir's "admin partner site" screen: a browser-framed view of the partner's
- * own site at the selected layout. `tplp-` so an admin rule can never reach
- * the public layouts it is describing.
- */
+/* ---- admin: the live preview ------------------------------------------- */
 .tplp-prev { margin-top: 18px; }
-.tplp-prev-head {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
-  margin-bottom: 8px;
-}
+.tplp-prev-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
 .tplp-prev-ttl {
   font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-muted);
@@ -6262,8 +6361,6 @@ html[data-template] .modal-overlay {
 }
 .tplp-prev-pages button:hover { color: var(--text); }
 .tplp-prev-pages button.on { background: var(--brand-50); border-color: var(--brand-400); color: var(--brand-700); }
-
-/* the browser frame */
 .tplp-prev-chrome {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 11px; background: var(--bg-2);
@@ -6276,94 +6373,150 @@ html[data-template] .modal-overlay {
   font-size: 11.5px; color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
 .tplp-prev-body {
   position: relative; overflow: hidden;
   border: 1px solid var(--border); border-radius: 0 0 10px 10px;
   background: var(--surface);
   display: grid; place-items: center;
 }
-/* RENDERED AT 1280px AND SCALED, so the operator sees the DESKTOP layout. A
+/* RENDERED AT 1280px AND SCALED, so the operator sees the DESKTOP design. A
    narrow iframe would trip the site's own breakpoints and quietly show the
-   phone layout — and the templates differ most ABOVE 1100px, which is the
-   measurement that caught a grid fault being invisible at every width the
-   browser pane happened to be. `transform` does not re-layout, so the page
-   inside still believes it is 1280 wide. */
+   phone layout. `transform` does not re-layout, so the page inside still
+   believes it is 1280 wide. */
 .tplp-prev-frame {
   position: absolute; top: 0; left: 0;
   border: 0; transform: scale(0.42); transform-origin: top left;
-  /* a preview is for looking at, not clicking through */
   pointer-events: none;
 }
 .tplp-prev-go { position: relative; z-index: 1; }
 .tplp-prev-note { margin: 7px 0 0; }
 
-/* ---- per-template arrangement on the IPO DETAIL page --------------------
- * The most-read consumer page after home, and the one where the four looks
- * have genuinely different jobs. The token layer above already changed its
- * surfaces, type and width; this changes its SHAPE.
- *
- * `.detail-layout` is `minmax(0, 1fr) 330px` by default — a reading column and
- * a sticky rail. `minmax(0, …)` is kept in every override below, and not as a
- * formality: a grid track's automatic minimum is its CONTENT, so a bare `1fr`
- * grows to min-content and pushes the page sideways. That is exactly what made
- * every IPO detail page scroll horizontally on a phone (600px of content in a
- * 347px parent), and it is the one mistake to not re-introduce here.
- *
- * Nothing here touches the SECTION ORDER. The detail page's order is
- * stage-driven — `IpoDetailView` reorders by whether the issue is open,
- * awaiting or listed — and a template shuffling that would be a second opinion
- * about what matters today, which is the stage engine's answer and not a
- * partner's preference.
+/* ---- a theme's own chrome ----------------------------------------------
+ * HIDDEN BY DEFAULT and shown only under a theme, with OUR header and footer
+ * hidden in the same breath. Both sets are in the DOM on every page because a
+ * static export cannot branch on the host, so CSS picks — keyed on
+ * `data-template`, which the pre-paint script sets during parse, so the right
+ * chrome is PAINTED first rather than swapped after hydration.
  */
+.thm-chrome, .thm-foot { display: none; }
+html[data-template='meridian'] .thm-chrome { display: block; }
+html[data-template='meridian'] .thm-foot { display: block; }
+html[data-template='meridian'] > body .header,
+html[data-template='meridian'] .header,
+html[data-template='meridian'] .footer { display: none; }
 
-/* BROKER — the default shape, just more air: a broker introducing themselves
-   has room to breathe. */
-html[data-template='broker'] .detail-layout {
-  grid-template-columns: minmax(0, 1fr) 340px; gap: 38px;
+/* MERIDIAN's header: a 1240px bar, a square brand mark, 14.5px nav. Sticky at
+   the top like ours, but its own object — white, hairline-bottomed, no
+   backdrop blur (which would create a containing block for fixed descendants
+   and is what once laid a full-screen mobile sheet out inside a 63px header). */
+.thm-head {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.thm-head-in {
+  max-width: var(--maxw); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; gap: 12px 28px;
+}
+.thm-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.thm-mark {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--brand); color: #fff; font-weight: 800; font-size: 18px;
+}
+.thm-brand-nm { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.thm-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 22px; font-size: 14.5px; }
+.thm-nav a { color: var(--text-muted); text-decoration: none; font-weight: 600; }
+.thm-nav a:hover { color: var(--text); }
+.thm-nav a.is-on { color: var(--brand-700); }
+.thm-head-act { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* The narrow chrome. Measured before and after on all 21 consumer pages at
+   375: the header row pushed the document sideways by 38px on every one of
+   them, where the same pages unthemed push by 0. The design is drawn at 1440
+   and never had to fit brand + four links + two buttons into 343px. */
+@media (max-width: 860px) {
+  .thm-head-in { flex-wrap: wrap; row-gap: 9px; padding: 10px 16px; }
+
+  /* The name truncates rather than widening the row. A flex item's automatic
+     minimum is its CONTENT, so a long partner name pushes the row no matter
+     what the buttons do — the fifth place in this sheet that has had to be
+     guarded against. */
+  /* GROW 0. `1 1 auto` let the brand take the whole row and shove the two
+     actions onto a line of their own; `min-width: 0` governs only how far it
+     may SHRINK. */
+  .thm-brand { flex: 0 1 auto; min-width: 0; }
+  .thm-brand-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .thm-head-act { flex: 0 0 auto; gap: 6px; }
+  /* phone-sized actions: 235px of buttons beside a 134px brand is 369px in
+     343px of usable width, and wrapping them is what made the bar three rows */
+  .thm-head-act .btn { padding: 7px 11px; font-size: 12.5px; }
+  /* the name ellipsizes on the narrowest handsets instead of pushing */
+  .thm-brand-nm { max-width: 118px; }
+
+  /* ITS OWN ROW, SCROLLING IN ITS OWN BOX — not `display: none`, which is what
+     this block used to say. The four destinations are in the footer as well,
+     so hiding them stranded nobody, but sending a reader to the bottom of the
+     page to navigate is not navigation. */
+  .thm-nav {
+    order: 3; flex: 1 0 100%; min-width: 0;
+    /* NOWRAP IS WHAT MAKES IT SCROLL. The four links want 372px in 343, and a
+       flex row that may wrap will wrap before it will scroll — the scroller
+       measured 65px tall with nothing to scroll. Declaring overflow is not the
+       same as denying the alternative. */
+    flex-wrap: nowrap; overflow-x: auto; gap: 18px; padding-bottom: 2px;
+  }
+  /* A SCROLL CONTAINER ONLY SCROLLS IF ITS CONTENTS REFUSE TO SHRINK. Without
+     this the links compressed to fit — "Open IPOs" measured 44px against its
+     natural 73 — and the row neither wrapped nor scrolled, it just squashed. */
+  .thm-nav > * { flex: 0 0 auto; }
+
+  /* NOT STICKY HERE. The bar is three rows on a phone — brand, actions, nav —
+     and 132px of an 800px viewport is too much to follow the reader down the
+     page. Everything stays on screen; it simply scrolls away.
+
+     --header-h GOES TO 0 WITH IT. Ten rules read that token to clear a FLOATING
+     bar; with nothing floating, reserving its height would push every anchored
+     heading 132px down the page. Same selector, so it keeps the (0,1,1) that
+     beats next/font's generated class. */
+  .thm-head { position: static; }
+  html[data-template='meridian'] { --header-h: 0px; }
 }
 
-/* DASHBOARD — "clients come to apply": a narrower rail and a tighter gutter,
-   so the figures and the apply CTA get the width. Dense, not airy. */
-html[data-template='dashboard'] .detail-layout {
-  grid-template-columns: minmax(0, 1fr) 296px; gap: 22px;
+/* MERIDIAN's footer: the design's dark #14162A, a column grid that collapses
+   on its own with `auto-fit`, then the legal base. The ink is a literal rather
+   than a token because the footer is the one surface that does NOT follow the
+   page's light/dark theme in this design — it is dark in both. */
+.thm-foot { background: #14162A; color: rgba(255,255,255,.72); }
+.thm-foot-in {
+  max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 32px;
+  display: flex; flex-direction: column; gap: 32px;
 }
-
-/* DETAIL — "advisors and research-led brokers": the WIDEST rail, because on a
-   research surface the contents list and the key figures are navigation the
-   reader keeps coming back to, not decoration. */
-html[data-template='detail'] .detail-layout {
-  grid-template-columns: minmax(0, 1fr) 366px; gap: 34px;
+.thm-foot-cols { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.thm-foot-col { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.thm-foot-col h4 {
+  margin: 0 0 2px; font-size: 11.5px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.5);
 }
-
-/* LANDING — "first-time investors": ONE COLUMN. A rail of figures beside the
-   prose is a research affordance, and for someone reading their first IPO page
-   it competes with the thing they are trying to read. The rail's content still
-   renders, below, in the order it was written.
-   No `position: static` reset is needed and one is deliberately not written:
-   `.detail-aside` is `align-self: stretch` and nothing makes it sticky, so a
-   reset would be a line implying a behaviour that does not exist. */
-html[data-template='landing'] .detail-layout {
-  grid-template-columns: minmax(0, 1fr);
+.thm-foot-col a { color: rgba(255,255,255,.72); text-decoration: none; }
+.thm-foot-col a:hover { color: #fff; }
+.thm-foot-brand { gap: 12px; }
+.thm-foot-mark {
+  width: 36px; height: 36px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: #fff; color: #14162A; font-weight: 800; font-size: 17px;
 }
-
-/* The subscription card's three-column grid is the densest thing on the site;
-   dashboard tightens it, landing lets it fall to the stacked layout it already
-   has below 1100px. Both keep `minmax(0, …)` for the reason above. */
-html[data-template='dashboard'] .subv2-det-in { gap: 10px; }
-
-/* THE FLAT LOOKS HAVE TO FLATTEN THE SURFACES THAT HARDCODE A SHADOW.
- * `--sh-sm: none` takes the 35 rules that READ the token flat, but 67 rules in
- * this sheet write a literal box-shadow — `.panel` among them — so a template
- * check caught a panel still shadowed on the IPO detail page while everything
- * around it had gone flat. These are the surfaces a reader actually sees; the
- * rest of the 67 are chips, segmented controls and focus rings, which are
- * affordances rather than surfaces and are deliberately left alone. */
-html[data-template='dashboard'] .panel,
-html[data-template='dashboard'] .panel:hover,
-html[data-template='dashboard'] .subv2-card,
-html[data-template='dashboard'] .subv2-card:hover,
-html[data-template='detail'] .panel,
-html[data-template='detail'] .panel:hover,
-html[data-template='detail'] .subv2-card,
-html[data-template='detail'] .subv2-card:hover { box-shadow: none; }
+.thm-foot-nm { font-weight: 700; font-size: 16px; color: #fff; }
+.thm-foot-legal { margin: 0; font-size: 12.5px; color: rgba(255,255,255,.56); }
+.thm-foot-grv {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px;
+  padding-top: 24px; border-top: 1px solid rgba(255,255,255,.1);
+  color: rgba(255,255,255,.62);
+}
+.thm-foot-grv a { color: rgba(255,255,255,.78); }
+.thm-foot-base {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px;
+  padding-top: 20px; border-top: 1px solid rgba(255,255,255,.1);
+  font-size: 12.5px; color: rgba(255,255,255,.52);
+}
+.thm-foot-dis { max-width: 56ch; }
