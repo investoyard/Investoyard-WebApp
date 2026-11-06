@@ -4,7 +4,7 @@
  * This is the first admin surface backed by the real API rather than the mock store.
  */
 import type {
-  TenantContent, TenantIdentity, TenantContact, ContentGap, AppNoMode,
+  TenantContent, TenantIdentity, TenantContact, TenantSite, SiteTemplate, SiteFont, ContentGap, AppNoMode,
 } from '@investoyard/shared-types';
 import {
   APP_NO_BULK_CONTAINS_MAX, APP_NO_BULK_MAX, APP_NO_MODE_LABEL, APP_NO_MODES,
@@ -12,7 +12,7 @@ import {
 } from '@investoyard/shared-types';
 /* Re-exported so the admin pages read one module — they already import
    everything else tenant-shaped through `* as api`. */
-export type { TenantContent, TenantIdentity, TenantContact, ContentGap, AppNoMode };
+export type { TenantContent, TenantIdentity, TenantContact, TenantSite, SiteTemplate, SiteFont, ContentGap, AppNoMode };
 /* The application-number rules too, so the list page states the limits the
    API enforces rather than a second copy of them. */
 export {
@@ -174,6 +174,23 @@ export const updateTenantIdentity = (slug: string, patch: Partial<TenantIdentity
   });
 export const updateTenantContact = (slug: string, patch: Partial<TenantContact>) =>
   authed<ContentSaved>(`${API}/admin/tenants/${slug}/content/contact`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  });
+
+/**
+ * Which layout this channel's public site renders in, and its hero copy.
+ *
+ * SAME SHAPE AS THE TWO ABOVE, and one thing that differs underneath: this
+ * block carries three BOOLEANS, which is why `mergeContentPatch` on the server
+ * had to learn about them. It was string-only, so a posted `true` trimmed to
+ * undefined and the writer read that as "cleared" and deleted its own key —
+ * a toggle that could never be switched on, with no error anywhere.
+ *
+ * `false` IS SENT, NOT OMITTED. Omitting a toggle leaves the stored value
+ * alone, so a cleared checkbox would never turn anything off.
+ */
+export const updateTenantSite = (slug: string, patch: Partial<TenantSite>) =>
+  authed<ContentSaved>(`${API}/admin/tenants/${slug}/content/site`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
   });
 

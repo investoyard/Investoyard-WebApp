@@ -5799,3 +5799,337 @@ html[data-foreign-host] [data-own-only] { display: none; }
   background: var(--bg-2); border: 1px dashed var(--border-2);
   color: var(--text); font-size: 15px; letter-spacing: .04em;
 }
+
+/* =========================================================================
+ * SITE TEMPLATES — the white-label layouts
+ *
+ * WHY EVERY RULE IS PREFIXED `tpl-` AND WAS GREPPED FIRST. globals.css is one
+ * global sheet and a name collision in it has bitten four times: `.sh`
+ * inheriting a section utility's 76px padding and blowing the banner 302 -> 495px,
+ * `.nav-link` defined for both the site header and the admin sidebar, a
+ * candidate slide named `.steps` hitting the apply stepper's margin, and
+ * `.gl-page` losing to `.trust-page`. The build catches none of it.
+ *
+ * THE SAFETY PROPERTY THAT MATTERS MOST: ON OUR OWN LAYOUT NOTHING CHANGES, BY
+ * CONSTRUCTION. `HomeView` now wraps each section in a div that was not there
+ * before, and `display: contents` makes both the flow and those wrappers
+ * generate no box at all — so the children are laid out as direct children of
+ * `main.container`, exactly as they were, with the same margin collapsing. A
+ * template only becomes a flex column when `data-template` says so, and that
+ * attribute is never set on our own hosts.
+ * ========================================================================= */
+
+.tpl-flow, .tpl-sec { display: contents; }
+
+/* Every template that is not ours becomes an ordered column. One selector list
+   rather than `:not([data-template="default"])`, because the attribute is also
+   ABSENT on our own host and an attribute selector cannot match an absence. */
+html[data-template='broker'] .tpl-flow,
+html[data-template='dashboard'] .tpl-flow,
+html[data-template='detail'] .tpl-flow,
+html[data-template='landing'] .tpl-flow {
+  display: flex; flex-direction: column;
+}
+html[data-template='broker'] .tpl-sec,
+html[data-template='dashboard'] .tpl-sec,
+html[data-template='detail'] .tpl-sec,
+html[data-template='landing'] .tpl-sec {
+  display: block; min-width: 0;
+}
+
+/* THE EMPTY-WRAPPER RULE. GmpAccuracy, HomeNews, WhatsAppCta, RmCard and
+   AppBand all legitimately render nothing, and a wrapper around nothing is
+   still a flex item — so without this the page grows a hole wherever a block is
+   unconfigured. `:empty` matches an element with no children at all, which is
+   exactly what a component returning null leaves behind. */
+.tpl-flow > .tpl-sec:empty { display: none; }
+
+/* Our own layout keeps its carousel; the broker layouts keep their headline.
+   Both are in the DOM on every page because a static export cannot branch on
+   the host, so exactly one is shown. */
+.tpl-sec[data-sec='brokerhero'] { display: none; }
+html[data-template='broker'] .tpl-sec[data-sec='brokerhero'],
+html[data-template='dashboard'] .tpl-sec[data-sec='brokerhero'],
+html[data-template='detail'] .tpl-sec[data-sec='brokerhero'],
+html[data-template='landing'] .tpl-sec[data-sec='brokerhero'] { display: block; }
+html[data-template='broker'] .tpl-sec[data-sec='hero'],
+html[data-template='dashboard'] .tpl-sec[data-sec='hero'],
+html[data-template='detail'] .tpl-sec[data-sec='hero'],
+html[data-template='landing'] .tpl-sec[data-sec='hero'] { display: none; }
+
+/* ---- the arrangements ----------------------------------------------------
+ * Ordered in TENS so a section can be slipped between two without renumbering
+ * the rest. Reading one block top to bottom tells you that template's page
+ * order, which is the whole point of doing this in CSS rather than in
+ * conditionals in HomeView.
+ */
+
+/* BROKER (from Sir's Broker Website v2): a full hero, then the table. For a
+   broker introducing themselves to clients who have not met them yet. */
+html[data-template='broker'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='broker'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='broker'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='broker'] .tpl-sec[data-sec='rm']         { order: 40; }
+html[data-template='broker'] .tpl-sec[data-sec='steps']      { order: 50; }
+html[data-template='broker'] .tpl-sec[data-sec='features']   { order: 60; }
+html[data-template='broker'] .tpl-sec[data-sec='gmp']        { order: 65; }
+html[data-template='broker'] .tpl-sec[data-sec='news']       { order: 70; }
+html[data-template='broker'] .tpl-sec[data-sec='whatsapp']   { order: 80; }
+html[data-template='broker'] .tpl-sec[data-sec='app']        { order: 90; }
+
+/* DASHBOARD (2a): "IPO cards first. Best for brokers whose clients come to
+   apply." Same order as broker — what makes it cards-first is that the hero is
+   SLIM, so the table is on the first screen rather than below it. */
+html[data-template='dashboard'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='dashboard'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='dashboard'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='dashboard'] .tpl-sec[data-sec='rm']         { order: 40; }
+html[data-template='dashboard'] .tpl-sec[data-sec='gmp']        { order: 50; }
+html[data-template='dashboard'] .tpl-sec[data-sec='news']       { order: 60; }
+html[data-template='dashboard'] .tpl-sec[data-sec='steps']      { order: 70; }
+html[data-template='dashboard'] .tpl-sec[data-sec='features']   { order: 80; }
+html[data-template='dashboard'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
+html[data-template='dashboard'] .tpl-sec[data-sec='app']        { order: 90; }
+
+/* DETAIL (2b): the list-and-detail reading surface. Arranged like broker; what
+   differs is the explorer itself, which renders as two panes. */
+html[data-template='detail'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='detail'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='detail'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='detail'] .tpl-sec[data-sec='rm']         { order: 40; }
+html[data-template='detail'] .tpl-sec[data-sec='gmp']        { order: 50; }
+html[data-template='detail'] .tpl-sec[data-sec='steps']      { order: 60; }
+html[data-template='detail'] .tpl-sec[data-sec='features']   { order: 70; }
+html[data-template='detail'] .tpl-sec[data-sec='news']       { order: 80; }
+html[data-template='detail'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
+html[data-template='detail'] .tpl-sec[data-sec='app']        { order: 90; }
+
+/* LANDING (2c): "Calm, centred, explains as it goes. Best for fintechs signing
+   up first-time investors." EXPLAINS BEFORE IT LISTS — the steps and the
+   reasons come above the catalogue, which is the one arrangement here that is a
+   genuinely different reading order rather than a different hero. */
+html[data-template='landing'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='landing'] .tpl-sec[data-sec='steps']      { order: 20; }
+html[data-template='landing'] .tpl-sec[data-sec='features']   { order: 30; }
+html[data-template='landing'] .tpl-sec[data-sec='explorer']   { order: 40; }
+html[data-template='landing'] .tpl-sec[data-sec='allotment']  { order: 50; }
+html[data-template='landing'] .tpl-sec[data-sec='rm']         { order: 60; }
+html[data-template='landing'] .tpl-sec[data-sec='gmp']        { order: 70; }
+html[data-template='landing'] .tpl-sec[data-sec='news']       { order: 80; }
+html[data-template='landing'] .tpl-sec[data-sec='whatsapp']   { order: 85; }
+html[data-template='landing'] .tpl-sec[data-sec='app']        { order: 90; }
+
+/* ---- the utility bar ---------------------------------------------------- */
+.tpl-util {
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+/* `var(--maxw)` and 22px, matching `.header-inner` exactly rather than a
+   hardcoded width that happens to look close: the bar sits directly above the
+   header and its links must line up with the logo, or the misalignment reads
+   as a bug on every partner page. */
+.tpl-util-in {
+  max-width: var(--maxw); width: 100%; margin: 0 auto; padding: 0 22px;
+  min-height: 34px; display: flex; align-items: center; gap: 14px;
+}
+.tpl-util-sp { flex: 1; }
+.tpl-util-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--muted); text-decoration: none; white-space: nowrap;
+}
+.tpl-util-link:hover { color: var(--text); }
+
+/* ---- the broker hero ---------------------------------------------------- */
+.tpl-hero { padding: 56px 0 44px; }
+.tpl-hero-in { max-width: 760px; }
+.tpl-hero-h {
+  margin: 0 0 14px; font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-size: 44px; line-height: 1.08; letter-spacing: -.02em; text-wrap: balance;
+}
+.tpl-hero-sub { margin: 0 0 24px; font-size: 17px; line-height: 1.55; color: var(--muted); max-width: 58ch; }
+.tpl-hero-cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tpl-hero-note { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
+.tpl-stat {
+  margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 22px;
+  font-size: 13px; color: var(--muted);
+}
+.tpl-stat-i { display: inline-flex; align-items: baseline; gap: 6px; }
+.tpl-stat-i b { font-size: 19px; color: var(--text); font-variant-numeric: tabular-nums; }
+.tpl-stat-asba { color: var(--muted); }
+
+/* DASHBOARD trims the hero so the cards clear the fold; LANDING centres it. */
+html[data-template='dashboard'] .tpl-hero { padding: 26px 0 22px; }
+html[data-template='dashboard'] .tpl-hero-h { font-size: 29px; }
+html[data-template='dashboard'] .tpl-hero-sub { margin-bottom: 18px; font-size: 15.5px; }
+html[data-template='dashboard'] .tpl-stat { margin-top: 18px; }
+
+html[data-template='landing'] .tpl-hero { padding: 76px 0 56px; text-align: center; }
+html[data-template='landing'] .tpl-hero-in { margin: 0 auto; }
+html[data-template='landing'] .tpl-hero-sub { margin-left: auto; margin-right: auto; }
+html[data-template='landing'] .tpl-hero-cta { justify-content: center; }
+html[data-template='landing'] .tpl-stat { justify-content: center; }
+
+@media (max-width: 720px) {
+  .tpl-hero { padding: 34px 0 28px; }
+  .tpl-hero-h { font-size: 31px; }
+  .tpl-hero-sub { font-size: 15.5px; }
+  html[data-template='landing'] .tpl-hero { padding: 40px 0 32px; }
+}
+
+/* ---- the relationship-manager card ------------------------------------- */
+.tpl-rm { display: grid; gap: 12px; }
+.tpl-rm-who { display: flex; align-items: center; gap: 13px; }
+.tpl-rm-av {
+  flex: none; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--brand-50); color: var(--brand-700);
+  font-weight: 700; font-size: 15px; letter-spacing: .02em;
+}
+.tpl-rm-lbl { display: block; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tpl-rm-name { margin: 2px 0 0; font-size: 18px; }
+.tpl-rm-role { margin: 1px 0 0; font-size: 13px; color: var(--muted); }
+.tpl-rm-blurb { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--muted); max-width: 64ch; }
+.tpl-rm-contact { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tpl-rm-ct { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tpl-rm-cta { font-size: 13px; color: var(--muted); }
+
+/* ---- the app band ------------------------------------------------------- */
+.tpl-app { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.tpl-app-txt h3 { margin: 0 0 4px; font-size: 18px; }
+.tpl-app-txt p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.tpl-app-cta { flex: none; display: inline-flex; align-items: center; gap: 7px; }
+
+/* ---- the fonts ---------------------------------------------------------
+ * `next/font` defines --font-sans and --font-display through a GENERATED CLASS
+ * on <html>, specificity (0,1,0). A `:root` redeclaration ties on specificity
+ * and loses on source order — which is exactly how this site shipped two
+ * webfonts and painted neither for months. `html[data-font=…]` is (0,1,1) and
+ * wins outright.
+ *
+ * EACH PAIR IS DRAWN FROM THE ALTERNATES THEMSELVES, never from Inter. Inter's
+ * own variable IS `--font-sans`, so there is no stable handle to point a
+ * redefined `--font-sans` back at — `var(--font-inter)` does not exist, and
+ * giving Inter a second name would mean either a duplicate @font-face set or
+ * demoting the variable the whole site reads. Fraunces is a display serif and
+ * would be punishing as body text, so it borrows Manrope, which is already
+ * loaded for the pair above it.
+ */
+html[data-font='figtree']  { --font-display: var(--font-figtree);  --font-sans: var(--font-figtree); }
+html[data-font='manrope']  { --font-display: var(--font-manrope);  --font-sans: var(--font-manrope); }
+html[data-font='fraunces'] { --font-display: var(--font-fraunces); --font-sans: var(--font-manrope); }
+
+/* ---- admin: the site-layout selector ------------------------------------
+ * `tplp-` (template panel) rather than `tpl-`, so an admin rule can never
+ * reach the public layouts it is describing — the `.nav-link` collision
+ * between the site header and the admin sidebar is the same shape, and it put
+ * a hole between "IPOs" and its count badge on the live site.
+ */
+.tplp-grid {
+  display: grid; gap: 10px; margin: 4px 0 2px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.tplp-opt {
+  position: relative; display: grid; gap: 3px;
+  padding: 12px 13px 12px 36px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); cursor: pointer;
+}
+.tplp-opt:hover { border-color: var(--border-2); }
+.tplp-opt.is-on { border-color: var(--brand-400); background: var(--brand-50); }
+.tplp-opt input { position: absolute; top: 14px; left: 13px; margin: 0; }
+.tplp-opt-h { font-weight: 650; font-size: 13.5px; }
+.tplp-opt-d { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.tplp-opt-src { justify-self: start; margin-top: 2px; }
+.tplp-tog {
+  display: flex; align-items: center; gap: 9px;
+  margin: 12px 0 8px; font-size: 13.5px; cursor: pointer;
+}
+.tplp-tog input { margin: 0; }
+/* NOT `.auth-pair`: that is inline-flex with white-space:nowrap, built for a
+   label plus a ghost button, and a row carrying a button, a chip and a hint
+   overflows it on a narrow admin column. */
+.tplp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* ---- the "list and detail" surface (2b) --------------------------------
+ * HIDDEN EVERYWHERE EXCEPT the `detail` template, and the grid above it is
+ * hidden there — both are in the DOM on every home page because a static
+ * export cannot branch on the host, and showing one by attribute means the
+ * right surface is laid out in the FIRST paint rather than reflowing after
+ * hydration.
+ *
+ * `minmax(0, …)` ON BOTH TRACKS, which is not belt-and-braces here: a grid
+ * track's automatic minimum is its CONTENT, so a bare `1fr` is
+ * `minmax(auto, 1fr)` and grows to min-content — that is exactly what made
+ * every IPO detail page scroll sideways on a phone (600px of content inside a
+ * 347px parent) and what starved the Share-wise table to 69px. A long company
+ * name in the left list would do it again.
+ */
+.tpl-split { display: none; }
+html[data-template='detail'] .tpl-split {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+}
+html[data-template='detail'] .h2-grid { display: none; }
+
+.tpl-split-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 620px; overflow-y: auto;
+  padding-right: 4px;
+}
+.tpl-split-row {
+  display: grid; gap: 5px; width: 100%; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); cursor: pointer; font: inherit; color: inherit;
+  /* The left rail carries the status colour, read from the `t-*` tone class on
+     the row — never written next to a status by hand. */
+  border-left: 3px solid var(--tone, var(--border));
+}
+.tpl-split-row:hover { border-color: var(--border-2); }
+.tpl-split-row.is-on { background: var(--brand-50); border-color: var(--brand-400); }
+.tpl-split-row:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 1px; }
+.tpl-split-row-t { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.tpl-split-nm {
+  font-weight: 650; font-size: 13.5px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tpl-split-st { flex: none; }
+.tpl-split-row-b { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.tpl-split-brd { letter-spacing: .03em; }
+.tpl-split-sub { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+
+.tpl-split-pane {
+  border: 1px solid var(--border); border-radius: 14px; background: var(--bg);
+  padding: 20px 22px;
+}
+.tpl-split-head { margin-bottom: 16px; }
+.tpl-split-h {
+  margin: 8px 0 2px; font-size: 22px; line-height: 1.2;
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+.tpl-split-meta { margin: 0; font-size: 12.5px; color: var(--muted); letter-spacing: .02em; }
+.tpl-split-kv {
+  margin: 0; display: grid; gap: 1px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.tpl-split-kv-i { padding: 9px 0; border-top: 1px solid var(--border); }
+.tpl-split-kv dt { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.tpl-split-kv dd { margin: 3px 0 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tpl-split-act { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+.tpl-split-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+/* A master/detail is a DESKTOP reading surface. On a phone there is no room for
+   two panes, so the list becomes the whole surface and the pane follows it —
+   which is also the order a reader expects after tapping a row. */
+@media (max-width: 900px) {
+  html[data-template='detail'] .tpl-split { grid-template-columns: minmax(0, 1fr); }
+  .tpl-split-list { max-height: 320px; }
+}
+/* The archive link under the split list. Inside the scroller, so it sits after
+   the last row rather than floating below a 620px column of its own. */
+.tpl-split-all {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 2px; padding: 9px 12px;
+  border: 1px dashed var(--border-2); border-radius: 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none;
+}
+.tpl-split-all:hover { color: var(--text); border-color: var(--brand-400); }

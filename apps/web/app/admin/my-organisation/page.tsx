@@ -8,7 +8,7 @@ import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import { EmpanelmentFields } from '@/components/EmpanelmentFields';
 import * as api from '@/lib/tenants-admin';
-import { BrandingPanel, ContentPanel, PagesPanel } from '@/components/admin/TenantSitePanels';
+import { BrandingPanel, ContentPanel, PagesPanel, TemplatePanel } from "@/components/admin/TenantSitePanels";
 
 /**
  * My Organisation — a partner (or branch) admin's view + edit of their own
@@ -178,6 +178,7 @@ export default function MyOrganisationPage() {
           <BrandingPanel slug={slug!} tenant={data} onSaved={load} canEditDomain={isOperator} />
           <ContentPanel slug={slug!} tenant={data} onSaved={load} canEditLegal={isOperator} />
           <PagesPanel slug={slug!} tenant={data} onSaved={load} />
+          <TemplatePanel slug={slug!} tenant={data} onSaved={load} />
         </div>
       ) : null}
     </div>

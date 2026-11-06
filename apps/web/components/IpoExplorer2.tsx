@@ -6,6 +6,7 @@ import { IpoCompareTable } from '@/components/IpoCompareTable';
 import { GmpNotice } from '@/components/GmpNotice';
 import { Icon } from '@/components/Icon';
 import { useTenant } from '@/components/TenantProvider';
+import { SplitExplorer } from '@/components/SplitExplorer';
 import { Lang } from '@investoyard/i18n';
 import { compareForList, isRecent, LABEL, istDateLabel, istToday } from '@investoyard/shared-types';
 
@@ -340,6 +341,17 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
           </aside>
         )}
       </div>
+
+      {/* The "list and detail" layout's own surface — pick one on the left,
+          read it on the right.
+          BOTH THIS AND THE GRID ABOVE ARE ALWAYS IN THE DOM, and CSS shows
+          exactly one, keyed on `data-template` which the pre-paint script sets
+          during parse. A static export cannot branch on the host at build
+          time, so the alternative is rendering the chosen one in the browser —
+          which would reflow the main content area after hydration. The filter
+          toolbar above serves both, which is what Sir's 2b asks for ("Current /
+          Upcoming / Listed tabs with a board filter"). */}
+      <SplitExplorer ipos={filtered as any} lang={lang} />
     </section>
   );
 }

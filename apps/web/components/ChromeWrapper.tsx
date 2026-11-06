@@ -2,10 +2,12 @@
 import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
+import { SiteUtilityBar } from '@/components/SiteUtilityBar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { TenantProvider } from '@/components/TenantProvider';
 import { TenantSchema } from '@/components/TenantSchema';
+import { TenantCanonical } from '@/components/TenantCanonical';
 import { TenantHead } from '@/components/TenantHead';
 import { SessionCheck } from '@/components/SessionCheck';
 
@@ -23,10 +25,15 @@ export function ChromeWrapper({ children }: { children: React.ReactNode }) {
           and in the same place: the tab was the last part of the page still
           carrying our brand on a partner's domain. */}
       <TenantHead />
+      {/* Repoints the canonical, og:url and hreflang at the host serving the
+          page. An effect, not the pre-paint script: mutating React-rendered
+          head tags during parse makes React re-insert its own copy. */}
+      <TenantCanonical />
       {/* Asks the server whether the stored session is still a real account and
           signs the browser out when it is not. Renders nothing; never blocks
           paint. Inside the provider only for tidiness — it needs no tenant. */}
       <SessionCheck />
+      <SiteUtilityBar />
       <Suspense fallback={<div className="header" />}><SiteHeader /></Suspense>
       <main className="container">{children}</main>
       <SiteFooter />

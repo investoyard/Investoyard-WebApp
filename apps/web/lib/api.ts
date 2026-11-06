@@ -48,7 +48,7 @@ export interface IpoFull extends Omit<IpoDetail, 'subscription'> {
 // origin (API_INTERNAL_ORIGIN, default http://localhost:3000) so the exported pages are
 // generated from live DB data. Set an absolute NEXT_PUBLIC_API_URL to bypass this.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   // Server-only branch (dead-code-eliminated from the client bundle). At build the
   // static export fetches from the LOCAL live API so pages get real DB data even when
   // the public API URL (NEXT_PUBLIC_API_URL) isn't reachable from the build box:

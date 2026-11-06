@@ -1,6 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Tenant, DEFAULT_TENANT, resolveTenantByHost, resolveTenantBySlug, applyBranding, fetchTenants } from '@/lib/tenants';
+import { Tenant, DEFAULT_TENANT, resolveTenantByHost, resolveTenantBySlug, applyBranding, applyPresentation, fetchTenants, tenantSite } from '@/lib/tenants';
 
 const TenantContext = createContext<Tenant>(DEFAULT_TENANT);
 
@@ -30,6 +30,21 @@ export function useTenantResolved(): boolean {
 }
 
 /**
+ * The resolved layout, font and hero copy for the active tenant.
+ *
+ * Here rather than at each call site so every block that renders a piece of the
+ * chosen layout reads ONE answer — the utility bar, the RM card and the app band
+ * each gate on a different field of it, and three components resolving the row
+ * themselves is three places for "is this block on" to drift. It also means a
+ * caller cannot forget to pass the display name, which is what decides whether
+ * the derived headline names the partner's trade name or the all-caps string
+ * somebody typed at registration.
+ */
+export function useSite() {
+  return tenantSite(useTenant());
+}
+
+/**
  * Resolves the tenant on the client (static build) from the domain — or a
  * `?brand=<slug>` dev override — then paints the brand and provides it to the tree.
  */
@@ -52,6 +67,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       const resolved = resolveTenantBySlug(slug, list) ?? resolveTenantByHost(window.location.host, list);
       if (!active) return;
       applyBranding(resolved);
+      applyPresentation(resolved);
       setTenant(resolved);
       setResolved(true);
     })();

@@ -9,7 +9,7 @@ import { Loader } from '@/components/ui/Loader';
 import { EmpanelmentFields } from '@/components/EmpanelmentFields';
 import { EMPANELMENT, isIndividual, type EField } from '@/lib/empanelment';
 import * as api from '@/lib/tenants-admin';
-import { BrandingPanel, ContentPanel, PagesPanel } from '@/components/admin/TenantSitePanels';
+import { BrandingPanel, ContentPanel, PagesPanel, TemplatePanel } from "@/components/admin/TenantSitePanels";
 import { RichText } from '@/components/ui/RichText';
 import { PAGE_LABEL, TENANT_PAGE_KEYS } from '@investoyard/shared-types';
 
@@ -313,6 +313,7 @@ function PartnerProfilePage() {
           <BrandingPanel slug={slug} tenant={data} onSaved={load} />
           <ContentPanel slug={slug} tenant={data} onSaved={load} />
           <PagesPanel slug={slug} tenant={data} onSaved={load} />
+          <TemplatePanel slug={slug} tenant={data} onSaved={load} />
         </>
       ) : null}
 

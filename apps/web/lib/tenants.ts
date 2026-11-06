@@ -5,6 +5,9 @@ import {
   resolveContact,
   displayName,
   legalEntity,
+  resolveSite,
+  DEFAULT_TEMPLATE,
+  DEFAULT_FONT,
 } from '@investoyard/shared-types';
 /**
  * Multi-tenant foundation (web) — mock registry + host-based resolution + branding.
@@ -167,6 +170,54 @@ export const identityInput = (t: Tenant) => ({
 });
 export const tenantIdentity = (t: Tenant) => resolveIdentity(identityInput(t));
 export const tenantContact = (t: Tenant) => resolveContact(t.content?.contact);
+
+/**
+ * The layout, the font and the hero copy for this tenant.
+ *
+ * It is handed `tenantDisplayName(t)` rather than `t.name`, which is the whole
+ * reason this is a one-liner here and not a shape repeated at each call site:
+ * the derived headline is built from the name the site actually PRINTS, so a
+ * partner who has entered a proper trade name gets a headline about that name
+ * instead of the all-caps string somebody typed at registration.
+ */
+export const tenantSite = (t: Tenant) =>
+  resolveSite({ isDefault: !!t.isDefault, name: tenantDisplayName(t), site: t.content?.site });
+
+/**
+ * Put the resolved layout on `<html>`, as the pre-paint script already did from
+ * the baked host map.
+ *
+ * THIS IS THE CORRECTION PASS, not the primary one. The attribute is already
+ * set during parse for every host the last build knew about — see
+ * `siteTemplates.ts` — and this runs after the live registry has been fetched,
+ * so it covers a template changed since that build and a `?brand=` override
+ * pointed at a partner from our own host.
+ *
+ * It writes unconditionally rather than only when it differs: the baked value
+ * and this one come from the same resolver over the same field, so "differs"
+ * means the build is stale and this value is the newer of the two. Setting an
+ * attribute to what it already says costs nothing and is not a style
+ * invalidation the browser can see.
+ */
+export function applyPresentation(t: Tenant): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  /* A dev override wins: the operator asked to see a specific layout, and
+     having it quietly replaced a tick later by the resolved tenant's own is
+     exactly the confusing behaviour `?brand=` does not have. */
+  if (typeof window !== 'undefined' && /[?&](template|font)=/.test(window.location.search)) return;
+  const s = tenantSite(t);
+  /* ABSENCE MEANS OURS, so the default REMOVES the attribute rather than
+     setting it to 'default'. Two reasons, and the second is the one that
+     matters: the CSS selector lists name the four non-default templates, so a
+     present-but-default attribute would be dead weight whose presence stopped
+     meaning "a partner layout" — and a partner who switches BACK to our layout
+     needs the baked attribute taken off, which only a remove does. */
+  if (s.template === DEFAULT_TEMPLATE) root.removeAttribute('data-template');
+  else root.setAttribute('data-template', s.template);
+  if (s.font === DEFAULT_FONT) root.removeAttribute('data-font');
+  else root.setAttribute('data-font', s.font);
+}
 /** Never empty — the footer and the page title both need something to print. */
 export const tenantDisplayName = (t: Tenant) => displayName(identityInput(t));
 /** Undefined until a legal entity is known; the caller must then say nothing. */

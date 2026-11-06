@@ -54,7 +54,18 @@ export interface SiteTemplateMeta {
   design?: string;
 }
 
-export const SITE_TEMPLATES = [
+/*
+ * ANNOTATED `readonly SiteTemplateMeta[]`, NOT `as const satisfies`, and that is
+ * a correction rather than a style choice. `as const` narrows each entry to its
+ * OWN literal type, and a literal type does not carry an optional field that
+ * entry happens to omit — so `t.design` was a compile error on the one entry
+ * without a design, for every consumer that looped the list. It broke the spec
+ * and then the admin panel, in the same way, twice. The narrow `id` literals
+ * bought nothing here: `SiteTemplate` is declared on its own rather than
+ * derived from this list.
+ */
+
+export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
   {
     id: 'default',
     label: 'Investoyard (default)',
@@ -84,7 +95,7 @@ export const SITE_TEMPLATES = [
     blurb: 'Calm, centred, explains as it goes. Best for fintechs signing up first-time investors.',
     design: '2c',
   },
-] as const satisfies readonly SiteTemplateMeta[];
+];
 
 export type SiteTemplate = 'default' | 'broker' | 'dashboard' | 'detail' | 'landing';
 
@@ -134,7 +145,7 @@ export interface SiteFontMeta {
   cssVar: string;
 }
 
-export const SITE_FONTS = [
+export const SITE_FONTS: readonly SiteFontMeta[] = [
   {
     id: 'default',
     label: 'Plus Jakarta Sans / Inter',
@@ -163,7 +174,7 @@ export const SITE_FONTS = [
     body: 'Inter',
     cssVar: '--font-fraunces',
   },
-] as const satisfies readonly SiteFontMeta[];
+];
 
 export type SiteFont = 'default' | 'figtree' | 'manrope' | 'fraunces';
 
