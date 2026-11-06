@@ -6332,6 +6332,11 @@ html[data-template] .modal-overlay {
 }
 .tplp-opt:hover { border-color: var(--border-2); }
 .tplp-opt.is-on { border-color: var(--brand-400); background: var(--brand-50); }
+/* a theme that is listed but not built yet: dimmed and not selectable, with an
+   "In build" chip saying which it is — refusing a click without explaining is
+   how a control becomes something people click twice and then distrust */
+.tplp-opt.is-off { opacity: .55; cursor: not-allowed; }
+.tplp-opt.is-off:hover { border-color: var(--border); }
 .tplp-opt input { position: absolute; top: 14px; left: 13px; margin: 0; }
 .tplp-opt-h { font-weight: 650; font-size: 13.5px; }
 .tplp-opt-d { font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }

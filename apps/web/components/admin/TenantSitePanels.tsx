@@ -8,6 +8,7 @@ import {
   TENANT_PAGE_KEYS,
   OPERATOR_ONLY_IDENTITY_FIELDS,
   SITE_TEMPLATES,
+  themeReady,
   SITE_FONTS,
   DEFAULT_TEMPLATE,
   DEFAULT_FONT,
@@ -801,18 +802,33 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
 
       {/* ---- the layout ---- */}
       <div className="tplp-grid">
-        {SITE_TEMPLATES.map((t) => (
-          <label key={t.id} className={`tplp-opt${template === t.id ? ' is-on' : ''}`}>
-            <input
-              type="radio" name="tpl" value={t.id}
-              checked={template === t.id}
-              onChange={() => set('template', t.id as api.SiteTemplate)}
-            />
-            <span className="tplp-opt-h">{t.label}</span>
-            <span className="tplp-opt-d">{t.blurb}</span>
-            {t.design ? <span className="st tplp-opt-src">{t.design}</span> : null}
-          </label>
-        ))}
+        {SITE_TEMPLATES.map((t) => {
+          /* A THEME IS BUILT ONE AT A TIME, so one that is listed but not
+             finished must not be selectable — and must say so rather than just
+             refusing the click. `themeReady` is the registry's own answer, so
+             this screen cannot form a second opinion about what is shippable. */
+          const ready = themeReady(t.id);
+          return (
+            <label
+              key={t.id}
+              className={`tplp-opt${template === t.id ? ' is-on' : ''}${ready ? '' : ' is-off'}`}
+            >
+              <input
+                type="radio" name="tpl" value={t.id}
+                checked={template === t.id}
+                disabled={!ready}
+                onChange={() => set('template', t.id as api.SiteTemplate)}
+              />
+              <span className="tplp-opt-h">{t.label}</span>
+              <span className="tplp-opt-d">{t.blurb}</span>
+              {/* `.st.mut`, not a bare `.st`: that class sets size, weight and a
+                  pill radius and NO colour at all, so the chip rendered as a
+                  pill-shaped nothing. */}
+              {t.design ? <span className="st mut tplp-opt-src">{t.design}</span> : null}
+              {!ready ? <span className="st warn tplp-opt-src">In build</span> : null}
+            </label>
+          );
+        })}
       </div>
 
       {/* Our own layout reads none of the copy below, so showing the boxes would

@@ -218,7 +218,11 @@ export default function VisitorsReportPage() {
                         ) : (
                           <span className="muted">Not signed in</span>
                         )}
-                        {r.bot && <span className="st" style={{ marginLeft: 8 }}>bot</span>}
+                        {/* `.st.mut`: a bare `.st` sets size, weight, padding and a pill radius and
+    NO colour, so this marker rendered as plain text where a chip was meant.
+    Muted is the right pair for it — a crawler row is not a person, and that
+    is a neutral fact rather than a warning. */}
+                        {r.bot && <span className="st mut" style={{ marginLeft: 8 }}>bot</span>}
                       </td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmt(r.views)}</td>
                     </tr>
