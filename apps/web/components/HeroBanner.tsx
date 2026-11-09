@@ -134,8 +134,34 @@ function listingInfo(ipo: IpoFull): { price?: number; gainPct?: number } | null 
   return { price: price || undefined, gainPct };
 }
 
+/**
+ * THE BRAND SLIDES IN ORDER, as DATA rather than as a count.
+ *
+ * Five expressions are derived from how many there are and which of them are
+ * light — the slide count, the dwell, the jump-to-featured offset, the pastel
+ * test and the per-slide `active` gate. They were a hardcoded 4 and a literal
+ * `new Set([2, 3])` naming slides by POSITION, so changing the set left every
+ * one of them quietly wrong.
+ *
+ * `ownOnly` MARKS OUR OWN BRAND STATEMENT: the hero slide and its pastel twin
+ * carry the tagline, the trust badges and the mixed-script Demat line, so on a
+ * partner's site they go WHOLE. Taking out the tagline alone would leave the
+ * rest of our composition standing on a broker's home page.
+ *
+ * The ELEMENTS are not in here: `focus` is declared below where the count is
+ * needed, so a list holding them would reference it before its declaration.
+ * The JSX maps this where every prop is in scope.
+ */
+const ALL_BRAND_KINDS = [
+  { key: 'hero', light: false, ownOnly: true },
+  { key: 'promise', light: false, ownOnly: false },
+  { key: 'hero-pastel', light: true, ownOnly: true },
+  { key: 'promise-pastel', light: true, ownOnly: false },
+] as const;
+
 export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang?: Lang }) {
   const q = lang !== 'en' ? `?lang=${lang}` : '';
+  const tenant = useTenant();
   const [ipos, setIpos] = useState<IpoFull[]>(baked);
   const [idx, setIdx] = useState(0);
   const paused = useRef(false);
@@ -174,13 +200,25 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
     return all.slice(0, 6);
   }, [ipos]);
 
-  /** The leading brand slides hold the screen longer than the data slides so the
-   *  branding actually registers before the catalog starts.
+  /** The leading brand slides hold the screen longer than the data slides so
+   *  the branding actually registers before the catalog starts.
    *
-   *  FOUR are in rotation while the operator picks: 0 hero · 1 promise wall ·
-   *  2 numbers (light) · 3 three-steps (ink). Two will be deleted after the
-   *  review — see LIGHT_BRAND_SLIDES below when removing one. */
-  const BRAND_SLIDES = 4;
+   *  DERIVED FROM `ALL_BRAND_KINDS`, so the set is changeable: a partner gets
+   *  only the two that are not our own brand statement, and the operator's
+   *  standing "delete two after the review" is a filter rather than a
+   *  renumbering of five expressions. */
+  const own = !!tenant.isDefault;
+  const brandKinds = useMemo(
+    () => (own ? ALL_BRAND_KINDS.slice() : ALL_BRAND_KINDS.filter((k) => !k.ownOnly)),
+    [own],
+  );
+  const BRAND_SLIDES = brandKinds.length;
+  /* which of them are the light treatment — by position IN THIS SET, so it
+     cannot name a slide that is no longer there */
+  const LIGHT_BRAND_SLIDES = useMemo(
+    () => new Set(brandKinds.map((k, i) => (k.light ? i : -1)).filter((i) => i >= 0)),
+    [brandKinds],
+  );
 
   /** The IPO slides in render order. While the pastel treatment is under review
    *  the first PASTEL_TWINS issues appear in both treatments back to back; the
@@ -277,19 +315,19 @@ export function HeroBanner({ ipos: baked, lang = 'en' }: { ipos: IpoFull[]; lang
     >
       <div className="hb-track" style={{ transform: `translateX(-${idx * 100}%)` }}>
         {/* slides 0–3 — the brand set (also the fallback when the catalog is quiet) */}
-        <BrandSlide
-          q={q}
-          open={ipos.filter((i) => i.status === 'open').length}
-          upcoming={ipos.filter((i) => i.status === 'upcoming').length}
-        />
-        <PromiseSlide q={q} focus={focus} />
-        {/* the same two, in pastel — under review */}
-        <PastelHeroSlide
-          q={q}
-          open={ipos.filter((i) => i.status === 'open').length}
-          upcoming={ipos.filter((i) => i.status === 'upcoming').length}
-        />
-        <PastelPromiseSlide q={q} focus={focus} />
+        {/* THE ORDER COMES FROM `brandKinds`, the props from here. Our own two
+            are absent on a partner's site and every index below follows,
+            because all five are derived from that same list. */}
+        {brandKinds.map((k) => {
+          const open = ipos.filter((i) => i.status === 'open').length;
+          const upcoming = ipos.filter((i) => i.status === 'upcoming').length;
+          switch (k.key) {
+            case 'hero': return <BrandSlide key={k.key} q={q} open={open} upcoming={upcoming} />;
+            case 'promise': return <PromiseSlide key={k.key} q={q} focus={focus} />;
+            case 'hero-pastel': return <PastelHeroSlide key={k.key} q={q} open={open} upcoming={upcoming} />;
+            default: return <PastelPromiseSlide key={k.key} q={q} focus={focus} />;
+          }
+        })}
 
         {/* admin-managed promo slides */}
         {banners.map((b) => (
@@ -527,7 +565,9 @@ const isFeatured = (ipo: { symbol?: string | null }) => !!FEATURED_SYMBOL
   && String(ipo.symbol ?? '').toUpperCase() === FEATURED_SYMBOL
   && today() <= FEATURED_UNTIL;
 
-const LIGHT_BRAND_SLIDES = new Set([2, 3]);
+/* LIGHT_BRAND_SLIDES is derived inside the component now, from the slide set
+   itself: naming slides 2 and 3 by position cannot survive a set that changes
+   per tenant. */
 
 /** Shared pastel atmosphere: soft colour blobs and the dotted texture, in place
  *  of the dark slides' clouds and paper plane. */
