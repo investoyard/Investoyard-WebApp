@@ -133,7 +133,7 @@ export function BrandingPanel({ slug, tenant, onSaved, canEditDomain = true }: {
   const pickLogo = async (f: File | undefined) => {
     if (!f) return;
     setLogoBusy(true); setErr(null);
-    try { setLogo(await api.uploadImage(f)); }
+    try { setLogo(await api.uploadBrandAsset(f)); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLogoBusy(false); }
   };
@@ -141,7 +141,7 @@ export function BrandingPanel({ slug, tenant, onSaved, canEditDomain = true }: {
   const pickFavicon = async (f: File | undefined) => {
     if (!f) return;
     setFaviconBusy(true); setErr(null);
-    try { setFavicon(await api.uploadImage(f)); }
+    try { setFavicon(await api.uploadBrandAsset(f)); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setFaviconBusy(false); }
   };
@@ -149,7 +149,7 @@ export function BrandingPanel({ slug, tenant, onSaved, canEditDomain = true }: {
   const pickFooterLogo = async (f: File | undefined) => {
     if (!f) return;
     setFooterBusy(true); setErr(null);
-    try { setFooterLogo(await api.uploadImage(f)); }
+    try { setFooterLogo(await api.uploadBrandAsset(f)); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setFooterBusy(false); }
   };

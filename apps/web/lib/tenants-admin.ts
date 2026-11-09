@@ -535,6 +535,22 @@ export const fetchIpo = (id: string) => fetch(`${API}/ipos/${id}`).then(j<AdminI
 export const deleteIpo = (id: string) => authed<{ deleted: boolean }>(`${API}/ipos/${id}`, { method: 'DELETE' });
 
 /** Upload an image (logo) — returns an absolute URL served by the API. */
+/**
+ * A white-label's OWN brand asset — logo, footer logo or favicon.
+ *
+ * A SECOND FUNCTION RATHER THAN A CHANGED ONE. `uploadImage` below posts to
+ * /admin/upload, which is gated on `ipos.manage` and is also what the IPO
+ * form uses; repointing it would move OUR catalogue uploads onto a route a
+ * partner can reach and our own Staff cannot, breaking one to fix the other.
+ */
+export async function uploadBrandAsset(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API}/admin/upload/brand`, { method: 'POST', headers: { Authorization: `Bearer ${getOperatorToken()}` }, body: fd });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || 'Upload failed'); }
+  return (await res.json()).url as string;
+}
+
 export async function uploadImage(file: File): Promise<string> {
   const fd = new FormData();
   fd.append('file', file);

@@ -25,8 +25,16 @@ const SAFE_NAME = /^[a-f0-9-]{8,}\.(png|jpe?g|webp|svg|ico|pdf)$/i;
 if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
 
 /**
- * Image uploads (IPO / brand logos). Files are stored on the API's disk and served
- * back from /api/uploads/<file>. Upload requires ipos.manage; serving is public.
+ * Image uploads. Files are stored on the API's disk and served back from
+ * /api/uploads/<file>; SERVING is public, uploading is not.
+ *
+ * THREE UPLOAD ROUTES, AND THE SPLIT IS BY WHAT THE PERMISSION MEANS rather
+ * than by what the file is:
+ *   /admin/upload        ipos.manage        — our own IPO catalogue artwork
+ *   /admin/upload/brand  tenant.site.manage — a white-label's own brand assets
+ *   /admin/upload/doc    either of the two  — KYC docs and IPO documents
+ * A partner holds only the middle one, which is the whole point: the panel
+ * that offers them an Upload button used to call the first and 403.
  */
 @Controller()
 export class UploadController {
@@ -46,6 +54,51 @@ export class UploadController {
         : cb(new BadRequestException('Only PNG, JPG, WEBP or SVG images are allowed.'), false),
   }))
   upload(@UploadedFile() file: any, @Req() req: any) {
+    if (!file) throw new BadRequestException('No file uploaded.');
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const base = process.env.UPLOADS_BASE_URL || `${proto}://${host}`;
+    return { url: `${base}/api/uploads/${file.filename}`, filename: file.filename };
+  }
+
+  /**
+   * POST /api/admin/upload/brand — a white-label's OWN logo, footer logo or
+   * favicon. Multipart 'file'. Returns an absolute URL to the stored image.
+   *
+   * A ROUTE OF ITS OWN RATHER THAN A LOOSENED `/admin/upload`, and the reason
+   * is what each permission MEANS. `ipos.manage` is a platform grant over OUR
+   * IPO catalogue; a white-label partner has no business holding it and does
+   * not. So the branding panel rendered three Upload buttons that returned 403
+   * for the only people the panel exists for — measured, not inferred: of the
+   * seven tenant Admin roles, the two white-labels hold `tenant.site.manage`
+   * and NOT `ipos.manage`, and `PermissionsGuard` is a plain `includes` with
+   * no superadmin bypass.
+   *
+   * Widening `/admin/upload` to accept either would have been one line and
+   * would have handed a partner an endpoint whose whole purpose is our own
+   * catalogue surface. Splitting it gives them exactly the capability the
+   * panel offers and nothing adjacent to it.
+   *
+   * SAME STORE, SAME LIMITS, SAME FILTER. The file lands in the one upload
+   * directory and is served by the same public GET, so nothing downstream
+   * learns a second path — and `.ico` is in ALLOWED for this route's sake,
+   * since a broker who already owns one should not be told to convert it.
+   */
+  @Post('admin/upload/brand')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('tenant.site.manage')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: UPLOAD_DIR,
+      filename: (_req: any, file: any, cb: any) => cb(null, `${randomUUID()}${extname(file.originalname).toLowerCase()}`),
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB, as /admin/upload
+    fileFilter: (_req: any, file: any, cb: any) =>
+      ALLOWED.has(extname(file.originalname).toLowerCase())
+        ? cb(null, true)
+        : cb(new BadRequestException('Only PNG, JPG, WEBP, SVG or ICO images are allowed.'), false),
+  }))
+  uploadBrand(@UploadedFile() file: any, @Req() req: any) {
     if (!file) throw new BadRequestException('No file uploaded.');
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
     const host = req.headers['x-forwarded-host'] || req.headers.host;
