@@ -7058,7 +7058,17 @@ html[data-template='cobalt'] .ipocard {
 html[data-template='cobalt'] .ipocard .ic-logo-link {
   display: inline-flex; grid-area: 1 / 1; justify-self: start; border-radius: 50%;
 }
-html[data-template='cobalt'] .ipocard .ipologo { border-radius: 50%; }
+/* THE PLATE IS THE DESIGN'S TINTED CIRCLE, and that is not decoration: only
+   102 of 1,306 records carry a logo, so what this mostly renders is
+   `IpoLogo`'s fallback glyph — stroked `--text-faint` at 3.09:1, which inside
+   a circle the theme makes a feature of reads as an image that failed to
+   load. On the design's own #E3E8FF ground with its #2A43C4 ink the same
+   glyph is 6.40:1 and reads as a mark. (A presentation attribute loses to a
+   stylesheet, which is why the inline `stroke` can be reached at all.) */
+html[data-template='cobalt'] .ipologo {
+  border-radius: 50%; background: var(--brand-50); border-color: var(--brand-100);
+}
+html[data-template='cobalt'] .ipologo svg { stroke: var(--brand); }
 
 html[data-template='cobalt'] .ipocard .ic-meta { display: contents; }
 html[data-template='cobalt'] .ipocard .ic-status { grid-area: 1 / 1; justify-self: end; align-self: center; }
