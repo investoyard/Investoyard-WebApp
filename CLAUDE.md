@@ -1999,7 +1999,7 @@ The family is already tracked here; these are new shapes, and **three of five re
 - **`TaskStop` KILLS THE SHELL, NOT ITS GRANDCHILDREN.** A stalled `next build` left an `npm-cli.js` and a `next build` process holding `.next`; `pkill` does not exist here, so `Get-CimInstance Win32_Process` + `Stop-Process -Force`. And the stall itself is the documented one — the log never got past its header.
 - **`EISDIR` RECURRED AND WAS TRANSIENT AGAIN**: zero stray directories across the WHOLE `.next/server/app` tree and the named paths ABSENT, so a retry rather than a 368 MB cache rebuild. Succeeded first retry.
 
-**Still open on this task**: themes 2–5 from the remaining designs (*Broker Website* v1, and the Round-1 sketches *1a Terminal*, *1b Editorial*, *1c Cards* — 13.6 KB each, so they need extrapolation), each with a name for Sir to approve; and Meridian's own key-page layouts beyond the token layer, where the hubs keep their own arrangement today.
+~~**Still open on this task**: themes 2–5 from the remaining designs~~ **ALL BUILT — Onyx, Folio and Cobalt came from 1a / 1b / 1c, and there was never a fifth: see *There is no fifth theme in the designs*.** Still open: Meridian's own key-page layouts beyond the token layer, where the hubs keep their own arrangement today.
 
 
 ## Onyx, theme 2 — and four generic rules wearing one theme's name (2026-11-06)
@@ -2073,7 +2073,37 @@ The family is already tracked here; these are new shapes, and **three of five re
 ### Verified
 889 tests, three clean typechecks, **eleven checks**, card geometry measured on all five layouts and every one distinct, detail-page treatment distinct on all five with the section order identical, **21 pages plus an IPO detail page × 2 widths under each of the four themes with 0 overflow regressions and 0 content hidden**, every colour pair resolved in the browser from the shipped sheet, and all four themes re-measured **on the live site** (ground, card display, chrome, detail rail). **The default is untouched** — 70 properties across 5 live pages, 0 changed, for the fourth deploy running.
 
-**Still open**: theme 5 from *Broker Website* v1 (33 KB, the only design left), and Sir's approval of the four names — **Meridian, Onyx, Folio, Cobalt**.
+~~**Still open**: theme 5 from *Broker Website* v1 (33 KB, the only design left)~~ **CLOSED 2026-11-09 — v1 IS Meridian, measured at dE 0.0 on every neutral; the theme set is four.** Still open: Sir's approval of the four names — **Meridian, Onyx, Folio, Cobalt**.
+
+
+## There is no fifth theme in the designs, and that is a measurement (2026-11-09)
+
+- **THE THEME SET IS CLOSED AT FOUR — Meridian, Onyx, Folio, Cobalt — on the operator's decision, taken after the measurement below.** Their own brief said *"4 to 5 template"*, and four cover institutional-calm, trading-dark, editorial-paper and fintech-bright with nothing left over. **Do not re-open this from the file list**: `Investoyard Broker Website.dc.html` looks like an unused web design and is not one.
+- **`Broker Website.dc.html` (v1) IS MERIDIAN, EARLIER.** Its palette is a **strict subset of v2's — 30 of 30 hexes shared, none of its own** — and its ground, ink, muted and border are **dE 0.0** from what Meridian ships. Its chrome is the same sticky white bar with a 34px rounded-square mark and a 19px/800 name, its hero the same split with a live issue card, its footer the same `#14162A`. Building it would have produced a second Meridian with different radii, which is exactly what the operator rejected at the start of this work.
+- **AND THE THREE UNUSED DESIGNS IN `Broker Templates` ARE NOT DISTINCT EITHER**, measured in Lab against what is already built (under 10 reads as the same colour, 10–25 as a related one):
+  - **2a Dashboard** — mean **dE 5.5 from Meridian**, and *closer to Meridian than Cobalt is* (9.2). Its ground is 1.4 away, its ink 4.2, its border 2.7; only the muted differs at 13.7.
+  - **2b List** — **dE 5.8 from Meridian**, essentially 2a's neutrals with a wine accent that is Folio's.
+  - **2c Landing** — **dE 4.5 from Cobalt**, with its ink 1.8 away and its accent in Cobalt's own family.
+- **WHAT SEPARATES THEMES IS THE NEUTRALS, NOT THE ACCENT, and that is why the comparison is the one above.** `applyBranding` writes the brand tokens as **INLINE styles on `<html>`**, which beat any stylesheet rule — **verified in the browser**: an inline `--brand` overrode Cobalt's own. So a tenant with a `brandColor` gets their own accent on every theme and the theme's `--brand` is only the fallback for a tenant without one, **which today is all of them**. Two designs differing mainly in accent are therefore one theme.
+  - This resolves an apparent contradiction in this file: the registry says a theme *"does NOT own the BRAND colour"* while all four set `--brand`. Both are true — the inline style wins when there is one.
+- **A CONTRAST RATIO CANNOT ANSWER THIS QUESTION.** It is luminance-only, so it calls two different hues of the same lightness identical — Meridian's `#F5F5FA` and 2a's `#F2F4F7` are 1.01:1 apart and that says nothing. **Discrimination between two swatches is a perceptual difference (Lab dE)**; this file has already recorded the same correction once, for the two indigos in the status legend.
+- **The web design set, enumerated once so the next reader does not have to**: `Broker Website v2` → Meridian · `Broker Templates` → six designs, of which **1a Terminal → Onyx, 1b Editorial → Folio, 1c Cards → Cobalt** and 2a/2b/2c are measured above · `Broker Website` (v1) → Meridian's draft · `Admin - Partner Site` → the admin screen, already built · `UX QC Report` → a report, not a design. **Everything else in that folder is MOBILE** (376px or 760px canvases) or a 240px wireframe set.
+
+
+### A partner's About page was headed "About Investoyard" (2026-11-09)
+
+- **FOUND BY MEASURING THE LIVE WHITE-LABEL DOMAIN rather than by reading the rule.** `newipo.finwave.co` is FINWAVE's and resolves to our origin; its `/about/` rendered an `<h1>` reading **"About Investoyard"** over a body that correctly said *"FINWAVE has not published About us yet"*. Our brand, in the largest type on the page, on their site.
+- **THE HEADING CANNOT LIVE INSIDE `[data-own-only]`, which is why the pre-paint script never hid it.** Every branch of `TrustPage` renders it — including the not-published one, which needs a heading of its own — so the only other thing that would have been safe is a generic noun. **Terms, Privacy and Disclaimer ARE generic nouns; About is the one page whose heading names the site**, and that is why nothing had shown it.
+- **`headingPrefix` is a STRING, NOT A FUNCTION, and that is not a style choice**: `app/about/page.tsx` is a SERVER component (it exports `metadata`) and a function prop cannot cross the server/client boundary. The noun alone goes in (`"About"`) and a partner's page is headed with their own trade name.
+- **HYDRATION IS UNAFFECTED AND OUR OWN MARKUP IS UNCHANGED.** The server render and the FIRST client render both take the `!resolved` path, which returns our own heading; the partner heading can only appear after the host has resolved, which is already a client-only swap. Verified in the built export: `out/about/index.html` still carries `<h1>About Investoyard</h1>`, and a partner brand renders **"About FINWAVE"**.
+- **THE REST OF THE IDENTITY RULE HOLDS ON THAT DOMAIN, measured across five pages** — titles carry the partner's name, all four legal pages render *"FINWAVE has not published … yet"* rather than ours, and our operating entity appears nowhere in the visible text.
+  - **MY FIRST PROBE REPORTED FIVE LEAKS AND ALL FIVE WERE THE PROBE.** It tested `document.body.textContent`, which **INCLUDES `<script>` bodies** — and this page carries our legal name once inside Next's RSC hydration payload, the residue this file already documents as not-visible text. **`innerText` is the measurement**: it skips scripts AND skips what CSS has hidden, which is exactly what `[data-foreign-host]` does to our own-only blocks.
+
+### What a white-label actually has today, measured from the live registry
+- **7 tenants: 1 `direct` (investoyard) + 6 `partner`.** The public registry carries **`type`, not `isDefault`** — reading the wrong key makes every tenant look like a partner, which is what a first pass reported.
+- **`flags.whitelabel` IS NOT EXPOSED PUBLICLY. The tell is `gmpEnabled: false`**, because `registerTenant` sets it false and LOCKED for a white-label — **acml-capital-markets-limited and finwave**, exactly as recorded.
+- **ONE tenant has any content row at all** (finwave: a `site` row choosing our own layout) and **NONE has identity, contact or any of the four legal pages** — `GET /tenants/<slug>/page/<key>` answers `{"key":"…","html":""}` for all 7 across all 4 keys. **No tenant has a `brandColor`**, so every theme's own accent is the one in force.
+- **So the blocking gaps are LIVE on a real domain**: FINWAVE's footer prints **no operating entity and no grievance contact**, and all four of their legal pages say "not published". That is the designed behaviour — **never inherit ours** — and it is operator data, not code: admin → the partner → identity, contact, and the four pages.
 
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.

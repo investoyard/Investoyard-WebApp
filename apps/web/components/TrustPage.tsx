@@ -42,12 +42,28 @@ import { fetchTenantPage, tenantDisplayName } from '@/lib/tenants';
 export function TrustPage({
   pageKey,
   heading,
+  headingPrefix,
   lede,
   children,
 }: {
   pageKey: TenantPageKey;
   /** Our own heading. A partner's page supplies its own structure in the HTML. */
   heading: string;
+  /**
+   * For a heading that NAMES THE SITE — set this to the noun alone ("About")
+   * and a partner's page is headed with THEIR trade name instead of ours.
+   *
+   * It exists because `/about/` was headed "About Investoyard" on a live
+   * white-label domain. The heading cannot live inside `[data-own-only]` —
+   * every branch renders it, including the not-published one — so the
+   * pre-paint script cannot hide it, and a generic noun is the only other
+   * thing that would have been safe. Terms, Privacy and Disclaimer are
+   * generic nouns, which is why this is the only page that needs it.
+   *
+   * A STRING RATHER THAN A FUNCTION because the pages that pass it are
+   * SERVER components and a function prop cannot cross that boundary.
+   */
+  headingPrefix?: string;
   lede?: string;
   children: React.ReactNode;
 }) {
@@ -55,6 +71,11 @@ export function TrustPage({
   const resolved = useTenantResolved();
   const own = !!tenant.isDefault;
   const name = tenantDisplayName(tenant);
+
+  /* OUR heading until the host is known to be a partner's. The server render
+     and the first client render both take the `!resolved` path below, so this
+     cannot cause a hydration mismatch and our own markup is unchanged. */
+  const h = own || !resolved || !headingPrefix ? heading : `${headingPrefix} ${name}`;
 
   const [html, setHtml] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -79,7 +100,7 @@ export function TrustPage({
    */
   const ours = (
     <div className="trust-page">
-      <h1>{heading}</h1>
+      <h1>{h}</h1>
       <div data-own-only="">
         {lede ? <p className="lead-p">{lede}</p> : null}
         {children}
@@ -92,13 +113,13 @@ export function TrustPage({
   /* A partner, still fetching. Our copy is already hidden by the inline script,
      so showing the heading alone is honest — the not-published state would
      accuse an operator who HAS published. */
-  if (!loaded) return <div className="trust-page"><h1>{heading}</h1></div>;
+  if (!loaded) return <div className="trust-page"><h1>{h}</h1></div>;
 
   const clean = cleanRichKeepLinks(html);
   if (!clean.replace(/<[^>]*>/g, '').trim()) {
     return (
       <div className="trust-page">
-        <h1>{heading}</h1>
+        <h1>{h}</h1>
         <div className="prose">
           <p className="tp-unpublished">
             {name} has not published {PAGE_LABEL[pageKey]} yet.
@@ -115,7 +136,7 @@ export function TrustPage({
 
   return (
     <div className="trust-page">
-      <h1>{heading}</h1>
+      <h1>{h}</h1>
       {/* Sanitised ON READ — this is injected with dangerouslySetInnerHTML, so
           it is a security boundary (29 tests in richText.spec.ts). The
           link-KEEPING mode, because a legal page's links are the point: ours

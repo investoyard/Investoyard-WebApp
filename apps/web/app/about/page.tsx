@@ -10,6 +10,8 @@ export default function AboutPage() {
     <TrustPage
       pageKey="about"
       heading="About Investoyard"
+      /* on a partner's domain this becomes "About <their trade name>" */
+      headingPrefix="About"
       lede="Investing in IPOs, has never been this easy."
     >
 
