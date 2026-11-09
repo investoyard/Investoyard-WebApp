@@ -159,9 +159,34 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
     design: 'Broker Templates — 1b Editorial',
     ready: true,
   },
+  {
+    /*
+     * COBALT — Sir's "1c Cards", whose own caption names its audience:
+     * "for new-investor fintechs".
+     *
+     * THE ONE OF THE FOUR THAT SELLS. Meridian frames a live card, Onyx packs
+     * a desk's table and Folio reads like something written; this one is a
+     * pitch: a 28px-radius cobalt hero panel with a lime eyebrow, a 54px
+     * headline, and then a four-up grid of friendly white cards with a
+     * recessed well of figures in each and one pill action.
+     *
+     * Measured off the design file: ground #F4F6FF, ink #121735, a cobalt
+     * accent #2A43C4 with #3D5CF5 for fills, a lime HIGHLIGHT #B8E04A that is
+     * deliberately not bound to a signal, borders #E3E8FF, Manrope, and radii
+     * from 12 to 28 against Folio's 0-2 and Onyx's 2-8.
+     *
+     * Cobalt is the pigment, which is the name rather than the description —
+     * and a mineral, like Onyx. Sir approves the names; this is the proposal.
+     */
+    id: 'cobalt',
+    label: 'Cobalt',
+    blurb: 'Bright and friendly, for first-time investors. A bold hero panel, then open issues as a grid of cards with the figures in a well and one button each. Suits a broker signing up clients who have never applied before.',
+    design: 'Broker Templates — 1c Cards',
+    ready: true,
+  },
 ];
 
-export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'folio';
+export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'folio' | 'cobalt';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.

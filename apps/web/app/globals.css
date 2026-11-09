@@ -4152,7 +4152,9 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
 .lsx-hero-cold .lsx-times-n { color: var(--neg); }
 .lsx-meter { max-width: 380px; }
 .lsx-meter-track {
-  height: 6px; border-radius: 999px; background: var(--surface-3);
+  /* --bg-2, NOT --surface-3: there is no third surface token, so this track
+     had no ground at all and only its fill was visible. */
+  height: 6px; border-radius: 999px; background: var(--bg-2);
   overflow: hidden;
 }
 .lsx-meter-track > span {
@@ -4161,7 +4163,10 @@ button.h2b-cell:hover, a.h2b-cell:hover { background: var(--bg-2); }
   transition: width .35s ease;
 }
 .lsx-hero-hot .lsx-meter-track > span { background: linear-gradient(90deg, #4ade80, var(--pos)); }
-.lsx-hero-warm .lsx-meter-track > span { background: linear-gradient(90deg, var(--gold-400), var(--gold-600)); }
+/* --gold, NOT --gold-400, which is not declared — an invalid gradient made
+   this fall back to the generic indigo fill above, so a WARM issue showed
+   the wrong colour. Its siblings' shape: a light start into the semantic. */
+.lsx-hero-warm .lsx-meter-track > span { background: linear-gradient(90deg, var(--gold), var(--gold-600)); }
 .lsx-hero-cool .lsx-meter-track > span { background: linear-gradient(90deg, #fdba74, var(--warn)); }
 .lsx-hero-cold .lsx-meter-track > span { background: linear-gradient(90deg, #fca5a5, var(--neg)); }
 .lsx-meter-tk {
@@ -5917,13 +5922,6 @@ html[data-template='meridian'] .subv2-card:hover,
 html[data-template='meridian'] .feature,
 html[data-template='meridian'] .stepcard { box-shadow: none; }
 
-/* The IPO detail page's shape. Meridian is a reading-and-applying surface, so
-   the rail stays but loosens. `minmax(0, …)` on both tracks, always: a grid
-   track's automatic minimum is its CONTENT, which is what made every detail
-   page scroll sideways on a phone. */
-html[data-template='meridian'] .detail-layout {
-  grid-template-columns: minmax(0, 1fr) 340px; gap: 36px;
-}
 
 /* ---- the section flow (shared by every theme) ---------------------------
  * `display: contents` by default is what keeps OUR OWN site byte-identical:
@@ -6400,7 +6398,12 @@ html[data-template='folio'] {
   --sh-xs: none; --sh-sm: none; --sh-md: none; --sh-lg: none;
 
   --maxw: 1180px;
-  --header-h: 150px;
+  /* MEASURED, and the MAXIMUM of what it measures: the centred masthead is
+     164.6 at 860, 168.6 at 900 and 172.8 from 1024 up, because the nameplate
+     is clamped against the viewport. A token OVER the bar pushes an anchored
+     heading harmlessly down; one under it hides the heading behind the bar,
+     which 150 did by 23px at every width this applies at. */
+  --header-h: 173px;
 
   --ring: 0 0 0 3px rgba(122,30,63,.26);
   --ink-grad: linear-gradient(150deg, #7A1E3F 0%, #5C1630 56%, #2E0B18 100%);
@@ -6512,6 +6515,250 @@ html[data-template='folio'] .tpl-vw button {
   border-bottom: 3px solid transparent; margin-bottom: -1px;
 }
 html[data-template='folio'] .tpl-vw button.is-on { background: transparent; color: var(--brand); border-bottom-color: var(--brand); }
+
+
+/* ===== COBALT — Sir's "1c Cards" =======================================
+ * "for new-investor fintechs", in the design's own caption, and the one of
+ * the four that is selling rather than reporting: a pale periwinkle ground, a
+ * vivid cobalt hero panel, a lime highlight, big rounded corners and pill
+ * buttons everywhere.
+ *
+ * ITS SIGNATURE IS THE RADIUS, measured rather than chosen: the design's own
+ * values run 7 / 10 / 12 / 14 / 17 / 18 / 21 / 22 / 24 / 26 / 28, i.e. a pill
+ * or a big round for everything. Against Folio's 0-2 and Onyx's 2-8 that is
+ * most of why this one reads friendly where those read authoritative.
+ *
+ * THE HERO PANEL TAKES THE DESIGN'S DEEPER BLUE AND NOT ITS LIGHTER ONE, and
+ * that is a measurement rather than a preference. The design paints the panel
+ * #3D5CF5 and sets its standfirst in #DCE2FF, which is 3.85:1 and FAILS AA —
+ * and the ground is the problem, not the dimming: pure WHITE on #3D5CF5 is
+ * only 4.93:1, so nothing tonal fits under it. On the design's own #2A43C4
+ * that same pair is 6.07:1 and white is 7.78:1, so the tonal hierarchy the
+ * design draws survives. #3D5CF5 stays as --brand-400 and keeps its jobs: the
+ * brand mark, the chip accents, the icon colour.
+ *
+ * Every hex is measured off the design file.
+ */
+html[data-template='cobalt'] {
+  --bg: #F4F6FF;
+  --bg-2: #EAEEFF;
+  --surface: #FFFFFF;
+  /* the design's recessed figures panel inside a card, which IS the page
+     ground — a white card with a tinted well in it */
+  --surface-2: #F4F6FF;
+  --text: #121735;
+  --text-muted: #5D6488;
+  --text-faint: #8A91B4;
+  --border: #E3E8FF;
+  --border-2: #C3CBF2;
+
+  /* THE ACCENT IS A COBALT BLUE and it replaces the brand scale wholesale, so
+     a page cannot read as two brands at once. #2A43C4 is the design's
+     readable accent — the one it sets type in — and #3D5CF5 the one it fills
+     shapes with, which is exactly how they are used here. */
+  --brand: #2A43C4;
+  --brand-700: #1E3196;
+  --brand-600: #2439AB;
+  --brand-500: #2A43C4;
+  --brand-400: #3D5CF5;
+  --brand-200: #C3CDFF;
+  --brand-100: #DCE2FF;
+  --brand-50: #E3E8FF;
+
+  /* THE LIME IS A HIGHLIGHT AND DELIBERATELY NOT A SEMANTIC. The design uses
+     #B8E04A for its hero eyebrow, the ring inside its brand mark and its one
+     "Check" button — never for a gain. Binding it to --pos would put a
+     decorative colour on a financial signal, which this codebase forbids, so
+     it gets a name of its own and the signal set stays separate. 11.75:1
+     against the ink it carries. */
+  --thm-lime: #B8E04A;
+
+  /* signals cooled to sit on a periwinkle ground rather than on white */
+  --pos: #11804A;
+  --pos-ink: #11804A;
+  --pos-soft: #E2F4EA;
+  --neg: #C02B20;
+  --neg-ink: #B3251B;
+  --neg-soft: #FCE9E7;
+  --warn: #9A6208;
+  --warn-soft: #FDF0DA;
+  --gold: #9A6208;
+  --gold-600: #9A6208;
+  --gold-ink: #8A5A12;
+  --gold-50: #FDF0DA;
+
+  /* ROUND, EVERYWHERE. */
+  --r-sm: 12px; --r: 14px; --r-lg: 22px; --r-xl: 24px; --r-2xl: 28px;
+
+  /* and no depth: the design separates a white card from a tinted ground by
+     the ground itself, never with a shadow */
+  --sh-xs: none; --sh-sm: none; --sh-md: none;
+
+  --maxw: 1240px;
+  /* MEASURED at 72.7 and rounded UP, not nominal — ten rules read this token
+     for scroll offsets, and a token under the real bar parks every anchored
+     heading behind it. */
+  --header-h: 73px;
+
+  --ring: 0 0 0 3px rgba(42,67,196,.26);
+  --ink-grad: linear-gradient(150deg, #2A43C4 0%, #1C2A7E 54%, #121735 100%);
+  /* the design's footer is WHITE, which this component is not built for — see
+     the override block below */
+  --thm-foot-bg: #FFFFFF;
+}
+
+/* THE HEADER. A circular brand mark in the lighter blue, the name at 19/800, a
+   700-weight nav, and an INK call to action — which is the design's own choice
+   and worth keeping: the accent is spent on the hero panel and on links, so
+   the one thing a visitor is meant to press is the darkest object on the page.
+   (The design's mark carries a lime ring around a dot inside the circle; that
+   is a logo glyph we do not have, and the lime appears instead where the
+   design makes most of it, on the hero eyebrow.) */
+html[data-template='cobalt'] .thm-head { background: var(--surface); }
+html[data-template='cobalt'] .thm-head-in { padding: 16px 24px; gap: 12px 24px; }
+html[data-template='cobalt'] .thm-mark {
+  border-radius: 50%; background: var(--brand-400); font-size: 17px;
+}
+html[data-template='cobalt'] .thm-brand-nm { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+html[data-template='cobalt'] .thm-nav { gap: 6px 22px; font-size: 14.5px; }
+html[data-template='cobalt'] .thm-nav a { font-weight: 700; }
+
+/* PRIMARY ACTIONS ARE INK, not the accent. `.btn` reads --brand for its fill,
+   so this is the one rule that separates "the colour the brand IS" from "the
+   colour a button is" — the design's own split, and the reason its blue reads
+   as a surface rather than as a control. */
+html[data-template='cobalt'] .btn-primary { background: var(--text); color: #fff; }
+html[data-template='cobalt'] .btn-primary:hover { background: #1D2450; }
+
+/* A FINTECH'S TYPE SCALE: a 54px hero, a 30px section head, tight tracking on
+   both. `em` rather than the design's -1.5px, which at the 34px a phone clamps
+   to would close the letters up. */
+html[data-template='cobalt'] .container { padding: 36px 24px 72px; }
+html[data-template='cobalt'] h1 { font-size: clamp(34px, 4.6vw, 54px); line-height: 1.03; letter-spacing: -.03em; }
+html[data-template='cobalt'] h2 { font-size: 30px; letter-spacing: -.02em; }
+html[data-template='cobalt'] h3 { font-size: 18px; }
+html[data-template='cobalt'] .section-head { margin: 44px 0 18px; }
+
+/* A TOKEN CANNOT REACH A LITERAL. The same hand-flattening the other three
+   themes need, for the same measured reason: this sheet writes 67 literal
+   `box-shadow`s against 81 that read the token, and `.panel` hardcodes its
+   radius as well as its shadow. */
+html[data-template='cobalt'] .panel,
+html[data-template='cobalt'] .panel:hover,
+html[data-template='cobalt'] .card,
+html[data-template='cobalt'] .card:hover,
+html[data-template='cobalt'] .ipocard,
+html[data-template='cobalt'] .ipocard:hover,
+html[data-template='cobalt'] .subv2-card,
+html[data-template='cobalt'] .subv2-card:hover,
+html[data-template='cobalt'] .subv2-det-panel,
+html[data-template='cobalt'] .feature,
+html[data-template='cobalt'] .stepcard { box-shadow: none; }
+html[data-template='cobalt'] .panel { border-radius: var(--r-lg); }
+
+/* THE WHITE FOOTER, which is the one place a theme cannot differ by setting a
+   token. `.thm-foot` was built for a dark footer and writes its ink as ten
+   `rgba(255,255,255,…)` literals, so --thm-foot-bg alone would have given
+   white text on a white ground — invisible, and the same silent-failure shape
+   as a class that is used and never defined.
+   ENUMERATED FROM THE SOURCE rather than from memory, and a check measures
+   every text pair in the rendered footer. The alternative was to retokenise
+   the component, which would have moved three live themes' footers to repair
+   one; an exception belongs in the theme that wants it. */
+html[data-template='cobalt'] .thm-foot { color: var(--text-muted); border-top: 1px solid var(--border); }
+html[data-template='cobalt'] .thm-foot-col h4 { color: var(--text-muted); }
+html[data-template='cobalt'] .thm-foot-col a { color: var(--text-muted); }
+html[data-template='cobalt'] .thm-foot-col a:hover { color: var(--text); }
+html[data-template='cobalt'] .thm-foot-mark { border-radius: 50%; background: var(--brand-400); color: #fff; }
+html[data-template='cobalt'] .thm-foot-nm { color: var(--text); }
+html[data-template='cobalt'] .thm-foot-legal { color: var(--text-muted); }
+html[data-template='cobalt'] .thm-foot-grv { color: var(--text-muted); border-top-color: var(--border); }
+html[data-template='cobalt'] .thm-foot-grv a { color: var(--brand); }
+html[data-template='cobalt'] .thm-foot-base { color: var(--text-muted); border-top-color: var(--border); }
+
+/* COBALT's page order. A fintech sells, then lists, then answers: the hero,
+   the grid of open issues, the allotment check the design gives a panel of its
+   own, then "New to IPOs?" and the rest. Ordered in tens so a section can be
+   slipped between two without renumbering. */
+html[data-template='cobalt'] .tpl-sec[data-sec='brokerhero'] { order: 10; }
+html[data-template='cobalt'] .tpl-sec[data-sec='explorer']   { order: 20; }
+html[data-template='cobalt'] .tpl-sec[data-sec='allotment']  { order: 30; }
+html[data-template='cobalt'] .tpl-sec[data-sec='steps']      { order: 40; }
+html[data-template='cobalt'] .tpl-sec[data-sec='gmp']        { order: 50; }
+html[data-template='cobalt'] .tpl-sec[data-sec='news']       { order: 60; }
+html[data-template='cobalt'] .tpl-sec[data-sec='features']   { order: 70; }
+html[data-template='cobalt'] .tpl-sec[data-sec='rm']         { order: 80; }
+html[data-template='cobalt'] .tpl-sec[data-sec='whatsapp']   { order: 90; }
+html[data-template='cobalt'] .tpl-sec[data-sec='app']        { order: 100; }
+
+/* THE HERO IS ONE BIG ROUNDED PANEL, which is the design's centrepiece: a
+   28px-radius cobalt block with a lime eyebrow pill, a 54px headline, a
+   standfirst and two pill actions — and the live issue card sitting ON it as a
+   white card rather than beside it on the page.
+   The design's right-hand column is a 2x2 of stat tiles with no live issue in
+   it at all; ours keeps the issue, because that is the product's point and
+   because the figures the design tiles are the same ones our stat row carries
+   at the panel's foot. */
+html[data-template='cobalt'] .tpl-hero { padding: 24px 0 36px; }
+html[data-template='cobalt'] .tpl-hero-in {
+  background: var(--brand); color: #fff;
+  border-radius: 28px; padding: 40px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 32px; align-items: center;
+}
+html[data-template='cobalt'] .tpl-hero-eyebrow {
+  align-self: flex-start; background: var(--thm-lime); color: var(--text);
+  padding: 6px 12px; border-radius: 14px;
+  font-size: 13px; font-weight: 800; letter-spacing: 0;
+}
+html[data-template='cobalt'] .tpl-hero-h { color: #fff; }
+html[data-template='cobalt'] .tpl-hero-sub { color: var(--brand-100); font-size: 17px; line-height: 1.55; max-width: 44ch; }
+html[data-template='cobalt'] .tpl-hero-note { color: rgba(255,255,255,.78); }
+/* on the panel the primary action inverts to white and the quiet one becomes a
+   translucent pill — the design's own pair */
+html[data-template='cobalt'] .tpl-hero-cta .btn-primary { background: #fff; color: var(--text); }
+html[data-template='cobalt'] .tpl-hero-cta .btn-primary:hover { background: var(--brand-50); }
+html[data-template='cobalt'] .tpl-hero-cta .btn-ghost {
+  background: rgba(255,255,255,.16); color: #fff; border-color: transparent;
+}
+html[data-template='cobalt'] .tpl-hero-cta .btn-ghost:hover { background: rgba(255,255,255,.26); }
+
+/* the stat tiles stay tiles, in the panel's own idiom. A HAIRLINE IN WHITE,
+   not --border: a pale-blue border on a cobalt ground is invisible, which is
+   the same trap that once gave tiles measuring rgb(245,245,250) on an
+   rgb(245,245,250) page. */
+html[data-template='cobalt'] .tpl-stat { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+/* AN INK WASH, NOT A WHITE ONE, and that is a measurement. A white wash at
+   14% composites to rgb(72,93,204), on which the design's #DCE2FF label is
+   4.41:1 — under the bar — and raising the opacity makes it worse, because a
+   lighter ground under light text always does. Inverted, the tile composites
+   to rgb(37,58,167): the label is 7.3:1 and the figure 9.4:1. It also reads
+   as a recessed well, which is this theme's own device. */
+html[data-template='cobalt'] .tpl-stat-i {
+  background: rgba(18,23,53,.20); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 18px; padding: 14px;
+}
+html[data-template='cobalt'] .tpl-stat-i b { color: #fff; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+html[data-template='cobalt'] .tpl-stat-i span { color: var(--brand-100); }
+
+/* the live issue card as a white card ON the panel */
+html[data-template='cobalt'] .tpl-hcard { border-radius: 24px; border: 0; color: var(--text); }
+
+/* THE VIEW SWITCH IS SEPARATE CHIPS, not a segmented pill. The design's
+   filters are a white chip each with the active one filled in the ink, and
+   `.tpl-vw`'s own group background is --bg — which under this theme IS the
+   page ground, so the group would have had no edge at all. */
+html[data-template='cobalt'] .tpl-vw { background: transparent; padding: 0; gap: 6px; border-radius: 0; }
+html[data-template='cobalt'] .tpl-vw button {
+  background: var(--surface); border-radius: 18px; padding: 8px 16px;
+  font-size: 14px; font-weight: 700;
+}
+html[data-template='cobalt'] .tpl-vw button:hover { background: var(--brand-50); color: var(--brand); }
+html[data-template='cobalt'] .tpl-vw button.is-on { background: var(--text); color: #fff; }
+
+@media (max-width: 720px) {
+  html[data-template='cobalt'] .tpl-hero-in { padding: 26px 20px; border-radius: 22px; }
+}
 
 
 /* ===== THE CARD, PER THEME =============================================
@@ -6722,10 +6969,16 @@ html[data-template='folio'] .ipocard .ic-foot .ghost-btn { display: none; }
  * row gets the full ~1190 and the name gets 294. The sidebar is still on the
  * default and on Meridian, which are card themes.
  */
+/* THREE OF THE FOUR THEMES DROP THE RAIL, so it is stated once. Onyx and
+   Folio because a table row needs the full measure; Cobalt because its grid
+   does. Only Meridian keeps it, and that is Meridian's own decision rather
+   than the default — a card theme with room beside the grid. */
 html[data-template='onyx'] .h2-grid,
-html[data-template='folio'] .h2-grid { grid-template-columns: minmax(0, 1fr); }
+html[data-template='folio'] .h2-grid,
+html[data-template='cobalt'] .h2-grid { grid-template-columns: minmax(0, 1fr); }
 html[data-template='onyx'] .h2-side,
-html[data-template='folio'] .h2-side { display: none; }
+html[data-template='folio'] .h2-side,
+html[data-template='cobalt'] .h2-side { display: none; }
 
 /* ---- the row themes collapse to a stack on a phone ------------------- */
 /* A six-column row cannot be read at 375, and a row that scrolls sideways
@@ -6750,6 +7003,258 @@ html[data-template='folio'] .h2-side { display: none; }
   html[data-template='onyx'] .ipocard .ic-foot,
   html[data-template='folio'] .ipocard .ic-foot { justify-content: flex-start; }
 }
+
+/* ---- COBALT: the design's own card, and the only one with an avatar ----
+ * The Cards design is a 4-up grid of white rounded cards on the periwinkle
+ * ground, each one: a circular initials avatar against a status pill, the
+ * name, a muted "segment · dates" line, a RECESSED WELL of figures, and one
+ * full-width pill action.
+ *
+ * THE AVATAR COMES BACK, which is what the shared block was written to allow.
+ * The logo plate is hidden generically because the other three designs have no
+ * slot for it; this one does, so it is re-enabled here and made circular — an
+ * exception stated in the theme that wants it, which is exactly the shape the
+ * consolidation anticipated.
+ *
+ * `.ic-meta` IS FLATTENED AS WELL, one level deeper than the shared rule. The
+ * design carries ONE pill at the top right and puts the board down on the
+ * sub-line beside the dates; ours holds both in `.ic-meta`, and two pills in a
+ * ~258px row wrap as soon as the status is "Awaiting allotment". Flattened,
+ * the status takes the top right and the board joins the sub-line, which is
+ * the design's own reading.
+ *
+ * THE FIRST TRACK IS A FIXED 84px AND NOT `auto`, for the reason the row
+ * themes already pay for: an `auto` track resolves to its own card's content,
+ * so a "Mainboard" board tag and an "SME" one would start their dates at two
+ * different x positions across a grid of sixteen cards. 84px fits the wider of
+ * the two and leaves the 42px avatar sitting left in it; the name, the well
+ * and the action all span both tracks, so nothing is lost to the gutter.
+ */
+html[data-template='cobalt'] .ipo-list {
+  /* 360px, MEASURED: the sub-line wants 323px of inner width, so a card
+     under ~363px wraps it. At the full 1192 that is 3-up at 387. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  /* EQUAL-HEIGHT CARDS WITH THEIR ACTIONS IN LINE, which the default list
+     deliberately does not do (`align-items: start`, so every card is its own
+     height). The design's grid is tidy and its buttons line up; the `1fr` row
+     below is what absorbs the difference. */
+  align-items: stretch;
+}
+html[data-template='cobalt'] .ipocard {
+  display: grid;
+  /* ONE COLUMN, AND `justify-self` DOES THE SPLIT. A second track for the
+     avatar had to be 84px wide to hold the board tag below it, which took
+     the date pair down to a 145px column and wrapped it to three lines on
+     fourteen of sixteen cards. Two items in one full-width cell, one
+     start-aligned and one end-aligned, give both lines the whole measure. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 11px;
+  padding: 20px; border: 0; border-radius: 22px; background: var(--surface);
+}
+
+/* the avatar, circular, re-enabled for this theme alone */
+html[data-template='cobalt'] .ipocard .ic-logo-link {
+  display: inline-flex; grid-area: 1 / 1; justify-self: start; border-radius: 50%;
+}
+html[data-template='cobalt'] .ipocard .ipologo { border-radius: 50%; }
+
+html[data-template='cobalt'] .ipocard .ic-meta { display: contents; }
+html[data-template='cobalt'] .ipocard .ic-status { grid-area: 1 / 1; justify-self: end; align-self: center; }
+
+/* TWO LINES RATHER THAN AN ELLIPSIS. The default name is `nowrap` + ellipsis,
+   which is right in a 600px two-up card and wrong in a 280px one: a full legal
+   name truncates to a few words. The design sets a SHORT name on one line; we
+   cannot shorten it from CSS, so it wraps to two and clamps. */
+html[data-template='cobalt'] .ipocard .ic-name {
+  grid-area: 2 / 1;
+  font-size: 17px; font-weight: 800; line-height: 1.25;
+  white-space: normal; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+
+/* the sub-line: the board, then the dates and the multiple */
+html[data-template='cobalt'] .ipocard .ic-tag { grid-area: 3 / 1; justify-self: start; align-self: center; }
+html[data-template='cobalt'] .ipocard .ic-keys {
+  grid-area: 3 / 1; justify-self: end; margin: 0;
+  justify-content: flex-end; gap: 12px;
+}
+/* a date is text on this line, not a chip — but the icon STAYS, which is the
+   one place this theme differs from the two row themes on purpose: a small
+   calendar glyph is friendly, and friendly is what the design is for */
+html[data-template='cobalt'] .ipocard .ic-dates {
+  background: transparent; border: 0; border-radius: 0; padding: 0;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+}
+html[data-template='cobalt'] .ipocard .ic-subx2 { font-size: 13px; }
+
+/* THE RECESSED WELL. The design's own device: the figures sit in a tinted box
+   inside the white card, at radius 14, label over value, right column
+   right-aligned. */
+html[data-template='cobalt'] .ipocard .ic-specs {
+  grid-area: 4 / 1; align-self: start; margin: 0;
+  background: var(--surface-2); border: 0; border-radius: 14px; padding: 12px;
+  grid-template-columns: 1fr 1fr; gap: 10px 12px;
+}
+html[data-template='cobalt'] .ipocard .ic-specs > div { padding: 0; border: 0; }
+html[data-template='cobalt'] .ipocard .ic-specs > div:nth-child(even) { text-align: right; }
+html[data-template='cobalt'] .ipocard .ic-specs .k { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+html[data-template='cobalt'] .ipocard .ic-specs .v { font-size: 16px; font-weight: 800; margin-top: 2px; }
+/* one tinted cell picks a figure out of a BORDERED 2x2; inside a tinted well
+   it reads as a second well */
+html[data-template='cobalt'] .ipocard .ic-specs > div.hi { background: transparent; }
+html[data-template='cobalt'] .ipocard .ic-specs > div.hi .v { color: var(--text); }
+html[data-template='cobalt'] .ipocard .ic-specs > div.hi .k { color: var(--text-muted); }
+
+/* ONE FULL-WIDTH PILL, and the watch and share buttons STAY. The row themes
+   drop them because a table row has no slot; a card does, and the bell is the
+   reminder feature rather than a duplicate of something on the detail page. */
+html[data-template='cobalt'] .ipocard .ic-foot { grid-area: 5 / 1; margin: 0; gap: 8px; }
+html[data-template='cobalt'] .ipocard .ic-foot .btn {
+  flex: 1 1 auto; justify-content: center;
+  min-height: 44px; border-radius: 22px; padding: 6px 14px;
+  font-size: 14px; font-weight: 800;
+}
+/* flat ink, not the gradient: the design has no gradients anywhere, and ink is
+   its action colour. `:not(.btn-pdf)` so the house light-red Print Forms CTA
+   keeps its own semantic. */
+html[data-template='cobalt'] .ipocard .ic-foot .ic-apply:not(.btn-pdf) { background: var(--text); }
+html[data-template='cobalt'] .ipocard .ic-foot .ghost-btn { width: 36px; height: 36px; }
+
+/* THE RAIL GOES ON THIS THEME TOO, because the width is what the card needs:
+   `.h2-side` is a 304px column beside the grid, so the cards had 870px of
+   1192 and no column count could reach the 323px of inner width the sub-line
+   wants. The Cards design has no rail at all — its allotment check and its
+   "New to IPOs?" are full-width sections under the grid, which is what the
+   three views and the ordered sections below already give. The rule itself is
+   with the other two themes that drop it. */
+
+/* A PHONE IS 20px SHORT OF THE SUB-LINE, measured: a 343px card leaves 303
+   inside it against the 323 the board, the dates and the multiple want. So
+   the board takes a line of its own and the card runs to six rows. */
+@media (max-width: 520px) {
+  html[data-template='cobalt'] .ipocard { grid-template-rows: auto auto auto auto 1fr auto; }
+  html[data-template='cobalt'] .ipocard .ic-tag { grid-area: 3 / 1; }
+  html[data-template='cobalt'] .ipocard .ic-keys { grid-area: 4 / 1; justify-self: start; justify-content: flex-start; }
+  html[data-template='cobalt'] .ipocard .ic-specs { grid-area: 5 / 1; }
+  html[data-template='cobalt'] .ipocard .ic-foot { grid-area: 6 / 1; }
+}
+
+
+/* ===== THE DETAIL PAGE, PER THEME ======================================
+ * The other half of the operator's ask — "card design, detail and all" — and
+ * the operator's own limit on it: A THEME CHANGES LOOK, NOT ORDER. The stage
+ * engine still decides what a reader sees first, because which section matters
+ * is a question about the ISSUE (is it open, awaiting, listed) and not about
+ * the partner's taste. So nothing here touches `order`.
+ *
+ * WHAT A THEME OWNS HERE: the rail's width and the gutter beside it, the
+ * treatment of the hero, and the density of the figure rows. Those are what
+ * make one detail page feel like a desk and another like a brochure while both
+ * answer the same questions in the same sequence.
+ *
+ * `minmax(0, …)` ON BOTH TRACKS, ALWAYS. A grid track's automatic minimum is
+ * its CONTENT, so a bare `1fr` grows to min-content — which is what made every
+ * IPO detail page scroll sideways on a phone, 600px inside a 347px parent.
+ * Fourth time this sheet has had to be guarded against that mechanism.
+ */
+
+/* ---- the rail, ABOVE THE BREAKPOINT ONLY -------------------------------
+ * `.detail-layout` collapses to one column below 900, and that rule is
+ * (0,1,0) where a theme override is (0,2,1) and later in the file — so a
+ * theme rail stated unconditionally wins on a PHONE too, where it resolved
+ * to `0px 340px` and clipped every figure on the page inside a 26px box.
+ * Measured, after it had been live on Meridian for days.
+ *
+ * Scoped to `min-width: 901px` rather than fought on specificity: below it
+ * the default's own collapse is then the only rule in force, which is where
+ * that decision belongs.
+ */
+@media (min-width: 901px) {
+  html[data-template='meridian'] .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 340px; gap: 36px;
+  }
+  html[data-template='onyx'] .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 296px; gap: 24px;
+  }
+  html[data-template='folio'] .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 300px; gap: 48px;
+  }
+  html[data-template='cobalt'] .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 352px; gap: 28px;
+  }
+}
+
+/* ---- the shared treatment ---------------------------------------------- */
+/* THE RADIAL BRAND WASH UNDER THE NAME IS OURS, not a property of a themed
+   site, so it goes by default and the one theme that wants it says so. Three
+   of the four were hiding it in three separate rules, which is the majority
+   behaviour written once per theme — the shape that produces a fifth theme
+   disagreeing with the other four. Same idiom as the card block, where the
+   logo plate is hidden generically and Cobalt brings it back. */
+html[data-template] .detail-hero::before { display: none; }
+
+/* ---- MERIDIAN: a calm institutional page ------------------------------- */
+/* 340px and a 36px gutter — a reading-and-applying surface, so the rail
+   stays and loosens. */
+/* The rail stays and loosens; the hero keeps its card but loses the radial
+   wash, because this theme separates surfaces with a hairline and a gradient
+   under a headline is the one thing on the page that is decoration. */
+html[data-template='meridian'] .detail-hero { border-radius: var(--r-lg); }
+html[data-template='meridian'] .kv { padding: 13px 0; }
+
+/* ---- ONYX: a desk's page ---------------------------------------------- */
+/* A TIGHTER RAIL AND A TIGHTER GUTTER, because a desk wants the figures close
+   together: 296px against Meridian's 340 and a 24px gutter against its 36. */
+/* no card and no wash: a ruled block, the way its lists are ruled rows. The
+   4px status rail STAYS — a desk reads the status colour first. */
+html[data-template='onyx'] .detail-hero {
+  background: transparent; border-width: 0 0 1px; border-radius: 0;
+  padding: 14px 0 14px 14px;
+}
+html[data-template='onyx'] .detail-hero .ipologo { border-radius: 4px; }
+/* DENSE FIGURE ROWS, which is most of what makes this page read as a terminal:
+   8px rows at 13.5px against Meridian's 13px rows at 15px. */
+html[data-template='onyx'] .kv { padding: 8px 0; font-size: 13.5px; }
+html[data-template='onyx'] .kv .v { font-variant-numeric: tabular-nums; }
+html[data-template='onyx'] .summary .line { padding: 7px 0; font-size: 13px; }
+html[data-template='onyx'] .lotcard { border-radius: 4px; padding: 8px 10px 8px 13px; }
+html[data-template='onyx'] .hero-ex { border-radius: 3px; }
+
+/* ---- FOLIO: a page to read -------------------------------------------- */
+/* THE MEASURE IS THE POINT, so the gutter opens to 48px and the rail narrows
+   to 300 — a reading column with a column of facts beside it, which is how a
+   broadsheet sets a long piece. The rail stays sticky: the way to apply has to
+   be reachable from anywhere in a page somebody is reading at length. */
+/* a headline over a rule, not a card — and the status RAIL goes with it,
+   because a 4px coloured bar down the side of a headline is a card gesture.
+   The status is on the chip beside the name either way. */
+html[data-template='folio'] .detail-hero {
+  background: transparent; border-width: 0 0 2px; border-color: var(--border-2);
+  border-radius: 0; padding: 18px 0;
+}
+html[data-template='folio'] .detail-hero::after { display: none; }
+html[data-template='folio'] .detail-hero .ipologo { border-radius: 0; }
+/* generous ruled rows: a table of facts in a newspaper, not a dense one */
+html[data-template='folio'] .kv { padding: 15px 0; font-size: 15.5px; }
+html[data-template='folio'] .lotcard { border-radius: 0; }
+html[data-template='folio'] .hero-ex { border-radius: 0; }
+
+/* ---- COBALT: a friendly page ------------------------------------------ */
+/* THE WIDEST RAIL OF THE FOUR at 352px, because on this theme the rail is
+   where the applying happens and the audience is a first-time investor who
+   wants the amount and the button in front of them. */
+/* the hero stays a card and gets the theme's big radius; the wash stays,
+   because this is the one theme where a soft gradient is in character */
+html[data-template='cobalt'] .detail-hero { border-radius: 24px; border: 0; padding: 22px 24px; }
+/* the exception: on this theme a soft gradient is in character */
+html[data-template='cobalt'] .detail-hero::before { display: block; }
+html[data-template='cobalt'] .detail-hero .ipologo { border-radius: 50%; }
+html[data-template='cobalt'] .kv { padding: 14px 0; }
+html[data-template='cobalt'] .lotcard { border-radius: 16px; border: 0; background: var(--surface-2); }
+html[data-template='cobalt'] .hero-ex { background: var(--brand-50); color: var(--brand); }
+
 
 /* ---- the three-view IPO section ---------------------------------------
  * The design's `#ipos` block: IPO Calendar / Allotment / Live subscription,
@@ -7102,7 +7607,13 @@ html[data-template] .footer { display: none; }
      heading 132px down the page. Same selector, so it keeps the (0,1,1) that
      beats next/font's generated class. */
   .thm-head { position: static; }
-  html[data-template='meridian'] { --header-h: 0px; }
+  /* EVERY THEME, not one of them. `.thm-head { position: static }` above is
+     unscoped, so the bar stops floating on all four — but this was keyed to
+     'meridian' and left Onyx reserving 65px, Cobalt 75 and Folio 150 above
+     every anchored heading on a phone. `html[data-template]` cannot match
+     our own pages, which remove the attribute rather than setting it to
+     'default'. */
+  html[data-template] { --header-h: 0px; }
 }
 
 /* MERIDIAN's footer: the design's dark #14162A, a column grid that collapses
