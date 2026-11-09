@@ -334,8 +334,14 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
             both hub buttons, both destination links, the Today counts — lives
             in the board under the banner, so repeating it here was the same
             four links twice on one screen. */}
-        {view !== 'table' && (
-          <aside className="h2-side" aria-label="Investoyard mobile app">
+        {/* OUR OWN CHANNEL ONLY. The teaser advertises OUR Android app, and
+            on a partner's site neither answer is good: our name is a brand
+            leak, and THEIRS would be a claim about an app that does not
+            exist, made on their behalf. The rail holds nothing else, so it
+            goes with it. A partner's own app band is a separate block behind
+            the `showApp` flag and its own `appUrl`. */}
+        {view !== 'table' && tenant.isDefault && (
+          <aside className="h2-side" aria-label="Our mobile app">
             <AppTeaser />
           </aside>
         )}
