@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { istToday } from '@investoyard/shared-types';
 import { getConsumerToken, grantConsent } from '@/lib/consumer-api';
+import { useTenant, useTenantResolved } from '@/components/TenantProvider';
+import { tenantDisplayName } from '@/lib/tenants';
 
 /**
  * DAILY GMP awareness dialog (compliance): shown on the first screen carrying
@@ -26,6 +28,19 @@ const today = () => istToday();
 
 export function GmpNotice() {
   const [show, setShow] = useState(false);
+  /*
+   * THIS ONE WAITS FOR THE HOST, where the hero headline does not, and the
+   * difference is that this is a REGULATORY statement. It names whoever runs
+   * the site as not being a registered adviser — so naming the wrong company,
+   * even for the tick before the tenant resolves, is the misstatement the
+   * identity rule exists to prevent. It costs nothing here: this is a modal
+   * raised from an effect, not page content, so it simply opens a moment
+   * later. Measured on the live white-label: this dialog told a partner's
+   * clients four things about Investoyard.
+   */
+  const tenant = useTenant();
+  const resolved = useTenantResolved();
+  const name = tenantDisplayName(tenant);
 
   useEffect(() => {
     // read in an effect, never in render: the date makes this non-deterministic
@@ -33,7 +48,7 @@ export function GmpNotice() {
     try { if (localStorage.getItem(KEY) !== today()) setShow(true); } catch { setShow(true); }
   }, []);
 
-  if (!show) return null;
+  if (!show || !resolved) return null;
 
   const accept = () => {
     try { localStorage.setItem(KEY, today()); } catch { /* private mode — this session only */ }
@@ -51,12 +66,12 @@ export function GmpNotice() {
         </div>
         <div className="modal-body" style={{ fontSize: 14, lineHeight: 1.6 }}>
           <ul style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 8 }}>
-            <li>Grey Market Premium (GMP) is an informal, unofficial number from the grey market — it is <b>not</b> published or endorsed by SEBI, the exchanges, or Investoyard.</li>
+            <li>Grey Market Premium (GMP) is an informal, unofficial number from the grey market — it is <b>not</b> published or endorsed by SEBI, the exchanges, or {name}.</li>
             <li>We show GMP for information only, collected from public sources. We may not update every IPO in real time and cannot verify accuracy — confirm precise figures with your broker.</li>
             <li>GMP is sentiment, not science: it can swing sharply near close, often reflects very few trades, and can fall further after listing.</li>
-            <li>It is <b>not</b> a prediction of the listing price or allotment, and <b>not</b> investment advice or a recommendation from Investoyard.</li>
-            <li>Investoyard informs and distributes — we are not SEBI-registered investment advisers and are not part of any grey market. Decide on fundamentals, the offer documents and your own judgment, or consult a registered adviser.</li>
-            <li>No one — including Investoyard — accepts liability for decisions or losses based on GMP.</li>
+            <li>It is <b>not</b> a prediction of the listing price or allotment, and <b>not</b> investment advice or a recommendation from {name}.</li>
+            <li>{name} informs and distributes — we are not SEBI-registered investment advisers and are not part of any grey market. Decide on fundamentals, the offer documents and your own judgment, or consult a registered adviser.</li>
+            <li>No one — including {name} — accepts liability for decisions or losses based on GMP.</li>
           </ul>
           <button className="btn btn-block btn-lg" style={{ marginTop: 18 }} onClick={accept}>
             I Understand

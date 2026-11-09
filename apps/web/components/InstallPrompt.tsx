@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useTenant } from '@/components/TenantProvider';
+import { tenantDisplayName } from '@/lib/tenants';
 
 const KEY = 'investoyard.pwa.dismissed';
 
@@ -8,6 +10,10 @@ const KEY = 'investoyard.pwa.dismissed';
 export function InstallPrompt() {
   const [deferred, setDeferred] = useState<any>(null);
   const [mode, setMode] = useState<'none' | 'prompt' | 'ios'>('none');
+  /* our own name on our own channel, the partner's on theirs */
+  const tenant = useTenant();
+  const name = tenantDisplayName(tenant);
+  const own = !!tenant.isDefault;
 
   useEffect(() => {
     const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
@@ -46,10 +52,14 @@ export function InstallPrompt() {
   if (mode === 'none') return null;
 
   return (
-    <div className="install-banner" role="dialog" aria-label="Install Investoyard">
-      <img className="ib-mark" src="/icon.svg" alt="Investoyard" width={40} height={40} />
+    <div className="install-banner" role="dialog" aria-label={`Install ${name}`}>
+      {/* OUR MARK IS HIDDEN ON A PARTNER'S SITE RATHER THAN SWAPPED: there is no
+          partner icon to put here, and the house rule is to say nothing rather
+          than fall back to ours. (The installed app still carries our icon via
+          the manifest — a partner needs their own, which is a gap of its own.) */}
+      {own && <img className="ib-mark" src="/icon.svg" alt={name} width={40} height={40} />}
       <div className="ib-text">
-        <strong>Install Investoyard</strong>
+        <strong>Install {name}</strong>
         <span>
           {mode === 'ios'
             ? <>Tap <b>Share</b> then <b>“Add to Home Screen”</b>.</>

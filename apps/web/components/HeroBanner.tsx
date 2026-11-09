@@ -6,6 +6,23 @@ import { Icon } from '@/components/Icon';
 import { inr, priceBand } from '@/lib/format';
 import * as calc from '@/lib/ipoCalc';
 import { useTenant } from '@/components/TenantProvider';
+import { tenantDisplayName } from '@/lib/tenants';
+
+/**
+ * WHOSE SITE IS THIS? Our own name on our own channel, the partner's trade
+ * name on theirs — the resolver the identity rule already uses everywhere
+ * else. Both brand slides call it, so the two cannot drift.
+ *
+ * NOT GATED ON `useTenantResolved()`. The export's first paint is always the
+ * default tenant, so the server bakes our name and the first client render
+ * matches it; a partner host corrects it a tick later. For a 52px marketing
+ * headline that flash is the cheaper of the two costs — gating it would
+ * leave a hole in the hero on every load of our own site. A LEGAL statement
+ * is the other way round, which is why the GMP disclaimer waits.
+ */
+function useTenantDisplayName(): string {
+  return tenantDisplayName(useTenant());
+}
 import { Lang } from '@investoyard/i18n';
 import { LABEL, demandWord, titleCase, shortName, closeAt, istClock, istToday, istDaysUntil } from '@investoyard/shared-types';
 import { RETAIL_MAX_AMOUNT, SNII_MAX_AMOUNT } from '@investoyard/shared-types';
@@ -454,7 +471,7 @@ function PromiseSlide({ q, focus }: { q: string; focus: number }) {
           <span className="hb2-badge"><Icon name="sparkle" size={13} /> Mainboard &amp; SME · India</span>
         </span>
         <h1 className="hb2-h">
-          Invest in IPOs with <span className="hb2-accent">“Blink of Eye”</span> with Investoyard.
+          Invest in IPOs with <span className="hb2-accent">“Blink of Eye”</span> with {useTenantDisplayName()}.
         </h1>
         <p className="hb2-sub">Eight things we do so you never miss an issue — or an allotment.</p>
         <div className="hb-ctas hb2-ctas">
@@ -594,7 +611,7 @@ function PastelPromiseSlide({ q, focus }: { q: string; focus: number }) {
           <span className="hbp-badge"><Icon name="sparkle" size={13} /> Mainboard &amp; SME · India</span>
         </span>
         <h1 className="hbp-h">
-          Invest in IPOs with <span className="hbp-mark">“Blink of Eye”</span> with Investoyard.
+          Invest in IPOs with <span className="hbp-mark">“Blink of Eye”</span> with {useTenantDisplayName()}.
         </h1>
         <p className="hbp-sub">Eight things we do so you never miss an issue — or an allotment.</p>
         <div className="hb-ctas hbp-ctas">
