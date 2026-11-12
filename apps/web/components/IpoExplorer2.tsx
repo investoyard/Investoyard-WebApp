@@ -283,7 +283,12 @@ export function IpoExplorer2({ ipos: initial, lang = 'en' }: { ipos: IpoListItem
       {/* Cards two-up beside a sticky rail; the comparison table takes the full
           width — it is the dense view, and squeezing it only forces sideways
           scrolling through the columns the reader came to compare. */}
-      <div className={`h2-grid${view === 'table' ? ' full' : ''}`}>
+      {/* `full` ALSO WHEN THERE IS NO RAIL TO SIT BESIDE. The aside is
+          own-channel only — our Android teaser is the one thing in it — so on
+          a partner's site this grid had been reserving 304px for an element
+          that is never rendered. The two conditions are the same condition the
+          aside itself uses, spelt out here so the track cannot outlive it. */}
+      <div className={`h2-grid${view === 'table' || !tenant.isDefault ? ' full' : ''}`}>
         <div className="h2-main">
           {filtered.length === 0 ? (
             ipos.length === 0 ? (

@@ -6735,30 +6735,105 @@ html[data-template] .ipocard::after { display: none; }
    a flex column, gap 12, padding 18; then segment-against-status, the name at
    17/800, a three-up Price/Lot/Size, dates-against-subscription, and one
    full-width action. */
+/* ---- MERIDIAN: large cards, two up ------------------------------------
+ * THE THIRD PRESENTATION, and the one that fills the gap: Onyx reads the
+ * catalogue as dense rows, Cobalt as small friendly cards, this one as few
+ * large ones with more on each. An institution's reader is comparing a
+ * handful of issues, not scanning two hundred.
+ *
+ * AND IT PUTS BACK WHAT EVERY THEME WAS STRIPPING. The shared theme rules
+ * hide the logo plate, the countdown ring, the topic chips, the coloured
+ * rail and the corner fold — five things our own card has — which is most
+ * of why the themes read as a REDUCED default rather than a different one.
+ * At ~560px a card has room for two of them, so the logo plate and the
+ * topic chips come back. The ring and the corner fold stay out: a dial and
+ * a folded corner are playful, and this is the theme that is not.
+ *
+ * THE CHIP ROW IS A REAL AFFORDANCE, not decoration — each chip opens an
+ * inline panel of reservation, lot, timeline or subscription detail, and
+ * every theme had been hiding the whole feature. Its GMP chip is already
+ * gated on `tenant.flags.gmpEnabled`, which `registerTenant` sets false and
+ * LOCKS for a white-label, so a partner simply gets one chip fewer and this
+ * needs no rule of its own.
+ */
 html[data-template='meridian'] .ipo-list {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
 }
+/* 860, THE SAME BREAKPOINT THE DEFAULT'S OWN two-up GRID USES, rather than
+   a number of its own: at 1100 the band from 860 to 1100 fell back to ONE
+   card 952px wide, which is not a card. */
+@media (min-width: 860px) {
+  html[data-template='meridian'] .ipo-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* A GRID, NOT A COLUMN, so the plate can sit beside the name and the status
+   rather than above them. `.ic-top` and its `.grow` are already
+   `display: contents` on every theme, so these children are direct grid
+   items and place themselves. */
 html[data-template='meridian'] .ipocard {
-  display: flex; flex-direction: column; gap: 12px; padding: 18px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 14px;
+  padding: 22px;
 }
-html[data-template='meridian'] .ipocard .ic-meta { order: 1; justify-content: space-between; margin: 0; width: 100%; }
-html[data-template='meridian'] .ipocard .ic-name { order: 2; font-size: 17px; font-weight: 800; line-height: 1.25; }
+html[data-template='meridian'] .ipocard .ic-logo-link {
+  display: inline-flex; grid-column: 1; grid-row: 1 / span 2; align-self: center;
+}
+html[data-template='meridian'] .ipocard .ipologo {
+  width: 46px; height: 46px; border-radius: var(--r-sm);
+  background: var(--bg-2); border: 1px solid var(--border);
+}
+html[data-template='meridian'] .ipocard .ic-meta { grid-column: 2; grid-row: 1; justify-content: flex-start; margin: 0; }
+html[data-template='meridian'] .ipocard .ic-name {
+  grid-column: 2; grid-row: 2; margin: 0;
+  font-size: 19px; font-weight: 800; line-height: 1.25;
+}
+/* everything below the identity block runs the full measure */
+html[data-template='meridian'] .ipocard .ic-specs,
+html[data-template='meridian'] .ipocard .ic-keys,
+html[data-template='meridian'] .ipocard .ic-topics,
+html[data-template='meridian'] .ipocard .ic-panel,
+html[data-template='meridian'] .ipocard .ic-foot { grid-column: 1 / -1; margin: 0; }
 html[data-template='meridian'] .ipocard .ic-specs {
-  order: 3; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 2px;
 }
-/* the default divider rule is `:nth-child(odd)`, which is written for TWO
-   columns and leaves the middle cell of three unruled */
+html[data-template='meridian'] .ipocard .ic-specs > div { padding: 12px 14px; }
+/* the default divider rule is `:nth-child(odd)`, written for TWO columns,
+   and leaves the middle cell of three unruled */
 html[data-template='meridian'] .ipocard .ic-specs > div:nth-child(odd) { border-right: 0; }
 html[data-template='meridian'] .ipocard .ic-specs > div:not(:last-child) { border-right: 1px solid var(--border); }
 /* the v2 card rules EVERY cell, last one included, which draws a line
    against the card's own inner edge once the grid is three wide */
 html[data-template='meridian'] .ipocard .ic-specs > div:last-child { border-right: 0; }
-html[data-template='meridian'] .ipocard .ic-keys { order: 4; margin: 0; }
-html[data-template='meridian'] .ipocard .ic-foot { order: 5; margin: 0; }
-/* the design ends on ONE action that fills the card */
-html[data-template='meridian'] .ipocard .ic-foot .btn { flex: 1 1 auto; justify-content: center; }
+/* THE TINTED CELL IS WRITTEN FOR A 2x2 BLOCK, where it picks one figure out
+   of four. Across three wide it is the MIDDLE of a single row and reads as a
+   stray fill rather than a highlight — the same reason Onyx neutralises it on
+   its rows. The dividers already separate the cells. */
+html[data-template='meridian'] .ipocard .ic-specs > div.hi { background: transparent; }
+html[data-template='meridian'] .ipocard .ic-specs > div.hi .v { color: var(--text); }
+html[data-template='meridian'] .ipocard .ic-specs > div.hi .k { color: var(--text-muted); }
 
+/* THE CHIP ROW, BACK. Quiet by default and in the brand when open, so it
+   reads as navigation within the card rather than as five buttons. */
+html[data-template='meridian'] .ipocard .ic-topics {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding-top: 2px;
+}
+html[data-template='meridian'] .ipocard .ic-topic {
+  padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px;
+  background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+html[data-template='meridian'] .ipocard .ic-topic:hover { color: var(--text); border-color: var(--border-2); }
+html[data-template='meridian'] .ipocard .ic-topic.on {
+  color: var(--brand-700); border-color: var(--brand-200); background: var(--brand-50);
+}
+
+html[data-template='meridian'] .ipocard .ic-foot { padding-top: 4px; }
+html[data-template='meridian'] .ipocard .ic-foot .btn { flex: 1 1 auto; justify-content: center; }
 /* ---- ONYX: a desk's row ---------------------------------------------- */
 /* The Terminal design is a TABLE — ISSUE / STATUS / DATES / PRICE / LOT /
    SUBS — so on this theme a card IS a row, and the list is ruled rather than
@@ -6846,10 +6921,14 @@ html[data-template='onyx'] .ipocard .ic-foot .ghost-btn { display: none; }
    a table row needs the full measure; Cobalt because its grid does. Only
    Meridian keeps it, and that is Meridian's own decision rather than the
    default — a card theme with room beside the grid. */
-html[data-template='onyx'] .h2-grid,
-html[data-template='cobalt'] .h2-grid { grid-template-columns: minmax(0, 1fr); }
-html[data-template='onyx'] .h2-side,
-html[data-template='cobalt'] .h2-side { display: none; }
+/* EVERY THEME DROPS THE RAIL NOW, Meridian included. It kept it while its
+   cards were three small ones; with two large cards the rail competes for
+   the measure, and on a PARTNER's site - which is the audience a theme is
+   for - the aside is not rendered at all, so keeping it would make our own
+   preview disagree with what a partner actually sees. The rail stays on our
+   DEFAULT layout, which is where the Android teaser belongs. */
+html[data-template] .h2-grid { grid-template-columns: minmax(0, 1fr); }
+html[data-template] .h2-side { display: none; }
 
 /* ---- the row themes collapse to a stack on a phone ------------------- */
 /* A six-column row cannot be read at 375, and a row that scrolls sideways
