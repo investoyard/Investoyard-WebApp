@@ -6324,6 +6324,95 @@ html[data-template='onyx'] .tpl-sec[data-sec='news']       { order: 80; }
 html[data-template='onyx'] .tpl-sec[data-sec='whatsapp']   { order: 90; }
 html[data-template='onyx'] .tpl-sec[data-sec='app']        { order: 100; }
 
+/* ---- ONYX: the desk blotter -------------------------------------------
+ * A trading desk reads ROWS, not a grid of cards with a logo plate and a
+ * status ring in each. This is the theme's own presentation of the
+ * catalogue and the reason its page needs no marketing hero: the table is
+ * the first thing, above the fold, the whole list legible at a glance.
+ *
+ * IT IS A SEPARATE SECTION rather than a default view on the shared
+ * switcher, because the view is React state and the theme is only knowable
+ * from `data-template` — which the SERVER cannot read. Reading it in an
+ * effect paints the card grid and swaps it a tick later; reading it in a
+ * state initialiser is a hydration mismatch. CSS picks, the way it picks
+ * the header. */
+/* TWO HIDE RULES, because there are two states to beat. Unthemed,
+   `.tpl-sec` is `display: contents` at (0,1,0) and (0,2,0) is enough. On a
+   THEME, `html[data-template] .tpl-sec { display: block }` is (0,2,1) and
+   wins against that — so the themed hide has to match it and then lose to
+   Onyx's show on source order, which is why these three are adjacent. */
+.tpl-sec[data-sec='desk'] { display: none; }
+html[data-template] .tpl-sec[data-sec='desk'] { display: none; }
+html[data-template='onyx'] .tpl-sec[data-sec='desk'] { display: block; order: 10; }
+/* the card grid and the marketing hero are what this REPLACES, so they go */
+html[data-template='onyx'] .tpl-sec[data-sec='explorer'],
+html[data-template='onyx'] .tpl-sec[data-sec='brokerhero'] { display: none; }
+
+.onx-desk { padding: 20px 0 8px; }
+.onx-desk-bar {
+  display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 2px;
+}
+.onx-desk-h {
+  margin: 0; font-size: 13px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted);
+}
+.onx-desk-f { display: flex; gap: 2px; margin-left: auto; }
+.onx-desk-f button {
+  padding: 6px 12px; border: 1px solid transparent; border-radius: 3px;
+  background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.onx-desk-f button:hover { color: var(--text); background: var(--surface-2); }
+.onx-desk-f button.is-on { color: var(--brand); background: var(--surface-2); border-color: var(--border-2); }
+.onx-desk-q input {
+  width: 230px; max-width: 100%;
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 13px;
+}
+.onx-desk-q input::placeholder { color: var(--text-faint); }
+/* a horizontal scroller, so a nine-column table never pushes the PAGE
+   sideways — the fault that had every IPO detail page scrolling on a phone */
+.onx-desk-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 4px; }
+.onx-desk-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* NOT STICKY, and that is forced rather than chosen. `.onx-desk-wrap`
+   carries `overflow-x: auto` so a nine-column table can never push the PAGE
+   sideways — and an overflow value other than visible makes that wrapper the
+   scroll container for anything sticky inside it. The header then sticks to a
+   box that does not scroll vertically: measured, it was offset 101px DOWN over
+   the first rows at scroll 0 and scrolled away with the page after that. A
+   horizontal scroller and a viewport-sticky header cannot share a subtree, and
+   between the two the scroller is the one that prevents a real fault. */
+.onx-desk-tbl th {
+  background: var(--surface-2); text-align: left; white-space: nowrap;
+  padding: 9px 12px; font-size: 11px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.onx-desk-tbl td {
+  padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.onx-desk-tbl tbody tr:last-child td { border-bottom: 0; }
+.onx-desk-tbl tbody tr:hover td { background: var(--surface-2); }
+/* FIGURES IN TABULAR NUMERALS, which is the whole point of a blotter: the
+   digits line up down the column and a wrong order of magnitude is visible
+   without reading the number. */
+.onx-desk-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.onx-desk-tbl .sym a { color: var(--brand); text-decoration: none; font-weight: 700; letter-spacing: .02em; }
+.onx-desk-tbl .sym a:hover { text-decoration: underline; }
+.onx-desk-tbl .nm { color: var(--text); max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.onx-desk-tbl .brd, .onx-desk-tbl .win { color: var(--text-muted); }
+.onx-desk-tbl .dash { color: var(--text-faint); }
+.onx-desk-empty { margin: 0; padding: 26px 0; color: var(--text-muted); font-size: 14px; }
+.onx-desk-more { margin: 14px 0 0; font-size: 13px; }
+.onx-desk-more a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.onx-desk-more a:hover { text-decoration: underline; }
+@media (max-width: 720px) {
+  .onx-desk-f { margin-left: 0; }
+  .onx-desk-q input { width: 100%; }
+  .onx-desk-q { flex: 1 1 100%; }
+}
+
 /* ONYX's hero is a BAND, not a split. The design puts a utility strip, a
    search and a dense table at the top; the statement is one line above them,
    so the live issue card sits beside a much shorter column. */

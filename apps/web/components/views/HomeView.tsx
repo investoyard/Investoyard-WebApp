@@ -5,6 +5,7 @@ import { IpoExplorer2 } from '@/components/IpoExplorer2';
 import { HeroBanner } from '@/components/HeroBanner';
 import { BrokerHero } from '@/components/BrokerHero';
 import { ThemeIpoSection } from '@/components/ThemeIpoSection';
+import { OnyxDesk } from '@/components/OnyxDesk';
 import { FeaturedIpoModal } from '@/components/FeaturedIpoModal';
 import { TodayStrip } from '@/components/TodayStrip';
 import { GmpAccuracy } from '@/components/GmpAccuracy';
@@ -71,6 +72,12 @@ export async function HomeView({ lang, v2 = false }: { lang: Lang; v2?: boolean 
              on this wrapper made two of them, and the first one wins: on our
              own layout that is this wrapper, which computes `display: contents`
              and therefore generates no box to scroll to. */}
+        {/* ONYX PRESENTS THE CATALOGUE AS A DESK BLOTTER, not a card grid,
+            and it is its own markup because the view cannot be chosen at
+            build time: a static export answers every host with one set of
+            HTML, so CSS decides which of these two sections is shown. */}
+        <div className="tpl-sec" data-sec="desk"><OnyxDesk ipos={ipos as any} langQuery={q} /></div>
+
         <div className="tpl-sec" data-sec="explorer">
           {/* THE EXPLORER IS PASSED IN AS CHILDREN, so it mounts once. A theme
               wraps it with the design's three-view switch (IPO Calendar /

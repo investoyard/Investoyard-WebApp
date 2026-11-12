@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ipoUrl, titleCase, LABEL, lotLadder, closeAt, openAt } from '@investoyard/shared-types';
+import { ipoUrl, titleCase, LABEL, lotLadder, closeAt, openAt, issueSizeCrore } from '@investoyard/shared-types';
 import { Icon } from '@/components/Icon';
 import { getIpoDetail } from '@/lib/api';
 
@@ -245,31 +245,10 @@ function CountUp({ to, ms = 950, delay = 300 }: { to: number; ms?: number; delay
   return <>{n.toLocaleString('en-IN')}</>;
 }
 
-/**
- * The issue size, in CRORE.
- *
- * THE FIELD CALLED `issueSize` IS NOT A NUMBER ON THIS SURFACE. The /ipos list
- * endpoint serves it ALREADY FORMATTED — "₹30,213 Cr" — so Number() is NaN on
- * all 1,304 records and a naive read renders a dash under the label. (The
- * COLUMN behind it is rupees, which is what every note about it describes;
- * what reaches the browser is not the column.) `issueSizeCr` is the number.
- *
- * Resolved in that order, with the formatted string parsed only as a last
- * resort and CARRYING ITS OWN UNIT: a value with Cr on it is crore, a bare
- * numeric string is the rupee column. Getting that backwards is a 10^7 error.
- */
-const croreOf = (ipo: AnyIpo): number | null => {
-  const cr = Number(ipo?.issueSizeCr ?? ipo?.extra?.issueSizeCr);
-  if (Number.isFinite(cr) && cr > 0) return Math.round(cr);
-  const raw = ipo?.issueSize;
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.round(raw / 1e7);
-  if (typeof raw === 'string') {
-    const n = Number(raw.replace(/[^\d.]/g, ''));
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return /cr/i.test(raw) ? Math.round(n) : Math.round(n / 1e7);
-  }
-  return null;
-};
+/* The issue size in crore now lives in shared-types as `issueSizeCrore`,
+   where a test can reach it and a second caller cannot quietly make a second
+   copy. Its docblock carries the 10^7 warning this one used to. */
+const croreOf = (ipo: AnyIpo): number | null => issueSizeCrore(ipo as never);
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 type Ymd = { y: number; m: number; d: number; iso: string };

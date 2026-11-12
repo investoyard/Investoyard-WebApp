@@ -394,11 +394,31 @@ export async function getArchive(q: {
   return { ...r, rows: (r.rows ?? []).map(enrich) };
 }
 
+/**
+ * ONE REQUEST PER PAGE, SHARED. Two components want the live catalogue on a
+ * themed page — the explorer and Onyx's desk table — and the response is
+ * ~2.8 MB, so a call each is a call too many. A module-level promise cache is
+ * the pattern `useLiveIpo` already uses for the same reason on the detail page.
+ *
+ * BROWSER ONLY. At BUILD time this module persists across all 6,700 page
+ * renders in one Node process, so caching there would serve every page the
+ * catalogue as it stood when the first page was built — and the build path is
+ * already cached by Next's own fetch cache, so there is nothing to win.
+ */
+let iposShared: Promise<IpoListItem[]> | null = null;
+
 export async function getIpos(): Promise<IpoListItem[]> {
   // API returns IpoDetail[] (mapped to the shared contract); enrich each into a card.
   // On failure safeGet returns [] — empty state, no fake demo rows.
-  const list = await safeGet<IpoDetail[]>('/ipos', []);
-  return list.map(enrich);
+  const run = async () => {
+    const list = await safeGet<IpoDetail[]>('/ipos', []);
+    return list.map(enrich);
+  };
+  if (typeof window === 'undefined') return run();
+  if (!iposShared) {
+    iposShared = run().catch((e) => { iposShared = null; throw e; });
+  }
+  return iposShared;
 }
 
 export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined> {

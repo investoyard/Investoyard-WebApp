@@ -13,6 +13,7 @@ export * from './computeIssue';
 export * from './stage';
 export * from './moment';
 export * from './feedHealth';
+export * from './issueSize';
 export * from './holidays';
 export * from './carveouts';
 export * from './minApplication';
