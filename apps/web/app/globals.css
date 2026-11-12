@@ -3433,6 +3433,36 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
    status chip beside them, which is the badge that actually changes */
 .ipocard.v2 .ic-tag.mb, .subv2 .ic-tag.mb { background: #E7E0FF; color: #4b3aa0; }
 .ipocard.v2 .ic-tag.sme, .subv2 .ic-tag.sme { background: #FFEFC9; color: #8a6d1f; }
+/* A THEME'S OWN WARM PAIR. `var(--gold)` is a FILL in the two rules above and
+   an INK in a dozen others, and Cobalt declares it as an ink — which rendered
+   its SME tag at 2.27:1 on every card. Every theme declares `--gold-50` and
+   `--gold-ink` correctly, including Onyx, whose pair is a dark ground with an
+   amber ink. The base rules keep their own hexes: on our site they measure
+   7.61:1 and the default is not ours to change. */
+/* THE v2 SELECTOR HAS TO BE NAMED. `.ipocard.v2 .ic-tag.sme` is FOUR
+   classes, (0,4,0), and beats `html[data-template] .ic-tag.sme` at (0,3,1):
+   class count is compared before element count, so the html element buys
+   nothing against an extra class. Measured after the first attempt - the
+   listing pages were fixed and the HOME page still read 4.3:1. */
+html[data-template] .ic-tag.sme,
+html[data-template] .ipocard.v2 .ic-tag.sme,
+html[data-template] .subv2 .ic-tag.sme,
+html[data-template] .ct-board.sme { background: var(--gold-50); color: var(--gold-ink); }
+/* THE MAINBOARD TAG IS THE SAME SHAPE: the base rule fills it with
+   `var(--brand)` and writes WHITE on top, and ONYX'S BRAND IS A LIGHT TEAL -
+   measured at 3.12:1 on its listing pages. The soft ground plus the ink
+   passes everywhere with margin (meridian 11.6, onyx 9.37, cobalt 8.92) and
+   matches the treatment the SME tag now has, so the two read as a pair
+   rather than one solid chip beside one tint. The v2 selectors are NAMED:
+   `.ipocard.v2 .ic-tag.mb` is four classes and would otherwise win. */
+html[data-template] .ic-tag.mb,
+html[data-template] .ipocard.v2 .ic-tag.mb,
+html[data-template] .subv2 .ic-tag.mb,
+html[data-template] .ct-board.mb { background: var(--brand-50); color: var(--brand-700); }
+html[data-template] .h2b-btn.prem {
+  background: var(--gold-50); border-color: var(--gold-50); color: var(--gold-ink);
+}
+html[data-template] .h2b-btn.prem > svg { color: var(--gold-ink); }
 /* the rotating third KPI */
 .ipocard.v2 .ic-rot .v, .ipocard.v2 .ic-rot .k { transition: opacity .22s var(--ease); }
 .ipocard.v2 .ic-rot.out .v, .ipocard.v2 .ic-rot.out .k { opacity: 0; }
@@ -5869,6 +5899,10 @@ html[data-template='meridian'] {
   --bg-2: #F0F1F7;
   --border: #ECEDF6;
   --border-2: #C9CBDB;
+  /* MEASURED: #8a6d1f (root) on this theme's #fff7df warm tint is 4.58:1,
+     0.08 over the bar — a margin a later tweak silently eats. #7d6117 is
+     5.46:1 and is already a hex in this sheet, so it is a promotion. */
+  --gold-ink: #7d6117;
 
   --r-sm: 12px; --r: 16px; --r-lg: 18px; --r-xl: 22px; --r-2xl: 28px;
   --maxw: 1240px;
@@ -7055,6 +7089,11 @@ html[data-template='cobalt'] .ipocard .ic-specs {
 }
 html[data-template='cobalt'] .ipocard .ic-specs > div { padding: 0; border: 0; }
 html[data-template='cobalt'] .ipocard .ic-specs > div:nth-child(even) { text-align: right; }
+/* A THIRD CELL IN A TWO-COLUMN WELL LANDS ALONE with an empty half beside
+   it, which reads as unfinished rather than as a layout. An ODD cell that is
+   also the LAST one spans the row; an even count still pairs up, so this
+   cannot strand a four-cell card instead. */
+html[data-template='cobalt'] .ipocard .ic-specs > div:nth-child(odd):last-child { grid-column: 1 / -1; }
 html[data-template='cobalt'] .ipocard .ic-specs .k { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
 html[data-template='cobalt'] .ipocard .ic-specs .v { font-size: 16px; font-weight: 800; margin-top: 2px; }
 /* one tinted cell picks a figure out of a BORDERED 2x2; inside a tinted well
