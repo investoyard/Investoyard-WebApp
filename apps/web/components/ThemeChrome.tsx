@@ -58,13 +58,20 @@ const NAV: { href: string; label: string }[] = [
  * and only a tenant with no logo at all falls back to the mark-and-name
  * lockup the themes were drawn with.
  */
-function ThemeBrand({ name, initial }: { name: string; initial: string }) {
+function ThemeBrand({ name, initial, dark }: { name: string; initial: string; dark?: boolean }) {
   const tenant = useTenant();
   if (tenant.isDefault) {
-    return <img src="/investoyard-logo.svg" alt="Investoyard" height={28} style={{ display: 'block' }} />;
+    /* our indigo-and-gold wordmark loses its indigo half on a near-black bar */
+    const src = dark ? '/investoyard-logo-light.svg' : '/investoyard-logo.svg';
+    return <img src={src} alt="Investoyard" height={28} style={{ display: 'block' }} />;
   }
-  if (tenant.logo) {
-    return <img className="thm-logo" src={tenant.logo} alt={name} />;
+  /* on a dark bar a partner's own footer mark is the one drawn for this
+     ground; an ordinary logo falls back and is forced white, exactly as in
+     the footer, because it is the same question in a different place */
+  const src = dark ? (tenant.footerLogo || tenant.logo) : tenant.logo;
+  if (src) {
+    const fallback = dark && !tenant.footerLogo;
+    return <img className={`thm-logo${fallback ? ' is-fallback' : ''}`} src={src} alt={name} />;
   }
   return (
     <>
@@ -106,61 +113,194 @@ function ThemeFootBrand({ name, initial }: { name: string; initial: string }) {
   );
 }
 
-export function ThemeHeader() {
+/*
+ * THE NAV EACH THEME CARRIES, AND IT IS NOT THE SAME LIST.
+ *
+ * A header's link set is part of its architecture, not a constant it happens
+ * to render: Onyx's section tabs are a trading platform's, so they take the
+ * full set; Cobalt's pill bar has room for three before it stops reading as a
+ * pill; Meridian centres four, which is what a centred nav balances at.
+ */
+const NAV_FULL: { href: string; label: string }[] = [
+  { href: '/ipos/open/', label: 'Open IPOs' },
+  { href: '/subscription/', label: 'Subscription' },
+  { href: '/allotment/', label: 'Allotment' },
+  { href: '/performance/', label: 'Performance' },
+  { href: '/calendar/', label: 'Calendar' },
+  { href: '/gmp/', label: 'Exp. Premium' },
+];
+const NAV_CORE = NAV_FULL.slice(0, 4);
+const NAV_SHORT = NAV_FULL.slice(0, 3);
+
+function navLinks(items: typeof NAV_FULL, pathname: string, cls?: string) {
+  return items.map((n) => (
+    <Link
+      key={n.href}
+      href={n.href}
+      className={[cls, pathname.startsWith(n.href) ? 'is-on' : ''].filter(Boolean).join(' ') || undefined}
+    >{n.label}</Link>
+  ));
+}
+
+/**
+ * The utility strip — the way back to the broker's own platform.
+ *
+ * Renders only when the partner turned it on AND gave it somewhere to point.
+ * `resolveSite` makes that one decision so this cannot hold a second opinion
+ * about it, and an empty strip above the header reads as a broken page.
+ */
+function UtilityStrip({ name }: { name: string }) {
   const site = useSite();
-  const tenant = useTenant();
-  const pathname = usePathname() || '/';
-  const name = tenantDisplayName(tenant);
-  const initial = (name.trim()[0] ?? 'I').toUpperCase();
-
+  if (!site.utility) return null;
   return (
-    <div className="thm-chrome" data-chrome="header">
-      {/* The utility strip: the way back to the broker's own platform. Renders
-          only when the partner turned it on AND gave it somewhere to point —
-          `resolveSite` makes that one decision so this cannot hold a second
-          opinion about it, and an empty strip above the header reads as a
-          broken page. */}
-      {site.utility ? (
-        <div className="tpl-util">
-          <div className="tpl-util-in">
-            {site.utility.mainSiteUrl ? (
-              <a className="tpl-util-link" href={site.utility.mainSiteUrl}>
-                <Icon name="chevron-left" size={13} aria-hidden />
-                Back to {name}
-              </a>
-            ) : null}
-            <span className="tpl-util-sp" />
-            {site.utility.supportUrl ? (
-              <a className="tpl-util-link" href={site.utility.supportUrl}>Support</a>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+    <div className="tpl-util">
+      <div className="tpl-util-in">
+        {site.utility.mainSiteUrl ? (
+          <a className="tpl-util-link" href={site.utility.mainSiteUrl}>
+            <Icon name="chevron-left" size={13} aria-hidden />
+            Back to {name}
+          </a>
+        ) : null}
+        <span className="tpl-util-sp" />
+        {site.utility.supportUrl ? (
+          <a className="tpl-util-link" href={site.utility.supportUrl}>Support</a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-      <header className="thm-head">
-        <div className="thm-head-in">
+/*
+ * THREE HEADERS, THREE ARCHITECTURES — and this is the change the operator
+ * asked for in those words: "need separate theme with totally different
+ * layout, but u make all theme same header".
+ *
+ * They were right, and it was measurable: this file had ZERO theme branches
+ * in it, and of the four themes Meridian and Onyx touched the header's layout
+ * zero times while Cobalt touched it four. Three of the four headers were the
+ * same bar in different paint. What follows are three different objects:
+ *
+ *   MERIDIAN  two rows, the SLIM one on top. A utility line carrying the
+ *             secondary action, then a tall calm bar with the nav CENTRED
+ *             between the mark and one primary action. An institution's site.
+ *
+ *   ONYX      two rows, the DENSE one underneath — the inversion is the
+ *             point. A compact identity row, then section tabs the width of
+ *             the page in small caps with a live accent on the open one. A
+ *             trading platform's chrome.
+ *
+ *   COBALT    one FLOATING bar, inset from the edges, rounded and shadowed,
+ *             with the nav as a pill group. Not a full-bleed band at all,
+ *             which is the fintech convention and the thing that makes it
+ *             read as an app rather than a site.
+ *
+ * ALL THREE ARE IN THE DOM AND CSS SHOWS ONE, the same reason the chrome and
+ * our own header both are: a static export answers every host with one set of
+ * HTML, so the choice cannot be made at build time. Each is ~1 KB against a
+ * 10 MB document.
+ */
+
+/** MERIDIAN — a utility line over a tall bar with the nav centred. */
+function MeridianHeader({ name, initial, pathname }: { name: string; initial: string; pathname: string }) {
+  const site = useSite();
+  return (
+    <div className="thm-chrome thm-mer" data-chrome="header" data-theme-chrome="meridian">
+      <UtilityStrip name={name} />
+      {/* The secondary action lives UP HERE rather than beside the primary
+          one. That is the architectural difference from the other two: the
+          main bar is left to carry identity, navigation and one thing to do. */}
+      <div className="mer-top">
+        <div className="mer-top-in">
+          <span className="mer-top-note">Mainboard and SME issues · live subscription · allotment</span>
+          <Link className="mer-top-link" href="/login">{SIGN_IN_LABEL}</Link>
+        </div>
+      </div>
+      <header className="thm-head mer-head">
+        <div className="thm-head-in mer-head-in">
           <Link className="thm-brand" href="/" aria-label={`${name} home`}>
             <ThemeBrand name={name} initial={initial} />
           </Link>
-
-          <nav className="thm-nav" aria-label="Main">
-            {NAV.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={pathname.startsWith(n.href) ? 'is-on' : ''}
-              >{n.label}</Link>
-            ))}
+          <nav className="thm-nav mer-nav" aria-label="Main">
+            {navLinks(NAV_CORE, pathname)}
           </nav>
-
           <div className="thm-head-act">
-            {/* the label is shared with the test that keeps it distinct from navCta */}
-            <Link className="btn btn-ghost btn-sm" href="/login">{SIGN_IN_LABEL}</Link>
             <Link className="btn btn-primary btn-sm" href="/signup">{site.navCta}</Link>
           </div>
         </div>
       </header>
     </div>
+  );
+}
+
+/** ONYX — a compact identity row over full-width section tabs. */
+function OnyxHeader({ name, initial, pathname }: { name: string; initial: string; pathname: string }) {
+  const site = useSite();
+  return (
+    <div className="thm-chrome thm-onx" data-chrome="header" data-theme-chrome="onyx">
+      <UtilityStrip name={name} />
+      <header className="thm-head onx-head">
+        <div className="thm-head-in onx-head-in">
+          <Link className="thm-brand" href="/" aria-label={`${name} home`}>
+            <ThemeBrand name={name} initial={initial} dark />
+          </Link>
+          <span className="onx-rule" aria-hidden />
+          {/* The desk's own words for what this screen is. A terminal names
+              its context in the chrome rather than in a hero it does not have. */}
+          <span className="onx-ctx">IPO DESK</span>
+          <div className="thm-head-act onx-act">
+            <Link className="btn btn-ghost btn-sm" href="/login">{SIGN_IN_LABEL}</Link>
+            <Link className="btn btn-primary btn-sm" href="/signup">{site.navCta}</Link>
+          </div>
+        </div>
+      </header>
+      {/* THE SECOND ROW IS THE NAV, which is the inversion of Meridian's and
+          the thing that makes this read as a platform: section tabs across
+          the full measure, underlined on the open one. */}
+      <nav className="onx-tabs" aria-label="Main">
+        <div className="onx-tabs-in">
+          {navLinks(NAV_FULL, pathname, 'onx-tab')}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+/** COBALT — one floating pill bar, inset from the edges. */
+function CobaltHeader({ name, initial, pathname }: { name: string; initial: string; pathname: string }) {
+  const site = useSite();
+  return (
+    <div className="thm-chrome thm-cob" data-chrome="header" data-theme-chrome="cobalt">
+      <UtilityStrip name={name} />
+      <header className="thm-head cob-head">
+        <div className="cob-bar">
+          <Link className="thm-brand" href="/" aria-label={`${name} home`}>
+            <ThemeBrand name={name} initial={initial} />
+          </Link>
+          <nav className="cob-nav" aria-label="Main">
+            {navLinks(NAV_SHORT, pathname, 'cob-pill')}
+          </nav>
+          <div className="thm-head-act cob-act">
+            <Link className="cob-ghost" href="/login">{SIGN_IN_LABEL}</Link>
+            <Link className="btn btn-primary btn-sm cob-cta" href="/signup">{site.navCta}</Link>
+          </div>
+        </div>
+      </header>
+    </div>
+  );
+}
+
+export function ThemeHeader() {
+  const tenant = useTenant();
+  const pathname = usePathname() || '/';
+  const name = tenantDisplayName(tenant);
+  const initial = (name.trim()[0] ?? 'I').toUpperCase();
+  const p = { name, initial, pathname };
+  return (
+    <>
+      <MeridianHeader {...p} />
+      <OnyxHeader {...p} />
+      <CobaltHeader {...p} />
+    </>
   );
 }
 

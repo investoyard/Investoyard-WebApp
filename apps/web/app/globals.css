@@ -5876,7 +5876,7 @@ html[data-template='meridian'] {
      padding plus the hairline — and ten rules read this token for scroll
      offsets. A token under the real bar parks every anchored heading just
      beneath it. */
-  --header-h: 65px;
+  --header-h: 73px;     /* MEASURED: the sticky bar. The utility line above it scrolls away. */
 
   /* flat: the design separates surfaces with a hairline, never with depth */
   --sh-xs: none; --sh-sm: none; --sh-md: none;
@@ -6213,7 +6213,8 @@ html[data-template='onyx'] {
   --sh-lg: 0 24px 56px rgba(0,0,0,.6);
 
   --maxw: 1280px;
-  --header-h: 65px;
+  --header-h: 101px;    /* MEASURED: both sticky rows, 59 + 42 */
+  --onx-head-h: 59px;   /* MEASURED: the identity row alone - where the tabs stick */
 
   --ring: 0 0 0 3px rgba(19,163,154,.32);
   --ink-grad: linear-gradient(150deg, #13A39A 0%, #0B5F5A 52%, #04211F 100%);
@@ -6422,7 +6423,7 @@ html[data-template='cobalt'] {
   /* MEASURED at 72.7 and rounded UP, not nominal — ten rules read this token
      for scroll offsets, and a token under the real bar parks every anchored
      heading behind it. */
-  --header-h: 73px;
+  --header-h: 88px;     /* MEASURED: the inset band plus the floating pill */
 
   --ring: 0 0 0 3px rgba(42,67,196,.26);
   --ink-grad: linear-gradient(150deg, #2A43C4 0%, #1C2A7E 54%, #121735 100%);
@@ -6444,7 +6445,9 @@ html[data-template='cobalt'] .thm-foot-logo.is-fallback { filter: none; }
    (The design's mark carries a lime ring around a dot inside the circle; that
    is a logo glyph we do not have, and the lime appears instead where the
    design makes most of it, on the hero eyebrow.) */
-html[data-template='cobalt'] .thm-head { background: var(--surface); }
+/* NO BAND: this theme's bar floats, so the surface is on .cob-bar and the
+   header itself is transparent. A rule here would be (0,2,1) and would beat
+   .cob-head whatever the order. */
 html[data-template='cobalt'] .thm-head-in { padding: 16px 24px; gap: 12px 24px; }
 html[data-template='cobalt'] .thm-mark {
   border-radius: 50%; background: var(--brand-400); font-size: 17px;
@@ -7279,10 +7282,10 @@ html[data-template] .modal-overlay {
  * chrome is PAINTED first rather than swapped after hydration.
  */
 .thm-chrome, .thm-foot { display: none; }
-/* ANY theme, not Meridian's. Every theme brings its own chrome; which one it
-   is, is not what these two rules decide — and keyed to one name they left
-   Onyx rendering OUR header on a near-black page. */
-html[data-template] .thm-chrome { display: block; }
+/* ANY theme shows a FOOTER; WHICH HEADER is now a real decision, made in the
+   per-theme gate further down. This rule used to show every .thm-chrome on
+   any theme, which was right while one chrome served all of them and would
+   now paint three headers stacked. */
 html[data-template] .thm-foot { display: block; }
 /* ANY theme hides our header, because any theme brings its own. Audited:
    this was the last structural rule still keyed to one theme's name, and it
@@ -7314,6 +7317,10 @@ html[data-template] .footer { display: none; }
    in a square. Capped rather than sized: an uploaded logo can be any ratio,
    and a height alone lets a wide wordmark push the nav off the bar. */
 .thm-logo { display: block; height: 28px; max-width: 190px; object-fit: contain; object-position: left center; }
+/* forced white on a DARK header, same rule and same reason as the footer's:
+   a mark drawn for a white page does not read on #141C1F. A partner who has
+   uploaded a footer logo gets that instead and is never filtered. */
+.thm-logo.is-fallback { filter: brightness(0) invert(1); }
 .thm-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 22px; font-size: 14.5px; }
 .thm-nav a { color: var(--text-muted); text-decoration: none; font-weight: 600; }
 .thm-nav a:hover { color: var(--text); }
@@ -7390,6 +7397,117 @@ html[data-template] .footer { display: none; }
    design, so the value belongs to the THEME rather than to the component —
    Onyx's is darker still. A second footer component for the second theme is
    how two of them come to disagree about the other twenty rules in here. */
+
+/* ===== THREE HEADERS, THREE ARCHITECTURES ================================
+ * The operator's words: "need separate theme with totally different layout
+ * ... but u make all theme same header". Measured and true — this sheet had
+ * Meridian and Onyx touching the header's layout ZERO times and Cobalt four,
+ * so three of the four headers were one bar in different paint.
+ *
+ * Each theme now renders its OWN header component and CSS shows one. The
+ * gate below replaces the generic `html[data-template] .thm-chrome` rule: a
+ * theme brings its own chrome, and WHICH one is now something to decide.
+ * ======================================================================== */
+html[data-template='meridian'] .thm-chrome[data-theme-chrome='meridian'],
+html[data-template='onyx']     .thm-chrome[data-theme-chrome='onyx'],
+html[data-template='cobalt']   .thm-chrome[data-theme-chrome='cobalt'] { display: block; }
+
+/* ---- MERIDIAN: a utility line over a tall bar with the nav centred ------
+ * An institution's site. The SECONDARY action moves up into the slim row,
+ * which is the architectural difference from the other two: the main bar is
+ * left carrying identity, navigation and one thing to do, and the nav can
+ * then sit centred because nothing is competing with it for the middle. */
+.mer-top { background: var(--bg-2); border-bottom: 1px solid var(--border); }
+.mer-top-in {
+  max-width: var(--maxw); margin: 0 auto; padding: 7px 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.mer-top-note { font-size: 12px; color: var(--text-muted); }
+.mer-top-link { font-size: 12px; font-weight: 650; color: var(--brand-700); text-decoration: none; }
+.mer-top-link:hover { text-decoration: underline; }
+/* THREE TRACKS WITH EQUAL OUTER ONES is what actually centres the nav — a
+   flex row with `justify-content: space-between` centres the GAP, not the
+   middle item, so the nav drifts with the width of the brand beside it. */
+.mer-head-in { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; padding: 16px 24px; }
+.mer-head-in > .thm-brand { justify-self: start; }
+.mer-head-in > .thm-head-act { justify-self: end; }
+.mer-nav { justify-content: center; gap: 6px 26px; font-size: 15px; }
+/* below the breakpoint the three tracks collapse: a centred nav has nowhere
+   to be centred between, so it wraps under the brand as its own line */
+@media (max-width: 860px) {
+  .mer-head-in { grid-template-columns: 1fr auto; row-gap: 10px; }
+  .mer-nav { grid-column: 1 / -1; justify-content: flex-start; }
+  .mer-top-note { display: none; }
+}
+
+/* ---- ONYX: a compact identity row over full-width section tabs ----------
+ * A trading platform's chrome, and the INVERSION of Meridian's is the point:
+ * the dense row is underneath, not on top. The identity row is short because
+ * a desk gives its chrome as little height as it can. */
+.onx-head-in { padding: 9px 24px; gap: 14px; }
+.onx-rule { width: 1px; height: 18px; background: var(--border-2); flex: 0 0 auto; }
+.onx-ctx {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  color: var(--text-muted); white-space: nowrap;
+}
+.onx-act { margin-left: auto; }
+.onx-tabs {
+  position: sticky; top: var(--onx-head-h); z-index: 49;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.onx-tabs-in {
+  max-width: var(--maxw); margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: stretch; gap: 26px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.onx-tabs-in::-webkit-scrollbar { display: none; }
+.onx-tab {
+  flex: 0 0 auto;
+  padding: 10px 0; font-size: 12px; font-weight: 650;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.onx-tab:hover { color: var(--text); }
+.onx-tab.is-on { color: var(--brand); border-bottom-color: var(--brand); }
+
+/* ---- COBALT: one floating pill bar, inset from the edges ----------------
+ * Not a full-bleed band at all, which is the fintech convention and most of
+ * why this one reads as an app rather than a site. The band itself is
+ * transparent so the page ground runs under the bar. */
+.cob-head { background: transparent; border-bottom: 0; padding: 14px 16px; }
+.cob-bar {
+  max-width: var(--maxw); margin: 0 auto;
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface); border-radius: 22px;
+  padding: 10px 12px 10px 20px;
+  box-shadow: 0 2px 10px rgba(18, 23, 53, .07), 0 10px 30px rgba(18, 23, 53, .06);
+}
+.cob-nav { display: flex; align-items: center; gap: 4px; margin: 0 auto; }
+.cob-pill {
+  padding: 8px 15px; border-radius: 999px;
+  font-size: 14px; font-weight: 650; text-decoration: none;
+  color: var(--text-muted); white-space: nowrap;
+}
+.cob-pill:hover { color: var(--text); background: var(--bg-2); }
+.cob-pill.is-on { color: var(--brand); background: var(--brand-50); }
+.cob-act { display: flex; align-items: center; gap: 6px; }
+.cob-ghost {
+  padding: 8px 12px; font-size: 14px; font-weight: 650;
+  color: var(--text-muted); text-decoration: none; white-space: nowrap;
+}
+.cob-ghost:hover { color: var(--text); }
+.cob-cta { border-radius: 999px; }
+/* the pill cannot hold a nav on a phone, so it drops to brand + actions and
+   the links go to the ordinary wrapped row beneath */
+@media (max-width: 860px) {
+  .cob-head { padding: 10px 12px; }
+  .cob-bar { flex-wrap: wrap; border-radius: 18px; padding: 10px 12px; }
+  .cob-nav { order: 3; width: 100%; margin: 0; overflow-x: auto; scrollbar-width: none; }
+  .cob-nav::-webkit-scrollbar { display: none; }
+  .cob-act { margin-left: auto; }
+}
+
 .thm-foot { background: var(--thm-foot-bg, #14162A); color: rgba(255,255,255,.72); }
 .thm-foot-in {
   max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 32px;
