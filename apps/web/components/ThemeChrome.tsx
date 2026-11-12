@@ -43,6 +43,69 @@ const NAV: { href: string; label: string }[] = [
   { href: '/performance/', label: 'Performance' },
 ];
 
+/**
+ * The brand lockup a theme's chrome shows.
+ *
+ * IT EXISTS BECAUSE THE THEME CHROME WAS THROWING THE PARTNER'S LOGO AWAY.
+ * Our own `SiteHeader` has always rendered `tenant.logo`; this one rendered an
+ * initial in a coloured square, so a partner who had uploaded their wordmark
+ * got it on our default layout and a box with one letter in it on every theme
+ * — picking a theme LOST them their own mark. Finwave has had a logo on file
+ * the whole time.
+ *
+ * PRECEDENCE MIRRORS THE DEFAULT HEADER so the two cannot disagree about which
+ * image is the brand: our own site takes our wordmark, a partner takes theirs,
+ * and only a tenant with no logo at all falls back to the mark-and-name
+ * lockup the themes were drawn with.
+ */
+function ThemeBrand({ name, initial }: { name: string; initial: string }) {
+  const tenant = useTenant();
+  if (tenant.isDefault) {
+    return <img src="/investoyard-logo.svg" alt="Investoyard" height={28} style={{ display: 'block' }} />;
+  }
+  if (tenant.logo) {
+    return <img className="thm-logo" src={tenant.logo} alt={name} />;
+  }
+  return (
+    <>
+      <span className="thm-mark" aria-hidden>{initial}</span>
+      <span className="thm-brand-nm">{name}</span>
+    </>
+  );
+}
+
+/**
+ * The same lockup on the footer, where the ground is the theme's own.
+ *
+ * `footerLogo` IS PREFERRED AND IS NOT FILTERED; the ordinary logo is, because
+ * a brand mark drawn for a white page is close to invisible on the #14162A
+ * footer most themes use. The filter is on `.is-fallback` and A THEME WITH A
+ * LIGHT FOOTER TURNS IT OFF — Cobalt's footer is white, and forcing a logo
+ * white there would hide it completely, which is the failure the ten rgba
+ * literals in `.thm-foot` already taught us to check for.
+ */
+function ThemeFootBrand({ name, initial }: { name: string; initial: string }) {
+  const tenant = useTenant();
+  if (tenant.isDefault) {
+    return (
+      <>
+        <span className="thm-foot-mark" aria-hidden>{initial}</span>
+        <span className="thm-foot-nm">{name}</span>
+      </>
+    );
+  }
+  const src = tenant.footerLogo || tenant.logo;
+  if (src) {
+    return <img className={`thm-foot-logo${tenant.footerLogo ? '' : ' is-fallback'}`} src={src} alt={name} />;
+  }
+  return (
+    <>
+      <span className="thm-foot-mark" aria-hidden>{initial}</span>
+      <span className="thm-foot-nm">{name}</span>
+    </>
+  );
+}
+
 export function ThemeHeader() {
   const site = useSite();
   const tenant = useTenant();
@@ -76,9 +139,8 @@ export function ThemeHeader() {
 
       <header className="thm-head">
         <div className="thm-head-in">
-          <Link className="thm-brand" href="/">
-            <span className="thm-mark" aria-hidden>{initial}</span>
-            <span className="thm-brand-nm">{name}</span>
+          <Link className="thm-brand" href="/" aria-label={`${name} home`}>
+            <ThemeBrand name={name} initial={initial} />
           </Link>
 
           <nav className="thm-nav" aria-label="Main">
@@ -115,8 +177,7 @@ export function ThemeFooter() {
       <div className="thm-foot-in">
         <div className="thm-foot-cols">
           <div className="thm-foot-col thm-foot-brand">
-            <span className="thm-foot-mark" aria-hidden>{initial}</span>
-            <span className="thm-foot-nm">{name}</span>
+            <ThemeFootBrand name={name} initial={initial} />
             {/* `legalEntity` returns undefined rather than falling back to a
                 brand name, and this prints NOTHING when it does. A page that
                 says nothing about who runs it is a gap somebody fixes; one

@@ -41,7 +41,7 @@ describe('the template registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
     /* Compile-time already pins this; the runtime check is what catches an id
        added to the list and never added to the union (or the reverse). */
-    const union: SiteTemplate[] = ['default', 'meridian', 'onyx', 'folio', 'cobalt'];
+    const union: SiteTemplate[] = ['default', 'meridian', 'onyx', 'cobalt'];
     expect([...ids].sort()).toEqual([...union].sort());
   });
 

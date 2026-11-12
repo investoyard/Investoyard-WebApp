@@ -135,45 +135,18 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
   },
   {
     /*
-     * FOLIO — Sir's "1b Editorial", whose own caption names its audience:
-     * "for advisors and research-led brokers".
-     *
-     * A NEWSPAPER, and the only one of the three with no cards in it at all.
-     * The design is a broadsheet: a centred masthead over a 3px DOUBLE rule,
-     * uppercase letter-spaced nav, a 56px lead headline with a standfirst, a
-     * four-figure band bounded top and bottom by hairlines, and lists that are
-     * rule-separated ROWS. Where Meridian frames one live card and Onyx packs
-     * a desk's table, this one reads like something written.
-     *
-     * Measured off the design file: paper #FBF8F3, ink #211A17, a deep wine
-     * accent #7A1E3F, rules #E6DED2 and #CBBFAF, muted #6B5F57, IBM Plex Sans,
-     * and SQUARE corners — the design gives its buttons a height and a padding
-     * and no radius at all, which is most of why it reads as print.
-     *
-     * Folio is a page, which is the name rather than the description. Sir
-     * approves the names; this is the proposal.
-     */
-    id: 'folio',
-    label: 'Folio',
-    blurb: 'An editorial broadsheet. A centred masthead, one lead issue written up at length, and lists set as rule-separated rows rather than cards. Suits an advisor whose clients read before they apply.',
-    design: 'Broker Templates — 1b Editorial',
-    ready: true,
-  },
-  {
-    /*
      * COBALT — Sir's "1c Cards", whose own caption names its audience:
      * "for new-investor fintechs".
      *
-     * THE ONE OF THE FOUR THAT SELLS. Meridian frames a live card, Onyx packs
-     * a desk's table and Folio reads like something written; this one is a
-     * pitch: a 28px-radius cobalt hero panel with a lime eyebrow, a 54px
+     * THE ONE OF THE THREE THAT SELLS. Meridian frames a live card and Onyx
+     * packs a desk's table; this one is a pitch: a 28px-radius cobalt hero panel with a lime eyebrow, a 54px
      * headline, and then a four-up grid of friendly white cards with a
      * recessed well of figures in each and one pill action.
      *
      * Measured off the design file: ground #F4F6FF, ink #121735, a cobalt
      * accent #2A43C4 with #3D5CF5 for fills, a lime HIGHLIGHT #B8E04A that is
      * deliberately not bound to a signal, borders #E3E8FF, Manrope, and radii
-     * from 12 to 28 against Folio's 0-2 and Onyx's 2-8.
+     * from 12 to 28 against Onyx's 2-8.
      *
      * Cobalt is the pigment, which is the name rather than the description —
      * and a mineral, like Onyx. Sir approves the names; this is the proposal.
@@ -186,7 +159,7 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
   },
 ];
 
-export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'folio' | 'cobalt';
+export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'cobalt';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.

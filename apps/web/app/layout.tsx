@@ -4,6 +4,7 @@ import { ChromeWrapper } from '@/components/ChromeWrapper';
 import { PwaRegister } from '@/components/PwaRegister';
 import { OWN_HOSTS, SITE_ORIGIN, SITE_HOST } from '@/lib/site';
 import { hostTemplateMap, flattenHostMap } from '@/lib/siteTemplates';
+import { SITE_TEMPLATES } from '@investoyard/shared-types';
 import { OrganizationJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
@@ -192,8 +193,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             __html:
               `(function(){try{`
               + `var d=document.documentElement,q=location.search,m;`
-              /* dev override: works on any host, including ours, which is the point */
-              + `if(q&&(m=q.match(/[?&]template=([a-z]+)/)))d.setAttribute('data-template',m[1]);`
+              /* dev override: works on any host, including ours, which is the point.
+                 VALIDATED against the registry — an unknown id would set an
+                 attribute with no theme CSS behind it, and the generic rules
+                 would still hide our own chrome, leaving an unstyled site. */
+              + `var T=${JSON.stringify(SITE_TEMPLATES.map((t) => t.id))};`
+              + `if(q&&(m=q.match(/[?&]template=([a-z]+)/))&&T.indexOf(m[1])>-1)d.setAttribute('data-template',m[1]);`
               + `if(q&&(m=q.match(/[?&]font=([a-z]+)/)))d.setAttribute('data-font',m[1]);`
               + `var h=location.hostname;`
               + `if(${JSON.stringify(OWN_HOSTS)}.indexOf(h)>-1)return;`
