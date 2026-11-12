@@ -1260,7 +1260,10 @@ a.card:hover, .card.hoverable:hover { border-color: var(--brand-200); box-shadow
 .ac-band { padding: 16px 20px; margin-top: 30px; }
 .ac-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ac-lead { display: flex; align-items: center; gap: 10px; margin-right: 4px; }
-.ac-badge { width: 38px; height: 38px; border-radius: 11px; background: var(--gold-50); color: #8a6d1f; display: grid; place-items: center; flex-shrink: 0; }
+/* THE INK READS THE TOKEN, like the ground beside it. Hardcoded, it stayed
+   #8a6d1f on a theme that declares its own — 3.28:1 on Onyx's near-black
+   warm. This is a no-op on our own site: root's --gold-ink IS #8a6d1f. */
+.ac-badge { width: 38px; height: 38px; border-radius: 11px; background: var(--gold-50); color: var(--gold-ink); display: grid; place-items: center; flex-shrink: 0; }
 .ac-title { font-family: var(--font-display); font-weight: 650; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
 .ac-sel { flex: 1 1 220px; min-width: 200px; max-width: 340px; }
 .ac-pan { flex: 0 1 190px; min-width: 160px; text-transform: uppercase; }
@@ -7609,6 +7612,34 @@ html[data-template] .footer { display: none; }
    design, so the value belongs to the THEME rather than to the component —
    Onyx's is darker still. A second footer component for the second theme is
    how two of them come to disagree about the other twenty rules in here. */
+
+/* ---- THE SECTION HEADINGS, the last shared element with no treatment ----
+ * Measured at 30px/700 on both Meridian and Cobalt, differing only by what
+ * the two typefaces bring. Onyx already sets its own at 22px.
+ *
+ * ABSOLUTELY POSITIONED, not a block pseudo-element inside the h2:
+ * `.section-head` is a flex row with `align-items: baseline`, and a block
+ * `::before` in the heading would move that baseline and drag the sibling
+ * link down with it. */
+html[data-template='cobalt'] .section-head {
+  position: relative; padding-top: 17px; margin-top: 46px;
+}
+/* THE LIME GETS A CONSISTENT JOB instead of being scattered as a highlight:
+   one short eyebrow rule above every section heading, which is how the
+   design itself uses it. Decorative — it carries no meaning on its own, so
+   no contrast bar applies to it. */
+html[data-template='cobalt'] .section-head::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 34px; height: 4px; border-radius: 999px; background: var(--thm-lime);
+}
+html[data-template='cobalt'] .section-head h2 { font-size: 30px; letter-spacing: -.03em; }
+
+/* the opposite, and the opposite is the point: a full hairline and a
+   quieter heading, which is what an institution's page does with a section */
+html[data-template='meridian'] .section-head {
+  border-top: 1px solid var(--border); padding-top: 18px; margin-top: 46px;
+}
+html[data-template='meridian'] .section-head h2 { font-size: 25px; letter-spacing: -.012em; }
 
 /* ===== THE BAND BETWEEN THE HERO AND THE CARDS ===========================
  * The last thing making two themes feel like one site. Measured before
