@@ -5892,7 +5892,12 @@ html[data-template='meridian'] {
   /* its own blue-grey slate, cooler and softer than our purple-grey */
   --text: #181A2E;
   --text-muted: #5C6187;
-  --text-faint: #A3A6BD;
+  /* MEASURED at 2.4:1 on white, where :root is 3.24, Cobalt 3.09 and Onyx
+     reads its own dark ground - Meridian was the outlier by a wide margin,
+     and it is the ink on the today strip's zero counts. #8C90AB is 3.14,
+     which is parity. The register still fails 4.5 for small text - so does
+     our own default, which is not ours to change. */
+  --text-faint: #8C90AB;
   --surface: #FFFFFF;
   --surface-2: #FAFAFD;
   --bg: #F5F5FA;
@@ -7604,6 +7609,90 @@ html[data-template] .footer { display: none; }
    design, so the value belongs to the THEME rather than to the component —
    Onyx's is darker still. A second footer component for the second theme is
    how two of them come to disagree about the other twenty rules in here. */
+
+/* ===== THE BAND BETWEEN THE HERO AND THE CARDS ===========================
+ * The last thing making two themes feel like one site. Measured before
+ * touching it: on BOTH Meridian and Cobalt the band is 192px of chrome in
+ * the identical arrangement — a view switcher, the today strip, a filter row
+ * — differing only in radius and tint. Onyx does not have this problem
+ * because it hides the explorer and its desk carries its own compact bar.
+ *
+ * TWO TREATMENTS, and the split is the one the themes already make
+ * everywhere else: MERIDIAN GOES RULED AND SQUARED — a quiet institutional
+ * toolbar, nothing floating, nothing a pill — and COBALT GOES THE OTHER WAY,
+ * everything lifted off the page as a floating pill, which is what makes it
+ * read as an app.
+ *
+ * THE ARRANGEMENT IS NOT CHANGED, deliberately. The three controls live in
+ * two different components (`.tpl-vw` in ThemeIpoSection, the rest inside
+ * the explorer passed to it as children), so putting them on one row means
+ * flattening an unnamed wrapper with `nth-child` — fragile, and it would
+ * break the moment either component gains an element. Treatment is the
+ * honest lever here; rearranging is a component change.
+ * ======================================================================== */
+
+/* ---- EVERY THEME: our brand was leaking out of a hardcoded shadow ------
+ * `.flt-status button.on` carries `box-shadow: 0 4px 12px rgba(60,46,126,.22)`
+ * — OUR indigo, written as a literal, so the active filter chip glowed
+ * Investoyard-purple on a teal theme and on a cobalt one. Derived from the
+ * theme's own brand instead; Meridian turns it off above because a ruled
+ * toolbar has no glows in it. */
+html[data-template] .flt-status button.on {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+/* ---- MERIDIAN: a ruled toolbar ---------------------------------------- */
+/* the switcher becomes underlined tabs — the gesture its centred nav already
+   uses, rather than a third pill group on the page */
+html[data-template='meridian'] .tpl-vw {
+  background: transparent; border: 0; border-radius: 0; padding: 0;
+  gap: 24px; border-bottom: 1px solid var(--border);
+}
+html[data-template='meridian'] .tpl-vw button {
+  border-radius: 0; padding: 9px 0 8px;
+  border-bottom: 2px solid transparent;
+}
+html[data-template='meridian'] .tpl-vw button.is-on {
+  background: transparent; color: var(--brand-700); border-bottom-color: var(--brand);
+}
+/* the today strip loses its card: an institution's toolbar is ruled, not
+   stacked panels. The gradient rule goes with it — its own comment calls it
+   "the whole ornament budget", and this is the theme that does not spend it. */
+/* A RULED WHITE BAND, NOT A TRANSPARENT ONE. The first cut made the strip
+   and its cells transparent, which dropped the zero-count labels onto the
+   PAGE ground and took them from 3.09:1 to 2.21:1 — I made an already-weak
+   pair worse. The surface stays; what goes is the radius, the shadow and the
+   gradient ornament, which is what separates a ruled band from a card. */
+html[data-template='meridian'] .h2b {
+  background: var(--surface); border: 0; border-radius: 0; box-shadow: none;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+html[data-template='meridian'] .h2b::before { display: none; }
+/* NOTHING IS A PILL on this theme; the pill is Cobalt's idiom and having
+   both themes reach for it is most of why they read alike */
+html[data-template='meridian'] .flt-status,
+html[data-template='meridian'] .viewseg { border-radius: var(--r-sm); }
+html[data-template='meridian'] .flt-status button,
+html[data-template='meridian'] .viewseg button { border-radius: 8px; }
+html[data-template='meridian'] .brd-bar,
+html[data-template='meridian'] .flt-search { border-radius: var(--r-sm); }
+html[data-template='meridian'] .flt-status button.on { box-shadow: none; }
+
+/* ---- COBALT: everything floats ---------------------------------------- */
+html[data-template='cobalt'] .h2b {
+  border-radius: var(--r-2xl);
+  box-shadow: 0 2px 10px rgba(18, 23, 53, .06), 0 10px 30px rgba(18, 23, 53, .05);
+}
+/* the theme's own two-colour gesture rather than the house indigo-to-gold */
+html[data-template='cobalt'] .h2b::before {
+  background: linear-gradient(90deg, var(--brand) 0%, var(--brand-400) 55%, var(--thm-lime) 100%);
+}
+/* the whole filter row becomes one family of pills */
+html[data-template='cobalt'] .brd-bar,
+html[data-template='cobalt'] .flt-search { border-radius: 999px; }
+html[data-template='cobalt'] .brd-seg:first-child { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+html[data-template='cobalt'] .brd-seg:last-child { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+html[data-template='cobalt'] .h2b-btn { border-radius: 999px; }
 
 /* ===== THREE HEADERS, THREE ARCHITECTURES ================================
  * The operator's words: "need separate theme with totally different layout
