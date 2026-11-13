@@ -340,6 +340,13 @@ export function ThemeFooter() {
             <Link href="/allotment/">Allotment</Link>
             <Link href="/performance/">Listing performance</Link>
             <Link href="/calendar/">Calendar</Link>
+            {/* THE ONE DESTINATION THE BOARD BUTTONS CARRIED WITH NO OTHER
+                ROUTE on Meridian or Cobalt, whose navs are 4 and 3 links and
+                hold neither /gmp nor /calendar. Hiding those buttons on a
+                theme would otherwise have taken the expected premium off a
+                themed site entirely. Gated on the same flag the button was:
+                a white-label has gmpEnabled false AND locked. */}
+            {tenant.flags.gmpEnabled ? <Link href="/gmp/">Exp. Premium</Link> : null}
           </div>
 
           <div className="thm-foot-col">

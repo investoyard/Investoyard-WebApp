@@ -7613,6 +7613,85 @@ html[data-template] .footer { display: none; }
    Onyx's is darker still. A second footer component for the second theme is
    how two of them come to disagree about the other twenty rules in here. */
 
+/* ---- THE BAND: THREE STACKED ROWS BECOME TWO, AND A DUPLICATION GOES -----
+ *
+ * MEASURED FIRST, and the measurement found a bug rather than a layout nit.
+ * The view switcher's three tabs are `IPO Calendar / Allotment / Live
+ * subscription`; the market board's action buttons 60px below them read
+ * `IPO Calendar / Allotment / Live Subscription / Exp. Premium` and point at
+ * `/calendar`, `/allotment`, `/subscription`, `/gmp`. ALL THREE TABS ARE
+ * DUPLICATED BY A BUTTON — same label, one switching a tab in place and one
+ * leaving the page. That is worse than three stacked bands, and it is the
+ * "two ways of saying one thing" fault this file already records against the
+ * featured panel, the Today line and Meridian's lead figure.
+ *
+ * SO THE ACTION BUTTONS GO ON A THEME, not just the three that collide. The
+ * board row is OUR market bar, not the design's: the design's `#ipos` block is
+ * the three-view switch over a table and carries no such buttons. The
+ * READINGS stay — a date and four counts of the whole catalogue, duplicated
+ * nowhere — and the switcher takes the column the buttons had.
+ *
+ * NOTHING IS LOST. `/allotment` and `/subscription` are in every theme's
+ * header nav AND the footer's Tools column; `/calendar` is in the footer and
+ * in Onyx's nav, and the tab beside it covers the intent on the page.
+ * `Exp. Premium` was the one destination with no other route on Meridian or
+ * Cobalt, so it was ADDED to the theme footer in the same change.
+ *
+ * KEYED ON 1081px BECAUSE THAT IS THE BOARD'S OWN BREAKPOINT: below it the
+ * board already collapses to a single column (`max-width: 1080px`), so the
+ * second column the switcher sits in does not exist and the three bands stack
+ * — which is correct at that width. Inventing a number here would have put the
+ * switcher over a board that had reflowed beneath it.
+ *
+ * ABSOLUTE, BECAUSE THE SWITCHER CANNOT MOVE INTO THE BOARD. It is a child of
+ * `#ipo-views` while the board is two levels deeper inside the explorer, and
+ * the explorer is `hidden` whenever another view is open — tabs rendered
+ * inside it would be unreachable the moment you switched away. That is why
+ * they live outside, and why co-locating them is a positioning job.
+ *
+ * ONLY IN THE CALENDAR VIEW: the other two views hide the explorer, so there
+ * is no board to sit on and the switcher returns to the flow. `data-view` on
+ * the wrapper is what makes that a CSS question. Same shape as the
+ * subscription card's action rail, which overflowed its track when a third
+ * button turned a column into a row.
+ */
+html[data-template] .h2b-acts { display: none; }
+
+@media (min-width: 1081px) {
+  html[data-template] #ipo-views { position: relative; }
+
+  /* The board keeps a SECOND COLUMN, sized to the switcher, rather than the
+     switcher being laid over a full-width readings grid: `.h2b-stats` is
+     `auto repeat(4, 1fr)` inside column 1, so with column 2 collapsed the
+     counts would spread under the pill. Reserving it is what keeps the
+     readings clear of the tabs instead of merely painting over them. */
+  html[data-template] #ipo-views[data-view='calendar'] .h2b {
+    grid-template-columns: minmax(0, 1fr) var(--band-tabs-w, 400px);
+  }
+
+  html[data-template] #ipo-views[data-view='calendar'] > .tpl-vw {
+    position: absolute;
+    /* `right: 10px` is where `.h2b-acts` padded its buttons to, so the pill
+       lands where the row already had its right-hand furniture. */
+    top: 0; right: 10px; margin: 0;
+    /* THE BOARD'S OWN HEIGHT: `.h2b-cell` is 56px and the board adds a 1px
+       border top and bottom. Centring inside it is what lines the pill up with
+       the figures beside it, and a test asserts the two centres agree — which
+       is what makes a measured constant safe to write down. */
+    height: 58px; align-items: center;
+    /* The board is a LATER sibling subtree and `position: relative`, so at
+       `z-index: auto` it paints over the pill. */
+    z-index: 2;
+  }
+}
+
+/* Per theme, because the pill's width is its labels in its own typeface:
+   measured at 308px on Meridian (Inter) and 377px on Cobalt (Manrope, which
+   pads its pills harder). The reserved column adds room for the 10px offset
+   and a gap. A test asserts the pill fits inside what is reserved. */
+html[data-template='meridian'] { --band-tabs-w: 330px; }
+html[data-template='cobalt'] { --band-tabs-w: 400px; }
+
 /* ---- THE SECTION HEADINGS, the last shared element with no treatment ----
  * Measured at 30px/700 on both Meridian and Cobalt, differing only by what
  * the two typefaces bring. Onyx already sets its own at 22px.
