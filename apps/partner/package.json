@@ -1,0 +1,27 @@
+{
+  "name": "@investoyard/partner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "White-label partner site. One export per design variant; shares only the data layer with apps/web.",
+  "scripts": {
+    "build": "next build",
+    "build:sterling": "node scripts/build.mjs sterling",
+    "build:bento": "node scripts/build.mjs bento",
+    "build:terminal": "node scripts/build.mjs terminal",
+    "typecheck": "tsc --noEmit -p tsconfig.sterling.json && tsc --noEmit -p tsconfig.bento.json && tsc --noEmit -p tsconfig.terminal.json && tsc --noEmit -p tsconfig.horizon.json && tsc --noEmit -p tsconfig.ledger.json",
+    "build:horizon": "node scripts/build.mjs horizon",
+    "build:ledger": "node scripts/build.mjs ledger"
+  },
+  "dependencies": {
+    "@investoyard/shared-types": "*",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.0"
+  }
+}
