@@ -85,3 +85,4 @@ data/
 # Anything genuinely reusable belongs in scripts/ with a docblock saying what it
 # measures, not here.
 scratchpad/
+out-preview/

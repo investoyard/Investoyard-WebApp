@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { Field } from '@/components/ui/Form';
 import { RichText } from '@/components/ui/RichText';
 import * as api from '@/lib/tenants-admin';
 import {
@@ -9,11 +8,10 @@ import {
   OPERATOR_ONLY_IDENTITY_FIELDS,
   SITE_TEMPLATES,
   themeReady,
-  SITE_FONTS,
   DEFAULT_TEMPLATE,
   DEFAULT_FONT,
   templateMeta,
-  defaultHeadline,
+  isSiteTemplate,
 } from '@investoyard/shared-types';
 
 /**
@@ -665,35 +663,55 @@ const PREVIEW_PAGES: { path: string; label: string }[] = [
   { path: '/terms/', label: 'Terms' },
 ];
 
+/*
+ * THE PARTNER DESIGNS ARE SEPARATE SITES, published under
+ * /partner-preview/<design>/ by apps/partner (scripts/publish-preview.mjs).
+ * Each has its own pages, so the picker lists theirs: the home page shows the
+ * arrangement, an IPO page and the subscription page show that the design
+ * carries through the whole site, which a theme on our pages never did.
+ * `?brand=` paints the partner's own name and colour on it.
+ */
+const PARTNER_PAGES: { path: string; label: string }[] = [
+  { path: '/', label: 'Home' },
+  { path: '/ipos/JPL/', label: 'IPO page' },
+  { path: '/subscription/', label: 'Subscription' },
+  { path: '/allotment/', label: 'Allotment' },
+  { path: '/ipos/', label: 'Archive' },
+];
+
 /* Rendered at a desktop width and scaled down, so what the operator sees is the
    DESKTOP layout rather than the mobile one a narrow iframe would trigger —
-   the templates differ most above the 1100px breakpoint, and a preview that
-   silently showed the phone layout would be worse than none. */
+   the designs differ most at desktop width, and a preview that silently
+   showed the phone layout would be worse than none. */
 const PREVIEW_W = 1280;
 const PREVIEW_H = 860;
 
-function SitePreview({ slug, template, font, domain }: {
-  slug: string; template: string; font: string; domain?: string;
+function SitePreview({ slug, template, domain }: {
+  slug: string; template: string; domain?: string;
 }) {
   const [show, setShow] = useState(false);
-  const [page, setPage] = useState(PREVIEW_PAGES[0]!.path);
+  /* By POSITION, not path: the two page lists differ, and switching design must
+     not leave the frame pointing at a page the other list does not have. */
+  const [pageIx, setPageIx] = useState(0);
 
-  const q = `brand=${encodeURIComponent(slug)}&template=${encodeURIComponent(template)}`
-    + `&font=${encodeURIComponent(font)}&preview=1`;
-  const src = `${page}?${q}`;
-  const full = `${page}?${q.replace('&preview=1', '')}`;
+  const ours = template === DEFAULT_TEMPLATE;
+  const pages = ours ? PREVIEW_PAGES : PARTNER_PAGES;
+  const page = pages[Math.min(pageIx, pages.length - 1)]!.path;
+  const brand = `brand=${encodeURIComponent(slug)}`;
+  const src = ours ? `${page}?${brand}&preview=1` : `/partner-preview/${template}${page}?${brand}`;
+  const full = ours ? `${page}?${brand}` : src;
 
   return (
     <div className="tplp-prev">
       <div className="tplp-prev-head">
         <span className="tplp-prev-ttl">Live preview</span>
         <div className="tplp-prev-pages">
-          {PREVIEW_PAGES.map((p) => (
+          {pages.map((p, i) => (
             <button
               key={p.path}
               type="button"
               className={page === p.path ? 'on' : ''}
-              onClick={() => setPage(p.path)}
+              onClick={() => setPageIx(i)}
             >{p.label}</button>
           ))}
         </div>
@@ -702,8 +720,7 @@ function SitePreview({ slug, template, font, domain }: {
 
       {/* The browser frame from Sir's design: the three dots and the padlock
           with the partner's own host, so it reads as THEIR site rather than a
-          panel in ours. Falls back to the slug when no domain is set — which is
-          honest, because without a domain this layout never reaches anyone. */}
+          panel in ours. Falls back to the slug when no domain is set. */}
       <div className="tplp-prev-chrome">
         <span className="tplp-prev-dots"><i /><i /><i /></span>
         <span className="tplp-prev-url">{domain ? `🔒 ${domain}` : `${slug} — no domain set`}</span>
@@ -726,8 +743,9 @@ function SitePreview({ slug, template, font, domain }: {
       </div>
       {show ? (
         <p className="hint tplp-prev-note">
-          The real site at this layout and brand, scaled to fit. Nothing here is saved, and the
-          preview cannot change your own session.
+          {ours
+            ? 'Our own site in this partner’s brand, scaled to fit. Nothing here is saved, and the preview cannot change your own session.'
+            : 'The real design with this partner’s name and colour, scaled to fit. Its figures are from the last preview build. Nothing here is saved.'}
         </p>
       ) : null}
     </div>
@@ -741,14 +759,14 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [gaps, setGaps] = useState<api.ContentGap[]>(tenant.contentGaps ?? []);
 
   const set = <K extends keyof api.TenantSite>(k: K, v: api.TenantSite[K]) => setD((p) => ({ ...p, [k]: v }));
   const txt = (k: keyof api.TenantSite) => String((d as any)[k] ?? '');
   const flag = (k: keyof api.TenantSite) => (d as any)[k] === true;
 
-  const template = (d.template ?? DEFAULT_TEMPLATE) as api.SiteTemplate;
-  const isDefault = template === DEFAULT_TEMPLATE;
+  /* A row still pointing at a retired web theme reads as our own layout — the
+     same answer `resolveSite` gives — rather than as no selection at all. */
+  const template = (isSiteTemplate(d.template) ? d.template : DEFAULT_TEMPLATE) as api.SiteTemplate;
   const meta = templateMeta(template);
 
   const dirty = JSON.stringify({ ...stored }) !== JSON.stringify(d);
@@ -756,9 +774,10 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
   const save = async () => {
     setBusy(true); setErr(null); setSavedAt(null);
     try {
-      /* EVERY field this panel renders is posted — a blanked box must delete
-         rather than linger as "", and a cleared toggle must store `false`. */
-      const r = await api.updateTenantSite(slug, {
+      /* The copy fields are posted as stored: no design renders them today, and
+         the write surface deletes a blanked box, so sending them back unchanged
+         is what keeps a partner's earlier copy from being wiped by this save. */
+      await api.updateTenantSite(slug, {
         template, font: (d.font ?? DEFAULT_FONT) as api.SiteFont,
         headline: txt('headline'), sub: txt('sub'),
         navCta: txt('navCta'), applyCta: txt('applyCta'), applyNote: txt('applyNote'),
@@ -767,46 +786,39 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
         showRm: flag('showRm'), rmLabel: txt('rmLabel'), rmName: txt('rmName'),
         rmRole: txt('rmRole'), rmBlurb: txt('rmBlurb'), rmContact: txt('rmContact'), rmCta: txt('rmCta'),
       });
-      setGaps(r.gaps ?? []);
       setSavedAt(Date.now());
       onSaved();
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
 
-  /* The SERVER's gap list for this block, by the same resolver the site renders
-     with — so the panel cannot form its own opinion of what is missing. */
-  const siteGapList = gaps.filter((g) => g.key === 'site');
-
   return (
     <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
       <div className="section-title" style={{ fontSize: 13, marginTop: 0 }}>Site layout</div>
       <p className="hint" style={{ marginTop: 0 }}>
-        How this channel&apos;s public site is arranged. Every layout shows the same IPO data from
-        the same place — what changes is the order it is read in and how much room the opening
-        statement gets. A change here reaches visitors on the <b>next deploy</b>; until then the
-        page corrects itself once it loads.
+        The design this partner&apos;s public site is built in. Each design is a complete site of
+        its own — header, pages, type and layout — showing the same IPO data from the same
+        place, in the partner&apos;s own name and colour.
       </p>
-      {/* A layout is baked PER HOST, so a channel with no domain of its own has
-          no host to bake it against and will go on rendering ours. Said here
-          because the setting otherwise saves, reports success and changes
-          nothing visible — which reads as a broken panel rather than as a
-          missing DNS record. */}
-      {!tenant.customDomain ? (
-        <div className="banner warn" style={{ marginBottom: 12 }}>
-          This channel has no custom domain yet, so it is still served under ours and will keep
-          rendering the Investoyard layout whatever is picked here. Set the domain in Branding
-          first — the choice is saved either way and takes effect when the domain goes live.
-        </div>
-      ) : null}
+      {/* SAID PLAINLY, because the setting otherwise saves, reports success and
+          changes nothing visible — which reads as a broken panel. A partner
+          design is not served on a partner's domain until that domain is pointed
+          at the partner site, which is a server step; until then their domain
+          keeps showing our layout. */}
+      <div className="banner warn" style={{ marginBottom: 12 }}>
+        Choosing a design saves it for this partner and previews it below. It does not change what
+        {tenant.customDomain ? <> <b>{tenant.customDomain}</b></> : ' their site'} shows yet: that
+        switches when their domain is pointed at the partner site, which is a server step. Until
+        then it keeps showing the Investoyard layout.
+      </div>
 
-      {/* ---- the layout ---- */}
+      {/* ---- the design ---- */}
       <div className="tplp-grid">
         {SITE_TEMPLATES.map((t) => {
-          /* A THEME IS BUILT ONE AT A TIME, so one that is listed but not
-             finished must not be selectable — and must say so rather than just
-             refusing the click. `themeReady` is the registry's own answer, so
-             this screen cannot form a second opinion about what is shippable. */
+          /* A design that is listed but not finished must not be selectable —
+             and must say so rather than just refusing the click. `themeReady`
+             is the registry's own answer, so this screen cannot form a second
+             opinion about what is shippable. */
           const ready = themeReady(t.id);
           return (
             <label
@@ -821,144 +833,32 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
               />
               <span className="tplp-opt-h">{t.label}</span>
               <span className="tplp-opt-d">{t.blurb}</span>
-              {/* `.st.mut`, not a bare `.st`: that class sets size, weight and a
-                  pill radius and NO colour at all, so the chip rendered as a
-                  pill-shaped nothing. */}
-              {t.design ? <span className="st mut tplp-opt-src">{t.design}</span> : null}
               {!ready ? <span className="st warn tplp-opt-src">In build</span> : null}
             </label>
           );
         })}
       </div>
 
-      {/* Our own layout reads none of the copy below, so showing the boxes would
-          invite someone to fill in fields that cannot appear anywhere. */}
-      {isDefault ? (
-        <p className="hint" style={{ marginTop: 14 }}>
-          <b>{meta.label}</b> — the hero copy, the utility bar and the relationship-manager card
-          below belong to the other layouts and are not rendered by this one. Pick one of them to
-          edit them.
-        </p>
-      ) : (
-        <>
-          <div className="filter-row" style={{ marginTop: 16 }}>
-            <Field label="Typeface">
-              <select value={d.font ?? DEFAULT_FONT} onChange={(e) => set('font', e.target.value as api.SiteFont)}>
-                {SITE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-              </select>
-            </Field>
-          </div>
+      <p className="hint" style={{ marginTop: 14 }}>
+        <b>{meta.label}</b>
+        {template === DEFAULT_TEMPLATE
+          ? ' — our own site, in this partner’s brand colour.'
+          : ' — its typeface and layout are part of the design, so there is nothing else to set here. Brand colour and logo come from Branding; the footer’s legal name and contacts from the identity and contact panels.'}
+      </p>
 
-          <div className="section-title" style={{ fontSize: 12.5 }}>Opening statement</div>
-          <Field label="Headline" hint={`Left empty, the page builds one from the channel's name — e.g. "${defaultHeadline(tenant.name)}". Write your own.`}>
-            <input value={txt('headline')} maxLength={120} onChange={(e) => set('headline', e.target.value)} />
-          </Field>
-          <Field label="Sub-heading" hint="One sentence under the headline.">
-            <input value={txt('sub')} maxLength={240} onChange={(e) => set('sub', e.target.value)} />
-          </Field>
-          <div className="filter-row">
-            <Field label="Header button" hint="e.g. Sign in">
-              <input value={txt('navCta')} maxLength={40} onChange={(e) => set('navCta', e.target.value)} />
-            </Field>
-            <Field label="Hero button" hint="e.g. Apply to an IPO">
-              <input value={txt('applyCta')} maxLength={40} onChange={(e) => set('applyCta', e.target.value)} />
-            </Field>
-          </div>
-          <Field label="Note under the hero button" hint="Optional, e.g. No charges to apply.">
-            <input value={txt('applyNote')} maxLength={120} onChange={(e) => set('applyNote', e.target.value)} />
-          </Field>
-
-          {/* ---- the three optional blocks ---- */}
-          <div className="section-title" style={{ fontSize: 12.5 }}>Optional blocks</div>
-          <p className="hint" style={{ marginTop: 0 }}>
-            A block only appears once it has something to show — a bar with no links in it and a
-            card with no name in it are not rendered at all, and the list at the bottom of this
-            panel is what will tell you one is half-finished.
-          </p>
-
-          <label className="tplp-tog">
-            <input type="checkbox" checked={flag('showUtility')} onChange={(e) => set('showUtility', e.target.checked)} />
-            <span>Bar above the header, linking back to the main platform</span>
-          </label>
-          {flag('showUtility') && (
-            <div className="filter-row">
-              <Field label="Back to main site" hint="Where the client came from.">
-                <input value={txt('mainSiteUrl')} maxLength={600} placeholder="https://…" onChange={(e) => set('mainSiteUrl', e.target.value)} />
-              </Field>
-              <Field label="Support page">
-                <input value={txt('supportUrl')} maxLength={600} placeholder="https://…" onChange={(e) => set('supportUrl', e.target.value)} />
-              </Field>
-            </div>
-          )}
-
-          <label className="tplp-tog">
-            <input type="checkbox" checked={flag('showRm')} onChange={(e) => set('showRm', e.target.checked)} />
-            <span>Relationship-manager card</span>
-          </label>
-          {flag('showRm') && (
-            <>
-              <div className="filter-row">
-                <Field label="Name"><input value={txt('rmName')} maxLength={80} onChange={(e) => set('rmName', e.target.value)} /></Field>
-                <Field label="Role" hint="e.g. Senior Relationship Manager">
-                  <input value={txt('rmRole')} maxLength={80} onChange={(e) => set('rmRole', e.target.value)} />
-                </Field>
-              </div>
-              <Field label="Heading above the name" hint="Left empty: “Your relationship manager”.">
-                <input value={txt('rmLabel')} maxLength={60} onChange={(e) => set('rmLabel', e.target.value)} />
-              </Field>
-              <Field label="What they help with"><input value={txt('rmBlurb')} maxLength={400} onChange={(e) => set('rmBlurb', e.target.value)} /></Field>
-              <div className="filter-row">
-                <Field label="How to reach them" hint="A number, an email or a booking link — printed as entered.">
-                  <input value={txt('rmContact')} maxLength={120} onChange={(e) => set('rmContact', e.target.value)} />
-                </Field>
-                <Field label="Button or prompt" hint="e.g. Call between 9 and 6">
-                  <input value={txt('rmCta')} maxLength={40} onChange={(e) => set('rmCta', e.target.value)} />
-                </Field>
-              </div>
-            </>
-          )}
-
-          <label className="tplp-tog">
-            <input type="checkbox" checked={flag('showApp')} onChange={(e) => set('showApp', e.target.checked)} />
-            <span>Band pointing at the channel&apos;s own mobile app</span>
-          </label>
-          {flag('showApp') && (
-            <Field label="App link" hint="A store listing or a landing page. No store badge is shown — those carry the store owners' own brand conditions.">
-              <input value={txt('appUrl')} maxLength={600} placeholder="https://…" onChange={(e) => set('appUrl', e.target.value)} />
-            </Field>
-          )}
-        </>
-      )}
-
-      {/* THE PREVIEW SHOWS THE DRAFT, NOT THE SAVED ROW — `template` and `d.font`
-          are the controls' current values, so picking a layout updates the frame
-          before Save is pressed. A preview that only reflected what was already
-          stored would make choosing a layout a matter of saving and hoping. */}
-      <SitePreview
-        slug={slug}
-        template={template}
-        font={(d.font ?? DEFAULT_FONT) as string}
-        domain={tenant.customDomain}
-      />
+      {/* THE PREVIEW SHOWS THE DRAFT, NOT THE SAVED ROW — picking a design
+          updates the frame before Save is pressed. A preview that only
+          reflected what was already stored would make choosing a matter of
+          saving and hoping. */}
+      <SitePreview slug={slug} template={template} domain={tenant.customDomain} />
 
       <div className="tplp-actions" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>
-          {busy ? 'Saving…' : 'Save layout'}
+          {busy ? 'Saving…' : 'Save design'}
         </button>
         {savedAt ? <span className="st ok">Saved</span> : null}
         {dirty && !busy ? <span className="hint">Unsaved changes</span> : null}
       </div>
-
-      {siteGapList.length > 0 && !isDefault ? (
-        <div className="banner warn" style={{ marginTop: 12 }}>
-          <b>Still to write:</b>{' '}
-          {siteGapList.map((g) => g.label).join(' · ')}
-          <div className="hint" style={{ marginTop: 4 }}>
-            None of these stops the site going live — the page renders without them and nothing on
-            it is wrong. They are what makes it look like the partner&apos;s own.
-          </div>
-        </div>
-      ) : null}
 
       {err ? <div className="banner bad" style={{ marginTop: 12 }}>{err}</div> : null}
     </div></div>

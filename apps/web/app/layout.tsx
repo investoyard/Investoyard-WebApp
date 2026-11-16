@@ -4,7 +4,7 @@ import { ChromeWrapper } from '@/components/ChromeWrapper';
 import { PwaRegister } from '@/components/PwaRegister';
 import { OWN_HOSTS, SITE_ORIGIN, SITE_HOST } from '@/lib/site';
 import { hostTemplateMap, flattenHostMap } from '@/lib/siteTemplates';
-import { SITE_TEMPLATES } from '@investoyard/shared-types';
+import { WEB_THEMES } from '@/lib/webThemes';
 import { OrganizationJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
@@ -197,7 +197,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                  VALIDATED against the registry — an unknown id would set an
                  attribute with no theme CSS behind it, and the generic rules
                  would still hide our own chrome, leaving an unstyled site. */
-              + `var T=${JSON.stringify(SITE_TEMPLATES.map((t) => t.id))};`
+              + `var T=${JSON.stringify(WEB_THEMES)};`
               + `if(q&&(m=q.match(/[?&]template=([a-z]+)/))&&T.indexOf(m[1])>-1)d.setAttribute('data-template',m[1]);`
               + `if(q&&(m=q.match(/[?&]font=([a-z]+)/)))d.setAttribute('data-font',m[1]);`
               + `var h=location.hostname;`
@@ -205,7 +205,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               + `d.setAttribute('data-foreign-host','');`
               + `var p=(${JSON.stringify(hostMap)})[h];`
               + `if(p){p=p.split('|');`
-              + `if(!d.hasAttribute('data-template'))d.setAttribute('data-template',p[0]);`
+              /* Only a theme this site has CSS for — see lib/webThemes.ts. A stored partner-site design is not one. */
+              + `if(!d.hasAttribute('data-template')&&T.indexOf(p[0])>-1)d.setAttribute('data-template',p[0]);`
               + `if(!d.hasAttribute('data-font'))d.setAttribute('data-font',p[1]);}`
               + `}catch(e){}})()`,
           }}

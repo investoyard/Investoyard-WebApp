@@ -81,85 +81,71 @@ export interface SiteTemplateMeta {
  * the spec and then the admin panel, the same way, twice.
  */
 
+/*
+ * THE CHOICES ARE THE PARTNER-SITE DESIGNS (2026-11-16), and the web themes
+ * they replaced are gone from this list.
+ *
+ * Meridian, Onyx and Cobalt re-skinned investoyard.com: they reached the
+ * header, the footer and the home page, and every inner page stayed our own
+ * markup. Sir rejected all three as not professional enough, and a theme on
+ * our pages could not have fixed that. The five below are complete sites built
+ * in apps/partner, sharing no markup with investoyard.com or with each other,
+ * and the id here is the folder the design lives in
+ * (apps/partner/src/variants/<id>).
+ *
+ * WHAT A CHOICE DOES TODAY: it is saved for the partner and the admin panel
+ * previews the real design from investoyard.com/partner-preview/<id>/. It does
+ * NOT yet change what the partner's domain serves — that needs the partner
+ * site hosted per domain, which is an IIS step. investoyard.com renders its
+ * own layout for every host whatever is stored here (see `applyPresentation`
+ * in apps/web/lib/tenants.ts), so a partner set to one of these keeps the
+ * site they have until that step is taken.
+ */
 export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
   {
     id: 'default',
     label: 'Investoyard',
-    blurb: 'Our own site, exactly as investoyard.com renders it. Used when no theme is chosen.',
+    blurb: 'Our own site, exactly as investoyard.com renders it. What every partner shows today, and what an unset partner keeps.',
     ready: true,
   },
   {
-    /*
-     * MERIDIAN — Sir's Broker Website v2, implemented as a theme.
-     *
-     * Named rather than described: "Broker" said what it was for, not what it
-     * is, and the operator asked for theme names. Meridian is the reference
-     * line a market reads its position against, which is what this design does
-     * — a calm institutional frame with one live data card at its centre.
-     *
-     * Its own world, measured off the design file rather than invented: a
-     * blue-grey slate scale (#181A2E ink, #5C6187 muted, #ECEDF6 borders,
-     * #F5F5FA page, #14162A footer) against our purple-grey; a 1240px measure
-     * against our 1160; Plus Jakarta Sans over Noto Sans; and card radii from
-     * 12 to 22px.
-     */
-    id: 'meridian',
-    label: 'Meridian',
-    blurb: 'Calm and institutional. A split hero with one live IPO card, then the issue table in four views. Suits a broker introducing themselves to clients who have not met them yet.',
-    design: 'Broker Website v2',
+    id: 'sterling',
+    label: 'Sterling',
+    blurb: 'Calm, light and institutional. A compact hero, the issues as cards or a list, then steps and the allotment check. Suits a broker introducing themselves to clients who have not met them yet.',
+    design: 'Partner site — sterling',
     ready: true,
   },
   {
-    /*
-     * ONYX — Sir's "1a Terminal", whose own caption names its audience:
-     * "for trading-first brokers".
-     *
-     * UNCONDITIONALLY DARK, which is the point and not a dark MODE. The design
-     * is a trading desk: a near-black ground, dense rows, tight corners and one
-     * teal accent. Our own dark mode is a preference a reader sets; this is the
-     * design, so it looks the same whatever the operating system says —
-     * `html[data-template]` is (0,1,1) and beats the (0,1,0) `:root` the dark
-     * block uses, which is what makes that possible without a second mechanism.
-     *
-     * Measured off the file rather than invented: ground #0E1417, ink #E4ECEE,
-     * surfaces #141C1F and #1A2427, muted #7F9499, accent #13A39A, signals
-     * #5FD39A and #F2A33A, IBM Plex Sans, and radii of 2-8px against
-     * Meridian's 12-28. Where Meridian is a calm frame around one live card,
-     * this is a dense table a desk reads all day.
-     */
-    id: 'onyx',
-    label: 'Onyx',
-    blurb: 'Dark and dense, built for a trading desk. Tight rows, a teal accent and an issue table that reads at a glance. Suits a broker whose clients already trade.',
-    design: 'Broker Templates — 1a Terminal',
+    id: 'bento',
+    label: 'Bento',
+    blurb: 'Friendly tiles in a bento grid, with a tab bar on phones. Suits a fintech signing up first-time investors who want the answer at a glance.',
+    design: 'Partner site — bento',
     ready: true,
   },
   {
-    /*
-     * COBALT — Sir's "1c Cards", whose own caption names its audience:
-     * "for new-investor fintechs".
-     *
-     * THE ONE OF THE THREE THAT SELLS. Meridian frames a live card and Onyx
-     * packs a desk's table; this one is a pitch: a 28px-radius cobalt hero panel with a lime eyebrow, a 54px
-     * headline, and then a four-up grid of friendly white cards with a
-     * recessed well of figures in each and one pill action.
-     *
-     * Measured off the design file: ground #F4F6FF, ink #121735, a cobalt
-     * accent #2A43C4 with #3D5CF5 for fills, a lime HIGHLIGHT #B8E04A that is
-     * deliberately not bound to a signal, borders #E3E8FF, Manrope, and radii
-     * from 12 to 28 against Onyx's 2-8.
-     *
-     * Cobalt is the pigment, which is the name rather than the description —
-     * and a mineral, like Onyx. Sir approves the names; this is the proposal.
-     */
-    id: 'cobalt',
-    label: 'Cobalt',
-    blurb: 'Bright and friendly, for first-time investors. A bold hero panel, then open issues as a grid of cards with the figures in a well and one button each. Suits a broker signing up clients who have never applied before.',
-    design: 'Broker Templates — 1c Cards',
+    id: 'terminal',
+    label: 'Terminal',
+    blurb: 'Dark and dense, a trading desk: a sortable issue blotter, a subscription heat matrix and a live IST clock. Suits a broker whose clients already trade.',
+    design: 'Partner site — terminal',
+    ready: true,
+  },
+  {
+    id: 'horizon',
+    label: 'Horizon',
+    blurb: 'The partner’s own colour as the stage: big display type, a countdown to the next opening bell and bold full-width bands. Suits a brand that wants to be seen.',
+    design: 'Partner site — horizon',
+    ready: true,
+  },
+  {
+    id: 'ledger',
+    label: 'Ledger',
+    blurb: 'Minimal and monochrome, one reading column, figures on dotted leaders like a printed statement. Suits an advisory or research-led house.',
+    design: 'Partner site — ledger',
     ready: true,
   },
 ];
 
-export type SiteTemplate = 'default' | 'meridian' | 'onyx' | 'cobalt';
+export type SiteTemplate = 'default' | 'sterling' | 'bento' | 'terminal' | 'horizon' | 'ledger';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.
@@ -515,23 +501,11 @@ export function resolveSite({ isDefault, name, site }: SiteInput): ResolvedSite 
  * hero for is noise.
  */
 export function siteGaps(input: SiteInput): { field: string; label: string }[] {
-  if (input.isDefault) return [];
-  const s = input.site ?? {};
-  const template = isSiteTemplate(s.template) ? s.template : DEFAULT_TEMPLATE;
-  if (template === DEFAULT_TEMPLATE) return [];
-
-  const gaps: { field: string; label: string }[] = [];
-  if (!trim(s.headline)) gaps.push({ field: 'headline', label: 'Hero headline' });
-  if (!trim(s.sub)) gaps.push({ field: 'sub', label: 'Hero sub-heading' });
-
-  /* A flag on with nothing behind it: the block silently does not render, so
-     this is the only thing that will ever mention it to the operator. */
-  if (s.showUtility === true && !trim(s.mainSiteUrl) && !trim(s.supportUrl))
-    gaps.push({ field: 'mainSiteUrl', label: 'Link back to the main site (the utility bar is on)' });
-  if (s.showApp === true && !trim(s.appUrl))
-    gaps.push({ field: 'appUrl', label: 'App download link (the app band is on)' });
-  if (s.showRm === true && !trim(s.rmName))
-    gaps.push({ field: 'rmName', label: 'Relationship manager name (the RM card is on)' });
-
-  return gaps;
+  /* NO DESIGN RENDERS THIS COPY TODAY (2026-11-16). The hero headline, the utility bar, the
+     relationship-manager card and the app band were read by the web themes this registry used
+     to hold; none of the partner-site designs reads them. Asking a partner to write copy that
+     appears nowhere is noise, so this returns nothing. The stored fields are kept, and a design
+     that starts reading one should put its gap back here. */
+  void input;
+  return [];
 }

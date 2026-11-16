@@ -9,6 +9,7 @@ import {
   DEFAULT_TEMPLATE,
   DEFAULT_FONT,
 } from '@investoyard/shared-types';
+import { WEB_THEMES } from './webThemes';
 /**
  * Multi-tenant foundation (web) — mock registry + host-based resolution + branding.
  *
@@ -213,7 +214,10 @@ export function applyPresentation(t: Tenant): void {
      present-but-default attribute would be dead weight whose presence stopped
      meaning "a partner layout" — and a partner who switches BACK to our layout
      needs the baked attribute taken off, which only a remove does. */
-  if (s.template === DEFAULT_TEMPLATE) root.removeAttribute('data-template');
+  /* ONLY A THEME THIS SITE HAS CSS FOR. The stored choice now names a partner-site design
+     (apps/partner), and setting one here would let the generic rules hide our own header and
+     footer — see lib/webThemes.ts. Every partner therefore renders our layout on this site. */
+  if (s.template === DEFAULT_TEMPLATE || !WEB_THEMES.includes(s.template)) root.removeAttribute('data-template');
   else root.setAttribute('data-template', s.template);
   if (s.font === DEFAULT_FONT) root.removeAttribute('data-font');
   else root.setAttribute('data-font', s.font);

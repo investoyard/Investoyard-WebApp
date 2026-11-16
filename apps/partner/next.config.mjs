@@ -23,6 +23,16 @@ const variant = process.env.PARTNER_VARIANT || 'sterling';
 const assetPrefix = process.env.PARTNER_ASSET_PREFIX || undefined;
 
 /*
+ * PREVIEW BUILDS live under investoyard.com/partner-preview/<variant>/, so the
+ * admin's Site layout panel can show the real design in its live preview. A
+ * base path prefixes every page, link and asset, so the five sit side by side
+ * inside the web export without touching each other or our own pages. A
+ * production build for a partner's own domain sets none of this.
+ */
+const basePath = process.env.PARTNER_BASE_PATH || undefined;
+if (basePath && !/^\/[a-z0-9\/-]+[a-z0-9]$/.test(basePath)) throw new Error('PARTNER_BASE_PATH must look like /partner-preview/<variant>');
+
+/*
  * THE VARIANT IS SELECTED THROUGH A PER-VARIANT TSCONFIG, NOT ONLY THE ALIAS.
  * Next resolves tsconfig `paths` BEFORE webpack aliases, so an `@variant`
  * entry in the shared tsconfig silently wins: the first Bento build compiled
@@ -44,7 +54,8 @@ const nextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
   assetPrefix,
-  env: { PARTNER_VARIANT: variant },
+  basePath,
+  env: { PARTNER_VARIANT: variant, PARTNER_PREVIEW: basePath ? '1' : '' },
   typescript: { tsconfigPath },
   webpack(config) {
     config.resolve.alias['@variant'] = path.join(here, 'src', 'variants', variant);

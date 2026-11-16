@@ -26,6 +26,8 @@ export default function robots(): MetadataRoute.Robots {
           '/print/',
           '/homeold/',
           '/ipos/live/',
+          // The partner designs, previewed under our domain with a placeholder broker on them.
+          '/partner-preview/',
         ],
       },
     ],

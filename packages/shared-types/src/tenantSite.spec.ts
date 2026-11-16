@@ -41,7 +41,7 @@ describe('the template registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
     /* Compile-time already pins this; the runtime check is what catches an id
        added to the list and never added to the union (or the reverse). */
-    const union: SiteTemplate[] = ['default', 'meridian', 'onyx', 'cobalt'];
+    const union: SiteTemplate[] = ['default', 'sterling', 'bento', 'terminal', 'horizon', 'ledger'];
     expect([...ids].sort()).toEqual([...union].sort());
   });
 
@@ -143,10 +143,9 @@ describe('resolveSite — the identity rule', () => {
   it('reads badly on a dotted initialism, which is why a real headline is ASKED FOR', () => {
     /* `titleCase` keeps a known acronym (HDFC, SBI, NTPC) and cannot know about
        a dotted one, so this fallback is imperfect on 1 of the 8 real tenants.
-       Pinned as KNOWN rather than left to surprise someone: it is survivable
-       only because `siteGaps` chases the partner for their own headline. */
+       Pinned as KNOWN rather than left to surprise someone. No partner design
+       renders this headline today, so it reaches nobody until one does. */
     expect(defaultHeadline('N.V.INVESTMENTS')).toContain('N.v.investments');
-    expect(siteGaps(partner({ template: 'meridian' })).map((g) => g.field)).toContain('headline');
   });
 
   it('prefers a supplied headline, and treats whitespace as absent', () => {
@@ -171,8 +170,8 @@ describe('resolveSite — the identity rule', () => {
 
 describe('resolveSite — the template and font choice', () => {
   it('honours a partner choice', () => {
-    const r = resolveSite(partner({ template: 'meridian', font: 'fraunces' }));
-    expect(r.template).toBe('meridian');
+    const r = resolveSite(partner({ template: 'sterling', font: 'fraunces' }));
+    expect(r.template).toBe('sterling');
     expect(r.font).toBe('fraunces');
   });
 
@@ -185,7 +184,7 @@ describe('resolveSite — the template and font choice', () => {
   });
 
   it('pins the DEFAULT channel to our own layout whatever is stored', () => {
-    const r = resolveSite({ isDefault: true, name: 'Investoyard', site: { template: 'meridian', font: 'figtree' } });
+    const r = resolveSite({ isDefault: true, name: 'Investoyard', site: { template: 'sterling', font: 'figtree' } });
     expect(r.template).toBe(DEFAULT_TEMPLATE);
     expect(r.font).toBe(DEFAULT_FONT);
   });
@@ -238,31 +237,15 @@ describe('siteGaps', () => {
   });
 
   it('says nothing for the default channel', () => {
-    expect(siteGaps({ isDefault: true, name: 'Investoyard', site: { template: 'meridian' } })).toEqual([]);
+    expect(siteGaps({ isDefault: true, name: 'Investoyard', site: { template: 'sterling' } })).toEqual([]);
   });
 
-  it('asks for the hero copy once a layout is chosen', () => {
-    const fields = siteGaps(partner({ template: 'meridian' })).map((g) => g.field);
-    expect(fields).toContain('headline');
-    expect(fields).toContain('sub');
-  });
-
-  it('is the ONLY thing that mentions a flag with nothing behind it', () => {
-    /* The page silently renders no block, correctly — so if this did not report
-       it, nothing ever would. */
-    const g = (s: TenantSite) => siteGaps(partner({ template: 'meridian', ...s })).map((x) => x.field);
-    expect(g({ showRm: true })).toContain('rmName');
-    expect(g({ showApp: true })).toContain('appUrl');
-    expect(g({ showUtility: true })).toContain('mainSiteUrl');
-    /* and stops once the data is there */
-    expect(g({ showRm: true, rmName: 'Priya Nair' })).not.toContain('rmName');
-    expect(g({ showUtility: true, supportUrl: 'https://kosha.test/help' })).not.toContain('mainSiteUrl');
-  });
-
-  it('does not ask about a block whose flag is off', () => {
-    const fields = siteGaps(partner({ template: 'meridian' })).map((x) => x.field);
-    expect(fields).not.toContain('rmName');
-    expect(fields).not.toContain('appUrl');
+  it('asks nothing of a partner on any design, because no design renders this copy', () => {
+    /* The hero copy and the three blocks were read by the retired web themes.
+       Asking a partner to write copy that appears nowhere is noise. */
+    for (const t of SITE_TEMPLATES) {
+      expect(siteGaps(partner({ template: t.id, showRm: true, showApp: true, showUtility: true }))).toEqual([]);
+    }
   });
 });
 
@@ -293,12 +276,12 @@ describe('the site key on the content row', () => {
     };
     /* Ready with no site row at all... */
     expect(contentReady(base)).toBe(true);
-    /* ...and still ready with a template chosen and none of its copy written. */
-    const withSite = { ...base, site: { template: 'meridian' as SiteTemplate, showRm: true } };
+    /* ...and still ready with a design chosen. No design reads the site copy,
+       so choosing one adds no gap at all — and none could ever block. */
+    const withSite = { ...base, site: { template: 'sterling' as SiteTemplate, showRm: true } };
     expect(contentReady(withSite)).toBe(true);
     const site = contentGaps(withSite).filter((g) => g.key === 'site');
-    expect(site.length).toBeGreaterThan(0);
-    expect(site.every((g) => g.severity === 'advisory')).toBe(true);
+    expect(site).toEqual([]);
   });
 
   it('names the gap against the trade name the site will actually print', () => {
@@ -308,7 +291,7 @@ describe('the site key on the content row', () => {
       isDefault: false,
       name: 'kosha-securities',
       identity: { tradeName: 'Kosha' },
-      site: { template: 'meridian', headline: 'x' },
+      site: { template: 'sterling', headline: 'x' },
     });
     expect(gaps.filter((g) => g.key === 'site').map((g) => g.field)).not.toContain('headline');
   });
@@ -360,7 +343,7 @@ describe('the field lists the admin DTO is built from', () => {
        never save — the whitelist IS the write surface. */
     const declared = new Set([...text, ...flags, 'template', 'font']);
     const sample: Required<TenantSite> = {
-      template: 'meridian', font: 'figtree',
+      template: 'sterling', font: 'figtree',
       headline: '', sub: '', navCta: '', applyCta: '', applyNote: '',
       showUtility: false, mainSiteUrl: '', supportUrl: '',
       showApp: false, appUrl: '',

@@ -18,7 +18,9 @@ import { fileURLToPath } from 'node:url';
 
 const variant = process.argv[2];
 if (!variant) { console.error('usage: check-export.mjs <variant>'); process.exit(2); }
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'out', variant);
+const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+/* A preview build writes elsewhere (PARTNER_EXPORT_DIR); check the folder the build actually wrote. */
+const root = process.env.PARTNER_EXPORT_DIR ? path.resolve(appDir, process.env.PARTNER_EXPORT_DIR) : path.join(appDir, 'out', variant);
 const fails = [];
 const ok = (cond, msg) => { console.log(`${cond ? 'OK  ' : 'FAIL'}  ${msg}`); if (!cond) fails.push(msg); };
 

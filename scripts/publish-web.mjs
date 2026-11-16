@@ -91,7 +91,14 @@ const robo = (args, label) => {
   return code;
 };
 
-const COMMON = ['/R:3', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP'];
+/*
+ * partner-preview/ IS NOT OURS TO PURGE. apps/partner publishes the partner designs there
+ * (scripts/publish-preview.mjs in that app) for the admin's Site layout preview, and it is
+ * not part of this build — so without /XD the /MIR pass below would delete all five previews
+ * on every deploy and every nightly rebuild. Robocopy neither copies nor deletes an excluded
+ * directory.
+ */
+const COMMON = ['/R:3', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/XD', 'partner-preview'];
 robo([STAGING, LIVE, '/E', ...COMMON], 'pass 1/2  copy new and changed files (no deletions yet)');
 robo([STAGING, LIVE, '/MIR', ...COMMON], 'pass 2/2  remove files no longer in the build');
 

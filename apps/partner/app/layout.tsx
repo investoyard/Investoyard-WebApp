@@ -13,6 +13,8 @@ import { TenantProvider } from '@/core/tenant';
 export const metadata: Metadata = {
   title: { default: 'IPOs', template: '%s' },
   description: 'Mainboard and SME IPOs: dates, price bands, live subscription and allotment status.',
+  /* A preview build sits under our own domain with a placeholder broker on it; it must never be indexed. */
+  ...(process.env.PARTNER_PREVIEW ? { robots: { index: false, follow: false } } : {}),
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };

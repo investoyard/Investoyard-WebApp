@@ -20,5 +20,5 @@ const env = { ...process.env, PARTNER_VARIANT: variant };
 
 const build = spawnSync('npx', ['next', 'build'], { cwd, env, stdio: 'inherit', shell: true });
 if (build.status !== 0) { console.error(`\nnext build failed for ${variant} (exit ${build.status})`); process.exit(build.status || 1); }
-const check = spawnSync(process.execPath, [path.join(cwd, 'scripts', 'check-export.mjs'), variant], { cwd, stdio: 'inherit' });
+const check = spawnSync(process.execPath, [path.join(cwd, 'scripts', 'check-export.mjs'), variant], { cwd, env, stdio: 'inherit' });
 process.exit(check.status ?? 1);
