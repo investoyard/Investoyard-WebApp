@@ -6,78 +6,61 @@ import type { HomeModel, IpoCard } from '@/core/models';
 import { dayMonYear, lowerFirst } from '@/core/format';
 import { useAllotmentCheck } from '@/core/allotment';
 import AllotForm from './AllotForm';
-import { Row, State } from './parts';
+import { State, dayParts, keyDate } from './parts';
 
 type Tab = 'all' | 'open' | 'upcoming' | 'closed';
 type View = 'cards' | 'list';
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'open', label: 'Open' },
-  { key: 'upcoming', label: 'Upcoming' },
-  { key: 'closed', label: 'Closed' },
+  { key: 'all', label: 'All' }, { key: 'open', label: 'Open' }, { key: 'upcoming', label: 'Upcoming' }, { key: 'closed', label: 'Closed' },
 ];
+const PAGE = 15;
 
-const names = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
-
-/*
- * The lede is a sentence built from the register itself, in place of a hero
- * banner: what is open, what opens next. Every clause comes from a field; a
- * state with nothing in it is simply not mentioned.
- */
-function Lede({ m }: { m: HomeModel }) {
-  const open = m.actionable.filter((c) => c.tone === 'open');
-  const next = m.actionable.filter((c) => c.tone === 'upcoming').slice(0, 2);
-  return (
-    <p className="l-lede">
-      {open.length
-        ? <><strong>{open.length === 1 ? 'One issue is' : `${open.length} issues are`} open for bidding</strong>: {names(open.map((c) => `${c.name} (${lowerFirst(c.status)})`))}.</>
-        : <><strong>No issue is open for bidding.</strong></>}
-      {next.length ? <> {next.length === 1 ? 'Next' : 'Next up'}: {names(next.map((c) => `${c.name} ${lowerFirst(c.status)}`))}.</> : null}
-      {m.counts.recent ? <> {m.counts.recent} issue{m.counts.recent === 1 ? '' : 's'} listed in the last 45 days.</> : null}
-    </p>
-  );
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-function Entry({ c }: { c: IpoCard }) {
+/* One calendar entry: the issue's next date set large in the partner's colour, the issue, and its four figures. */
+function Entry({ c, asOf }: { c: IpoCard; asOf: string }) {
+  const k = keyDate(c, asOf);
+  const dp = k ? dayParts(k.d) : null;
   return (
-    <li className="l-entry">
-      <div className="l-entry-top">
-        <Link className="l-entry-name" href={c.href}>{c.name}</Link>
-        <State tone={c.tone}>{c.status}</State>
+    <li>
+      <div className="l-day">
+        {dp ? <><b>{dp.day}</b><span>{dp.mon}</span><small>{k!.label}</small></> : <span>—</span>}
       </div>
-      <p className="l-entry-meta">{c.board} · {c.exchanges}</p>
-      <dl className="l-rows">
-        <Row k="Bidding" v={c.dates} />
-        <Row k="Price band" v={c.band} />
-        <Row k="Minimum investment" v={c.min} />
-        <Row k="Issue size" v={c.size} />
-        {c.subs ? <Row k={c.tone === 'open' ? 'Subscribed so far' : 'Subscribed, final'} v={c.subs} /> : null}
+      <div style={{ minWidth: 0 }}>
+        <Link className="l-entry-name" href={c.href}>{c.name}</Link>
+        <div className="l-entry-meta"><State tone={c.tone}>{c.status}</State><span>{c.board} · {c.exchanges}</span></div>
+      </div>
+      <dl className="l-figs">
+        <div><dt>Price band</dt><dd>{c.band}</dd></div>
+        <div><dt>Min. invest</dt><dd>{c.min}</dd></div>
+        <div><dt>Issue size</dt><dd>{c.size}</dd></div>
+        <div><dt>Subscribed</dt><dd>{c.subs || '—'}</dd></div>
       </dl>
     </li>
   );
 }
 
-function Compact({ rows }: { rows: IpoCard[] }) {
+function Table({ rows }: { rows: IpoCard[] }) {
   return (
     <div className="l-table-wrap">
       <table className="l-table">
         <thead>
-          <tr>
-            <th scope="col">Issue</th>
-            <th scope="col" className="r hide-s">Bidding</th>
-            <th scope="col" className="r hide-s">Price band</th>
-            <th scope="col" className="r hide-s">Min. investment</th>
-            <th scope="col" className="r">Subscribed</th>
-          </tr>
+          <tr><th>Issue</th><th className="hide-s">Status</th><th className="r hide-s">Bidding</th><th className="r hide-s">Price band</th><th className="r hide-s">Min. invest</th><th className="r">Subscribed</th></tr>
         </thead>
         <tbody>
           {rows.map((c) => (
             <tr key={c.sym}>
-              <td><Link href={c.href}>{c.name}</Link><small>{c.board} · {c.status}</small></td>
+              <td><Link className="l-tname" href={c.href}>{c.name}</Link><small>{c.board} · {c.exchanges}</small></td>
+              <td className="hide-s"><State tone={c.tone}>{c.status}</State></td>
               <td className="r hide-s">{c.dates}</td>
               <td className="r hide-s">{c.band}</td>
               <td className="r hide-s">{c.min}</td>
-              <td className="r">{c.subs || '—'}</td>
+              <td className="r"><b>{c.subs || '—'}</b></td>
             </tr>
           ))}
         </tbody>
@@ -86,93 +69,78 @@ function Compact({ rows }: { rows: IpoCard[] }) {
   );
 }
 
-function Register({ m }: { m: HomeModel }) {
+export default function HomePage({ model }: { model: HomeModel }) {
+  const all = useMemo(() => [...model.actionable, ...model.recent], [model]);
   const [tab, setTab] = useState<Tab>('all');
   const [view, setView] = useState<View>('cards');
-  const count = (t: Tab) => (t === 'all' ? m.actionable.length : m.actionable.filter((c) => c.tone === t).length);
-  const rows = useMemo(() => (tab === 'all' ? m.actionable : m.actionable.filter((c) => c.tone === tab)), [m.actionable, tab]);
-  return (
-    <section className="l-sec" aria-labelledby="reg-h">
-      <div className="l-sec-h">
-        <h2 id="reg-h">Current issues</h2>
-        <div className="l-ctrl" role="group" aria-label="Layout">
-          <button type="button" className="l-opt" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>Cards</button>
-          <button type="button" className="l-opt" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
-        </div>
-      </div>
-      <div className="l-bar-ctrl">
-        <div className="l-ctrl" role="tablist" aria-label="Filter issues">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" role="tab" className="l-opt" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}<b>{count(t.key)}</b>
-            </button>
-          ))}
-        </div>
-      </div>
-      {rows.length === 0
-        ? <p className="l-empty">No issue is in this state today. The <Link className="l-link" href="/ipos/">archive</Link> holds every past IPO.</p>
-        : view === 'cards' ? <ol className="l-entries">{rows.map((c) => <Entry key={c.sym} c={c} />)}</ol> : <Compact rows={rows} />}
-      <p className="l-note">Open, upcoming, and issues still waiting on allotment or listing, in the order they need attention. A dash means the figure is not published yet. <Link className="l-link" href="/ipos/">Every past IPO</Link></p>
-    </section>
-  );
-}
-
-function Listed({ m }: { m: HomeModel }) {
-  if (!m.recent.length) return null;
-  return (
-    <section className="l-sec" aria-labelledby="ls-h">
-      <div className="l-sec-h"><h2 id="ls-h">Recently listed</h2><span className="l-label">Last 45 days</span></div>
-      <div className="l-table-wrap">
-        <table className="l-table">
-          <thead><tr><th scope="col">Issue</th><th scope="col" className="r hide-s">Price band</th><th scope="col" className="r">Subscribed</th></tr></thead>
-          <tbody>
-            {m.recent.slice(0, 12).map((c) => (
-              <tr key={c.sym}>
-                <td><Link href={c.href}>{c.name}</Link><small>{c.board} · {c.status}</small></td>
-                <td className="r hide-s">{c.band}</td>
-                <td className="r">{c.subs || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function Allotment({ choices }: { choices: HomeModel['allotmentChoices'] }) {
-  const a = useAllotmentCheck(choices);
+  const [showAll, setShowAll] = useState(false);
+  const a = useAllotmentCheck(model.allotmentChoices);
   const onSubmit = (e: FormEvent) => { e.preventDefault(); a.submit(); };
-  if (!choices.length) return null;
-  return (
-    <section className="l-sec" aria-labelledby="al-h">
-      <div className="l-sec-h"><h2 id="al-h">Allotment</h2></div>
-      <p className="l-prose" style={{ marginTop: 16 }}>Check the registrar’s file for any applicant, wherever they applied, once the basis of allotment is out.</p>
-      <AllotForm a={a} choices={choices} onSubmit={onSubmit} />
-    </section>
-  );
-}
 
-const NOTES: [string, string][] = [
-  ['Read the offer.', 'The price band, the dates and the red herring prospectus. Every figure here comes from the exchanges and the offer document.'],
-  ['Bid with UPI.', 'Apply through your demat account. The amount is blocked in your bank by UPI mandate, not debited.'],
-  ['Check the result.', 'On allotment day. Allotted shares reach your demat before listing; the rest of the block is released.'],
-];
+  const count = (t: Tab) => (t === 'all' ? all.length : all.filter((c) => c.tone === t).length);
+  const rows = useMemo(() => (tab === 'all' ? all : all.filter((c) => c.tone === tab)), [all, tab]);
+  const shown = showAll ? rows : rows.slice(0, PAGE);
+  const next = model.actionable.find((c) => c.tone === 'upcoming');
+  const med = median(model.recent.map((c) => c.subsN).filter((v): v is number => v != null));
 
-export default function HomePage({ model }: { model: HomeModel }) {
   return (
     <div className="l-page">
-      <h1>IPO register</h1>
-      <p className="l-dateline l-label">As of {dayMonYear(model.asOf)} · Mainboard and SME</p>
-      <Lede m={model} />
-      <Register m={model} />
-      <Listed m={model} />
-      <Allotment choices={model.allotmentChoices} />
-      <section className="l-sec" aria-labelledby="how-h">
-        <div className="l-sec-h"><h2 id="how-h">How an IPO works</h2></div>
-        <ol className="l-notes">
-          {NOTES.map(([t, d], i) => <li key={t}><span>{i + 1}.</span><p><strong>{t}</strong> {d}</p></li>)}
-        </ol>
+      <p className="l-label">As of {dayMonYear(model.asOf)}</p>
+      <h1 className="l-h1" style={{ marginTop: 10 }}>IPO calendar</h1>
+      <p className="l-lede">
+        Every mainboard and SME issue in one schedule — what is open, what opens next, and what has just listed — with the figures the exchanges publish.
+      </p>
+
+      <dl className="l-metrics">
+        <div><dt>Open for bidding</dt><dd>{model.counts.open}</dd><small>{model.counts.open ? 'Bidding now' : 'Nothing bidding today'}</small></div>
+        <div><dt>Upcoming</dt><dd>{model.counts.upcoming}</dd><small>{next ? `${next.name} ${lowerFirst(next.status)}` : 'None announced'}</small></div>
+        <div><dt>Listed in 45 days</dt><dd>{model.counts.recent}</dd><small>Mainboard and SME</small></div>
+        <div><dt>Median subscription</dt><dd>{med != null ? `${med.toFixed(2)}×` : '—'}</dd><small>Recent listings</small></div>
+      </dl>
+
+      <section className="l-sec" aria-labelledby="cal-h">
+        <div className="l-sec-h">
+          <div><h2 id="cal-h">Schedule</h2><p>Each issue is filed under the next date that matters to it.</p></div>
+          <div className="l-toggle" role="group" aria-label="Layout">
+            <button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>Cards</button>
+            <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
+          </div>
+        </div>
+        <div className="l-bar-ctrl">
+          <div className="l-tabs" role="tablist" aria-label="Filter issues">
+            {TABS.map((t) => (
+              <button key={t.key} type="button" role="tab" className="l-tab" aria-selected={tab === t.key} onClick={() => { setTab(t.key); setShowAll(false); }}>
+                {t.label}<b className="num">{count(t.key)}</b>
+              </button>
+            ))}
+          </div>
+        </div>
+        {rows.length === 0
+          ? <div className="l-empty"><strong>Nothing here today</strong>No issue is in this state right now. The <Link className="l-link" href="/ipos/">archive</Link> holds every past IPO.</div>
+          : view === 'cards' ? <ol className="l-cal">{shown.map((c) => <Entry key={c.sym} c={c} asOf={model.asOf} />)}</ol> : <Table rows={shown} />}
+        <div className="l-more">
+          <span className="l-muted num">{shown.length} of {rows.length}</span>
+          <span style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            {rows.length > PAGE ? <button type="button" className="l-btn l-btn-q" onClick={() => setShowAll((v) => !v)}>{showAll ? 'Show fewer' : `Show all ${rows.length}`}</button> : null}
+            <Link className="l-link" href="/ipos/">Every past IPO</Link>
+          </span>
+        </div>
+      </section>
+
+      <section className="l-sec l-two" aria-label="Allotment and how an IPO works">
+        <div className="l-card">
+          <h2 className="serif" style={{ fontSize: 24, fontWeight: 600 }}>Check your allotment</h2>
+          <p className="l-muted" style={{ margin: '4px 0 18px', fontSize: 14.5 }}>Works for any applicant, wherever they applied, once the registrar publishes.</p>
+          {model.allotmentChoices.length ? <AllotForm a={a} choices={model.allotmentChoices} onSubmit={onSubmit} /> : <p className="l-muted">No IPO has closed in the last 90 days.</p>}
+        </div>
+        <div className="l-card">
+          <h2 className="serif" style={{ fontSize: 24, fontWeight: 600 }}>How an IPO works</h2>
+          <ol className="l-how" style={{ marginTop: 10 }}>
+            <li><span>1</span><div><strong>Read the offer</strong><p>Price band, dates and the red herring prospectus. Every figure here comes from the exchanges and the offer document.</p></div></li>
+            <li><span>2</span><div><strong>Bid with UPI</strong><p>Apply through your demat account. The amount is blocked in your bank by UPI mandate, not debited.</p></div></li>
+            <li><span>3</span><div><strong>Check the result</strong><p>On allotment day. Allotted shares reach your demat before listing; the rest of the block is released.</p></div></li>
+          </ol>
+        </div>
       </section>
     </div>
   );

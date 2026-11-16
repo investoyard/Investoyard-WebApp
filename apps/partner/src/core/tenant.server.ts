@@ -23,6 +23,8 @@ export interface PartnerIdentity {
   domains: string[];
   brand: string;
   logo: string | null;
+  /** The logo the partner uploaded for a DARK footer (usually a white version). Null when none. */
+  footerLogo: string | null;
   legalName: string | null;
   sebi: string | null;
   cin: string | null;
@@ -42,7 +44,7 @@ export interface PartnerIdentity {
  * sample: no legal name, no registration number.
  */
 export const PREVIEW_IDENTITY: PartnerIdentity = {
-  slug: 'preview', name: 'Meru Securities', domains: [], brand: '#0E6E66', logo: null,
+  slug: 'preview', name: 'Meru Securities', domains: [], brand: '#0E6E66', logo: null, footerLogo: null,
   legalName: null, sebi: null, cin: null, address: null, supportEmail: null, supportPhone: null,
   grievanceName: null, grievanceEmail: null, grievancePhone: null, gmp: false, preview: true,
 };
@@ -61,6 +63,7 @@ export function partnerRegistry(tenants: RawTenant[]): PartnerIdentity[] {
         domains: dom ? [dom, dom.startsWith('www.') ? dom.slice(4) : `www.${dom}`] : [],
         brand: t.brandColor || '#0E6E66',
         logo: t.logoUrl || null,
+        footerLogo: t.footerLogoUrl || null,
         legalName: id.legalName ?? null,
         sebi: id.sebiRegistration ?? null,
         cin: id.cin ?? null,

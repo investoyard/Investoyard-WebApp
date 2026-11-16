@@ -1,166 +1,174 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import type { DetailModel } from '@/core/models';
-import { DLogo, ExtIcon, St, heat, tshade } from './parts';
+import { Bar, ExtIcon, Logo, St, tshade } from './parts';
 
 /*
- * Terminal's issue screen: a quote bar of key figures, then three columns —
- * the subscription matrix, the event log with lots and reservation, and an
- * action column with facts and documents. Company prose sits beneath.
+ * A platform's instrument page: a header card carrying the six figures, a
+ * sticky section bar, the main column of panels, and a summary card pinned on
+ * the right with the next action. Panels, not prose sections — the reader
+ * jumps to the one they need.
  */
+
+function Panel({ id, title, right, children, pad = true }: { id: string; title: string; right?: ReactNode; children: ReactNode; pad?: boolean }) {
+  return (
+    <section id={id} className="t-panel" aria-labelledby={`${id}-h`}>
+      <div className="t-ph"><h2 id={`${id}-h`}>{title}</h2>{right}</div>
+      {pad ? <div className="t-pb">{children}</div> : children}
+    </section>
+  );
+}
+
 export default function DetailPage({ model: m }: { model: DetailModel }) {
   const c = m.card;
-  const listed = c.stage === 'listed';
-  const quote: [string, string][] = [
-    ['Price band', c.band], ['Lot', m.lot], ['Min. investment', c.min], ['Issue size', c.size],
-    ['Subscribed', m.sub ? m.sub.total.times : '—'], ['Face value', m.face || '—'], [listed ? 'Listed' : 'Bidding', listed ? m.listedOn : c.dates],
+  const closed = c.tone === 'closed';
+  const firstDoc = m.documents[0];
+  const figs: [string, string][] = [
+    ['Price band', c.band], ['Min. investment', c.min], ['Lot size', m.lot], ['Issue size', c.size],
+    [m.sub ? (m.sub.final ? 'Subscribed (final)' : 'Subscribed so far') : 'Subscribed', m.sub ? m.sub.total.times : '—'],
+    ['Bidding', c.dates],
+  ];
+  const tabs: [string, string, boolean][] = [
+    ['subscription', 'Subscription', !!m.sub], ['dates', 'Key dates', m.timeline.length > 0],
+    ['reservation', 'Reservation', m.reservation.length > 0], ['lots', 'How much to apply', m.lots.length > 0],
+    ['company', 'Company', !!m.aboutHtml], ['financials', 'Financials', !!m.financialsHtml],
+    ['offer', 'The offer', true], ['documents', 'Documents', m.documents.length > 0],
   ];
 
   return (
-    <div className="t-page" style={{ paddingTop: 0 }}>
-      <section className="t-dhead">
-        <nav className="t-note" aria-label="Breadcrumb"><Link href="/" className="t-link" style={{ fontWeight: 500 }}>Blotter</Link> / <span className="mono">{c.sym}</span></nav>
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="t-dhead-l">
-            <DLogo ipo={c} />
+    <div className="t-page">
+      <nav className="t-crumb" aria-label="Breadcrumb"><Link href="/">Market</Link> / {c.name}</nav>
+      <header className="t-dhead">
+        <div className="t-dhead-top">
+          <div className="t-did">
+            <Logo ipo={c} />
             <div style={{ minWidth: 0 }}>
-              <h1>{c.name} IPO</h1>
-              <div className="t-dmeta">
-                <span className="mono" style={{ color: 'var(--brand-lite)', fontWeight: 600 }}>{c.sym}</span>
-                <span>{c.board}</span><span>{m.mechanism}</span><span>{c.exchanges}</span>{m.industry ? <span>{m.industry}</span> : null}
-              </div>
+              <h1>{c.name}</h1>
+              <p>{[c.sym, c.board, c.exchanges, m.industry].filter(Boolean).join(' · ')}</p>
             </div>
           </div>
           <St tone={c.tone}>{c.status}</St>
         </div>
-        <dl className="t-quote">
-          {quote.map(([k, v]) => <div key={k}><dt className="t-label">{k}</dt><dd className="mono" title={v}>{v}</dd></div>)}
+        <dl className="t-dfigs">
+          {figs.map(([k, v]) => <div key={k}><dt>{k}</dt><dd title={v}>{v}</dd></div>)}
         </dl>
-      </section>
+      </header>
 
-      <div className="t-dgrid" style={{ marginTop: 0 }}>
-        <div className="t-col">
+      <nav className="t-dtabs" aria-label="Sections">
+        {tabs.filter((t) => t[2]).map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>)}
+      </nav>
+
+      <div className="t-dgrid">
+        <div className="t-dmain">
           {m.sub ? (
-            <section className="t-panel" id="subscription" aria-labelledby="sub-h">
-              <div className="t-ph"><h2 id="sub-h">Subscription matrix</h2><span className="t-label mono">{m.sub.final ? 'Final' : 'Live'}{m.sub.asOf ? ` · ${m.sub.asOf}` : ''}</span></div>
+            <Panel id="subscription" title="Subscription" pad={false}
+              right={<span className="t-muted" style={{ fontSize: 13 }}>{m.sub.asOf ? `${m.sub.final ? 'Final' : 'Updated'} ${m.sub.asOf}` : ''}</span>}>
+              <div className="t-pb">
+                <div className="t-big"><strong>{m.sub.total.times}</strong><span className="t-muted">subscribed overall{m.sub.final ? ', final' : ' so far'}</span></div>
+              </div>
               <div className="t-table-wrap">
-                <table className="t-table t-mx">
-                  <thead><tr><th>Category</th><th className="r hide-m">Offered</th><th className="r hide-m">Bid for</th><th className="r">Times</th></tr></thead>
+                <table className="t-table t-subt">
+                  <thead>
+                    <tr><th>Category</th><th className="r">Shares offered</th><th className="r">Shares bid for</th><th style={{ width: '28%' }}><span className="sr">Demand</span></th><th className="r">Times</th></tr>
+                  </thead>
                   <tbody>
                     {m.sub.rows.map((r) => (
-                      <tr key={r.key} className={r.nested ? 'nested' : ''}>
-                        <td>{r.label}</td>
-                        <td className="r mono hide-m t-muted">{r.book}</td>
-                        <td className="r mono hide-m t-muted">{r.bid}</td>
-                        <td className="t-heat mono" style={heat(r.width)}>{r.times}</td>
+                      <tr key={r.key} className={r.nested ? 'nested' : undefined}>
+                        <td>{r.label}</td><td className="r">{r.book}</td><td className="r">{r.bid}</td><td><Bar width={r.width} /></td><td className="r"><b>{r.times}</b></td>
                       </tr>
                     ))}
-                    <tr className="total"><td>Total</td><td className="r mono hide-m">{m.sub.total.book}</td><td className="r mono hide-m">{m.sub.total.bid}</td><td className="t-heat mono">{m.sub.total.times}</td></tr>
+                    <tr><td><b>Total</b></td><td className="r"><b>{m.sub.total.book}</b></td><td className="r"><b>{m.sub.total.bid}</b></td><td /><td className="r"><b>{m.sub.total.times}</b></td></tr>
                   </tbody>
                 </table>
               </div>
-              <div className="t-pb" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 24px', borderTop: '1px solid var(--line2)' }}>
-                {m.sub.total.applications ? <span><span className="t-label">Applications </span><span className="mono">{m.sub.total.applications}</span></span> : null}
-                {m.sub.total.amount !== '—' ? <span><span className="t-label">Bids worth </span><span className="mono">{m.sub.total.amount}</span></span> : null}
-              </div>
-              <p className="t-note" style={{ padding: '0 14px 14px' }}>{m.sub.anchorNote ? `${m.sub.anchorNote} ` : ''}Times = shares bid for ÷ shares offered.</p>
-            </section>
-          ) : null}
-
-          {m.qibSplit.length ? (
-            <section className="t-panel" aria-labelledby="qib-h">
-              <div className="t-ph"><h2 id="qib-h">QIB book by investor</h2></div>
               <div className="t-pb">
-                <div className="t-stack" role="img" aria-label={m.qibSplit.map((q) => `${q.label} ${q.pct}%`).join(', ')}>
-                  {m.qibSplit.map((q, i) => <span key={q.label} style={{ width: `${q.pct}%`, background: tshade(i) }} />)}
-                </div>
-                <ul className="t-legend">
-                  {m.qibSplit.map((q, i) => <li key={q.label}><i style={{ background: tshade(i) }} /><span>{q.label}</span><span className="mono t-muted">{q.shares}</span><span className="mono">{q.pct}%</span></li>)}
-                </ul>
+                <p className="t-muted" style={{ fontSize: 13 }}>
+                  Amount bid {m.sub.total.amount}{m.sub.total.applications ? ` · ${m.sub.total.applications} applications` : ''}. {m.sub.anchorNote ? `${m.sub.anchorNote} ` : ''}Bars use a log scale.
+                </p>
+                {m.qibSplit.length ? (
+                  <>
+                    <p className="t-muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 14 }}>Inside QIB</p>
+                    <ul className="t-legend">
+                      {m.qibSplit.map((q, i) => <li key={q.label}><i style={{ background: tshade(i) }} aria-hidden="true" /><span>{q.label}</span><b>{q.pct}%</b></li>)}
+                    </ul>
+                  </>
+                ) : null}
               </div>
-            </section>
+            </Panel>
           ) : null}
-        </div>
 
-        <div className="t-col">
           {m.timeline.length ? (
-            <section className="t-panel" id="dates" aria-labelledby="tl-h">
-              <div className="t-ph"><h2 id="tl-h">Event log</h2></div>
-              <ol className="t-tl">
-                {m.timeline.map((t) => <li key={t.label}><span className="mono t-muted">{t.date}</span><span>{t.label}</span><span className={t.done ? 'ok' : 'pend'}>{t.done ? 'DONE' : 'DUE'}</span></li>)}
+            <Panel id="dates" title="Key dates">
+              <ol className="t-track">
+                {m.timeline.map((t) => <li key={t.label} className={t.done ? 'done' : undefined}><b>{t.label}</b><span>{t.date}</span></li>)}
               </ol>
-            </section>
-          ) : null}
-
-          {m.lots.length ? (
-            <section className="t-panel" id="lots" aria-labelledby="lots-h">
-              <div className="t-ph"><h2 id="lots-h">Lot sizes</h2><span className="t-label mono">@ {m.upperPrice}</span></div>
-              <div className="t-table-wrap">
-                <table className="t-table">
-                  <thead><tr><th>Category</th><th className="r">Lots</th><th className="r">Shares</th><th className="r">Amount</th></tr></thead>
-                  <tbody>{m.lots.map((l) => <tr key={l.cat}><td title={l.sub}>{l.cat}</td><td className="r mono">{l.lots}</td><td className="r mono">{l.shares}</td><td className="r mono">{l.amount}</td></tr>)}</tbody>
-                </table>
-              </div>
-            </section>
+            </Panel>
           ) : null}
 
           {m.reservation.length ? (
-            <section className="t-panel" id="reservation" aria-labelledby="res-h">
-              <div className="t-ph"><h2 id="res-h">Reservation</h2></div>
-              <div className="t-pb">
-                <div className="t-stack" role="img" aria-label={m.reservation.map((r) => `${r.label} ${r.pct}%`).join(', ')}>
-                  {m.reservation.map((r, i) => <span key={r.key} style={{ width: `${r.pct}%`, background: tshade(i) }} />)}
-                </div>
-                <ul className="t-legend">
-                  {m.reservation.map((r, i) => <li key={r.key}><i style={{ background: tshade(i) }} /><span>{r.label}</span><span className="mono t-muted">{r.amount}</span><span className="mono">{r.pct}%</span></li>)}
-                </ul>
+            <Panel id="reservation" title="Reservation">
+              <div className="t-stack" aria-hidden="true">
+                {m.reservation.map((r, i) => <span key={r.key} style={{ flex: `${r.pct} 1 0`, background: tshade(i) }} />)}
               </div>
-            </section>
+              <ul className="t-legend">
+                {m.reservation.map((r, i) => <li key={r.key}><i style={{ background: tshade(i) }} aria-hidden="true" /><span>{r.label} · {r.shares} sh</span><b>{r.pct}%</b></li>)}
+              </ul>
+            </Panel>
           ) : null}
-        </div>
 
-        <div className="t-col">
-          <section className="t-panel" aria-labelledby="act-h">
-            <div className="t-ph"><h2 id="act-h">Action</h2><St tone={c.tone}>{c.status}</St></div>
-            <p className="t-pb t-note" style={{ color: 'var(--ink2)', fontSize: 13 }}>{m.ctaNote}</p>
-            <dl className="t-act-figs">
-              <div><dt className="t-label">Price band</dt><dd className="mono">{c.band}</dd></div>
-              <div><dt className="t-label">Min. inv.</dt><dd className="mono">{c.min}</dd></div>
+          {m.lots.length ? (
+            <Panel id="lots" title="How much to apply" right={<span className="t-muted" style={{ fontSize: 13 }}>At {m.upperPrice}</span>} pad={false}>
+              <div className="t-table-wrap">
+                <table className="t-table t-subt">
+                  <thead><tr><th>Category</th><th className="r">Lots</th><th className="r">Shares</th><th className="r">Amount</th></tr></thead>
+                  <tbody>
+                    {m.lots.map((l) => <tr key={l.cat}><td>{l.cat}{l.sub ? <span className="t-co-sub"> · {l.sub}</span> : null}</td><td className="r">{l.lots}</td><td className="r">{l.shares}</td><td className="r"><b>{l.amount}</b></td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          ) : null}
+
+          {m.aboutHtml ? <Panel id="company" title="The company"><div className="t-prose" dangerouslySetInnerHTML={{ __html: m.aboutHtml }} /></Panel> : null}
+          {m.strengthsHtml ? <Panel id="strengths" title="Strengths, as stated by the company"><div className="t-prose" dangerouslySetInnerHTML={{ __html: m.strengthsHtml }} /></Panel> : null}
+          {m.financialsHtml ? <Panel id="financials" title="Financials"><div className="t-prose t-scroll" dangerouslySetInnerHTML={{ __html: m.financialsHtml }} /></Panel> : null}
+
+          <Panel id="offer" title="The offer" pad={false}>
+            <dl className="t-dl">
+              {m.facts.map((f) => <div key={f.k}><dt>{f.k}</dt><dd>{f.v}</dd></div>)}
+              {m.leads.length ? <div><dt>Lead managers</dt><dd style={{ fontWeight: 500 }}>{m.leads.join(', ')}</dd></div> : null}
             </dl>
-            <div className="t-pb" style={{ display: 'grid', gap: 8 }}>
-              <Link href="/allotment/" className="t-btn t-btn-p">Check allotment</Link>
-              {m.documents[0] ? <a href={m.documents[0].url} target="_blank" rel="noopener noreferrer" className="t-btn t-btn-s">Read the {m.documents[0].label}</a> : null}
-            </div>
-          </section>
-
-          {m.facts.length ? (
-            <section className="t-panel" aria-labelledby="facts-h">
-              <div className="t-ph"><h2 id="facts-h">Issue facts</h2></div>
-              <dl className="t-dl">{m.facts.map((f) => <div key={f.k}><dt>{f.k}</dt><dd className="mono">{f.v}</dd></div>)}</dl>
-            </section>
-          ) : null}
+          </Panel>
 
           {m.documents.length ? (
-            <section className="t-panel" id="documents" aria-labelledby="docs-h">
-              <div className="t-ph"><h2 id="docs-h">Documents</h2></div>
-              <ul className="t-docs">{m.documents.map((d) => <li key={d.url}><a href={d.url} target="_blank" rel="noopener noreferrer"><span>{d.label}</span><ExtIcon /></a></li>)}</ul>
-            </section>
+            <Panel id="documents" title="Documents">
+              <div className="t-docs">
+                {m.documents.map((d) => <a key={d.url} className="t-btn" href={d.url} target="_blank" rel="noopener noreferrer">{d.label} <ExtIcon /></a>)}
+              </div>
+            </Panel>
           ) : null}
         </div>
-      </div>
 
-      {(m.aboutHtml || m.strengthsHtml || m.financialsHtml) ? (
-        <section className="t-panel" id="company" aria-labelledby="co-h">
-          <div className="t-ph"><h2 id="co-h">Company</h2></div>
-          <div className="t-pb">
-            <div className="t-co2">
-              {m.aboutHtml ? <div className="t-prose" dangerouslySetInnerHTML={{ __html: m.aboutHtml }} /> : null}
-              {m.strengthsHtml ? <div><div className="t-label" style={{ marginBottom: 8 }}>Strengths</div><div className="t-prose" dangerouslySetInnerHTML={{ __html: m.strengthsHtml }} /></div> : null}
-            </div>
-            {m.financialsHtml ? <><div className="t-label" style={{ margin: '20px 0 6px' }}>Financials · ₹ crore</div><div className="t-prose t-table-wrap" dangerouslySetInnerHTML={{ __html: m.financialsHtml }} /></> : null}
-            {m.leads.length ? <p className="t-note" style={{ marginTop: 16 }}><span className="t-label">Lead managers </span>{m.leads.join(', ')}</p> : null}
+        <aside className="t-panel t-sidecard" aria-label="Issue summary">
+          <div className="t-pane-head">
+            <div className="t-pane-name">{c.name}</div>
+            <St tone={c.tone}>{c.status}</St>
           </div>
-        </section>
-      ) : null}
+          <dl className="t-dl">
+            <div><dt>Price band</dt><dd>{c.band}</dd></div>
+            <div><dt>Min. investment</dt><dd>{c.min}</dd></div>
+            <div><dt>Lot size</dt><dd>{m.lot}</dd></div>
+            <div><dt>Listing on</dt><dd>{c.exchanges}</dd></div>
+          </dl>
+          <div className="t-pane-act">
+            <p className="t-muted" style={{ fontSize: 13 }}>{m.ctaNote}</p>
+            {closed ? <Link className="t-btn t-btn-p" href="/allotment/">Check allotment</Link>
+              : firstDoc ? <a className="t-btn t-btn-p" href={firstDoc.url} target="_blank" rel="noopener noreferrer">Read the {firstDoc.label}</a>
+                : <Link className="t-btn t-btn-p" href="/subscription/">Live subscription</Link>}
+            <Link className="t-btn" href="/">Back to market</Link>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

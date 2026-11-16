@@ -2,258 +2,246 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type FormEvent } from 'react';
-import * as st from '@investoyard/shared-types';
 import type { HomeModel, IpoCard } from '@/core/models';
-import { dayMon, times } from '@/core/format';
-import { outcomeText, useAllotmentCheck, type AllotmentChoice } from '@/core/allotment';
-import { St, X, heat } from './parts';
+import { dayMon, lowerFirst, wdDayMon } from '@/core/format';
+import { outcomeText, useAllotmentCheck } from '@/core/allotment';
+import { Bar, Logo, St, X, logW } from './parts';
 
-type Tab = 'all' | 'open' | 'upcoming' | 'recent';
-type View = 'table' | 'tiles';
-type SortKey = 'sym' | 'name' | 'bandHi' | 'minN' | 'sizeN' | 'qibN' | 'niiN' | 'retailN' | 'subsN';
+type Tab = 'all' | 'open' | 'upcoming' | 'closed';
+type SortKey = 'default' | 'band' | 'min' | 'size' | 'subs';
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'open', label: 'Open' }, { key: 'upcoming', label: 'Upcoming' }, { key: 'closed', label: 'Closed' },
+];
 const PAGE = 20;
 
-const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
-  { key: 'sym', label: 'Symbol' },
-  { key: 'name', label: 'Company' },
-  /* No separate dates column: the status already names the date that matters
-     (opens / closes / listed), and the column pushed RII and Total, the two
-     figures a desk reads first, off the panel at 1440px. */
-  { key: null, label: 'Status' },
-  { key: 'bandHi', label: 'Price band', right: true },
-  { key: 'minN', label: 'Min ₹', right: true },
-  { key: 'sizeN', label: 'Size ₹ Cr', right: true },
-  { key: 'qibN', label: 'QIB', right: true },
-  { key: 'niiN', label: 'NII', right: true },
-  { key: 'retailN', label: 'RII', right: true },
-  { key: 'subsN', label: 'Total', right: true },
-];
+const sortVal = (c: IpoCard, k: SortKey): number => (k === 'band' ? c.bandHi ?? -1 : k === 'min' ? c.minN ?? -1 : k === 'size' ? c.sizeN ?? -1 : k === 'subs' ? c.subsN ?? -1 : 0);
+
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/*
+ * The pinned detail pane: the selected issue's whole picture without leaving
+ * the page. Selection starts on the first row on BOTH server and client, so
+ * the first paint and hydration agree.
+ */
+function Pane({ c, asOf }: { c: IpoCard | undefined; asOf: string }) {
+  if (!c) return <aside className="t-panel t-pane"><div className="t-empty"><strong>Nothing selected</strong>Pick an issue in the table to see it here.</div></aside>;
+  const cats: [string, number | null][] = [['QIB', c.qibN], ['NII', c.niiN], ['Retail', c.retailN]];
+  const max = Math.max(1, ...cats.map(([, v]) => v || 0), c.subsN || 0);
+  const dates: [string, string][] = [['Bidding opens', c.open], ['Bidding closes', c.close], ['Allotment', c.allotment], ['Listing', c.listing]];
+  return (
+    <aside className="t-panel t-pane" aria-label={`${c.name} summary`}>
+      <div className="t-pane-head">
+        <div className="t-pane-id">
+          <Logo ipo={c} />
+          <div style={{ minWidth: 0 }}>
+            <div className="t-pane-name">{c.name}</div>
+            <div className="t-co-sub">{c.board} · {c.exchanges}</div>
+          </div>
+        </div>
+        <St tone={c.tone}>{c.status}</St>
+      </div>
+      <dl className="t-pane-figs">
+        <div><dt>Price band</dt><dd>{c.band}</dd></div>
+        <div><dt>Min. investment</dt><dd>{c.min}</dd></div>
+        <div><dt>Issue size</dt><dd>{c.size}</dd></div>
+        <div><dt>Bidding</dt><dd>{c.dates}</dd></div>
+      </dl>
+      <div className="t-pane-sec">
+        <h3><span>Subscription {c.tone === 'open' ? 'so far' : c.subs ? '(final)' : ''}</span><b>{c.subs || '—'}</b></h3>
+        {c.subs ? cats.map(([k, v]) => (
+          <div key={k} className="t-catrow"><span className="t-muted">{k}</span><Bar width={logW(v, max)} /><b><X v={v} /></b></div>
+        )) : <p className="t-muted" style={{ fontSize: 13 }}>Subscription figures appear once bidding opens.</p>}
+      </div>
+      <div className="t-pane-sec">
+        <h3><span>Key dates</span></h3>
+        <ul className="t-dates">
+          {dates.filter(([, d]) => d).map(([k, d]) => (
+            <li key={k} className={d <= asOf ? 'done' : undefined}><span>{k}</span><b>{wdDayMon(d)}</b></li>
+          ))}
+        </ul>
+      </div>
+      <div className="t-pane-act">
+        <Link className="t-btn t-btn-p" href={c.href}>View full details</Link>
+        {c.tone === 'closed'
+          ? <Link className="t-btn" href="/allotment/">Check allotment</Link>
+          : <Link className="t-btn" href="/subscription/">Live subscription</Link>}
+      </div>
+    </aside>
+  );
+}
+
+function Events({ m }: { m: HomeModel }) {
+  const asOf = m.asOf;
+  const end = new Date(Date.parse(`${asOf}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
+  const ev: { d: string; kind: string; cls: string; c: IpoCard }[] = [];
+  for (const c of m.actionable) {
+    const add = (d: string, kind: string, cls: string) => { if (d && d >= asOf && d <= end) ev.push({ d, kind, cls, c }); };
+    add(c.open, 'Opens', 'open'); add(c.close, 'Closes', 'close'); add(c.allotment, 'Allotment', ''); add(c.listing, 'Lists', '');
+  }
+  ev.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : a.c.name.localeCompare(b.c.name)));
+  return (
+    <section className="t-panel" aria-labelledby="ev-h">
+      <div className="t-ph"><h2 id="ev-h">Next 7 days</h2><span className="t-muted num" style={{ fontSize: 13 }}>{dayMon(asOf)} – {dayMon(end)}</span></div>
+      {ev.length ? (
+        <ul className="t-events">
+          {ev.slice(0, 8).map((e, i) => (
+            <li key={i}><span className="num t-muted">{wdDayMon(e.d)}</span><span className={`t-tag ${e.cls}`}>{e.kind}</span><Link href={e.c.href}>{e.c.name}</Link></li>
+          ))}
+        </ul>
+      ) : <div className="t-empty" style={{ padding: 28 }}>No IPO dates in the next seven days.</div>}
+    </section>
+  );
+}
+
+function Allot({ choices }: { choices: HomeModel['allotmentChoices'] }) {
+  const a = useAllotmentCheck(choices);
+  const onSubmit = (e: FormEvent) => { e.preventDefault(); a.submit(); };
+  return (
+    <section className="t-panel" aria-labelledby="al-h">
+      <div className="t-ph"><h2 id="al-h">Allotment status</h2><Link className="t-link" href="/allotment/" style={{ fontSize: 13 }}>Open full page</Link></div>
+      {choices.length ? (
+        <form className="t-pb t-form" onSubmit={onSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 10 }}>
+            <label className="t-label">IPO
+              <select className="t-input" value={a.ipoId} onChange={(e) => a.setIpoId(e.target.value)}>
+                {choices.map((c) => <option key={c.id} value={c.id}>{c.name}{c.date ? ` — ${c.date}` : ''}</option>)}
+              </select>
+            </label>
+            <label className="t-label">PAN
+              <input className="t-input num" value={a.pan} onChange={(e) => a.setPan(e.target.value)} placeholder="ABCDE1234F" maxLength={10} autoComplete="off" spellCheck={false} style={{ letterSpacing: '.06em', textTransform: 'uppercase' }} />
+            </label>
+          </div>
+          <button type="submit" className="t-btn t-btn-p" disabled={a.busy} style={{ height: 42 }}>{a.busy ? 'Checking…' : 'Check allotment'}</button>
+          <div role="status" aria-live="polite" style={{ display: 'grid', gap: 8 }}>
+            {a.error ? <p className="t-err" role="alert">{a.error}</p> : null}
+            {a.result ? outcomeText(a.result).map((o, i) => <div key={i} className={`t-out ${o.tone}`}><strong>{o.title}</strong><p>{o.body}</p></div>) : null}
+          </div>
+        </form>
+      ) : <div className="t-empty" style={{ padding: 28 }}>No IPO has closed in the last 90 days.</div>}
+    </section>
+  );
+}
 
 export default function HomePage({ model }: { model: HomeModel }) {
+  const all = useMemo(() => [...model.actionable, ...model.recent], [model]);
   const [tab, setTab] = useState<Tab>('all');
   const [board, setBoard] = useState('all');
-  const [view, setView] = useState<View>('table');
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
+  const [sort, setSort] = useState<SortKey>('default');
   const [showAll, setShowAll] = useState(false);
+  const [sel, setSel] = useState<string>(all[0]?.sym || '');
 
-  const sets = useMemo(() => ({
-    all: [...model.actionable, ...model.recent],
-    open: model.actionable.filter((c) => c.tone === 'open'),
-    upcoming: model.actionable.filter((c) => c.tone === 'upcoming'),
-    recent: [...model.actionable.filter((c) => c.tone === 'closed'), ...model.recent],
-  }), [model]);
+  const count = (t: Tab) => (t === 'all' ? all.length : all.filter((c) => c.tone === t).length);
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    let r = all.filter((c) => (tab === 'all' || c.tone === tab) && (board === 'all' || c.board === board) && (!s || c.name.toLowerCase().includes(s) || c.sym.toLowerCase().includes(s)));
+    if (sort !== 'default') r = [...r].sort((a, b) => sortVal(b, sort) - sortVal(a, sort));
+    return r;
+  }, [all, tab, board, q, sort]);
+  const shown = showAll ? rows : rows.slice(0, PAGE);
+  const selected = rows.find((c) => c.sym === sel) || rows[0];
 
-  const keep = (c: IpoCard) => (board === 'all' || c.board === board) && (!q.trim() || c.name.toLowerCase().includes(q.trim().toLowerCase()) || c.sym.toLowerCase().includes(q.trim().toLowerCase()));
-  const list = useMemo(() => {
-    const base = sets[tab].filter(keep);
-    if (!sort) return base;
-    return [...base].sort((a, b) => {
-      const va = a[sort.key] as string | number | null;
-      const vb = b[sort.key] as string | number | null;
-      if (va == null || va === '') return 1;   // blanks always last, whichever way
-      if (vb == null || vb === '') return -1;
-      return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sets, tab, board, q, sort]);
-  const rows = showAll ? list : list.slice(0, PAGE);
-  const toggleSort = (key: SortKey) => setSort((s) => (s && s.key === key ? (s.dir === -1 ? { key, dir: 1 } : null) : { key, dir: -1 }));
-
-  const strip = [...model.actionable, ...model.recent].slice(0, 24);
-  const TABS: [Tab, string][] = [['all', 'All'], ['open', 'Open'], ['upcoming', 'Upcoming'], ['recent', 'Closed']];
+  const med = median(model.recent.map((c) => c.subsN).filter((v): v is number => v != null));
+  const nextUp = model.actionable.find((c) => c.tone === 'upcoming');
+  const th = (k: SortKey, label: string) => (
+    <th className="r" aria-sort={sort === k ? 'descending' : undefined}>
+      <button type="button" onClick={() => setSort(sort === k ? 'default' : k)}>{label}{sort === k ? ' ↓' : ''}</button>
+    </th>
+  );
 
   return (
-    <>
-      <div className="t-strip" style={{ margin: '0 calc(var(--gut) * -1)' }}>
-        <div className="t-strip-in" aria-label="Recent issues">
-          {strip.map((c) => (
-            <Link key={c.sym} href={c.href}>
-              <b className="mono">{c.sym}</b>
-              <span className="mono">{c.subs ? c.subs : c.status}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+    <div className="t-page">
+      <dl className="t-kpis">
+        <div className="t-kpi"><dt>Open for bidding</dt><dd>{model.counts.open}</dd><small>{model.counts.open ? 'Bidding now' : 'Nothing bidding today'}</small></div>
+        <div className="t-kpi"><dt>Upcoming</dt><dd>{model.counts.upcoming}</dd><small>{nextUp ? `Next: ${nextUp.name}, ${lowerFirst(nextUp.status)}` : 'None announced'}</small></div>
+        <div className="t-kpi"><dt>Listed, last 45 days</dt><dd>{model.counts.recent}</dd><small>Mainboard and SME</small></div>
+        <div className="t-kpi"><dt>Median subscription</dt><dd><X v={med} /></dd><small>Across recent listings</small></div>
+      </dl>
 
-      <div className="t-home">
-        <section className="t-panel" aria-labelledby="blotter-h">
+      <div className="t-split">
+        <section className="t-panel" aria-labelledby="mk-h">
           <div className="t-ph">
-            <h1 id="blotter-h">IPO blotter</h1>
+            <h1 id="mk-h">IPO market</h1>
             <div className="t-tools">
               <div className="t-seg" role="tablist" aria-label="Status">
-                {TABS.map(([k, label]) => (
-                  <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setShowAll(false); }}>
-                    {label}<b className="mono">{sets[k].length}</b>
-                  </button>
-                ))}
+                {TABS.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => { setTab(t.key); setShowAll(false); }}>{t.label}<b className="num">{count(t.key)}</b></button>)}
               </div>
-              <label><span className="sr">Board</span>
-                <select className="t-input" value={board} onChange={(e) => setBoard(e.target.value)}>
-                  <option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option>
-                </select>
-              </label>
-              <label><span className="sr">Filter</span><input className="t-input" type="search" placeholder="Filter symbol or name" value={q} onChange={(e) => setQ(e.target.value)} /></label>
-              <div className="t-seg" role="group" aria-label="Layout">
-                <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')}>Table</button>
-                <button type="button" aria-pressed={view === 'tiles'} onClick={() => setView('tiles')}>Tiles</button>
-              </div>
+              <select className="t-input" aria-label="Board" value={board} onChange={(e) => setBoard(e.target.value)}>
+                <option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option>
+              </select>
+              <input className="t-input t-search" type="search" aria-label="Search" placeholder="Search company or symbol" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
           </div>
-
-          {rows.length === 0 ? (
-            <div className="t-empty"><strong>No issues match</strong>{tab === 'open' ? 'Nothing is bidding today.' : 'Change the filter or board.'}</div>
-          ) : view === 'table' ? (
+          {rows.length === 0 ? <div className="t-empty"><strong>No match</strong>Clear the filters or search for another name.</div> : (
             <>
-              <div className="t-table-wrap t-hide-m">
+              <div className="t-table-wrap home">
                 <table className="t-table">
                   <thead>
                     <tr>
-                      {COLS.map((c) => (
-                        <th key={c.label} className={c.right ? 'r' : undefined} aria-sort={sort && c.key === sort.key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
-                          {c.key ? (
-                            <button type="button" onClick={() => toggleSort(c.key as SortKey)}>
-                              {c.label}{sort && c.key === sort.key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
-                            </button>
-                          ) : c.label}
-                        </th>
-                      ))}
+                      <th>Company</th>
+                      <th>Status</th>
+                      {th('band', 'Price band')}
+                      {th('min', 'Min. ₹')}
+                      {th('size', 'Size ₹ Cr')}
+                      {th('subs', 'Subscribed')}
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((c) => (
-                      <tr key={c.sym}>
-                        <td><Link href={c.href} className="t-sym mono">{c.sym}</Link>{c.board === 'SME' ? <span className="t-board" style={{ marginLeft: 8 }}>SME</span> : null}</td>
-                        <td><Link href={c.href} className="t-co" title={c.legal}>{c.name}</Link></td>
+                    {shown.map((c) => (
+                      <tr key={c.sym} data-sel={selected?.sym === c.sym ? '' : undefined} onClick={() => setSel(c.sym)}>
+                        <td>
+                          <div className="t-co">
+                            <Logo ipo={c} />
+                            <div style={{ minWidth: 0 }}>
+                              <Link className="t-co-name" href={c.href} onClick={(e) => e.stopPropagation()}>{c.name}</Link>
+                              <span className="t-co-sub">{c.sym} · {c.board}</span>
+                            </div>
+                          </div>
+                        </td>
                         <td><St tone={c.tone}>{c.status}</St></td>
-                        <td className="r mono">{c.band}</td>
-                        <td className="r mono">{c.minN ? c.minN.toLocaleString('en-IN') : '—'}</td>
-                        <td className="r mono">{c.sizeN ? c.sizeN.toLocaleString('en-IN', { maximumFractionDigits: c.sizeN >= 100 ? 0 : 1 }) : '—'}</td>
-                        <td className="r mono"><X v={c.qibN} /></td>
-                        <td className="r mono"><X v={c.niiN} /></td>
-                        <td className="r mono"><X v={c.retailN} /></td>
-                        <td className="t-heat mono" style={heat(c.bar)}><X v={c.subsN} /></td>
+                        <td className="r">{c.band}</td>
+                        <td className="r">{c.minN != null ? c.minN.toLocaleString('en-IN') : '—'}</td>
+                        <td className="r">{c.sizeN != null ? Math.round(c.sizeN).toLocaleString('en-IN') : '—'}</td>
+                        <td className="r"><span className="t-demand">{c.subsN != null ? <Bar width={c.bar} /> : null}<b><X v={c.subsN} /></b></span></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <ul className="t-mrows">
-                {rows.map((c) => (
+                {shown.map((c) => (
                   <li key={c.sym}>
                     <Link href={c.href}>
-                      <span><span className="t-sym mono">{c.sym}</span> <span className="t-muted" style={{ fontSize: 12 }}>{c.board}</span></span>
-                      <span className="t-mr-v mono">{c.subs || c.band}</span>
-                      <span className="t-mr-s">{c.name} · {c.status}</span>
+                      <Logo ipo={c} />
+                      <div style={{ minWidth: 0 }}><span className="t-co-name">{c.name}</span><St tone={c.tone}>{c.status}</St></div>
+                      <div><b><X v={c.subsN} /></b><small>{c.band}</small></div>
                     </Link>
                   </li>
                 ))}
               </ul>
             </>
-          ) : (
-            <div className="t-tiles">
-              {rows.map((c) => (
-                <Link key={c.sym} href={c.href} className="t-tile">
-                  <div className="t-tile-top"><span className="t-sym mono">{c.sym}</span><St tone={c.tone}>{c.status}</St></div>
-                  <div className="t-tile-name">{c.name}</div>
-                  <div>
-                    <div className="t-tile-fig mono">{c.subs ? <X v={c.subsN} /> : c.band}</div>
-                    <div className="t-tile-sub">{c.subs ? 'subscribed overall' : 'price band'}</div>
-                  </div>
-                  {c.subs ? <div className="t-gauge" aria-hidden="true"><span style={{ width: `${c.bar}%` }} /></div> : null}
-                  <div className="t-tile-foot"><span>Min <span className="mono">{c.min}</span></span><span className="mono">{c.size}</span></div>
-                </Link>
-              ))}
-            </div>
           )}
-
-          <div className="t-more">
-            <span className="mono">{rows.length} of {list.length}</span>
-            <span style={{ display: 'flex', gap: 14 }}>
-              {!showAll && list.length > PAGE ? <button type="button" className="t-btn t-btn-s" onClick={() => setShowAll(true)}>Show all {list.length}</button> : null}
-              <Link href="/ipos/" className="t-link" style={{ alignSelf: 'center' }}>Full archive</Link>
+          <div className="t-foot-row">
+            <span className="num">{shown.length} of {rows.length}</span>
+            <span style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              {rows.length > PAGE ? <button type="button" className="t-btn" onClick={() => setShowAll((v) => !v)}>{showAll ? 'Show fewer' : `Show all ${rows.length}`}</button> : null}
+              <Link className="t-link" href="/ipos/">Full archive</Link>
             </span>
           </div>
         </section>
-
-        <aside className="t-rail" aria-label="Market rail">
-          <Events cards={[...model.actionable, ...model.recent]} />
-          <Breadth model={model} />
-          <QuickAllot choices={model.allotmentChoices} />
-          <p className="t-note" style={{ padding: '0 2px' }}>Bidding runs 10:00–17:00 IST on exchange days. Heat shows the strength of demand; it is not a gain or a recommendation.</p>
-        </aside>
+        <Pane c={selected} asOf={model.asOf} />
       </div>
-    </>
-  );
-}
 
-type EvType = 'OPEN' | 'CLOSE' | 'ALLOT' | 'LIST';
-
-function Events({ cards }: { cards: IpoCard[] }) {
-  const today = st.istToday();
-  const until = (() => { const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 7); return d.toISOString().slice(0, 10); })();
-  const order: EvType[] = ['OPEN', 'CLOSE', 'ALLOT', 'LIST'];
-  const events: { d: string; t: EvType; c: IpoCard }[] = [];
-  for (const c of cards) {
-    const add = (d: string, t: EvType) => { if (d && d >= today && d <= until) events.push({ d, t, c }); };
-    add(c.open, 'OPEN'); add(c.close, 'CLOSE'); add(c.allotment, 'ALLOT'); add(c.listing, 'LIST');
-  }
-  events.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : order.indexOf(a.t) - order.indexOf(b.t)));
-  return (
-    <section className="t-panel" aria-labelledby="ev-h">
-      <div className="t-ph"><h2 id="ev-h">Next 7 days</h2><span className="t-label mono">{dayMon(today)} → {dayMon(until)}</span></div>
-      {events.length ? (
-        <ul className="t-events">
-          {events.slice(0, 12).map((e, i) => (
-            <li key={i}>
-              <span className="mono" style={{ color: e.d === today ? 'var(--ink)' : 'var(--muted)' }}>{e.d === today ? 'Today' : dayMon(e.d)}</span>
-              <span className={`t-ev ${e.t.toLowerCase()}`}>{e.t}</span>
-              <Link href={e.c.href}><span className="mono" style={{ color: 'var(--brand-lite)' }}>{e.c.sym}</span> <span className="t-muted">{e.c.name}</span></Link>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="t-pb t-muted">No openings, closings, allotments or listings in the next seven days.</p>}
-    </section>
-  );
-}
-
-function Breadth({ model }: { model: HomeModel }) {
-  const subs = model.recent.map((c) => c.subsN).filter((v): v is number => v != null).sort((a, b) => a - b);
-  const median = subs.length ? (subs.length % 2 ? subs[(subs.length - 1) / 2] : (subs[subs.length / 2 - 1] + subs[subs.length / 2]) / 2) : null;
-  return (
-    <section className="t-panel" aria-labelledby="br-h">
-      <div className="t-ph"><h2 id="br-h">Breadth</h2></div>
-      <dl className="t-breadth">
-        <div><dt className="t-label">Open now</dt><dd className="mono">{model.counts.open}</dd></div>
-        <div><dt className="t-label">Upcoming</dt><dd className="mono">{model.counts.upcoming}</dd></div>
-        <div><dt className="t-label">Listed, 45 days</dt><dd className="mono">{model.counts.recent}</dd></div>
-        <div><dt className="t-label" title={`Median of ${subs.length} issues listed in the last 45 days`}>Median subscribed</dt><dd className="mono">{median != null ? times(median) : '—'}</dd></div>
-      </dl>
-    </section>
-  );
-}
-
-function QuickAllot({ choices }: { choices: AllotmentChoice[] }) {
-  const a = useAllotmentCheck(choices);
-  const onSubmit = (e: FormEvent) => { e.preventDefault(); a.submit(); };
-  return (
-    <section className="t-panel" aria-labelledby="al-h">
-      <div className="t-ph"><h2 id="al-h">Allotment lookup</h2><Link href="/allotment/" className="t-link" style={{ fontSize: 12 }}>Open</Link></div>
-      <form className="t-pb t-form" onSubmit={onSubmit}>
-        <label><span className="sr">IPO</span>
-          <select className="t-input" value={a.ipoId} onChange={(e) => a.setIpoId(e.target.value)}>
-            {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
-        <label><span className="sr">PAN</span><input className="t-input mono" value={a.pan} onChange={(e) => a.setPan(e.target.value)} placeholder="PAN  ABCDE1234F" maxLength={10} autoComplete="off" spellCheck={false} /></label>
-        <button type="submit" className="t-btn t-btn-p" disabled={a.busy}>{a.busy ? 'Querying…' : 'Query registrar'}</button>
-        {a.error ? <p role="alert" className="t-err">{a.error}</p> : null}
-        {a.result ? (
-          <div className="t-log" role="status">
-            {outcomeText(a.result).map((o, i) => <p key={i}><strong><span className={`t-st ${o.tone}`}><i aria-hidden="true" /></span>{o.title}</strong><span className="t-muted">{o.body}</span></p>)}
-          </div>
-        ) : null}
-      </form>
-    </section>
+      <div className="t-lower">
+        <Events m={model} />
+        <Allot choices={model.allotmentChoices} />
+      </div>
+      <p className="t-note">Bidding runs 10:00–17:00 IST on exchange days. Subscription is shares bid for ÷ shares offered, consolidated from NSE and BSE; bars use a log scale. Figures inform — they are not a recommendation.</p>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { initialOf, usePartner } from '@/core/tenant';
+import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
 
 const NAV = [
   { href: '/', label: 'IPOs' },
@@ -28,10 +29,8 @@ function Brand() {
 
 export default function Shell({ children }: { children: ReactNode }) {
   const path = usePathname() || '/';
-  const p = usePartner();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [path]);
-  const year = new Date().getFullYear();
   return (
     <>
       <a className="sr" href="#main">Skip to content</a>
@@ -54,32 +53,53 @@ export default function Shell({ children }: { children: ReactNode }) {
         </nav>
       </header>
       <main id="main">{children}</main>
-      <footer className="h-foot">
-        <div className="h-wrap">
-          {/* The partner's own name, never ours. Empty until the host resolves. */}
-          <div className="h-foot-name dsp" aria-hidden={p ? undefined : true}>{p ? p.name : ' '}</div>
-          <div className="h-foot-grid">
-            <div className="h-foot-id">
-              {p && p.legalName ? <strong style={{ color: '#fff' }}>{p.legalName}</strong> : null}
-              {p && p.sebi ? <><br />SEBI Reg. No. {p.sebi}</> : null}
-              {p && p.grievanceEmail ? <><br />Grievances: {p.grievanceName ? `${p.grievanceName}, ` : ''}{p.grievanceEmail}</> : null}
-              {p && p.supportEmail ? <><br />Support: {p.supportEmail}{p.supportPhone ? ` · ${p.supportPhone}` : ''}</> : null}
-            </div>
-            <nav aria-label="IPOs">
-              <strong>IPOs</strong>
-              <Link href="/">Current issues</Link><Link href="/subscription/">Live subscription</Link><Link href="/ipos/">Archive</Link>
-            </nav>
-            <nav aria-label="Tools">
-              <strong>Tools</strong>
-              <Link href="/allotment/">Allotment status</Link>
-            </nav>
-          </div>
-          <div className="h-foot-note">
-            <span>Investments in the securities market are subject to market risks. Read all related documents carefully before investing. Figures as published by NSE and BSE; informational, not advice.</span>
-            {p && p.legalName ? <span suppressHydrationWarning>© {year} {p.legalName}</span> : null}
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </>
+  );
+}
+
+/*
+ * The footer: a dark band with the partner's own mark leading it — their
+ * footer (light) logo when they uploaded one, else their name set large — a
+ * call to the one tool every visitor may need, four columns, and the
+ * disclosure. Only what the partner has entered; never our identity.
+ */
+function Footer() {
+  const p = usePartner();
+  const year = new Date().getFullYear();
+  if (!p) return <footer className="h-foot" />;
+  const f = footerModel(p);
+  const lg = footerLogo(p, 'dark');
+  return (
+    <footer className="h-foot">
+      <div className="h-wrap">
+        <div className="h-foot-grid">
+          <div className="h-foot-id">
+            {lg ? <img className={'h-foot-logo' + (lg.plate ? ' plate' : '')} src={lg.src} alt={p.name} /> : <span className="h-foot-name dsp">{p.name}</span>}
+            {f.legalName ? <strong>{f.legalName}</strong> : null}
+            {f.registration.map((r) => <span key={r.k}>{r.k} <span className="num">{r.v}</span></span>)}
+            {f.address ? <span>{f.address}</span> : null}
+          </div>
+          <nav aria-label="IPOs">
+            <strong>IPOs</strong>
+            <Link href="/">Current issues</Link><Link href="/subscription/">Live subscription</Link><Link href="/ipos/">Archive</Link>
+          </nav>
+          <nav aria-label="Tools">
+            <strong>Tools</strong>
+            <Link href="/allotment/">Allotment status</Link>
+          </nav>
+          {f.support.length || f.grievance.length ? (
+            <nav aria-label="Contact">
+              {f.support.length ? <><strong>Support</strong>{f.support.map((s) => <a key={s.k} href={s.href}>{s.v}</a>)}</> : null}
+              {f.grievance.length ? <><strong style={{ marginTop: f.support.length ? 12 : 0 }}>Grievances</strong>{f.grievance.map((g) => g.href ? <a key={g.k} href={g.href}>{g.v}</a> : <span key={g.k}>{g.v}</span>)}</> : null}
+            </nav>
+          ) : <div />}
+        </div>
+        <div className="h-foot-note">
+          <span>{RISK_TEXT}</span>
+          <span suppressHydrationWarning>© {year} {f.owner}</span>
+        </div>
+      </div>
+    </footer>
   );
 }

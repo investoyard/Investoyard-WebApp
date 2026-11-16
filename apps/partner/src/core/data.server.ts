@@ -77,6 +77,7 @@ export interface RawTenant {
   customDomain?: string | null;
   brandColor?: string | null;
   logoUrl?: string | null;
+  footerLogoUrl?: string | null;
   faviconUrl?: string | null;
   flags?: Record<string, any>;
   content?: Record<string, any>;

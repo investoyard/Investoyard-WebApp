@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { initialOf, usePartner } from '@/core/tenant';
+import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
 
 const NAV = [
   { href: '/', label: 'IPOs' },
@@ -17,10 +18,11 @@ const isCurrent = (path: string, href: string) => (href === '/' ? path === '/' |
 function Brand() {
   const p = usePartner();
   if (!p) return <span className="s-brand"><span className="s-brand-ph" aria-hidden="true" /></span>;
+  const lg = footerLogo(p, 'light');
   return (
     <Link href="/" className="s-brand" aria-label={`${p.name} — IPOs`}>
-      {p.logo ? (
-        <img className="s-brand-logo" src={p.logo} alt={p.name} />
+      {lg ? (
+        <img className={`s-brand-logo${lg.plate ? ' plate' : ''}`} src={lg.src} alt={p.name} />
       ) : (
         <>
           <span className="s-mark" aria-hidden="true">{initialOf(p)}</span>
@@ -68,42 +70,42 @@ export default function Shell({ children }: { children: ReactNode }) {
 function Footer() {
   const p = usePartner();
   const year = new Date().getFullYear();
+  if (!p) return <footer className="s-foot" />;
+  const f = footerModel(p);
+  const lg = footerLogo(p, 'light');
   return (
     <footer className="s-foot">
-      <div className="s-foot-in">
+      <div className="s-foot-wrap">
         <div className="s-foot-grid">
-          <div>
-            {p ? (
-              <div className="s-brand">
-                <span className="s-mark" aria-hidden="true">{initialOf(p)}</span>
-                <span className="s-brand-name">{p.name}</span>
-              </div>
-            ) : <span className="s-brand-ph" aria-hidden="true" />}
-            {/* Only what the partner has entered. Never our identity, never a guess. */}
-            {p && (p.legalName || p.sebi || p.address || p.grievanceEmail || p.supportEmail) ? (
-              <p className="s-foot-id">
-                {p.legalName ? <>{p.legalName}<br /></> : null}
-                {p.sebi ? <>SEBI Reg. No. {p.sebi}<br /></> : null}
-                {p.address ? <>{p.address}<br /></> : null}
-                {p.supportEmail ? <>Support: {p.supportEmail}{p.supportPhone ? ` · ${p.supportPhone}` : ''}<br /></> : null}
-                {p.grievanceEmail ? <>Grievances: {p.grievanceName ? `${p.grievanceName}, ` : ''}{p.grievanceEmail}</> : null}
-              </p>
-            ) : null}
+          <div className="s-foot-brand">
+            {lg ? <img className={`s-foot-logo${lg.plate ? ' plate' : ''}`} src={lg.src} alt={p.name} /> : <span className="s-foot-name">{p.name}</span>}
+            {/* Only what the partner has entered — never our identity, never a guess. */}
+            <div className="s-foot-id">
+              {f.legalName ? <b>{f.legalName}</b> : null}
+              {f.registration.map((r) => <div key={r.k}>{r.k} <span className="num">{r.v}</span></div>)}
+              {f.address ? <div>{f.address}</div> : null}
+            </div>
           </div>
-          <nav aria-label="IPOs">
+          <nav className="s-foot-col" aria-label="IPOs">
             <strong>IPOs</strong>
             <Link href="/">Open and upcoming</Link>
+            <Link href="/subscription/">Live subscription</Link>
             <Link href="/ipos/">All IPOs</Link>
           </nav>
-          <nav aria-label="Tools">
+          <nav className="s-foot-col" aria-label="Tools">
             <strong>Tools</strong>
-            <Link href="/subscription/">Subscription</Link>
-            <Link href="/allotment/">Allotment</Link>
+            <Link href="/allotment/">Allotment status</Link>
           </nav>
+          {f.support.length || f.grievance.length ? (
+            <div className="s-foot-col">
+              {f.support.length ? <><strong>Support</strong>{f.support.map((s) => <a key={s.k} href={s.href}>{s.v}</a>)}</> : null}
+              {f.grievance.length ? <><strong style={{ marginTop: f.support.length ? 10 : 0 }}>Grievances</strong>{f.grievance.map((g) => g.href ? <a key={g.k} href={g.href}>{g.v}</a> : <span key={g.k}>{g.v}</span>)}</> : null}
+            </div>
+          ) : <div />}
         </div>
-        <div className="s-foot-b">
-          <span style={{ maxWidth: 760 }}>Investments in the securities market are subject to market risks. Read all the related documents carefully before investing. Figures are as published by NSE and BSE; this site informs and does not advise.</span>
-          {p && p.legalName ? <span className="num" suppressHydrationWarning>© {year} {p.legalName}</span> : null}
+        <div className="s-foot-base">
+          <span>{RISK_TEXT}</span>
+          <span suppressHydrationWarning>© {year} {f.owner}</span>
         </div>
       </div>
     </footer>

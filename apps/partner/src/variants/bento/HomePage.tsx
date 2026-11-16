@@ -175,7 +175,7 @@ function Card({ c }: { c: IpoCard }) {
       </div>
       <div className="b-card-fig">
         <div>
-          <strong className="disp">{live ? c.subs : c.band}</strong>
+          <strong className={`disp${live ? ' is-subs' : ''}`}>{live ? c.subs : c.band}</strong>
           <small>{live ? 'subscribed' : 'price band'}</small>
         </div>
         <span style={{ color: 'var(--brand-ink)' }}><Arrow /></span>

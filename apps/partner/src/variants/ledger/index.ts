@@ -1,4 +1,4 @@
-import { IBM_Plex_Mono, Newsreader } from 'next/font/google';
+import { Newsreader, Public_Sans } from 'next/font/google';
 import type { VariantModule } from '@/core/variant';
 import './ledger.css';
 import Shell from './Shell';
@@ -9,15 +9,15 @@ import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 
 /*
- * LEDGER — variant 5. Minimal, monochrome, one column.
- * Newsreader for reading, IBM Plex Mono for every figure.
+ * LEDGER — variant 5. A research desk's report: a side navigation, a dated
+ * IPO calendar, Newsreader for headings over Public Sans for everything else.
  */
-const serif = Newsreader({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], variable: '--font-lg-serif', display: 'swap' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-lg-mono', display: 'swap' });
+const serif = Newsreader({ subsets: ['latin'], weight: ['500', '600'], variable: '--font-lg-serif', display: 'swap' });
+const sans = Public_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-lg-sans', display: 'swap' });
 
 const ledger: VariantModule = {
   name: 'ledger',
-  fontClassName: `${serif.variable} ${mono.variable}`,
+  fontClassName: `${serif.variable} ${sans.variable}`,
   Shell,
   HomePage,
   DetailPage,

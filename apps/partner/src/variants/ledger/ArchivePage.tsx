@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { ArchiveRow } from '@/core/models';
 
-const PER = 60;
+const PER = 50;
 
 export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
   const [q, setQ] = useState('');
@@ -32,15 +32,15 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <div className="l-page">
-      <h1>Archive</h1>
-      <p className="l-lede"><span className="mono">{rows.length.toLocaleString('en-IN')}</span> mainboard and SME issues{years.length ? ` since ${years[years.length - 1]}` : ''}. Search by company or symbol.</p>
+      <p className="l-label">{rows.length.toLocaleString('en-IN')} issues{years.length ? ` since ${years[years.length - 1]}` : ''}</p>
+      <h1 className="l-h1" style={{ marginTop: 10, marginBottom: 24 }}>Archive</h1>
       <div className="l-search">
-        <label><span className="sr">Search</span><input className="l-field" type="search" placeholder="Company or symbol" value={q} onChange={(e) => { setQ(e.target.value); reset(); }} /></label>
-        <label><span className="sr">Board</span><select className="l-field" value={board} onChange={(e) => { setBoard(e.target.value); reset(); }}><option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option></select></label>
-        <label><span className="sr">Year</span><select className="l-field" value={year} onChange={(e) => { setYear(e.target.value); reset(); }}><option value="all">All years</option>{years.map((y) => <option key={y} value={String(y)}>{y}</option>)}</select></label>
+        <label><span className="sr">Search</span><input className="l-field" style={{ width: '100%' }} type="search" placeholder="Company or symbol" value={q} onChange={(e) => { setQ(e.target.value); reset(); }} /></label>
+        <label><span className="sr">Board</span><select className="l-select" style={{ width: '100%' }} value={board} onChange={(e) => { setBoard(e.target.value); reset(); }}><option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option></select></label>
+        <label><span className="sr">Year</span><select className="l-select" style={{ width: '100%' }} value={year} onChange={(e) => { setYear(e.target.value); reset(); }}><option value="all">All years</option>{years.map((y) => <option key={y} value={String(y)}>{y}</option>)}</select></label>
       </div>
-      <p className="l-note" role="status">{list.length.toLocaleString('en-IN')} result{list.length === 1 ? '' : 's'}</p>
-      {groups.length === 0 ? <p className="l-empty">No match. Try a shorter name, or clear the filters.</p> : groups.map((g) => (
+      <p className="l-muted num" role="status">{list.length.toLocaleString('en-IN')} result{list.length === 1 ? '' : 's'}</p>
+      {groups.length === 0 ? <div className="l-empty" style={{ marginTop: 16 }}><strong>No match</strong>Try a shorter name, or clear the filters.</div> : groups.map((g) => (
         <section key={g.year + g.rows[0].sym} className="l-year" aria-label={g.year}>
           <h2>{g.year}</h2>
           <div className="l-table-wrap">
@@ -48,7 +48,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
               <tbody>
                 {g.rows.map((r) => (
                   <tr key={r.sym}>
-                    <td><Link href={r.href}>{r.name}</Link><small>{r.board} · {r.status}</small></td>
+                    <td><Link className="l-tname" href={r.href}>{r.name}</Link><small>{r.board} · {r.status}</small></td>
                     <td className="r hide-s">{r.dates}</td>
                     <td className="r hide-s">{r.band}</td>
                     <td className="r">{r.subs || r.size}<small>{r.subs ? 'subscribed' : 'issue size'}</small></td>
@@ -61,9 +61,9 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
       ))}
       {pages > 1 ? (
         <nav className="l-pager" aria-label="Pages">
-          <button type="button" disabled={p === 0} onClick={() => setPage(p - 1)}>Newer</button>
-          <span>Page {p + 1} of {pages}</span>
-          <button type="button" disabled={p >= pages - 1} onClick={() => setPage(p + 1)}>Older</button>
+          <button type="button" className="l-btn l-btn-q" disabled={p === 0} onClick={() => setPage(p - 1)}>Newer</button>
+          <span className="num">Page {p + 1} of {pages}</span>
+          <button type="button" className="l-btn l-btn-q" disabled={p >= pages - 1} onClick={() => setPage(p + 1)}>Older</button>
         </nav>
       ) : null}
     </div>
