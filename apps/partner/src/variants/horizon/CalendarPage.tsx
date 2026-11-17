@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import * as st from '@investoyard/shared-types';
 import {
-  addMonths, dayMon, monthLabel, weekDays, weekLabel, ymOf,
+  addDays, addMonths, dayMon, monthLabel, weekDays, weekLabel, weekStart, ymOf,
   type CalIpo, type CalendarModel,
 } from '@/core/calendar';
 import { Hero, Icon, Logo, Status, type IconName } from './parts';
@@ -35,10 +35,13 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
   const [sector, setSector] = useState('all');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
+  /* The week the glance card shows; the build day first, the reader's IST week after mount. */
+  const [wk, setWk] = useState(model.asOf);
 
   useEffect(() => {
     const t = st.istToday();
     setToday(t);
+    setWk(t);
     if (t !== model.asOf && t >= model.from && t <= model.to) setYm(ymOf(t));
   }, [model.asOf, model.from, model.to]);
 
@@ -58,7 +61,11 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
     ['check', model.ipos.filter((x) => inWeek(x.allot)).length, 'Allotments this week'],
     ['candles', model.ipos.filter((x) => inWeek(x.list)).length, 'Listings this week'],
   ];
-  const glance = week.map((d) => ({
+  const wkDays = weekDays(wk);
+  const isThisWeek = weekStart(wk) === weekStart(today);
+  const canPrev = addDays(weekStart(wk), -1) >= model.from;
+  const canNext = addDays(weekStart(wk), 7) <= model.to;
+  const glance = wkDays.map((d) => ({
     d,
     lines: SUMMARY.map(([k, one, many]) => { const n = model.ipos.filter((x) => x[k] === d).length; return n ? `${n} ${n === 1 ? one : many}` : ''; }).filter(Boolean),
   })).filter((g) => g.lines.length);
@@ -95,8 +102,13 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
 
         <section className="h-card h-glance" aria-labelledby="gl-h">
           <div className="h-glance-l">
-            <h2 id="gl-h" className="h-h3">This week at a glance</h2>
-            <p className="num">{weekLabel(today)}</p>
+            <h2 id="gl-h" className="h-h3">{isThisWeek ? 'This week at a glance' : 'Week at a glance'}</h2>
+            <p className="num" aria-live="polite">{weekLabel(wk)}</p>
+            <div className="h-wknav">
+              <button type="button" onClick={() => setWk(addDays(weekStart(wk), -7))} disabled={!canPrev} aria-label="Previous week">‹</button>
+              <button type="button" className="h-wknav-now" onClick={() => setWk(today)} disabled={isThisWeek}>This week</button>
+              <button type="button" onClick={() => setWk(addDays(weekStart(wk), 7))} disabled={!canNext} aria-label="Next week">›</button>
+            </div>
           </div>
           {glance.length ? (
             <ol className="h-glance-t">
@@ -108,7 +120,7 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
                 </li>
               ))}
             </ol>
-          ) : <p className="h-tbl-none">No IPO dates fall this week.</p>}
+          ) : <p className="h-tbl-none">No IPO dates fall in {isThisWeek ? 'this week' : weekLabel(wk)}.</p>}
         </section>
 
         <div className="h-calbar">

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { DetailModel } from '@/core/models';
 import Countdown from './Countdown';
 import ReadMore from './ReadMore';
+import DetailTabs from './DetailTabs';
 import { Arrow, ExtIcon, Icon, Logo, Status, shade, targetOf, type IconName } from './parts';
 
 /*
@@ -77,11 +78,9 @@ export default function DetailPage({ model: m }: { model: DetailModel }) {
               </div>
             </div>
           </div>
-          <nav className="h-dtabs" aria-label="Sections">
-            {tabs.map(([id, l]) => <a key={id} href={`#${id}`}>{l}</a>)}
-          </nav>
         </div>
       </div>
+      <DetailTabs tabs={tabs} />
 
       <div className="h-wrap h-main h-dgrid">
         <div className="h-dcol">

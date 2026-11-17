@@ -656,3 +656,20 @@ a.h-co:hover b { color: var(--brand-ink); text-decoration: underline; text-under
 /* Phone: the home tables keep the columns a reader needs at a glance; the rest are on the IPO page. */
 @media (max-width: 760px) { .h-hm { display: none; } .h-co b { max-width: 200px; } }
 @media (max-width: 760px) { .h-tbl .h-co b { white-space: normal; max-width: none; } .h-tbl td:has(.h-co) { white-space: normal; } }
+
+/* Week navigation on the calendar's glance card. */
+.h-wknav { margin-top: 12px; display: flex; gap: 6px; }
+.h-wknav button { min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 15px; font-weight: 600; color: var(--ink2); cursor: pointer; }
+.h-wknav button:hover:not(:disabled) { border-color: var(--brand); color: var(--brand-ink); }
+.h-wknav button:disabled { opacity: .4; cursor: default; }
+.h-wknav-now { font-size: 13px !important; }
+/* IPO page tabs: their own bar, pinned under the header. Sticky only works inside its parent, so the bar sits outside the header block. */
+.h-dtabs-bar { position: sticky; top: 68px; z-index: 30; background: rgba(255, 255, 255, .97); backdrop-filter: saturate(1.4) blur(8px); border-bottom: 1px solid var(--line); }
+.h-dtabs-bar .h-dtabs { margin-top: 0; }
+.h-dtabs a:first-child { color: var(--ink2); box-shadow: inset 0 -2px 0 transparent; }
+.h-dtabs a[aria-current='true'] { color: var(--brand-ink); box-shadow: inset 0 -2px 0 var(--brand); }
+.h-dtop { border-bottom: 0; padding-bottom: 8px; }
+/* One offset for anchors: the header plus the tab bar. The cards' own scroll-margin would add to it. */
+html { scroll-padding-top: 128px; }
+.h-dcard { scroll-margin-top: 0; }
+@media (max-width: 760px) { .h-dtabs-bar { top: 60px; } html { scroll-padding-top: 116px; } }
