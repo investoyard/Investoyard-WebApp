@@ -80,6 +80,10 @@ export interface IpoCard {
   rhp: string | null;
   drhp: string | null;
   registrar: string | null;
+  /** "Fresh + OFS", "Fresh issue" or "Offer for sale", from the offer legs; '—' when neither is entered. */
+  issueType: string;
+  /** The first sentence or two of the company description, as plain text, for a hero or a header. */
+  blurb: string | null;
 }
 
 const OPEN_STAGES = ['live', 'opentoday', 'closingtoday'];
@@ -167,7 +171,27 @@ export function toCard(ipo: RawIpo, maxTimes: number): IpoCard {
     rhp: docUrl(ipo, (l) => /^rhp$/i.test(l) || (/prospectus/i.test(l) && !/draft/i.test(l))),
     drhp: docUrl(ipo, (l) => /drhp|draft/i.test(l)),
     registrar: ipo.registrar ? st.titleCase(ipo.registrar) : null,
+    issueType: issueTypeOf(ipo.extra),
+    blurb: blurbOf(ipo.extra && ipo.extra.companyDescription),
   };
+}
+
+function issueTypeOf(ex: any): string {
+  const has = (leg: any) => !!(leg && Number(leg.value) > 0);
+  const fresh = has(ex && ex.fresh);
+  const ofs = has(ex && ex.ofs);
+  return fresh && ofs ? 'Fresh + OFS' : fresh ? 'Fresh issue' : ofs ? 'Offer for sale' : '—';
+}
+
+/* Plain text, cut at a sentence end inside the first ~220 characters, else at a word. */
+function blurbOf(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, '’').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  if (t.length < 20) return null;
+  if (t.length <= 220) return t;
+  const cut = t.slice(0, 220);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.”'));
+  return end > 80 ? cut.slice(0, end + 1) : cut.slice(0, cut.lastIndexOf(' ')) + '…';
 }
 
 function docUrl(ipo: RawIpo, match: (label: string) => boolean): string | null {
@@ -231,7 +255,13 @@ export function homeModel(raw: RawIpo[]): HomeModel {
   };
 }
 
-export type AllotmentChoiceFull = { id: string; name: string; date: string; sym: string; board: string; logo: string | null; ini: string; registrar: string | null };
+export type AllotmentChoiceFull = {
+  id: string; name: string; date: string; sym: string; board: string; logo: string | null; ini: string; registrar: string | null;
+  /** The registrar's allotment-status page, when the operator entered one. */
+  registrarUrl: string | null;
+  /** Key dates as '18 Nov 2026', or '' when not entered. */
+  closeD: string; allotD: string; refundD: string; dematD: string; listD: string;
+};
 
 export function allotmentChoices(all: RawIpo[]): AllotmentChoiceFull[] {
   const today = st.istToday();
@@ -247,21 +277,36 @@ export function allotmentChoices(all: RawIpo[]): AllotmentChoiceFull[] {
       logo: x.logoUrl || null,
       ini: initials(st.shortName(x.name)),
       registrar: x.registrar ? st.titleCase(x.registrar) : null,
+      registrarUrl: httpUrl((x.extra || {}).registrarUrl),
+      closeD: dayMonYear(x.closeDate),
+      allotD: dayMonYear(x.allotmentDate),
+      refundD: dayMonYear(isoDay((x.extra || {}).refundDate)),
+      dematD: dayMonYear(isoDay((x.extra || {}).dematDate)),
+      listD: dayMonYear(x.listingDate),
     }));
 }
+
+/** A YYYY-MM-DD day from an operator-entered date, or ''. */
+export const isoDay = (v: unknown): string => {
+  const d = String(v || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+};
+const httpUrl = (v: unknown): string | null => (typeof v === 'string' && /^https?:\/\//i.test(v.trim()) ? v.trim() : null);
 
 /* -------------------------------------------------------------- archive --- */
 
 export interface ArchiveRow {
   sym: string; name: string; board: string; year: number | null; dates: string; band: string; size: string; subs: string | null; status: string; href: string;
   logo: string | null; ini: string; tone: Tone;
+  /** For filters and sorting. */
+  industry: string | null; sizeN: number | null; subsN: number | null; open: string;
 }
 
 export function archiveModel(raw: RawIpo[]): ArchiveRow[] {
   const all = raw.map(normalise).sort((a, b) => ((a.openDate || '') < (b.openDate || '') ? 1 : -1));
   return all.map((x) => {
     const c = toCard(x, 1);
-    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href, logo: c.logo, ini: c.ini, tone: c.tone };
+    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href, logo: c.logo, ini: c.ini, tone: c.tone, industry: c.industry, sizeN: c.sizeN, subsN: c.subsN, open: c.open };
   });
 }
 

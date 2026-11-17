@@ -1,121 +1,176 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import * as st from '@investoyard/shared-types';
 import {
-  CAL_KINDS, DOW, KIND_LABEL, KIND_TITLE, countKinds, dayNum, dowOf, monthDays, monthLabel, wdDayMon, ymOf,
-  type CalEvent, type CalendarModel,
+  addMonths, dayMon, monthLabel, weekDays, weekLabel, ymOf,
+  type CalIpo, type CalendarModel,
 } from '@/core/calendar';
-import { useCalendar } from '@/core/useCalendar';
-import { Arrow, RLogo } from './parts';
+import { Hero, Icon, Logo, Status, type IconName } from './parts';
 
 /*
- * HORIZON'S CALENDAR — the month as a ribbon of days across the partner's
- * colour, big numerals you swipe through; the chosen day's issues laid out
- * large on white underneath, and the month in four big numbers to close.
+ * HORIZON'S CALENDAR — the schedule as a table, the way a research desk keeps
+ * one: every IPO with any date in the chosen month, and all six of its dates
+ * side by side (open, close, allotment, refund, demat credit, listing). Above
+ * it, this week at a glance as a timeline of what happens each day.
+ *
+ * Today is the build day on the first render and the reader's IST day after
+ * mount, so the server HTML and the first client render agree.
  */
 
-export default function CalendarPage({ model }: { model: CalendarModel }) {
-  const c = useCalendar(model);
-  const ipo = (e: CalEvent) => model.ipos[e.i];
-  const ym = ymOf(c.anchor);
-  const ribbon = useRef<HTMLDivElement>(null);
-  const counts = countKinds(c.inView);
-  const nextDay = c.events.find((e) => e.d > c.selected)?.d;
+type Tab = 'all' | 'open' | 'upcoming' | 'allot' | 'list';
+const PER = 10;
+const DATES: [keyof CalIpo, string][] = [['open', 'Open'], ['close', 'Close'], ['allot', 'Allotment'], ['refund', 'Refund'], ['demat', 'Demat credit'], ['list', 'Listing']];
+const SUMMARY: [keyof CalIpo, string, string][] = [['open', 'IPO opens', 'IPOs open'], ['close', 'IPO closes', 'IPOs close'], ['allot', 'allotment', 'allotments'], ['refund', 'refund', 'refunds'], ['demat', 'demat credit', 'demat credits'], ['list', 'listing', 'listings']];
 
-  /* Keep the chosen day in view by moving the ribbon itself; scrollIntoView would also scroll the page. */
+const inMonth = (x: CalIpo, ym: string) => DATES.some(([k]) => String(x[k]).startsWith(ym));
+const dd = (d: string, ym: string) => (!d ? '—' : d.slice(0, 4) === ym.slice(0, 4) ? dayMon(d) : `${dayMon(d)} ${d.slice(0, 4)}`);
+
+export default function CalendarPage({ model }: { model: CalendarModel }) {
+  const [today, setToday] = useState(model.asOf);
+  const [ym, setYm] = useState(ymOf(model.asOf));
+  const [tab, setTab] = useState<Tab>('all');
+  const [board, setBoard] = useState('all');
+  const [sector, setSector] = useState('all');
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
+
   useEffect(() => {
-    const r = ribbon.current;
-    const el = r?.querySelector<HTMLElement>(`[data-day="${c.selected}"]`);
-    if (!r || !el) return;
-    const left = el.offsetLeft - r.clientWidth / 2 + el.clientWidth / 2;
-    r.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
-  }, [c.selected, ym]);
+    const t = st.istToday();
+    setToday(t);
+    if (t !== model.asOf && t >= model.from && t <= model.to) setYm(ymOf(t));
+  }, [model.asOf, model.from, model.to]);
+
+  const months = useMemo(() => {
+    const out: string[] = [];
+    for (let m = ymOf(model.to); m >= ymOf(model.from); m = addMonths(m, -1)) out.push(m);
+    return out;
+  }, [model.from, model.to]);
+  const sectors = useMemo(() => Array.from(new Set(model.ipos.map((x) => x.industry).filter(Boolean) as string[])).sort(), [model.ipos]);
+
+  const week = weekDays(today);
+  const wkEnd = week[6];
+  const inWeek = (d: string) => !!d && d >= week[0] && d <= wkEnd;
+  const stats: [IconName, number, string][] = [
+    ['calendar', model.ipos.filter((x) => x.open && x.open <= today && x.close >= today).length, 'Open IPOs'],
+    ['clock', model.ipos.filter((x) => x.open > today).length, 'Upcoming IPOs'],
+    ['check', model.ipos.filter((x) => inWeek(x.allot)).length, 'Allotments this week'],
+    ['candles', model.ipos.filter((x) => inWeek(x.list)).length, 'Listings this week'],
+  ];
+  const glance = week.map((d) => ({
+    d,
+    lines: SUMMARY.map(([k, one, many]) => { const n = model.ipos.filter((x) => x[k] === d).length; return n ? `${n} ${n === 1 ? one : many}` : ''; }).filter(Boolean),
+  })).filter((g) => g.lines.length);
+
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return model.ipos
+      .filter((x) => inMonth(x, ym))
+      .filter((x) => tab === 'all' || (tab === 'open' ? x.tone === 'open' : tab === 'upcoming' ? x.tone === 'upcoming' : tab === 'allot' ? x.allot.startsWith(ym) : x.list.startsWith(ym)))
+      .filter((x) => (board === 'all' || x.board === board) && (sector === 'all' || x.industry === sector) && (!s || x.name.toLowerCase().includes(s) || x.sym.toLowerCase().includes(s)))
+      .sort((a, b) => {
+        const rank = (x: CalIpo) => (x.tone === 'open' ? 0 : x.tone === 'upcoming' ? 1 : 2);
+        if (rank(a) !== rank(b)) return rank(a) - rank(b);
+        const ao = a.open || '9', bo = b.open || '9';
+        const dir = rank(a) === 2 ? -1 : 1;
+        return ao < bo ? -dir : ao > bo ? dir : a.name.localeCompare(b.name);
+      });
+  }, [model.ipos, ym, tab, board, sector, q]);
+  const pages = Math.max(1, Math.ceil(rows.length / PER));
+  const p = Math.min(page, pages - 1);
+  const shown = rows.slice(p * PER, p * PER + PER);
+  const reset = () => setPage(0);
+  const TABS: [Tab, string][] = [['all', 'All IPOs'], ['open', 'Open'], ['upcoming', 'Upcoming'], ['allot', 'Allotment'], ['list', 'Listing']];
 
   return (
     <>
-      <section className="h-on h-calband" aria-labelledby="cal-h">
-        <div className="h-wrap">
-          <div className="h-calband-top">
-            <div>
-              <p className="h-eyebrow h-soft">IPO calendar</p>
-              <h1 id="cal-h" className="dsp h-calmonth num" aria-live="polite">{monthLabel(ym)}</h1>
-            </div>
-            <div className="h-calnav">
-              <button type="button" className="h-calarrow" onClick={() => c.go(-1)} disabled={!c.canPrev} aria-label="Previous month">←</button>
-              <button type="button" className="h-btn h-btn-line-on h-caltoday" onClick={c.goToday}>Today</button>
-              <button type="button" className="h-calarrow" onClick={() => c.go(1)} disabled={!c.canNext} aria-label="Next month">→</button>
-            </div>
-          </div>
-        </div>
-        <div className="h-ribbon" ref={ribbon} role="group" aria-label={`Days of ${monthLabel(ym)}`}>
-          {monthDays(ym).map((d) => {
-            const evs = c.days.get(d) || [];
-            return (
-              <button key={d} type="button" data-day={d} className={`h-rday${d === c.selected ? ' is-sel' : ''}${d === c.today ? ' is-today' : ''}${evs.length ? ' has' : ''}`} onClick={() => c.pick(d)} aria-pressed={d === c.selected} aria-label={`${wdDayMon(d)}, ${evs.length || 'no'} event${evs.length === 1 ? '' : 's'}`}>
-                <span className="h-rday-w">{DOW[dowOf(d)]}</span>
-                <span className="dsp num h-rday-n">{dayNum(d)}</span>
-                <span className="h-rday-m" aria-hidden="true">{evs.slice(0, 4).map((e, j) => <i key={j} className={`k-${e.k}`} />)}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="h-wrap h-calfilters">
-          <div role="group" aria-label="Show events">
-            {CAL_KINDS.map((k) => <button key={k} type="button" className={`h-chip h-chip-on h-kchip k-${k}`} aria-pressed={c.kinds.has(k)} onClick={() => c.toggleKind(k)}><i aria-hidden="true" />{KIND_LABEL[k]}</button>)}
-          </div>
-          <div role="group" aria-label="Board">
-            {(['all', 'Mainboard', 'SME'] as const).map((b) => <button key={b} type="button" className="h-chip h-chip-on h-bchip" aria-pressed={c.board === b} onClick={() => c.setBoard(b)}>{b === 'all' ? 'All boards' : b}</button>)}
-          </div>
-        </div>
-      </section>
+      <Hero eyebrow="IPO calendar" title="IPO schedule & key dates" sub="Opening, closing, allotment, refund, demat credit and listing dates for every mainboard and SME IPO, at a glance." art="tower" />
+      <div className="h-wrap h-main">
+        <dl className="h-stats">
+          {stats.map(([ic, n, l], i) => (
+            <div key={l} className={i === 0 ? 'is-first' : undefined}><Icon name={ic} size={26} stroke={1.6} /><span><dd className="num">{n}</dd><dt>{l}</dt></span></div>
+          ))}
+        </dl>
 
-      <section className="h-sec h-calday" aria-labelledby="day-h">
-        <div className="h-wrap">
-          <div className="h-sec-h">
-            <div>
-              <p className="h-kicker">{c.selected === c.today ? 'Today' : 'Selected day'}</p>
-              <h2 id="day-h" className="dsp">{wdDayMon(c.selected)}</h2>
-            </div>
-            {c.onDay.length ? <p className="num">{c.onDay.length} event{c.onDay.length > 1 ? 's' : ''}</p> : null}
+        <section className="h-card h-glance" aria-labelledby="gl-h">
+          <div className="h-glance-l">
+            <h2 id="gl-h" className="h-h3">This week at a glance</h2>
+            <p className="num">{weekLabel(today)}</p>
           </div>
-          {c.onDay.length ? (
-            <div className="h-evgrid">
-              {c.onDay.map((e, j) => {
-                const x = ipo(e);
-                return (
-                  <Link key={j} href={x.href} className={`h-evcard k-${e.k}`}>
-                    <span className="h-evcard-k">{KIND_LABEL[e.k]}</span>
-                    <span className="h-evcard-id"><RLogo ipo={x} /><span><b className="dsp">{x.name}</b><span>{x.board}</span></span></span>
-                    <dl className="h-evcard-f">
-                      <div><dt>Price band</dt><dd className="num">{x.band}</dd></div>
-                      <div><dt>Bidding</dt><dd className="num">{x.dates}</dd></div>
-                    </dl>
-                    <span className="h-evcard-go">View the issue <Arrow /></span>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="h-calnone">
-              <p>No IPO events on this day.</p>
-              {nextDay ? <button type="button" className="h-btn h-btn-line" onClick={() => c.pick(nextDay)}>Next event: {wdDayMon(nextDay)} <Arrow /></button> : null}
-            </div>
-          )}
-        </div>
-      </section>
+          {glance.length ? (
+            <ol className="h-glance-t">
+              {glance.map((g) => (
+                <li key={g.d} className={g.d < today ? 'done' : g.d === today ? 'now' : undefined}>
+                  <span className="h-glance-d num">{g.d === today ? 'Today' : dayMon(g.d)}</span>
+                  <i aria-hidden="true" />
+                  {g.lines.map((l) => <span key={l} className="h-glance-x">{l}</span>)}
+                </li>
+              ))}
+            </ol>
+          ) : <p className="h-tbl-none">No IPO dates fall this week.</p>}
+        </section>
 
-      <section className="h-sec h-sec-mist h-calsum" aria-labelledby="sum-h">
-        <div className="h-wrap">
-          <h2 id="sum-h" className="dsp h-calsum-h">{monthLabel(ym)} in numbers</h2>
-          <dl className="h-calnums">
-            {CAL_KINDS.map((k) => (
-              <div key={k} className={`k-${k}`}><dt>{KIND_TITLE[k]}</dt><dd className="dsp num">{counts[k]}</dd></div>
+        <div className="h-calbar">
+          <div className="h-tabs" role="tablist" aria-label="Filter IPOs">
+            {TABS.map(([t, l]) => <button key={t} type="button" role="tab" className="h-tab" aria-selected={tab === t} onClick={() => { setTab(t); reset(); }}>{l}</button>)}
+          </div>
+          <div className="h-filters">
+            <label className="h-sel h-sel-plain"><span className="sr">Month</span><select value={ym} onChange={(e) => { setYm(e.target.value); reset(); }}>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
+            <label className="h-sel h-sel-plain"><span className="sr">Board</span><select value={board} onChange={(e) => { setBoard(e.target.value); reset(); }}><option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option></select></label>
+            {sectors.length ? <label className="h-sel h-sel-plain"><span className="sr">Sector</span><select value={sector} onChange={(e) => { setSector(e.target.value); reset(); }}><option value="all">All sectors</option>{sectors.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
+            <label className="h-qbox"><Icon name="search" size={17} /><span className="sr">Search</span><input type="search" placeholder="Search company or IPO" value={q} onChange={(e) => { setQ(e.target.value); reset(); }} /></label>
+          </div>
+        </div>
+
+        <section className="h-card h-card-flush" aria-label={`IPOs with dates in ${monthLabel(ym)}`}>
+          <div className="h-tbl-wrap">
+            <table className="h-tbl h-tbl-cal">
+              <thead>
+                <tr><th className="num">#</th><th>Company / IPO</th><th className="r">Issue size</th><th className="r">Price band (₹)</th><th>Board</th>{DATES.map(([, l]) => <th key={l}>{l}</th>)}<th>Status</th></tr>
+              </thead>
+              <tbody>
+                {shown.length ? shown.map((x, i) => (
+                  <tr key={x.sym}>
+                    <td className="num h-muted">{p * PER + i + 1}</td>
+                    <td><Link className="h-co" href={x.href}><Logo ipo={x} size="sm" /><span><b>{x.name}</b>{x.industry ? <small>{x.industry}</small> : null}</span></Link></td>
+                    <td className="r num">{x.size}</td>
+                    <td className="r num">{x.band.replace(/₹/g, '')}</td>
+                    <td><span className={`h-board${x.board === 'SME' ? ' sme' : ''}`}>{x.board}</span></td>
+                    {DATES.map(([k]) => {
+                      const d = String(x[k]);
+                      return <td key={k} className={`num h-dt${d === today ? ' is-today' : ''}${!d ? ' h-muted' : ''}`}>{dd(d, ym)}</td>;
+                    })}
+                    <td><Status tone={x.tone}>{x.tone === 'open' ? 'Open' : x.tone === 'upcoming' ? 'Upcoming' : x.list && x.list <= today ? 'Listed' : 'Closed'}</Status></td>
+                  </tr>
+                )) : <tr><td colSpan={12} className="h-tbl-none">No IPO matches in {monthLabel(ym)}.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <ul className="h-mrows">
+            {shown.map((x) => (
+              <li key={x.sym}>
+                <Link href={x.href} className="h-mrow">
+                  <span className="h-mrow-h"><Logo ipo={x} size="sm" /><span><b>{x.name}</b><small>{x.board} · {x.band}</small></span><Status tone={x.tone}>{x.tone === 'open' ? 'Open' : x.tone === 'upcoming' ? 'Upcoming' : 'Closed'}</Status></span>
+                  <span className="h-mrow-d">{DATES.filter(([k]) => x[k]).map(([k, l]) => <span key={k}><small>{l}</small><b className="num">{dayMon(String(x[k]))}</b></span>)}</span>
+                </Link>
+              </li>
             ))}
-          </dl>
-          <p className="h-calsum-note">Dates as published for each issue. Earlier months are in the <Link href="/ipos/" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>archive</Link>.</p>
+          </ul>
+        </section>
+
+        <div className="h-pager">
+          <span className="h-muted num">{rows.length ? `Showing ${p * PER + 1}–${Math.min(rows.length, p * PER + PER)} of ${rows.length} IPOs` : 'No IPOs'}</span>
+          {pages > 1 ? (
+            <nav className="h-pages" aria-label="Pages">
+              <button type="button" onClick={() => setPage(p - 1)} disabled={p === 0} aria-label="Previous page">‹</button>
+              {Array.from({ length: pages }, (_, i) => <button key={i} type="button" aria-current={i === p ? 'page' : undefined} onClick={() => setPage(i)}>{i + 1}</button>)}
+              <button type="button" onClick={() => setPage(p + 1)} disabled={p >= pages - 1} aria-label="Next page">›</button>
+            </nav>
+          ) : null}
         </div>
-      </section>
+        <p className="h-fine">Dates as published for each issue; a dash means the date has not been entered. Earlier months are in the <Link className="h-link-in" href="/ipos/">archive</Link>.</p>
+      </div>
     </>
   );
 }

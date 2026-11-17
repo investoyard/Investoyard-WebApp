@@ -1,7 +1,7 @@
 import * as st from '@investoyard/shared-types';
 import type { RawIpo } from './data.server';
 import { dayMon, priceBand, wdDayMon } from './format';
-import { normalise, toCard, type Tone } from './models';
+import { isoDay, normalise, toCard, type Tone } from './models';
 
 /*
  * THE IPO CALENDAR — the data every variant's calendar page renders.
@@ -24,6 +24,9 @@ export const KIND_TITLE: Record<CalKind, string> = { open: 'Opening', close: 'Cl
 export interface CalIpo {
   sym: string; name: string; board: 'Mainboard' | 'SME'; logo: string | null; ini: string; href: string;
   band: string; size: string; tone: Tone; status: string; dates: string;
+  /** Every key date as YYYY-MM-DD ('' when not entered), for a design that tabulates them. */
+  open: string; close: string; allot: string; refund: string; demat: string; list: string;
+  industry: string | null; sizeN: number | null;
 }
 /** One event. `i` indexes `ipos`, so an IPO with four events is carried once. */
 export interface CalEvent { d: string; k: CalKind; i: number }
@@ -60,6 +63,9 @@ export function calendarModel(raw: RawIpo[]): CalendarModel {
       sym: c.sym, name: c.name, board: c.board, logo: c.logo, ini: c.ini, href: c.href,
       band: priceBand(Number(x.priceBandMin) || null, Number(x.priceBandMax) || null), size: c.size,
       tone: c.tone, status: c.status, dates: c.dates,
+      open: c.open, close: c.close, allot: c.allotment, list: c.listing,
+      refund: isoDay((x.extra || {}).refundDate), demat: isoDay((x.extra || {}).dematDate),
+      industry: c.industry, sizeN: c.sizeN,
     }) - 1;
     for (const e of mine) events.push({ ...e, i });
   }

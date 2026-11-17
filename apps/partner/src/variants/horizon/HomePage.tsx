@@ -1,23 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import type { HomeModel, IpoCard } from '@/core/models';
-import { useAllotmentCheck } from '@/core/allotment';
-import AllotForm from './AllotForm';
-import { usePartner } from '@/core/tenant';
-import { Arrow, Chip, RLogo, targetOf } from './parts';
+import { dayMonYear } from '@/core/format';
 import Countdown from './Countdown';
-
-type Tab = 'all' | 'open' | 'upcoming' | 'closed';
-type View = 'cards' | 'list';
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'open', label: 'Open now' },
-  { key: 'upcoming', label: 'Upcoming' },
-  { key: 'closed', label: 'Closed' },
-];
+import { Arrow, HeroArt, Icon, Logo, Status, targetOf, type IconName } from './parts';
 
 /*
  * The featured issue: the first open one, else the next to open, else the
@@ -30,141 +18,103 @@ const featuredOf = (m: HomeModel): IpoCard | null =>
 const topDemand = (m: HomeModel) =>
   [...m.actionable, ...m.recent].filter((c) => c.subsN != null).sort((a, b) => b.subsN! - a.subsN!);
 
-function Hero({ m, f }: { m: HomeModel; f: IpoCard | null }) {
-  const p = usePartner();
-  const target = f ? targetOf(f) : null;
-  const top = topDemand(m)[0] || null;
+function Featured({ f }: { f: IpoCard }) {
+  const target = targetOf(f);
+  const chips: [IconName, string, string][] = [
+    ['building', 'Issue size', f.size],
+    ['tag', 'Price band', f.band],
+    ['layers', 'Lot size', f.lot],
+    ['users', 'Issue type', f.issueType],
+  ];
   return (
-    <section className="h-on h-hero" aria-labelledby="h-hero-h">
+    <section className="h-feat-band" aria-labelledby="h-hero-h">
       <div className="h-wrap">
-        <div className="h-hero-grid">
-          <div className="h-hero-copy">
-            <p className="h-eyebrow h-soft">{p ? `${p.name} · IPO desk` : ' '}</p>
-            <h1 id="h-hero-h" className="dsp">Every public issue, ahead of the bell.</h1>
-            <p className="h-hero-lede h-soft">Dates, price bands, live subscription and allotment status for every mainboard and SME IPO, as the exchanges publish them.</p>
-            <div className="h-hero-ctas">
-              <a className="h-btn h-btn-on" href="#issues">See current IPOs <Arrow /></a>
-              <Link className="h-btn h-btn-line-on" href="/allotment/">Check allotment</Link>
+        <div className="h-feat">
+          <div className="h-feat-copy">
+            <div className="h-feat-tags">
+              <span className="h-tag-b">Featured IPO</span>
+              <Status tone={f.tone}>{f.status}</Status>
+            </div>
+            <h1 id="h-hero-h" className="h-h1">{f.legal}</h1>
+            <p className="h-lede">{f.blurb || `${f.board} issue on ${f.exchanges}, bidding ${f.dates}.`}</p>
+            <dl className="h-chips">
+              {chips.map(([ic, k, v]) => (
+                <div key={k}><Icon name={ic} size={20} /><span><dt>{k}</dt><dd className="num">{v}</dd></span></div>
+              ))}
+            </dl>
+            <div className="h-actions">
+              <Link className="h-btn h-btn-p" href={f.href}>View details</Link>
+              {f.tone === 'closed'
+                ? <Link className="h-link" href="/allotment/">Check allotment <Arrow /></Link>
+                : <Link className="h-link" href="/subscription/">Live subscription <Arrow /></Link>}
             </div>
           </div>
-          {f ? (
-            <div className="h-feature">
-              <div className="h-feature-top">
-                <span className="h-eyebrow" style={{ color: 'var(--brand-ink)' }}>{f.tone === 'open' ? 'Open now' : f.tone === 'upcoming' ? 'Next up' : 'In focus'}</span>
-                <Chip tone={f.tone}>{f.status}</Chip>
-              </div>
-              <h2 className="h-feature-name dsp">{f.name}</h2>
-              <p className="h-feature-meta">{f.board} · {f.exchanges} · {f.dates}</p>
-              {target ? (
-                <>
-                  <p className="h-feature-lbl">{target.label}</p>
-                  <Countdown at={target.at} />
-                </>
-              ) : f.subs ? (
-                <p className="h-feature-sub"><strong className="dsp num">{f.subs}</strong> <span>subscribed, final</span></p>
+          <div className="h-feat-art">
+            <HeroArt kind="exchange" />
+            {target ? <div className="h-feat-card"><Countdown at={target.at} label={target.label} /></div>
+              : f.subs ? (
+                <div className="h-feat-card h-feat-subs">
+                  <p className="h-cd-l"><Icon name="chart" size={18} />Subscribed, final</p>
+                  <strong className="num">{f.subs}</strong>
+                </div>
               ) : null}
-              <dl className="h-feature-figs">
-                <div><dt>Price band</dt><dd className="num">{f.band}</dd></div>
-                <div><dt>Min. investment</dt><dd className="num">{f.min}</dd></div>
-                <div><dt>Issue size</dt><dd className="num">{f.size}</dd></div>
-              </dl>
-              <Link className="h-btn h-btn-p" href={f.href}>View details <Arrow /></Link>
-            </div>
-          ) : <div />}
+          </div>
         </div>
-        <ul className="h-hero-stats">
-          <li><strong className="dsp num">{m.counts.open}</strong><span className="h-soft">open for bidding</span></li>
-          <li><strong className="dsp num">{m.counts.upcoming}</strong><span className="h-soft">opening soon</span></li>
-          <li><strong className="dsp num">{m.counts.recent}</strong><span className="h-soft">listed in the last 45 days</span></li>
-          <li><strong className="dsp num">{top ? top.subs : '—'}</strong><span className="h-soft">{top ? `highest demand · ${top.name}` : 'highest demand'}</span></li>
-        </ul>
       </div>
     </section>
   );
 }
 
-function BigCard({ c }: { c: IpoCard }) {
+function SecHead({ id, title, count, href, more = 'View all' }: { id: string; title: string; count?: number; href?: string; more?: string }) {
   return (
-    <Link className="h-big" href={c.href}>
-      <RLogo ipo={c} />
-      <div style={{ minWidth: 0 }}>
-        <div className="h-big-top">
-          <Chip tone={c.tone}>{c.status}</Chip>
-          <span className="h-dim">{c.board}</span>
-        </div>
-        <h3 className="h-big-name dsp">{c.name}</h3>
-        <dl className="h-big-row">
-          <div><dt>Dates</dt><dd className="num">{c.dates}</dd></div>
-          <div><dt>Price band</dt><dd className="num">{c.band}</dd></div>
-          <div><dt>Min. investment</dt><dd className="num">{c.min}</dd></div>
-        </dl>
-        <div className="h-big-fig">
-          {c.subs
-            ? <><strong className="dsp num">{c.subs}</strong><span className="h-dim">{c.tone === 'open' ? 'subscribed so far' : 'subscribed, final'}</span></>
-            : <><strong className="dsp num">{c.size}</strong><span className="h-dim">issue size</span></>}
-        </div>
-      </div>
-    </Link>
+    <div className="h-sec-h">
+      <h2 id={id} className="h-h2">{title}{count != null ? <span className="h-count num"> ({count})</span> : null}</h2>
+      {href ? <Link className="h-link" href={href}>{more} <Arrow /></Link> : null}
+    </div>
   );
 }
 
-function LineRow({ c }: { c: IpoCard }) {
+function Current({ rows, title = 'Current issues', id = 'cur-h' }: { rows: IpoCard[]; title?: string; id?: string }) {
   return (
-    <Link className="h-line" href={c.href}>
-      <div style={{ minWidth: 0 }}>
-        <div className="h-line-name dsp">{c.name}</div>
-        <div className="h-dim" style={{ marginTop: 4 }}>{c.board} · {c.status}</div>
+    <section className="h-card" aria-labelledby={id}>
+      <SecHead id={id} title={title} count={rows.length} href="/calendar/" />
+      <div className="h-tbl-wrap">
+        <table className="h-tbl">
+          <thead><tr><th>Company / issue size</th><th className="r h-hm">Price band</th><th className="r h-hm">Lot size</th><th className="h-hm">Open – close</th><th>Status</th></tr></thead>
+          <tbody>
+            {rows.length ? rows.map((c) => (
+              <tr key={c.sym}>
+                <td><Link className="h-co" href={c.href}><Logo ipo={c} size="sm" /><span><b>{c.name}</b><small className="num">{c.size}</small></span></Link></td>
+                <td className="r num h-hm">{c.band}</td>
+                <td className="r num h-hm">{c.lot.replace(' shares', '')}</td>
+                <td className="num h-hm">{c.dates}</td>
+                <td><Status tone={c.tone}>{c.status}</Status></td>
+              </tr>
+            )) : <tr><td colSpan={5} className="h-tbl-none">No issue is open or awaiting listing right now.</td></tr>}
+          </tbody>
+        </table>
       </div>
-      <div className="h-line-v num">{c.dates}<small>Bidding</small></div>
-      <div className="h-line-v num">{c.band}<small>Price band</small></div>
-      <div className="h-line-v num">{c.min}<small>Min. investment</small></div>
-      <div className="h-line-v h-line-key num">{c.subs || c.size}<small>{c.subs ? 'Subscribed' : 'Issue size'}</small></div>
-    </Link>
+    </section>
   );
 }
 
-function Issues({ m }: { m: HomeModel }) {
-  const [tab, setTab] = useState<Tab>('all');
-  const [view, setView] = useState<View>('cards');
-  const counts: Record<Tab, number> = {
-    all: m.actionable.length,
-    open: m.actionable.filter((c) => c.tone === 'open').length,
-    upcoming: m.actionable.filter((c) => c.tone === 'upcoming').length,
-    closed: m.actionable.filter((c) => c.tone === 'closed').length,
-  };
-  const rows = useMemo(() => (tab === 'all' ? m.actionable : m.actionable.filter((c) => c.tone === tab)), [m.actionable, tab]);
+function Upcoming({ rows }: { rows: IpoCard[] }) {
   return (
-    <section className="h-sec" id="issues" aria-labelledby="iss-h">
-      <div className="h-wrap">
-        <div className="h-sec-h">
-          <div>
-            <p className="h-kicker">Current issues</p>
-            <h2 id="iss-h" className="dsp">On the board</h2>
-            <p>Open, upcoming, and issues waiting on allotment or listing, in the order they need your attention.</p>
-          </div>
-          <div className="h-ctrl" role="group" aria-label="Layout">
-            <button type="button" className="h-tab" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>Cards</button>
-            <button type="button" className="h-tab" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
-          </div>
-        </div>
-        <div className="h-ctrl" role="tablist" aria-label="Filter issues">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" role="tab" className="h-tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}<b className="num">{counts[t.key]}</b>
-            </button>
-          ))}
-        </div>
-        {rows.length === 0 ? (
-          <div className="h-empty"><strong className="dsp">Nothing here today</strong><p>No issue is in this state right now. The archive holds every past IPO.</p></div>
-        ) : view === 'cards' ? (
-          <div className="h-grid2">{rows.map((c) => <BigCard key={c.sym} c={c} />)}</div>
-        ) : (
-          <div className="h-lines">{rows.map((c) => <LineRow key={c.sym} c={c} />)}</div>
-        )}
-        <div className="h-more">
-          <span className="h-dim">Figures as the exchanges publish them. A dash means the issue has not published that figure.</span>
-          <Link className="h-link" href="/ipos/">Browse every past IPO <Arrow /></Link>
-        </div>
+    <section className="h-card" aria-labelledby="up-h">
+      <SecHead id="up-h" title="Upcoming issues" count={rows.length} href="/calendar/" />
+      <div className="h-tbl-wrap">
+        <table className="h-tbl">
+          <thead><tr><th>Company</th><th className="r">Issue size</th><th className="r">Open date</th></tr></thead>
+          <tbody>
+            {rows.length ? rows.map((c) => (
+              <tr key={c.sym}>
+                <td><Link className="h-co" href={c.href}><Logo ipo={c} size="sm" /><span><b>{c.name}</b><small>{c.board}</small></span></Link></td>
+                <td className="r num">{c.size}</td>
+                <td className="r num">{c.open ? dayMonYear(c.open) : '—'}</td>
+              </tr>
+            )) : <tr><td colSpan={3} className="h-tbl-none">No issue has announced its dates yet.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </section>
   );
@@ -173,105 +123,90 @@ function Issues({ m }: { m: HomeModel }) {
 /* A ranking, stated as what it is: the highest subscription multiples among current and recently listed issues. */
 function Demand({ m }: { m: HomeModel }) {
   const list = topDemand(m).slice(0, 5);
-  if (!list.length) return null;
   return (
-    <section className="h-sec h-sec-mist" aria-labelledby="dem-h">
-      <div className="h-wrap">
-        <div className="h-sec-h">
-          <div>
-            <p className="h-kicker">Subscription</p>
-            <h2 id="dem-h" className="dsp">Highest demand</h2>
-            <p>Overall subscription across current and recently listed issues. Bars use a log scale, so a 2× issue still shows.</p>
-          </div>
-          <Link className="h-link" href="/subscription/">Full subscription table <Arrow /></Link>
-        </div>
+    <section className="h-card" aria-labelledby="dem-h">
+      <SecHead id="dem-h" title="Highest-demand IPOs" href="/subscription/" more="Subscription" />
+      <p className="h-note">Overall subscription among current and recently listed issues. Bars use a log scale.</p>
+      {list.length ? (
         <ol className="h-rank">
           {list.map((c, i) => (
             <li key={c.sym}>
-              <span className="h-rank-n dsp num">{String(i + 1).padStart(2, '0')}</span>
-              <Link href={c.href} style={{ minWidth: 0 }}>
-                <div className="h-rank-name">{c.name}</div>
-                <div className="h-dim">{c.board} · {c.status}</div>
-              </Link>
-              <div className="h-rank-bar" aria-hidden="true"><span style={{ width: `${c.bar}%` }} /></div>
-              <span className="h-rank-v dsp num">{c.subs}</span>
+              <span className="h-rank-n num">{i + 1}</span>
+              <Link href={c.href} className="h-rank-name">{c.name}</Link>
+              <span className="h-rank-bar" aria-hidden="true"><span style={{ width: `${Math.max(c.bar, 4)}%` }} /></span>
+              <b className="num">{c.subs}</b>
             </li>
           ))}
         </ol>
-      </div>
+      ) : <p className="h-tbl-none">No subscription figures yet.</p>}
     </section>
   );
 }
 
-function Listed({ m }: { m: HomeModel }) {
-  if (!m.recent.length) return null;
+function Listed({ rows }: { rows: IpoCard[] }) {
   return (
-    <section className="h-sec" aria-labelledby="lst-h">
-      <div className="h-wrap">
-        <div className="h-sec-h">
-          <div>
-            <p className="h-kicker">Recently listed</p>
-            <h2 id="lst-h" className="dsp">Just hit the market</h2>
-            <p>Issues listed in the last 45 days, newest first. Scroll sideways for more.</p>
-          </div>
-        </div>
-        <div className="h-rail" tabIndex={0} role="region" aria-label="Recently listed issues">
-          {m.recent.map((c) => (
-            <Link key={c.sym} className="h-rcard" href={c.href}>
-              <div className="h-rcard-top">
-                <RLogo ipo={c} />
-                <span className="h-chip closed"><i aria-hidden="true" />{c.status}</span>
-              </div>
-              <div>
-                <div className="h-rcard-name dsp">{c.name}</div>
-                <div className="h-dim" style={{ marginTop: 6 }}>{c.board} · {c.band}</div>
-              </div>
-              <div>
-                <div className="h-rcard-big dsp num">{c.subs || c.size}</div>
-                <div className="h-dim" style={{ marginTop: 6 }}>{c.subs ? 'subscribed, final' : 'issue size'}</div>
-              </div>
-            </Link>
-          ))}
-        </div>
+    <section className="h-card" aria-labelledby="lst-h">
+      <SecHead id="lst-h" title="Recently listed IPOs" href="/ipos/" />
+      <div className="h-tbl-wrap">
+        <table className="h-tbl">
+          <thead><tr><th>Company</th><th className="r h-hm">Issue price</th><th className="r h-hm">Listed on</th><th className="r">Subscribed</th></tr></thead>
+          <tbody>
+            {rows.length ? rows.map((c) => (
+              <tr key={c.sym}>
+                <td><Link className="h-co" href={c.href}><Logo ipo={c} size="sm" /><span><b>{c.name}</b><small>{c.board}</small></span></Link></td>
+                <td className="r num h-hm">{c.band}</td>
+                <td className="r num h-hm">{c.listing ? dayMonYear(c.listing) : '—'}</td>
+                <td className="r num"><b>{c.subs || '—'}</b></td>
+              </tr>
+            )) : <tr><td colSpan={4} className="h-tbl-none">Nothing listed in the last 45 days.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </section>
   );
 }
 
-const STEPS: [string, string][] = [
-  ['Pick an issue', 'Read the price band, the dates and the offer document. Everything here comes from the exchanges and the RHP.'],
-  ['Bid with UPI', 'Apply through your demat account. The bid amount is blocked in your bank by UPI mandate, not debited.'],
-  ['Get the result', 'Check allotment here on allotment day. Allotted shares reach your demat before listing; the rest is released.'],
+/* Plain-language explainers. Generic and factual — what happens, not what to do. */
+const BASICS: { icon: IconName; title: string; short: string; long: string }[] = [
+  {
+    icon: 'book', title: 'What is an IPO?',
+    short: 'A company selling its shares to the public for the first time.',
+    long: 'In an initial public offering a company lists on a stock exchange. It may raise new money (a fresh issue), let existing shareholders sell (an offer for sale), or both. Mainboard IPOs list on NSE and BSE; smaller companies list on the SME platforms.',
+  },
+  {
+    icon: 'chart', title: 'How to apply',
+    short: 'Bid through your broker or bank while the issue is open.',
+    long: 'Choose a quantity in whole lots within the price band, or bid at the cut-off price, and approve the UPI mandate. The amount is blocked in your bank account, not debited, until allotment. One public application is allowed per PAN per issue.',
+  },
+  {
+    icon: 'coins', title: 'How allotment works',
+    short: 'The registrar decides who gets shares once bidding closes.',
+    long: 'If an issue is oversubscribed, retail applicants are chosen by a computerised draw for the minimum lot; other categories are allotted as the offer document sets out. Shares go to your demat account, and the money for any shares not allotted is released.',
+  },
+  {
+    icon: 'candles', title: 'Listing day',
+    short: 'The day the shares start trading on the exchange.',
+    long: 'Listing usually follows three working days after the issue closes. The opening price is set in a pre-open session that morning. From then on the shares trade like any other listed stock, and the price can move in either direction.',
+  },
 ];
 
-function Steps() {
+function Basics() {
+  const [open, setOpen] = useState<number | null>(null);
   return (
-    <section className="h-sec h-sec-mist" aria-labelledby="how-h">
-      <div className="h-wrap">
-        <div className="h-sec-h"><div><p className="h-kicker">How an IPO works</p><h2 id="how-h" className="dsp">Three steps, one week</h2></div></div>
-        <ol className="h-steps">
-          {STEPS.map(([t, d], i) => (
-            <li key={t}><div className="h-steps-n dsp num">{i + 1}</div><h3>{t}</h3><p>{d}</p></li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
-function AllotBand({ choices }: { choices: HomeModel['allotmentChoices'] }) {
-  const a = useAllotmentCheck(choices);
-  const onSubmit = (e: FormEvent) => { e.preventDefault(); a.submit(); };
-  if (!choices.length) return null;
-  return (
-    <section className="h-on h-allot-band" aria-labelledby="al-h">
-      <div className="h-wrap h-allot-grid">
-        <div>
-          <p className="h-eyebrow h-soft">Allotment</p>
-          <h2 id="al-h" className="dsp" style={{ marginTop: 14 }}>Did you get the shares?</h2>
-          <p className="h-soft h-allot-lede">Checks the registrar’s file for any applicant, wherever they applied, once the basis of allotment is out.</p>
-        </div>
-        <AllotForm a={a} choices={choices} onSubmit={onSubmit} />
+    <section className="h-sec" aria-labelledby="edu-h">
+      <div className="h-sec-h"><div><h2 id="edu-h" className="h-h2">IPO basics</h2><p className="h-note">The terms on this site, explained briefly.</p></div></div>
+      <div className="h-edu">
+        {BASICS.map((b, i) => (
+          <article key={b.title} className="h-card h-edu-c">
+            <span className="h-edu-ic"><Icon name={b.icon} size={26} stroke={1.6} /></span>
+            <h3 className="h-h3">{b.title}</h3>
+            <p>{b.short}</p>
+            {open === i ? <p className="h-edu-more">{b.long}</p> : null}
+            <button type="button" className="h-link h-link-btn" aria-expanded={open === i} onClick={() => setOpen(open === i ? null : i)}>
+              {open === i ? 'Show less' : 'Read more'} <Arrow />
+            </button>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -279,14 +214,32 @@ function AllotBand({ choices }: { choices: HomeModel['allotmentChoices'] }) {
 
 export default function HomePage({ model }: { model: HomeModel }) {
   const f = featuredOf(model);
+  const current = model.actionable.filter((c) => c.tone !== 'upcoming').slice(0, 6);
+  const upcoming = model.actionable.filter((c) => c.tone === 'upcoming').slice(0, 6);
   return (
     <>
-      <Hero m={model} f={f} />
-      <Issues m={model} />
-      <Demand m={model} />
-      <Listed m={model} />
-      <Steps />
-      <AllotBand choices={model.allotmentChoices} />
+      {f ? <Featured f={f} /> : (
+        <section className="h-feat-band" aria-labelledby="h-hero-h">
+          <div className="h-wrap"><div className="h-feat"><div className="h-feat-copy">
+            <h1 id="h-hero-h" className="h-h1">IPO research &amp; insights</h1>
+            <p className="h-lede">Dates, price bands, subscription and allotment for every mainboard and SME IPO.</p>
+          </div><div className="h-feat-art"><HeroArt kind="exchange" /></div></div></div>
+        </section>
+      )}
+      <div className="h-wrap h-main">
+        {current.length && upcoming.length ? (
+          <div className="h-row h-row-iss">
+            <Current rows={current} />
+            <Upcoming rows={upcoming} />
+          </div>
+        ) : upcoming.length ? <Current rows={upcoming} title="Upcoming issues" id="up-h" /> : <Current rows={current} />}
+        <div className="h-row">
+          <Demand m={model} />
+          <Listed rows={model.recent.slice(0, 5)} />
+        </div>
+        <Basics />
+        <p className="h-fine">Figures as the exchanges and registrars publish them. A dash means the figure has not been published. This site informs; it does not recommend any issue.</p>
+      </div>
     </>
   );
 }
