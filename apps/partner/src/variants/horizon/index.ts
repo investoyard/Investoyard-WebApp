@@ -7,6 +7,7 @@ import DetailPage from './DetailPage';
 import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
+import CalendarPage from './CalendarPage';
 
 /*
  * HORIZON — variant 4. Brand-led, big type, editorial rhythm.
@@ -24,6 +25,7 @@ const horizon: VariantModule = {
   SubscriptionPage,
   AllotmentPage,
   ArchivePage,
+  CalendarPage,
 };
 
 export default horizon;

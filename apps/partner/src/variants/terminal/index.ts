@@ -7,6 +7,7 @@ import DetailPage from './DetailPage';
 import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
+import CalendarPage from './CalendarPage';
 
 /*
  * TERMINAL — variant 3. A broker's trading platform: dark navy, precise,
@@ -24,6 +25,7 @@ const terminal: VariantModule = {
   SubscriptionPage,
   AllotmentPage,
   ArchivePage,
+  CalendarPage,
 };
 
 export default terminal;

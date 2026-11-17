@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { FormEvent } from 'react';
 import { outcomeText, useAllotmentCheck, type AllotmentChoice } from '@/core/allotment';
 import { Chip } from './parts';
@@ -41,7 +42,7 @@ export default function AllotmentPage({ choices }: { choices: AllotmentChoice[] 
           </div>
         </section>
         <aside className="b-tile" aria-label="Allotment calendar">
-          <h2 className="b-h3 disp">Allotment calendar</h2>
+          <h2 className="b-h3 disp" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>Allotment calendar <Link className="b-link" href="/calendar/" style={{ fontSize: 14, fontFamily: 'var(--font-bento-body)', letterSpacing: 0 }}>Full calendar</Link></h2>
           <ul className="b-cal">
             {cal.map((c) => <li key={c.id}><span style={{ fontWeight: 600 }}>{c.name}</span><span className="num" style={{ color: 'var(--ink2)', whiteSpace: 'nowrap' }}>{c.date}</span></li>)}
           </ul>

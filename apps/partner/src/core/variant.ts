@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
+import type { CalendarModel } from './calendar';
 import type { AllotmentChoiceFull, ArchiveRow, DetailModel, HomeModel, SubscriptionModel } from './models';
 
 /*
@@ -21,4 +22,5 @@ export interface VariantModule {
   SubscriptionPage: ComponentType<{ model: SubscriptionModel }>;
   AllotmentPage: ComponentType<{ choices: AllotmentChoiceFull[] }>;
   ArchivePage: ComponentType<{ rows: ArchiveRow[] }>;
+  CalendarPage: ComponentType<{ model: CalendarModel }>;
 }

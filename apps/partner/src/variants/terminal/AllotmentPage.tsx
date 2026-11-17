@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { FormEvent } from 'react';
 import { outcomeText, useAllotmentCheck, type AllotmentChoice } from '@/core/allotment';
 
@@ -33,7 +34,7 @@ export default function AllotmentPage({ choices }: { choices: AllotmentChoice[] 
           ) : <div className="t-empty">No IPO has closed in the last 90 days, so there is nothing to look up yet.</div>}
         </section>
         <aside className="t-panel" aria-labelledby="cal-h">
-          <div className="t-ph"><h2 id="cal-h">Allotment calendar</h2></div>
+          <div className="t-ph"><h2 id="cal-h">Allotment calendar</h2><Link className="t-link" href="/calendar/" style={{ fontSize: 13 }}>Full calendar</Link></div>
           {dated.length ? (
             <dl className="t-dl">{dated.map((c) => <div key={c.id}><dt style={{ color: 'var(--ink)' }}>{c.name}</dt><dd className="t-muted">{c.date}</dd></div>)}</dl>
           ) : <div className="t-empty" style={{ padding: 28 }}>No allotment dates recorded.</div>}

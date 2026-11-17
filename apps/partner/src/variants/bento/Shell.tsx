@@ -12,6 +12,7 @@ const isCurrent = (path: string, href: string) =>
 const ICON: Record<string, ReactNode> = {
   '/': <path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z" />,
   '/subscription/': <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
+  '/calendar/': <><path d="M7 3v3M17 3v3M4 9h16" /><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 13h2M12 13h2M8 16.5h2" /></>,
   '/allotment/': <><path d="M9 11l3 3 7-7" /><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11" /></>,
   '/ipos/': <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
 };
@@ -19,6 +20,7 @@ const ICON: Record<string, ReactNode> = {
 const NAV = [
   { href: '/', label: 'Home' },
   { href: '/subscription/', label: 'Subscription' },
+  { href: '/calendar/', label: 'Calendar' },
   { href: '/allotment/', label: 'Allotment' },
   { href: '/ipos/', label: 'All IPOs' },
 ];
@@ -90,6 +92,7 @@ function Footer() {
             <strong>IPOs</strong>
             <Link href="/">Open and upcoming</Link>
             <Link href="/subscription/">Live subscription</Link>
+            <Link href="/calendar/">IPO calendar</Link>
             <Link href="/ipos/">All IPOs</Link>
           </nav>
           <nav className="b-foot-col" aria-label="Tools">

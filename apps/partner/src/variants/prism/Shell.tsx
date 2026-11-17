@@ -8,7 +8,8 @@ import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
 import { Icon } from './parts';
 
 const NAV = [
-  { href: '/', label: 'IPO Calendar', icon: 'calendar' },
+  { href: '/', label: 'IPOs', icon: 'grid' },
+  { href: '/calendar/', label: 'IPO Calendar', icon: 'calendar' },
   { href: '/subscription/', label: 'Subscription', icon: 'chart' },
   { href: '/allotment/', label: 'Allotment', icon: 'check' },
   { href: '/ipos/', label: 'Archive', icon: 'layers' },
@@ -64,7 +65,8 @@ function Footer() {
           </div>
           <nav className="p-foot-col" aria-label="IPOs">
             <strong>IPOs</strong>
-            <Link href="/">IPO calendar</Link>
+            <Link href="/">Current IPOs</Link>
+            <Link href="/calendar/">IPO calendar</Link>
             <Link href="/subscription/">Live subscription</Link>
             <Link href="/ipos/">Archive</Link>
           </nav>

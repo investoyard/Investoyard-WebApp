@@ -45,7 +45,7 @@ export default function DetailPage({ model: m }: { model: DetailModel }) {
     <div className="p-wrap p-main">
       <nav className="p-crumb" aria-label="Breadcrumb">
         <Link href="/"><Icon name="home" size={16} /></Link><span aria-hidden="true">›</span>
-        <Link href="/">IPO calendar</Link><span aria-hidden="true">›</span><span>{c.name} IPO</span>
+        <Link href="/">IPOs</Link><span aria-hidden="true">›</span><span>{c.name} IPO</span>
       </nav>
 
       <header className="p-dhead">

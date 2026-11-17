@@ -302,3 +302,54 @@ a.t-co-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .t-foot-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .t-events li { grid-template-columns: 76px 64px minmax(0, 1fr); padding: 11px 16px; }
 }
+
+/* -------------------------------------------------------------- calendar */
+/* Event colours carry investoyard.com's meaning: opens green, closes amber, allotment indigo, listing slate. */
+:root { --k-open: #0d8a53; --k-close: #a8650f; --k-allot: #4338ca; --k-list: #5b6678; }
+.k-open { --k: var(--k-open); } .k-close { --k: var(--k-close); } .k-allot { --k: var(--k-allot); } .k-list { --k: var(--k-list); }
+.t-calttl { min-width: 168px; text-align: center; font-weight: 700; font-size: 15px; }
+.t-intro .t-tools .t-btn { height: 36px; min-width: 36px; padding: 0 12px; }
+.t-intro .t-tools .t-btn:disabled { opacity: .35; cursor: default; }
+.t-kdot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--k); margin-right: 6px; vertical-align: 1px; }
+.t-seg button[aria-pressed='false'] .t-kdot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
+.t-calfilter { padding: 10px 18px; border-bottom: 1px solid var(--line2); background: rgba(var(--brand-rgb), .06); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.t-calfilter .t-link { border: 0; background: none; padding: 0; font-size: 13px; cursor: pointer; }
+.t-caltable tbody tr { cursor: default; }
+.t-caltable tbody tr.is-first td { border-top: 1px solid var(--line); }
+.t-caltable tbody tr:first-child td { border-top: 0; }
+.t-caltable tbody tr.is-today td { background: rgba(var(--brand-rgb), .04); }
+.t-caldate { font-weight: 600; color: var(--ink); width: 130px; }
+.t-todaytag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; background: var(--brand); color: var(--brand-on); }
+.t-ktag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-size: 11.5px; font-weight: 700; color: var(--k); background: color-mix(in srgb, var(--k) 10%, #fff); white-space: nowrap; }
+.t-calrows { display: none; }
+.t-calpane { top: 82px; }
+.t-heat { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.t-heat-dow { text-align: center; font-size: 11.5px; font-weight: 600; color: var(--faint); padding-bottom: 2px; }
+.t-heat-d { aspect-ratio: 1; border: 1px solid var(--line2); border-radius: 6px; background: var(--raised); font-size: 13px; font-weight: 600; color: var(--ink2); cursor: pointer; padding: 0; }
+.t-heat-d:hover:not(:disabled) { border-color: var(--muted); }
+.t-heat-d.is-out { background: transparent; border-color: transparent; color: var(--line); cursor: default; }
+.t-heat-d.is-today { box-shadow: inset 0 0 0 2px var(--ink); }
+.t-heat-d.is-sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.t-heat-key { margin-top: 12px; display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); }
+.t-heat-key i { width: 14px; height: 10px; border-radius: 2px; }
+.t-heat-key span:last-child { margin-left: 3px; }
+.t-calcount { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+.t-calcount span { display: inline-flex; align-items: center; color: var(--ink2); }
+@media (max-width: 1000px) {
+  .t-calpane { display: block; position: static; order: -1; }
+  .t-calsplit { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .t-intro .t-tools { width: 100%; }
+  .t-calttl { flex: 1; min-width: 0; }
+  .t-calwide { display: none; }
+  .t-calrows { display: block; }
+  .t-calrows li a { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--line2); }
+  .t-calrows .t-co-name { max-width: none; white-space: nowrap; }
+  .t-calrows .t-co-sub { display: block; }
+  .t-calrows-d { font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+  .t-calpane .t-heat { max-width: 360px; margin: 0 auto; }
+}
+/* Five nav links plus the session pill do not fit beside the clock under 1100px; the pill carries the state, so the clock gives way. */
+@media (max-width: 1100px) and (min-width: 761px) { .t-clock { display: none; } .t-top-in { gap: 24px; } .t-nav a { padding: 8px 11px; } }
+@media (max-width: 760px) { .t-calsplit .t-ph .t-seg { flex-wrap: wrap; } }

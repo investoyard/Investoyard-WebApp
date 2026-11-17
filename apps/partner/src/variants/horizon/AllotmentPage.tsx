@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { FormEvent } from 'react';
 import { useAllotmentCheck, type AllotmentChoice } from '@/core/allotment';
 import AllotForm from './AllotForm';
@@ -22,6 +23,7 @@ export default function AllotmentPage({ choices }: { choices: AllotmentChoice[] 
               <ul className="h-cal">
                 {dated.map((c) => <li key={c.id}><span>{c.name}</span><b className="num">{c.date}</b></li>)}
               </ul>
+              <Link href="/calendar/" className="h-cal-more">See the full IPO calendar <span aria-hidden="true">→</span></Link>
             </>
           ) : null}
         </div>

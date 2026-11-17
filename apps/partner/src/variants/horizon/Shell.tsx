@@ -9,6 +9,7 @@ import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
 const NAV = [
   { href: '/', label: 'IPOs' },
   { href: '/subscription/', label: 'Subscription' },
+  { href: '/calendar/', label: 'Calendar' },
   { href: '/allotment/', label: 'Allotment' },
   { href: '/ipos/', label: 'Archive' },
 ];
@@ -82,7 +83,7 @@ function Footer() {
           </div>
           <nav aria-label="IPOs">
             <strong>IPOs</strong>
-            <Link href="/">Current issues</Link><Link href="/subscription/">Live subscription</Link><Link href="/ipos/">Archive</Link>
+            <Link href="/">Current issues</Link><Link href="/subscription/">Live subscription</Link><Link href="/calendar/">IPO calendar</Link><Link href="/ipos/">Archive</Link>
           </nav>
           <nav aria-label="Tools">
             <strong>Tools</strong>

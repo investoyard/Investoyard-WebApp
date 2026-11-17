@@ -7,6 +7,7 @@ import DetailPage from './DetailPage';
 import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
+import CalendarPage from './CalendarPage';
 
 /*
  * BENTO — variant 2. Friendly, app-like, tile-built.
@@ -25,6 +26,7 @@ const bento: VariantModule = {
   SubscriptionPage,
   AllotmentPage,
   ArchivePage,
+  CalendarPage,
 };
 
 export default bento;

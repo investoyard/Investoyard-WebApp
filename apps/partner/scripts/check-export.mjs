@@ -34,7 +34,7 @@ ok((detail.match(/data-variant="([^"]+)"/) || [])[1] === variant, 'an IPO detail
 let pages = 0;
 try { pages = fs.readdirSync(path.join(root, 'ipos')).filter((d) => fs.existsSync(path.join(root, 'ipos', d, 'index.html'))).length; } catch { /* none */ }
 ok(pages >= 1000, `IPO detail pages: ${pages} (floor 1000)`);
-for (const p of ['subscription/index.html', 'allotment/index.html', 'ipos/index.html']) ok(read(p).length > 5_000, `${p} present`);
+for (const p of ['subscription/index.html', 'allotment/index.html', 'ipos/index.html', 'calendar/index.html']) ok(read(p).length > 5_000, `${p} present`);
 
 if (fails.length) { console.error(`\nREFUSED: ${fails.length} check(s) failed for ${variant}`); process.exit(1); }
 console.log(`\n${variant}: export verified`);

@@ -101,7 +101,7 @@ export default function HomePage({ model }: { model: HomeModel }) {
 
   return (
     <>
-      <Hero eyebrow="IPO calendar" title="Track all upcoming & current" accent="IPOs" sub="Opening, closing and listing dates, price bands and key issue details for every mainboard and SME IPO — all in one place." />
+      <Hero eyebrow="Mainboard & SME IPOs" title="Track all upcoming & current" accent="IPOs" sub="Opening, closing and listing dates, price bands and key issue details for every mainboard and SME IPO — all in one place." />
       <div className="p-wrap p-main">
         <dl className="p-stats">
           <div className="p-stat"><span className="p-tile"><Icon name="calendar" size={24} /></span><div className="p-stat-t"><dd>{counts.open}</dd><dt>Open IPOs</dt></div></div>
@@ -112,7 +112,7 @@ export default function HomePage({ model }: { model: HomeModel }) {
 
         <section className="p-sec" aria-labelledby="cal-h">
           <div className="p-sec-h">
-            <div className="p-sec-title"><Icon name="calendar" size={30} /><h2 id="cal-h">IPO calendar</h2></div>
+            <div className="p-sec-title"><Icon name="grid" size={30} /><h2 id="cal-h">IPO list</h2></div>
             <div className="p-tabs" role="tablist" aria-label="Status">
               {TABS.map(([t, l]) => <button key={t} type="button" role="tab" className="p-tab" aria-selected={tab === t} onClick={() => { setTab(t); setN(PAGE); }}>{l} ({counts[t]})</button>)}
             </div>

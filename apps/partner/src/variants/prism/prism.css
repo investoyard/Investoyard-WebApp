@@ -423,3 +423,37 @@ a.p-ipo-name:hover { color: var(--brand-ink); }
 .p-mini-figs > div { display: flex; justify-content: space-between; gap: 10px; }
 .p-mini-figs b { margin-top: 0; text-align: right; }
 @media (max-width: 1100px) { .p-row2-allot { grid-template-columns: minmax(0, 1fr); } }
+
+/* -------------------------------------------------------------- calendar */
+/* The four columns keep investoyard.com's event colours: opening green, closing amber, allotment indigo, listing slate. */
+.p-tile.ind { background: #ecebfb; color: #4338ca; }
+.p-tile.slate { background: #eef0f4; color: #4b5563; }
+.p-calnav { display: flex; align-items: center; gap: 8px; }
+.p-calarrow { width: 42px; height: 42px; border-radius: 11px; border: 1px solid var(--line); background: var(--paper); color: var(--ink2); display: inline-grid; place-items: center; cursor: pointer; }
+.p-calarrow:hover:not(:disabled) { border-color: var(--brand); color: var(--brand-ink); }
+.p-calarrow:disabled { opacity: .35; cursor: default; }
+.p-calttl { min-width: 190px; text-align: center; font-family: var(--font-pr-display), sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.p-calcols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.p-calcol { overflow: hidden; }
+.p-calcol-h { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line2); }
+.p-calcol-h .p-tile { width: 42px; height: 42px; }
+.p-calcol-h h3 { font-family: var(--font-pr-display), sans-serif; font-size: 18px; font-weight: 700; flex: 1; }
+.p-calcol-n { min-width: 30px; height: 26px; padding: 0 9px; border-radius: 13px; display: inline-grid; place-items: center; background: var(--line2); font-size: 13px; font-weight: 700; color: var(--ink2); }
+.p-calcol-list { padding: 10px; display: grid; gap: 10px; }
+.p-calev { display: grid; gap: 10px; padding: 14px; border-radius: 12px; border: 1px solid var(--line2); background: var(--paper); transition: border-color .15s, box-shadow .15s; }
+.p-calev:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); box-shadow: 0 10px 22px -16px rgba(23, 20, 44, .35); }
+.p-calev-d { justify-self: start; height: 24px; padding: 0 9px; border-radius: 7px; display: inline-flex; align-items: center; background: var(--bg); font-size: 12.5px; font-weight: 700; color: var(--ink2); }
+.p-calev-d.is-today { background: var(--brand); color: var(--brand-on); }
+.p-calev-id { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.p-calev-id .p-logo, .p-calev-id .p-ini { width: 44px; height: 38px; flex-shrink: 0; }
+.p-calev-id > span { min-width: 0; display: grid; gap: 4px; justify-items: start; }
+.p-calev-id b { font-size: 15px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.p-calev-f { display: flex; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line2); font-size: 13px; color: var(--muted); }
+.p-calev-f b { color: var(--ink); font-size: 14px; white-space: nowrap; }
+.p-calcol-none { padding: 22px 18px; font-size: 14px; color: var(--muted); }
+@media (max-width: 1260px) { .p-calcols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) {
+  .p-calnav { width: 100%; }
+  .p-calttl { flex: 1; min-width: 0; font-size: 16px; }
+}
+@media (max-width: 640px) { .p-calcols { grid-template-columns: minmax(0, 1fr); } }
