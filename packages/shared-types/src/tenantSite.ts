@@ -137,15 +137,15 @@ export const SITE_TEMPLATES: readonly SiteTemplateMeta[] = [
     ready: true,
   },
   {
-    id: 'ledger',
-    label: 'Ledger',
-    blurb: 'Minimal and monochrome, one reading column, figures on dotted leaders like a printed statement. Suits an advisory or research-led house.',
-    design: 'Partner site — ledger',
+    id: 'prism',
+    label: 'Prism',
+    blurb: 'A bright IPO dashboard: an icon-led figure strip, IPO cards with documents and dates at a glance, a subscription page with trend and category charts, and a one-step allotment checker. Suits a broker who wants every figure visible and friendly.',
+    design: 'Partner site — prism, from the operator’s own layouts (2026-11-17)',
     ready: true,
   },
 ];
 
-export type SiteTemplate = 'default' | 'sterling' | 'bento' | 'terminal' | 'horizon' | 'ledger';
+export type SiteTemplate = 'default' | 'sterling' | 'bento' | 'terminal' | 'horizon' | 'prism';
 
 /**
  * Whether a theme is finished enough to hand a partner's customers.

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"],
-      "@variant": ["./src/variants/ledger"]
+      "@variant": ["./src/variants/prism"]
     }
   }
 }

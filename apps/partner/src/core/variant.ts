@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { ArchiveRow, DetailModel, HomeModel, SubscriptionModel } from './models';
+import type { AllotmentChoiceFull, ArchiveRow, DetailModel, HomeModel, SubscriptionModel } from './models';
 
 /*
  * THE CONTRACT EVERY DESIGN VARIANT IMPLEMENTS.
@@ -19,6 +19,6 @@ export interface VariantModule {
   HomePage: ComponentType<{ model: HomeModel }>;
   DetailPage: ComponentType<{ model: DetailModel }>;
   SubscriptionPage: ComponentType<{ model: SubscriptionModel }>;
-  AllotmentPage: ComponentType<{ choices: { id: string; name: string; date: string }[] }>;
+  AllotmentPage: ComponentType<{ choices: AllotmentChoiceFull[] }>;
   ArchivePage: ComponentType<{ rows: ArchiveRow[] }>;
 }

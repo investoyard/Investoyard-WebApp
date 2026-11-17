@@ -2,13 +2,17 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import variant from '@variant';
 import { loadIpos } from '@/core/data.server';
-import { detailModel, detailSymbols } from '@/core/models';
+import { detailModel, detailSymbols, otherIposPool, type IpoCard } from '@/core/models';
 
 export const dynamicParams = false;
 
 export async function generateStaticParams() {
   return detailSymbols(await loadIpos()).map((symbol) => ({ symbol }));
 }
+
+/* The "other IPOs" pool is the same for every page, so it is worked out once per build, not per page. */
+let pool: Promise<IpoCard[]> | null = null;
+const others = () => (pool = pool || loadIpos().then(otherIposPool));
 
 async function find(symbol: string) {
   const s = decodeURIComponent(symbol);
@@ -25,5 +29,5 @@ export async function generateMetadata({ params }: { params: { symbol: string } 
 export default async function IpoPage({ params }: { params: { symbol: string } }) {
   const ipo = await find(params.symbol);
   if (!ipo) notFound();
-  return <variant.DetailPage model={detailModel(ipo)} />;
+  return <variant.DetailPage model={detailModel(ipo, await others())} />;
 }

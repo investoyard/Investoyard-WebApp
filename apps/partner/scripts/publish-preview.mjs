@@ -5,7 +5,7 @@
  * Site layout panel loads in its live preview.
  *
  *   node scripts/publish-preview.mjs                  all five
- *   node scripts/publish-preview.mjs horizon ledger   just these
+ *   node scripts/publish-preview.mjs horizon prism    just these
  *
  * Each preview is built with a base path (/partner-preview/<variant>) into
  * out-preview/<variant>, checked by check-export.mjs exactly like a normal
@@ -26,7 +26,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ALL = ['sterling', 'bento', 'terminal', 'horizon', 'ledger'];
+const ALL = ['sterling', 'bento', 'terminal', 'horizon', 'prism'];
 const app = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webOut = path.join(app, '..', 'web', 'out');
 const asked = process.argv.slice(2);

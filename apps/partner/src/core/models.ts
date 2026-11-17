@@ -72,6 +72,14 @@ export interface IpoCard {
   allotment: string;
   year: number | null;
   href: string;
+  /** Sector line under the name, as the operator entered it. Null when not entered. */
+  industry: string | null;
+  /** "34 shares", or '—'. */
+  lot: string;
+  /** Direct links to the offer documents when the record carries them. */
+  rhp: string | null;
+  drhp: string | null;
+  registrar: string | null;
 }
 
 const OPEN_STAGES = ['live', 'opentoday', 'closingtoday'];
@@ -154,7 +162,17 @@ export function toCard(ipo: RawIpo, maxTimes: number): IpoCard {
     allotment: ipo.allotmentDate || '',
     year: yearOf(ipo.openDate || ipo.listingDate),
     href: `/ipos/${encodeURIComponent(ipo.symbol)}/`,
+    industry: (ipo.extra && typeof ipo.extra.industry === 'string' && ipo.extra.industry.trim()) || null,
+    lot: num(ipo.lotSize) ? `${inr(num(ipo.lotSize)!)} shares` : '—',
+    rhp: docUrl(ipo, (l) => /^rhp$/i.test(l) || (/prospectus/i.test(l) && !/draft/i.test(l))),
+    drhp: docUrl(ipo, (l) => /drhp|draft/i.test(l)),
+    registrar: ipo.registrar ? st.titleCase(ipo.registrar) : null,
   };
+}
+
+function docUrl(ipo: RawIpo, match: (label: string) => boolean): string | null {
+  const d = (ipo.documents || []).find((x) => x && x.url && st.isPublicDoc(x as any) && match(st.docLabel(x.type)));
+  return d ? d.url : null;
 }
 
 /* ---------------------------------------------------------------- home --- */
@@ -165,7 +183,7 @@ export interface HomeModel {
   recent: IpoCard[];
   counts: { open: number; upcoming: number; recent: number };
   asOf: string;
-  allotmentChoices: { id: string; name: string; date: string }[];
+  allotmentChoices: AllotmentChoiceFull[];
 }
 
 const daysBetween = (a: string, b: string): number => {
@@ -213,25 +231,37 @@ export function homeModel(raw: RawIpo[]): HomeModel {
   };
 }
 
-export function allotmentChoices(all: RawIpo[]): { id: string; name: string; date: string }[] {
+export type AllotmentChoiceFull = { id: string; name: string; date: string; sym: string; board: string; logo: string | null; ini: string; registrar: string | null };
+
+export function allotmentChoices(all: RawIpo[]): AllotmentChoiceFull[] {
   const today = st.istToday();
   return all
     .filter((x) => x.closeDate && x.closeDate < today && daysBetween(x.closeDate, today) <= 90)
     .sort((a, b) => (a.closeDate! < b.closeDate! ? 1 : -1))
-    .map((x) => ({ id: x.id, name: st.shortName(x.name), date: x.allotmentDate ? wdDayMon(x.allotmentDate) : '' }));
+    .map((x) => ({
+      id: x.id,
+      name: st.shortName(x.name),
+      date: x.allotmentDate ? wdDayMon(x.allotmentDate) : '',
+      sym: x.symbol,
+      board: x.type === 'sme' ? 'SME' : 'Mainboard',
+      logo: x.logoUrl || null,
+      ini: initials(st.shortName(x.name)),
+      registrar: x.registrar ? st.titleCase(x.registrar) : null,
+    }));
 }
 
 /* -------------------------------------------------------------- archive --- */
 
 export interface ArchiveRow {
   sym: string; name: string; board: string; year: number | null; dates: string; band: string; size: string; subs: string | null; status: string; href: string;
+  logo: string | null; ini: string; tone: Tone;
 }
 
 export function archiveModel(raw: RawIpo[]): ArchiveRow[] {
   const all = raw.map(normalise).sort((a, b) => ((a.openDate || '') < (b.openDate || '') ? 1 : -1));
   return all.map((x) => {
     const c = toCard(x, 1);
-    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href };
+    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href, logo: c.logo, ini: c.ini, tone: c.tone };
   });
 }
 
@@ -270,6 +300,13 @@ export interface DetailModel {
   leads: string[];
   documents: { label: string; url: string }[];
   ctaNote: string;
+  /** The registrar and the contact details the operator entered for it. */
+  registrarInfo: { name: string; url: string | null; email: string | null; phone: string | null } | null;
+  website: string | null;
+  /** Objects of the issue, when the operator entered them as a list or as lines of text. */
+  objects: string[];
+  /** Other current issues, for a "more IPOs" strip. Filled by the route, empty otherwise. */
+  others: IpoCard[];
 }
 
 const legSize = (leg: any): string | null => {
@@ -277,7 +314,7 @@ const legSize = (leg: any): string | null => {
   return leg.basis === 'shares' ? `${inr(Number(leg.value))} shares` : crore(Number(leg.value));
 };
 
-export function detailModel(rawIpo: RawIpo): DetailModel {
+export function detailModel(rawIpo: RawIpo, others: IpoCard[] = []): DetailModel {
   const ipo = normalise(rawIpo);
   const ex = ipo.extra || {};
   const t = st.subscriptionTable(ipo as any);
@@ -404,7 +441,30 @@ export function detailModel(rawIpo: RawIpo): DetailModel {
     leads: Array.isArray(ex.leads) ? ex.leads.filter(Boolean) : [],
     documents,
     ctaNote,
+    registrarInfo: ipo.registrar
+      ? {
+        name: st.titleCase(ipo.registrar),
+        url: typeof ex.registrarUrl === 'string' && /^https?:\/\//i.test(ex.registrarUrl.trim()) ? ex.registrarUrl.trim() : null,
+        email: typeof ex.registrarEmail === 'string' && ex.registrarEmail.includes('@') ? ex.registrarEmail.trim() : null,
+        phone: typeof ex.registrarPhone === 'string' && ex.registrarPhone.trim() ? ex.registrarPhone.trim() : null,
+      }
+      : null,
+    website: typeof ex.companyWebsite === 'string' && /^https?:\/\//i.test(ex.companyWebsite.trim()) ? ex.companyWebsite.trim() : null,
+    objects: objectsOf(ex.objects),
+    others: others.filter((o) => o.sym !== ipo.symbol).slice(0, 4),
   };
+}
+
+function objectsOf(v: unknown): string[] {
+  const clean = (t: string) => t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (Array.isArray(v)) return v.map((x) => clean(String(typeof x === 'object' && x ? (x as any).text ?? (x as any).title ?? '' : x))).filter((t) => t.length > 2);
+  if (typeof v === 'string') return v.split(/\n|<\/p>|<\/li>/i).map(clean).filter((t) => t.length > 2);
+  return [];
+}
+
+/** The pool a detail page's "other IPOs" strip draws from: the home page's actionable list. */
+export function otherIposPool(raw: RawIpo[]): IpoCard[] {
+  return homeModel(raw).actionable;
 }
 
 export function detailSymbols(raw: RawIpo[]): string[] {
@@ -415,10 +475,49 @@ export function detailSymbols(raw: RawIpo[]): string[] {
 
 type SubCells = { qib: string; nii: string; retail: string; hni: string; hni2: string; employee: string };
 
+export interface SubFocus {
+  rows: { key: string; label: string; times: number | null; timesText: string; width: number; nested: boolean }[];
+  total: { times: number | null; timesText: string; applications: string | null; bid: string; book: string };
+  /** Who applied: share of applications by category, from the exchange's bid counts. */
+  share: { label: string; n: number; pct: number }[];
+  /** Day-wise log, oldest first. Times as recorded each day (QIB on the gross offer). */
+  days: { label: string; date: string; qib: number | null; nii: number | null; retail: number | null; employee: number | null; total: number | null }[];
+  catRows: { key: string; label: string; nested: boolean; book: string; bid: string; timesText: string }[];
+}
+
 export interface SubscriptionModel {
   live: (IpoCard & SubCells & { asOf: string })[];
   closed: (IpoCard & SubCells)[];
   next: IpoCard | null;
+  /** Per-issue detail for every live and closed row, keyed by symbol. */
+  focus: Record<string, SubFocus>;
+}
+
+function subFocus(x: RawIpo, t: any): SubFocus {
+  const rows = [...t.rows].sort((a: any, b: any) => ((st.SHARE_ORDER as any)[a.key] ?? 9) - ((st.SHARE_ORDER as any)[b.key] ?? 9));
+  const maxR = Math.max(1, ...rows.map((r: any) => r.times || 0));
+  const anchored = t.anchorDeducted > 0;
+  const label = (r: any) => (r.key === 'qib' && anchored ? 'QIB (Ex. Anchor)' : LABEL[r.key] || r.cat);
+  const by = (k: string) => rows.find((r: any) => r.key === k);
+  const bids = (k: string) => { const r: any = by(k); return r && Number(r.bidCount) > 0 ? Number(r.bidCount) : 0; };
+  const niiBids = bids('nii') || bids('hni') + bids('hni2');
+  const parts: [string, number][] = [['Retail', bids('retail')], ['NII', niiBids], ['QIB', bids('qib')], ['Employee', bids('employee')], ['Shareholder', bids('shareholder')]];
+  const sum = parts.reduce((a, p) => a + p[1], 0);
+  const share = sum > 0 ? parts.filter((p) => p[1] > 0).map(([l, n]) => ({ label: l, n, pct: Math.round((n / sum) * 1000) / 10 })) : [];
+  const log = st.dayWiseRows((x.extra || {}).subLog, null, x.closeDate).slice().reverse();
+  return {
+    rows: rows.filter((r: any) => r.key !== 'shareholder' || r.times).map((r: any) => ({ key: r.key, label: label(r), times: Number.isFinite(r.times) ? r.times : null, timesText: times(r.times), width: logWidth(r.times, maxR), nested: r.key === 'hni' || r.key === 'hni2' })),
+    total: {
+      times: Number.isFinite(t.total.times) ? t.total.times : null,
+      timesText: times(t.total.times),
+      applications: (t.total as any).bidCount ? inr((t.total as any).bidCount) : null,
+      bid: t.total.subscribed ? inr(t.total.subscribed) : '—',
+      book: t.total.bookSize ? inr(t.total.bookSize) : '—',
+    },
+    share,
+    days: log.map((d: any) => ({ label: `Day ${d.dayNo}`, date: dayMon(d.d), qib: d.entry.qib ?? null, nii: d.entry.nii ?? null, retail: d.entry.retail ?? null, employee: d.entry.employee ?? null, total: d.entry.total ?? null })),
+    catRows: rows.map((r: any) => ({ key: r.key, label: label(r), nested: r.key === 'hni' || r.key === 'hni2', book: r.bookSize ? inr(r.bookSize) : '—', bid: r.subscribed ? inr(r.subscribed) : '—', timesText: times(r.times) })),
+  };
 }
 
 export function subscriptionModel(raw: RawIpo[]): SubscriptionModel {
@@ -441,5 +540,12 @@ export function subscriptionModel(raw: RawIpo[]): SubscriptionModel {
   const upcoming = all
     .filter((x) => ['upcoming', 'preapply'].includes(st.stageOf(x as any)) && x.openDate)
     .sort((a, b) => (a.openDate! < b.openDate! ? -1 : 1));
-  return { live, closed, next: upcoming[0] ? toCard(upcoming[0], maxT) : null };
+  const focus: Record<string, SubFocus> = {};
+  for (const r of withT) {
+    const s = st.stageOf(r.x as any);
+    const inLive = OPEN_STAGES.includes(s);
+    const inClosed = !inLive && r.x.closeDate && r.x.closeDate < today && daysBetween(r.x.closeDate, today) <= 35;
+    if (inLive || inClosed) focus[r.x.symbol] = subFocus(r.x, r.t);
+  }
+  return { live, closed, next: upcoming[0] ? toCard(upcoming[0], maxT) : null, focus };
 }
