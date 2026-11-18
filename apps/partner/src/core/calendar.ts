@@ -27,6 +27,10 @@ export interface CalIpo {
   /** Every key date as YYYY-MM-DD ('' when not entered), for a design that tabulates them. */
   open: string; close: string; allot: string; refund: string; demat: string; list: string;
   industry: string | null; sizeN: number | null;
+  /** "55 shares", or '—'. */
+  lot: string;
+  /** "NSE, BSE", "BSE SME", … */
+  exchanges: string;
 }
 /** One event. `i` indexes `ipos`, so an IPO with four events is carried once. */
 export interface CalEvent { d: string; k: CalKind; i: number }
@@ -65,7 +69,7 @@ export function calendarModel(raw: RawIpo[]): CalendarModel {
       tone: c.tone, status: c.status, dates: c.dates,
       open: c.open, close: c.close, allot: c.allotment, list: c.listing,
       refund: isoDay((x.extra || {}).refundDate), demat: isoDay((x.extra || {}).dematDate),
-      industry: c.industry, sizeN: c.sizeN,
+      industry: c.industry, sizeN: c.sizeN, lot: c.lot, exchanges: c.exchanges,
     }) - 1;
     for (const e of mine) events.push({ ...e, i });
   }

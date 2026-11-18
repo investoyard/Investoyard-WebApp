@@ -8,6 +8,8 @@ import { Bar, Logo, St } from './parts';
 
 type Row = SubscriptionModel['closed'][number];
 const CATS: [keyof Row, string][] = [['qib', 'QIB'], ['nii', 'NII'], ['hni', 'bHNI'], ['hni2', 'sHNI'], ['retail', 'Retail'], ['employee', 'Employee']];
+/* Columns leave in a planned order as the table narrows, so it never scrolls sideways. */
+const HIDE: Partial<Record<keyof Row, string>> = { hni: ' t-s1', hni2: ' t-s1', employee: ' t-s2', nii: ' t-s3' };
 
 /* Demand by investor category in one table per window; the total carries a bar so the eye finds the outliers. */
 function Table({ id, title, rows, live }: { id: string; title: string; rows: Row[]; live?: boolean }) {
@@ -21,7 +23,7 @@ function Table({ id, title, rows, live }: { id: string; title: string; rows: Row
             <thead>
               <tr>
                 <th>Company</th>
-                {CATS.map(([k, l]) => <th key={String(k)} className="r">{l}</th>)}
+                {CATS.map(([k, l]) => <th key={String(k)} className={'r' + (HIDE[k] || '')}>{l}</th>)}
                 <th className="r">Total</th>
               </tr>
             </thead>
@@ -37,7 +39,7 @@ function Table({ id, title, rows, live }: { id: string; title: string; rows: Row
                       </div>
                     </div>
                   </td>
-                  {CATS.map(([k]) => <td key={String(k)} className="r">{String(r[k]) === '—' ? <span className="t-dash">—</span> : String(r[k])}</td>)}
+                  {CATS.map(([k]) => <td key={String(k)} className={'r' + (HIDE[k] || '')}>{String(r[k]) === '—' ? <span className="t-dash">—</span> : String(r[k])}</td>)}
                   <td className="r"><span className="t-demand"><Bar width={r.bar} /><b>{r.subs || '—'}</b></span></td>
                 </tr>
               ))}

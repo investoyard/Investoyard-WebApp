@@ -35,16 +35,16 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
         {shown.length === 0 ? <div className="t-empty"><strong>No match</strong>Try a shorter name, or clear the filters.</div> : (
           <div className="t-table-wrap">
             <table className="t-table t-subt">
-              <thead><tr><th>Company</th><th>Board</th><th>Status</th><th className="r">Bidding</th><th className="r">Price band</th><th className="r">Issue size</th><th className="r">Subscribed</th></tr></thead>
+              <thead><tr><th>Company</th><th className="t-a1">Board</th><th className="t-a2">Status</th><th className="r">Bidding</th><th className="r t-a3">Price band</th><th className="r t-a3">Issue size</th><th className="r">Subscribed</th></tr></thead>
               <tbody>
                 {shown.map((r) => (
                   <tr key={r.sym}>
                     <td><Link className="t-co-name" href={r.href}>{r.name}</Link><span className="t-co-sub">{r.sym}</span></td>
-                    <td className="t-muted">{r.board}</td>
-                    <td className="t-muted">{r.status}</td>
+                    <td className="t-muted t-a1">{r.board}</td>
+                    <td className="t-muted t-a2">{r.status}</td>
                     <td className="r">{r.dates}</td>
-                    <td className="r">{r.band}</td>
-                    <td className="r">{r.size}</td>
+                    <td className="r t-a3">{r.band}</td>
+                    <td className="r t-a3">{r.size}</td>
                     <td className="r"><b>{r.subs || <span className="t-dash">—</span>}</b></td>
                   </tr>
                 ))}

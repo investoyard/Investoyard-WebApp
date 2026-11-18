@@ -149,7 +149,7 @@ export default function HomePage({ model }: { model: HomeModel }) {
   const med = median(model.recent.map((c) => c.subsN).filter((v): v is number => v != null));
   const nextUp = model.actionable.find((c) => c.tone === 'upcoming');
   const th = (k: SortKey, label: string) => (
-    <th className="r" aria-sort={sort === k ? 'descending' : undefined}>
+    <th className={'r' + (k === 'min' ? ' t-h1' : k === 'size' ? ' t-h2' : '')} aria-sort={sort === k ? 'descending' : undefined}>
       <button type="button" onClick={() => setSort(sort === k ? 'default' : k)}>{label}{sort === k ? ' ↓' : ''}</button>
     </th>
   );
@@ -205,8 +205,8 @@ export default function HomePage({ model }: { model: HomeModel }) {
                         </td>
                         <td><St tone={c.tone}>{c.status}</St></td>
                         <td className="r">{c.band}</td>
-                        <td className="r">{c.minN != null ? c.minN.toLocaleString('en-IN') : '—'}</td>
-                        <td className="r">{c.sizeN != null ? Math.round(c.sizeN).toLocaleString('en-IN') : '—'}</td>
+                        <td className="r t-h1">{c.minN != null ? c.minN.toLocaleString('en-IN') : '—'}</td>
+                        <td className="r t-h2">{c.sizeN != null ? Math.round(c.sizeN).toLocaleString('en-IN') : '—'}</td>
                         <td className="r"><span className="t-demand">{c.subsN != null ? <Bar width={c.bar} /> : null}<b><X v={c.subsN} /></b></span></td>
                       </tr>
                     ))}

@@ -70,7 +70,7 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
             <>
               <div className="t-table-wrap t-calwide">
                 <table className="t-table t-caltable">
-                  <thead><tr><th>Date</th><th>Event</th><th>Company</th><th>Board</th><th className="r">Price band</th><th className="r">Issue size</th><th>Status</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Event</th><th>Company</th><th className="t-k1">Board</th><th className="r t-k3">Price band</th><th className="r t-k2">Issue size</th><th className="t-k3">Status</th></tr></thead>
                   <tbody>
                     {rows.map((e, j) => {
                       const x = ipo(e);
@@ -80,10 +80,10 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
                           <td className="num t-caldate">{first ? <>{wdDayMon(e.d)}{e.d === c.today ? <span className="t-todaytag">Today</span> : null}</> : null}</td>
                           <td><span className={`t-ktag k-${e.k}`}>{KIND_LABEL[e.k]}</span></td>
                           <td><div className="t-co"><Logo ipo={x} /><Link className="t-co-name" href={x.href}>{x.name}</Link></div></td>
-                          <td className="t-muted">{x.board}</td>
-                          <td className="r">{x.band}</td>
-                          <td className="r">{x.size}</td>
-                          <td><St tone={x.tone}>{x.status}</St></td>
+                          <td className="t-muted t-k1">{x.board}</td>
+                          <td className="r t-k3">{x.band}</td>
+                          <td className="r t-k2">{x.size}</td>
+                          <td className="t-k3"><St tone={x.tone}>{x.status}</St></td>
                         </tr>
                       );
                     })}

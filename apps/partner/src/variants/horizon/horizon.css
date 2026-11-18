@@ -636,6 +636,36 @@ a.h-co:hover b { color: var(--brand-ink); text-decoration: underline; text-under
 .h-dcard > .h-fin td:first-child, .h-dcard > .h-fin th:first-child { padding-left: 22px; }
 .h-dcard > .h-fin td:last-child, .h-dcard > .h-fin th:last-child { padding-right: 22px; }
 @media (max-width: 760px) { .h-dcard > .h-fin { margin: 0 -16px -16px; } }
+/* Home tables: fixed layout, so the company column takes what is left and ellipsizes inside the card. */
+.h-tbl-fit { table-layout: fixed; }
+.h-tbl-fit th.w-band { width: 108px; }
+.h-tbl-fit th.w-lot { width: 72px; }
+.h-tbl-fit th.w-dates { width: 132px; }
+.h-tbl-fit th.w-st { width: 128px; }
+.h-tbl-fit th.w-size { width: 100px; }
+.h-tbl-fit th.w-open { width: 116px; }
+.h-tbl-fit td { overflow: hidden; }
+.h-tbl-fit td.w-dates { white-space: normal; line-height: 1.35; }
+.h-tbl-fit .h-co b { max-width: 100%; }
+/* Wide tables shed columns in a planned order instead of scrolling sideways. */
+@media (max-width: 1240px) { .h-c1, .h-a1, .h-k1 { display: none; } }
+@media (max-width: 1100px) { .h-s1, .h-a2, .h-k2 { display: none; } .h-tbl-ar .h-co b, .h-tbl-cal .h-co b { max-width: 150px; } .h-tbl-cal .h-co small { max-width: 150px; } }
+@media (max-width: 1000px) { .h-s2 { display: none; } }
+@media (max-width: 980px) {
+  .h-a3 { display: none; }
+  .h-fin td, .h-fin th { font-size: 12px; padding: 6px 6px; }
+}
+@media (max-width: 860px) { .h-s3, .h-k3, .h-m1 { display: none; } .h-tbl-cal th, .h-tbl-cal td, .h-tbl-ar th, .h-tbl-ar td { padding-left: 9px; padding-right: 9px; } }
+@media (max-width: 760px) {
+  /* the operator's financial table keeps the label and the three latest periods */
+  .h-fin tr > :nth-child(n + 5) { display: none; }
+}
+@media (max-width: 520px) {
+  .h-s4 { display: none; }
+  .h-subname a { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .h-card-flush .h-tbl th, .h-card-flush .h-tbl td { padding-left: 7px; padding-right: 7px; }
+  .h-card-flush .h-tbl th:first-child, .h-card-flush .h-tbl td:first-child { padding-left: 14px; }
+}
 /* Read more: clamped with a fade until opened. */
 .h-rm-body { max-height: 196px; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent); mask-image: linear-gradient(180deg, #000 60%, transparent); }
 .h-rm.open .h-rm-body { max-height: none; -webkit-mask-image: none; mask-image: none; }
@@ -673,3 +703,18 @@ a.h-co:hover b { color: var(--brand-ink); text-decoration: underline; text-under
 html { scroll-padding-top: 128px; }
 .h-dcard { scroll-margin-top: 0; }
 @media (max-width: 760px) { .h-dtabs-bar { top: 60px; } html { scroll-padding-top: 116px; } }
+
+/* The date column the Allotment or Listing tab is about. */
+.h-tbl-cal th.is-key { background: color-mix(in srgb, var(--brand) 11%, #ffffff); color: var(--brand-ink); }
+.h-tbl-cal td.is-key { background: color-mix(in srgb, var(--brand) 5%, #ffffff); font-weight: 600; }
+.h-tbl-cal td.is-key.is-ahead { color: var(--brand-ink); font-weight: 700; }
+
+/* Operator tables: the editor's inline font sizes give way to ours, and narrow screens keep the label plus the three latest periods. */
+.h-prose td span[style], .h-prose th span[style] { font-size: inherit !important; }
+@media (max-width: 1100px) { .h-prose table tr > :nth-child(n + 5) { display: none; } }
+@media (max-width: 520px) {
+  .h-prose table { font-size: 12.5px; }
+  .h-prose table tr > :nth-child(n + 5) { display: none; }
+  .h-prose td, .h-prose th { padding-left: 6px; padding-right: 6px; }
+}
+@media (max-width: 520px) { .h-subname { flex-wrap: wrap; } .h-subname a { max-width: 110px; } }

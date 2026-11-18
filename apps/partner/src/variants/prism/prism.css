@@ -408,6 +408,7 @@ a.p-ipo-name:hover { color: var(--brand-ink); }
   .p-foot-grid { grid-template-columns: minmax(0, 1fr); }
   .p-big { font-size: 44px; }
   .hide-s { display: none; }
+  .p-co a { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* The icon sits beside its label so the value gets the whole cell width and is not cut short. */
@@ -416,7 +417,7 @@ a.p-ipo-name:hover { color: var(--brand-ink); }
 .p-figs .p-fig dd { grid-column: 1 / -1; font-size: 15.5px; }
 .p-donut-wrap.sm { grid-template-columns: 160px minmax(0, 1fr); }
 .p-donut-wrap.sm .p-donut { width: 160px; height: 160px; }
-@media (max-width: 860px) { .p-donut-wrap.sm { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 860px) { .p-donut-wrap.sm { grid-template-columns: minmax(0, 1fr); } .hide-m { display: none; } }
 
 .p-row2-allot { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.6fr); }
 .p-mini-figs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -457,3 +458,12 @@ a.p-ipo-name:hover { color: var(--brand-ink); }
   .p-calttl { flex: 1; min-width: 0; font-size: 16px; }
 }
 @media (max-width: 640px) { .p-calcols { grid-template-columns: minmax(0, 1fr); } }
+
+/* Operator tables: the editor's inline font sizes give way to ours, and narrow screens keep the label plus the three latest periods. */
+.p-prose td span[style], .p-prose th span[style] { font-size: inherit !important; }
+@media (max-width: 520px) {
+  .p-prose table { font-size: 12.5px; }
+  .p-prose table tr > :nth-child(n + 5) { display: none; }
+  .p-prose td, .p-prose th { padding-left: 6px; padding-right: 6px; }
+}
+@media (max-width: 640px) { .p-co a { max-width: 108px; } .p-table th, .p-table td { padding-left: 8px; padding-right: 8px; } }

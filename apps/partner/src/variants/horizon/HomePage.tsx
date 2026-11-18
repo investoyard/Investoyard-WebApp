@@ -79,15 +79,15 @@ function Current({ rows, title = 'Current issues', id = 'cur-h' }: { rows: IpoCa
     <section className="h-card" aria-labelledby={id}>
       <SecHead id={id} title={title} count={rows.length} href="/calendar/" />
       <div className="h-tbl-wrap">
-        <table className="h-tbl">
-          <thead><tr><th>Company / issue size</th><th className="r h-hm">Price band</th><th className="r h-hm">Lot size</th><th className="h-hm">Open – close</th><th>Status</th></tr></thead>
+        <table className="h-tbl h-tbl-fit">
+          <thead><tr><th>Company / issue size</th><th className="r h-hm w-band">Price band</th><th className="r h-hm h-c1 w-lot">Lot size</th><th className="h-hm w-dates">Open – close</th><th className="w-st">Status</th></tr></thead>
           <tbody>
             {rows.length ? rows.map((c) => (
               <tr key={c.sym}>
                 <td><Link className="h-co" href={c.href}><Logo ipo={c} size="sm" /><span><b>{c.name}</b><small className="num">{c.size}</small></span></Link></td>
                 <td className="r num h-hm">{c.band}</td>
-                <td className="r num h-hm">{c.lot.replace(' shares', '')}</td>
-                <td className="num h-hm">{c.dates}</td>
+                <td className="r num h-hm h-c1">{c.lot.replace(' shares', '')}</td>
+                <td className="num h-hm w-dates">{c.dates}</td>
                 <td><Status tone={c.tone}>{c.status}</Status></td>
               </tr>
             )) : <tr><td colSpan={5} className="h-tbl-none">No issue is open or awaiting listing right now.</td></tr>}
@@ -103,8 +103,8 @@ function Upcoming({ rows }: { rows: IpoCard[] }) {
     <section className="h-card" aria-labelledby="up-h">
       <SecHead id="up-h" title="Upcoming issues" count={rows.length} href="/calendar/" />
       <div className="h-tbl-wrap">
-        <table className="h-tbl">
-          <thead><tr><th>Company</th><th className="r">Issue size</th><th className="r">Open date</th></tr></thead>
+        <table className="h-tbl h-tbl-fit">
+          <thead><tr><th>Company</th><th className="r w-size">Issue size</th><th className="r w-open">Open date</th></tr></thead>
           <tbody>
             {rows.length ? rows.map((c) => (
               <tr key={c.sym}>
@@ -148,8 +148,8 @@ function Listed({ rows }: { rows: IpoCard[] }) {
     <section className="h-card" aria-labelledby="lst-h">
       <SecHead id="lst-h" title="Recently listed IPOs" href="/ipos/" />
       <div className="h-tbl-wrap">
-        <table className="h-tbl">
-          <thead><tr><th>Company</th><th className="r h-hm">Issue price</th><th className="r h-hm">Listed on</th><th className="r">Subscribed</th></tr></thead>
+        <table className="h-tbl h-tbl-fit">
+          <thead><tr><th>Company</th><th className="r h-hm w-band">Issue price</th><th className="r h-hm w-open">Listed on</th><th className="r w-size">Subscribed</th></tr></thead>
           <tbody>
             {rows.length ? rows.map((c) => (
               <tr key={c.sym}>

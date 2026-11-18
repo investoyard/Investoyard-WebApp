@@ -211,12 +211,12 @@ export default function SubscriptionPage({ model }: { model: SubscriptionModel }
                 {mode === 'day' ? (
                   f.days.length ? (
                     <table className="p-table">
-                      <thead><tr><th>Day</th><th className="r">QIB</th><th className="r">NII</th><th className="r">Retail</th><th className="r">Employee</th><th className="r">Overall</th></tr></thead>
+                      <thead><tr><th>Day</th><th className="r">QIB</th><th className="r">NII</th><th className="r">Retail</th><th className="r hide-s">Employee</th><th className="r">Overall</th></tr></thead>
                       <tbody>
                         {f.days.map((d, i) => (
                           <tr key={d.label} className={i === f.days.length - 1 ? 'hl' : undefined}>
-                            <td>{d.label} <span className="p-muted">({d.date})</span></td>
-                            <td className="r">{xs(d.qib)}</td><td className="r">{xs(d.nii)}</td><td className="r">{xs(d.retail)}</td><td className="r">{xs(d.employee)}</td>
+                            <td>{d.label} <span className="p-muted hide-s">({d.date})</span></td>
+                            <td className="r">{xs(d.qib)}</td><td className="r">{xs(d.nii)}</td><td className="r">{xs(d.retail)}</td><td className="r hide-s">{xs(d.employee)}</td>
                             <td className="r"><span className={`p-badge${i === f.days.length - 1 ? ' brand' : ' mute'}`}>{xs(d.total)}</span></td>
                           </tr>
                         ))}
@@ -225,10 +225,10 @@ export default function SubscriptionPage({ model }: { model: SubscriptionModel }
                   ) : <p className="p-muted" style={{ padding: '0 24px 22px' }}>No day-wise record was kept for this issue.</p>
                 ) : (
                   <table className="p-table">
-                    <thead><tr><th>Category</th><th className="r">Shares offered</th><th className="r">Shares bid for</th><th className="r">Times</th></tr></thead>
+                    <thead><tr><th>Category</th><th className="r hide-s">Shares offered</th><th className="r">Shares bid for</th><th className="r">Times</th></tr></thead>
                     <tbody>
-                      {f.catRows.map((r) => <tr key={r.key} className={r.nested ? 'nested' : undefined}><td>{r.label}</td><td className="r">{r.book}</td><td className="r">{r.bid}</td><td className="r"><span className="p-badge">{r.timesText}</span></td></tr>)}
-                      <tr className="hl"><td>Total</td><td className="r">{f.total.book}</td><td className="r">{f.total.bid}</td><td className="r"><span className="p-badge brand">{f.total.timesText}</span></td></tr>
+                      {f.catRows.map((r) => <tr key={r.key} className={r.nested ? 'nested' : undefined}><td>{r.label}</td><td className="r hide-s">{r.book}</td><td className="r">{r.bid}</td><td className="r"><span className="p-badge">{r.timesText}</span></td></tr>)}
+                      <tr className="hl"><td>Total</td><td className="r hide-s">{f.total.book}</td><td className="r">{f.total.bid}</td><td className="r"><span className="p-badge brand">{f.total.timesText}</span></td></tr>
                     </tbody>
                   </table>
                 )}

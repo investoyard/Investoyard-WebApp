@@ -71,8 +71,8 @@ ol, ul { padding: 0; list-style: none; }
 .t-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .t-pill.is-open { color: var(--ink); }
 .t-pill.is-open i { background: var(--open); box-shadow: 0 0 0 3px rgba(13, 138, 83, .16); }
-.t-mnav { display: none; gap: 2px; overflow-x: auto; padding: 0 16px 10px; scrollbar-width: none; }
-.t-mnav a { padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.t-mnav { display: none; justify-content: space-between; gap: 2px; padding: 0 12px 10px; }
+.t-mnav a { padding: 7px 7px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .t-mnav a[aria-current='page'] { background: var(--raised); color: var(--ink); }
 
 /* ---------------------------------------------------------------- page */
@@ -319,6 +319,7 @@ a.t-co-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .t-caltable tbody tr:first-child td { border-top: 0; }
 .t-caltable tbody tr.is-today td { background: rgba(var(--brand-rgb), .04); }
 .t-caldate { font-weight: 600; color: var(--ink); width: 130px; }
+.t-caltable .t-co-name { max-width: 190px; }
 .t-todaytag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; background: var(--brand); color: var(--brand-on); }
 .t-ktag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-size: 11.5px; font-weight: 700; color: var(--k); background: color-mix(in srgb, var(--k) 10%, #fff); white-space: nowrap; }
 .t-calrows { display: none; }
@@ -353,3 +354,35 @@ a.t-co-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Five nav links plus the session pill do not fit beside the clock under 1100px; the pill carries the state, so the clock gives way. */
 @media (max-width: 1100px) and (min-width: 761px) { .t-clock { display: none; } .t-top-in { gap: 24px; } .t-nav a { padding: 8px 11px; } }
 @media (max-width: 760px) { .t-calsplit .t-ph .t-seg { flex-wrap: wrap; } }
+/* Five links and the session pill still do not fit at tablet width, so the nav tightens and a long partner name gives way. */
+@media (max-width: 900px) and (min-width: 761px) { .t-top-in { gap: 16px; } .t-nav a { padding: 8px 9px; font-size: 13.5px; } .t-brand-name { max-width: 150px; } }
+/* Tables shed columns in a planned order instead of scrolling sideways. */
+@media (max-width: 1366px) { .t-k1 { display: none; } }
+@media (max-width: 1280px) { .t-h1 { display: none; } .t-co-name { max-width: 170px; } .t-table th, .t-table td { padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 1280px) { .t-k2 { display: none; } }
+@media (max-width: 1100px) { .t-h2 { display: none; } }
+@media (max-width: 1100px) and (min-width: 1001px) { .t-k3 { display: none; } }
+@media (max-width: 860px) { .t-k3 { display: none; } }
+@media (max-width: 1100px) { .t-co-name { max-width: 130px; } .t-table th, .t-table td { padding-left: 8px; padding-right: 8px; } }
+@media (max-width: 900px) { .t-dtabs a { padding: 7px 7px; font-size: 12.5px; } }
+@media (max-width: 1000px) { .t-s1, .t-a1 { display: none; } }
+@media (max-width: 900px) { .t-s2, .t-a2 { display: none; } }
+@media (max-width: 520px) {
+  .t-s3, .t-a3 { display: none; }
+  .t-co-name { max-width: 130px; }
+  .t-subt .t-co .t-logo, .t-subt .t-co .t-ini { display: none; }
+  .t-subt td .t-bar { display: none; }
+  .t-d1 { display: none; }
+  .t-subt .t-co-sub { display: none; }
+  .t-co-name { max-width: 120px; }
+  .t-lots td:first-child { white-space: normal; }
+  .t-table th, .t-table td { padding-left: 8px; padding-right: 8px; }
+}
+
+/* Operator tables: the editor's inline font sizes give way to ours, and narrow screens keep the label plus the three latest periods. */
+.t-prose td span[style], .t-prose th span[style] { font-size: inherit !important; }
+@media (max-width: 520px) {
+  .t-prose table { font-size: 12.5px; }
+  .t-prose table tr > :nth-child(n + 5) { display: none; }
+  .t-prose td, .t-prose th { padding-left: 6px; padding-right: 6px; }
+}

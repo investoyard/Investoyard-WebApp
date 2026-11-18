@@ -57,18 +57,18 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
           {shown.length === 0 ? <div className="p-empty"><strong>No match</strong>Try a shorter name, or reset the filters.</div> : (
             <div className="p-table-wrap">
               <table className="p-table">
-                <thead><tr><th className="c hide-s">#</th><th>Company / IPO</th><th>Board</th><th className="hide-s">Issue dates</th><th className="r hide-s">Price band (₹)</th><th className="r hide-s">Issue size</th><th className="r">Subscribed</th><th className="hide-s">Status</th></tr></thead>
+                <thead><tr><th className="c hide-s hide-m">#</th><th>Company / IPO</th><th>Board</th><th className="hide-s">Issue dates</th><th className="r hide-s">Price band (₹)</th><th className="r hide-s">Issue size</th><th className="r">Subscribed</th><th className="hide-s hide-m">Status</th></tr></thead>
                 <tbody>
                   {shown.map((r, i) => (
                     <tr key={r.sym}>
-                      <td className="c p-muted num hide-s">{p * PER + i + 1}</td>
+                      <td className="c p-muted num hide-s hide-m">{p * PER + i + 1}</td>
                       <td><div className="p-co"><Logo ipo={r} /><Link href={r.href}>{r.name}</Link></div></td>
                       <td><BoardTag board={r.board} /></td>
                       <td className="hide-s num">{r.dates}</td>
                       <td className="r hide-s">{r.band.replace('₹', '')}</td>
                       <td className="r hide-s">{r.size}</td>
                       <td className="r">{r.subs ? <span className="p-badge">{r.subs}</span> : <span className="p-muted">—</span>}</td>
-                      <td className="hide-s p-muted">{r.status}</td>
+                      <td className="hide-s hide-m p-muted">{r.status}</td>
                     </tr>
                   ))}
                 </tbody>

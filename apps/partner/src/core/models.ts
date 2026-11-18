@@ -300,13 +300,14 @@ export interface ArchiveRow {
   logo: string | null; ini: string; tone: Tone;
   /** For filters and sorting. */
   industry: string | null; sizeN: number | null; subsN: number | null; open: string;
+  close: string; listing: string;
 }
 
 export function archiveModel(raw: RawIpo[]): ArchiveRow[] {
   const all = raw.map(normalise).sort((a, b) => ((a.openDate || '') < (b.openDate || '') ? 1 : -1));
   return all.map((x) => {
     const c = toCard(x, 1);
-    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href, logo: c.logo, ini: c.ini, tone: c.tone, industry: c.industry, sizeN: c.sizeN, subsN: c.subsN, open: c.open };
+    return { sym: c.sym, name: c.name, board: c.board, year: c.year, dates: c.dates, band: c.band, size: c.size, subs: c.subs, status: c.status, href: c.href, logo: c.logo, ini: c.ini, tone: c.tone, industry: c.industry, sizeN: c.sizeN, subsN: c.subsN, open: c.open, close: c.close, listing: c.listing };
   });
 }
 
@@ -338,6 +339,11 @@ export interface DetailModel {
   reservation: { key: string; label: string; pct: number; shares: string; amount: string }[];
   lots: { cat: string; sub: string; lots: string; shares: string; amount: string }[];
   upperPrice: string;
+  lowerPrice: string;
+  /** Day-wise subscription, oldest first. Times as recorded each day (QIB on the gross offer). */
+  days: { label: string; date: string; qib: number | null; nii: number | null; retail: number | null; employee: number | null; total: number | null }[];
+  /** The financials table as numbers, when the operator's table is clean enough to read; the HTML stays the fallback. */
+  financials: { cols: string[]; rows: { label: string; values: (number | null)[] }[] } | null;
   aboutHtml: string | null;
   strengthsHtml: string | null;
   financialsHtml: string | null;
@@ -479,6 +485,9 @@ export function detailModel(rawIpo: RawIpo, others: IpoCard[] = []): DetailModel
     reservation,
     lots,
     upperPrice: rupees(num(ipo.priceBandMax) ?? num(ipo.priceBandMin)),
+    lowerPrice: rupees(num(ipo.priceBandMin) ?? num(ipo.priceBandMax)),
+    days: st.dayWiseRows(ex.subLog, null, ipo.closeDate).slice().reverse().map((d: any) => ({ label: `Day ${d.dayNo}`, date: dayMon(d.d), qib: d.entry.qib ?? null, nii: d.entry.nii ?? null, retail: d.entry.retail ?? null, employee: d.entry.employee ?? null, total: d.entry.total ?? null })),
+    financials: financialTable(ex.companyFinancials),
     aboutHtml: html(ex.companyDescription),
     strengthsHtml: html(ex.companyStrength),
     financialsHtml: html(ex.companyFinancials),
@@ -498,6 +507,28 @@ export function detailModel(rawIpo: RawIpo, others: IpoCard[] = []): DetailModel
     objects: objectsOf(ex.objects),
     others: others.filter((o) => o.sym !== ipo.symbol).slice(0, 4),
   };
+}
+
+/*
+ * The operator's financials are free HTML. When they are a plain table — a
+ * header row of periods, then rows of a label and figures — read them as
+ * numbers so a design can chart them. Anything less regular returns null and
+ * the design shows the HTML as written: a chart must never be a guess.
+ */
+export function financialTable(v: unknown): DetailModel['financials'] {
+  if (typeof v !== 'string' || !/<tr/i.test(v)) return null;
+  const text = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  const rows = [...v.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((m) => [...m[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((c) => text(c[1])));
+  if (rows.length < 3) return null;
+  const toNum = (t: string): number | null => { const c = t.replace(/[,₹\s]/g, ''); return /^-?\d+(\.\d+)?$/.test(c) ? Number(c) : null; };
+  const [head, ...body] = rows;
+  if (head.length < 3) return null;
+  const cols = head.slice(1);
+  const parsed = body
+    .filter((r) => r.length === head.length && r[0])
+    .map((r) => ({ label: r[0], values: r.slice(1).map(toNum) }))
+    .filter((r) => r.values.filter((x) => x != null).length >= Math.max(2, cols.length - 1));
+  return parsed.length >= 2 && cols.every((c) => c && toNum(c) == null) ? { cols, rows: parsed } : null;
 }
 
 function objectsOf(v: unknown): string[] {
@@ -527,7 +558,7 @@ export interface SubFocus {
   share: { label: string; n: number; pct: number }[];
   /** Day-wise log, oldest first. Times as recorded each day (QIB on the gross offer). */
   days: { label: string; date: string; qib: number | null; nii: number | null; retail: number | null; employee: number | null; total: number | null }[];
-  catRows: { key: string; label: string; nested: boolean; book: string; bid: string; timesText: string }[];
+  catRows: { key: string; label: string; nested: boolean; book: string; bid: string; timesText: string; bidN: number | null }[];
 }
 
 export interface SubscriptionModel {
@@ -561,7 +592,7 @@ function subFocus(x: RawIpo, t: any): SubFocus {
     },
     share,
     days: log.map((d: any) => ({ label: `Day ${d.dayNo}`, date: dayMon(d.d), qib: d.entry.qib ?? null, nii: d.entry.nii ?? null, retail: d.entry.retail ?? null, employee: d.entry.employee ?? null, total: d.entry.total ?? null })),
-    catRows: rows.map((r: any) => ({ key: r.key, label: label(r), nested: r.key === 'hni' || r.key === 'hni2', book: r.bookSize ? inr(r.bookSize) : '—', bid: r.subscribed ? inr(r.subscribed) : '—', timesText: times(r.times) })),
+    catRows: rows.map((r: any) => ({ key: r.key, label: label(r), nested: r.key === 'hni' || r.key === 'hni2', book: r.bookSize ? inr(r.bookSize) : '—', bid: r.subscribed ? inr(r.subscribed) : '—', timesText: times(r.times), bidN: Number(r.subscribed) > 0 ? Number(r.subscribed) : null })),
   };
 }
 

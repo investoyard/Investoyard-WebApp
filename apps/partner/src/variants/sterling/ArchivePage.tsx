@@ -48,7 +48,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
       </div>
 
       <div className="s-table-wrap" style={{ marginTop: 20 }}>
-        <table className="s-table" style={{ minWidth: 900 }}>
+        <table className="s-table">
           <thead><tr><th style={{ width: '34%' }}>Company</th><th>Status</th><th>Bidding</th><th className="r">Price band</th><th className="r">Issue size</th><th className="r">Subscribed</th></tr></thead>
           <tbody>
             {shown.map((r) => (

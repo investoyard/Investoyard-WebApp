@@ -1,29 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { initialOf, usePartner } from '@/core/tenant';
 import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
+import { Icon, type IconName } from './parts';
 
+const NAV: { href: string; label: string; icon: IconName }[] = [
+  { href: '/', label: 'IPOs', icon: 'home' },
+  { href: '/subscription/', label: 'Subscription', icon: 'chart' },
+  { href: '/calendar/', label: 'Calendar', icon: 'calendar' },
+  { href: '/allotment/', label: 'Allotment', icon: 'check' },
+  { href: '/ipos/', label: 'Archive', icon: 'layers' },
+];
 const isCurrent = (path: string, href: string) =>
   href === '/' ? path === '/' || (path.startsWith('/ipos/') && path !== '/ipos/') : path === href;
-
-const ICON: Record<string, ReactNode> = {
-  '/': <path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z" />,
-  '/subscription/': <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
-  '/calendar/': <><path d="M7 3v3M17 3v3M4 9h16" /><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 13h2M12 13h2M8 16.5h2" /></>,
-  '/allotment/': <><path d="M9 11l3 3 7-7" /><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11" /></>,
-  '/ipos/': <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
-};
-
-const NAV = [
-  { href: '/', label: 'Home' },
-  { href: '/subscription/', label: 'Subscription' },
-  { href: '/calendar/', label: 'Calendar' },
-  { href: '/allotment/', label: 'Allotment' },
-  { href: '/ipos/', label: 'All IPOs' },
-];
 
 function Brand() {
   const p = usePartner();
@@ -31,41 +23,27 @@ function Brand() {
   const lg = footerLogo(p, 'light');
   return (
     <Link href="/" className="b-brand" aria-label={`${p.name} — home`}>
-      {lg ? <img className={`b-brand-logo${lg.plate ? ' plate' : ''}`} src={lg.src} alt={p.name} /> : (
+      {lg ? <img className={'b-brand-logo' + (lg.plate ? ' plate' : '')} src={lg.src} alt={p.name} /> : (
         <>
-          <span className="b-mark disp" aria-hidden="true">{initialOf(p)}</span>
-          <span className="b-brand-name disp">{p.name}</span>
+          <span className="b-mark" aria-hidden="true">{initialOf(p)}</span>
+          <span className="b-brand-t"><b>{p.name}</b><small>IPO research &amp; insights</small></span>
         </>
       )}
     </Link>
   );
 }
 
-export default function Shell({ children }: { children: ReactNode }) {
-  const path = usePathname() || '/';
+/* Search sends the reader to the archive, which filters on ?q= across every IPO. */
+function Search() {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  const go = (e: FormEvent) => { e.preventDefault(); const s = q.trim(); router.push(s ? `/ipos/?q=${encodeURIComponent(s)}` : '/ipos/'); };
   return (
-    <>
-      <header className="b-head">
-        <div className="b-wrap b-head-in">
-          <Brand />
-          <nav className="b-nav" aria-label="Primary">
-            {NAV.map((n) => <Link key={n.href} href={n.href} aria-current={isCurrent(path, n.href) ? 'page' : undefined}>{n.label}</Link>)}
-          </nav>
-          <div className="b-head-r"><Link href="/allotment/" className="b-btn b-btn-p">Check allotment</Link></div>
-        </div>
-      </header>
-      <main className="b-wrap">{children}</main>
-      <Footer />
-      {/* On a phone the primary navigation is a bottom tab bar, the way an app does it. */}
-      <nav className="b-tabbar" aria-label="Primary">
-        {NAV.map((n) => (
-          <Link key={n.href} href={n.href} aria-current={isCurrent(path, n.href) ? 'page' : undefined}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICON[n.href]}</svg>
-            {n.label}
-          </Link>
-        ))}
-      </nav>
-    </>
+    <form className="b-search" role="search" onSubmit={go}>
+      <Icon name="search" size={17} />
+      <label className="sr" htmlFor="b-q">Search IPOs</label>
+      <input id="b-q" type="search" placeholder="Search IPO, company or sector" value={q} onChange={(e) => setQ(e.target.value)} />
+    </form>
   );
 }
 
@@ -77,40 +55,68 @@ function Footer() {
   const lg = footerLogo(p, 'light');
   return (
     <footer className="b-foot">
-      <div className="b-foot-wrap">
+      <div className="b-wrap">
         <div className="b-foot-grid">
-          <div className="b-foot-brand">
-            {lg ? <img className={`b-foot-logo${lg.plate ? ' plate' : ''}`} src={lg.src} alt={p.name} /> : <span className="b-foot-name">{p.name}</span>}
-            {/* Only what the partner has entered — never our identity, never a guess. */}
-            <div className="b-foot-id">
-              {f.legalName ? <b>{f.legalName}</b> : null}
-              {f.registration.map((r) => <div key={r.k}>{r.k} <span className="num">{r.v}</span></div>)}
-              {f.address ? <div>{f.address}</div> : null}
-            </div>
+          <div className="b-foot-id">
+            {lg ? <img className={'b-foot-logo' + (lg.plate ? ' plate' : '')} src={lg.src} alt={p.name} /> : <span className="b-foot-name">{p.name}</span>}
+            {/* Only what the partner has entered — never our identity. */}
+            {f.legalName ? <strong>{f.legalName}</strong> : null}
+            {f.registration.map((r) => <span key={r.k}>{r.k} <span className="num">{r.v}</span></span>)}
+            {f.address ? <span>{f.address}</span> : null}
           </div>
-          <nav className="b-foot-col" aria-label="IPOs">
+          <nav aria-label="IPOs">
             <strong>IPOs</strong>
-            <Link href="/">Open and upcoming</Link>
+            <Link href="/">Current IPOs</Link>
             <Link href="/subscription/">Live subscription</Link>
             <Link href="/calendar/">IPO calendar</Link>
-            <Link href="/ipos/">All IPOs</Link>
+            <Link href="/ipos/">Archive</Link>
           </nav>
-          <nav className="b-foot-col" aria-label="Tools">
+          <nav aria-label="Tools">
             <strong>Tools</strong>
             <Link href="/allotment/">Allotment status</Link>
           </nav>
           {f.support.length || f.grievance.length ? (
-            <div className="b-foot-col">
+            <nav aria-label="Contact">
               {f.support.length ? <><strong>Support</strong>{f.support.map((s) => <a key={s.k} href={s.href}>{s.v}</a>)}</> : null}
               {f.grievance.length ? <><strong style={{ marginTop: f.support.length ? 10 : 0 }}>Grievances</strong>{f.grievance.map((g) => g.href ? <a key={g.k} href={g.href}>{g.v}</a> : <span key={g.k}>{g.v}</span>)}</> : null}
-            </div>
+            </nav>
           ) : <div />}
         </div>
-        <div className="b-foot-base">
+        <div className="b-foot-note">
           <span>{RISK_TEXT}</span>
           <span suppressHydrationWarning>© {year} {f.owner}</span>
         </div>
       </div>
     </footer>
+  );
+}
+
+export default function Shell({ children }: { children: ReactNode }) {
+  const path = usePathname() || '/';
+  return (
+    <>
+      <a className="sr" href="#main">Skip to content</a>
+      <header className="b-head">
+        <div className="b-wrap b-head-in">
+          <Brand />
+          <nav className="b-nav" aria-label="Primary">
+            {NAV.map((n) => <Link key={n.href} href={n.href} aria-current={isCurrent(path, n.href) ? 'page' : undefined}>{n.href === '/' ? <Icon name="home" size={17} /> : null}{n.label}</Link>)}
+          </nav>
+          <Search />
+          <Link href="/ipos/" className="b-qlink" aria-label="Search IPOs"><Icon name="search" size={20} /></Link>
+        </div>
+      </header>
+      <main id="main">{children}</main>
+      <Footer />
+      {/* On a phone the primary navigation is a bottom tab bar, the way an app does it. */}
+      <nav className="b-tabbar" aria-label="Primary">
+        {NAV.map((n) => (
+          <Link key={n.href} href={n.href} aria-current={isCurrent(path, n.href) ? 'page' : undefined}>
+            <Icon name={n.icon} size={21} />
+            {n.label}
+          </Link>
+        ))}
+      </nav>
+    </>
   );
 }

@@ -99,12 +99,12 @@ export default function DetailPage({ model: m }: { model: DetailModel }) {
                 <div className="h-substat-big"><strong className="num">{m.sub.total.times}</strong><span>Overall subscription</span></div>
                 <div className="h-tbl-wrap">
                   <table className="h-tbl h-tbl-mini">
-                    <thead><tr><th>Category</th><th className="r">Times</th><th className="r">Shares offered</th><th className="r">Shares bid</th></tr></thead>
+                    <thead><tr><th>Category</th><th className="r">Times</th><th className="r h-m1">Shares offered</th><th className="r">Shares bid</th></tr></thead>
                     <tbody>
                       {m.sub.rows.map((r) => (
-                        <tr key={r.key} className={r.nested ? 'nested' : undefined}><td>{r.label}</td><td className="r num"><b>{r.times}</b></td><td className="r num">{r.book}</td><td className="r num">{r.bid}</td></tr>
+                        <tr key={r.key} className={r.nested ? 'nested' : undefined}><td>{r.label}</td><td className="r num"><b>{r.times}</b></td><td className="r num h-m1">{r.book}</td><td className="r num">{r.bid}</td></tr>
                       ))}
-                      <tr className="tot"><td>Total</td><td className="r num">{m.sub.total.times}</td><td className="r num">{m.sub.total.book}</td><td className="r num">{m.sub.total.bid}</td></tr>
+                      <tr className="tot"><td>Total</td><td className="r num">{m.sub.total.times}</td><td className="r num h-m1">{m.sub.total.book}</td><td className="r num">{m.sub.total.bid}</td></tr>
                     </tbody>
                   </table>
                 </div>

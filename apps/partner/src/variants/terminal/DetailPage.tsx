@@ -69,15 +69,15 @@ export default function DetailPage({ model: m }: { model: DetailModel }) {
               <div className="t-table-wrap">
                 <table className="t-table t-subt">
                   <thead>
-                    <tr><th>Category</th><th className="r">Shares offered</th><th className="r">Shares bid for</th><th style={{ width: '28%' }}><span className="sr">Demand</span></th><th className="r">Times</th></tr>
+                    <tr><th>Category</th><th className="r t-d1">Shares offered</th><th className="r">Shares bid for</th><th className="t-d1" style={{ width: '28%' }}><span className="sr">Demand</span></th><th className="r">Times</th></tr>
                   </thead>
                   <tbody>
                     {m.sub.rows.map((r) => (
                       <tr key={r.key} className={r.nested ? 'nested' : undefined}>
-                        <td>{r.label}</td><td className="r">{r.book}</td><td className="r">{r.bid}</td><td><Bar width={r.width} /></td><td className="r"><b>{r.times}</b></td>
+                        <td>{r.label}</td><td className="r t-d1">{r.book}</td><td className="r">{r.bid}</td><td className="t-d1"><Bar width={r.width} /></td><td className="r"><b>{r.times}</b></td>
                       </tr>
                     ))}
-                    <tr><td><b>Total</b></td><td className="r"><b>{m.sub.total.book}</b></td><td className="r"><b>{m.sub.total.bid}</b></td><td /><td className="r"><b>{m.sub.total.times}</b></td></tr>
+                    <tr><td><b>Total</b></td><td className="r t-d1"><b>{m.sub.total.book}</b></td><td className="r"><b>{m.sub.total.bid}</b></td><td className="t-d1" /><td className="r"><b>{m.sub.total.times}</b></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -119,7 +119,7 @@ export default function DetailPage({ model: m }: { model: DetailModel }) {
           {m.lots.length ? (
             <Panel id="lots" title="How much to apply" right={<span className="t-muted" style={{ fontSize: 13 }}>At {m.upperPrice}</span>} pad={false}>
               <div className="t-table-wrap">
-                <table className="t-table t-subt">
+                <table className="t-table t-subt t-lots">
                   <thead><tr><th>Category</th><th className="r">Lots</th><th className="r">Shares</th><th className="r">Amount</th></tr></thead>
                   <tbody>
                     {m.lots.map((l) => <tr key={l.cat}><td>{l.cat}{l.sub ? <span className="t-co-sub"> · {l.sub}</span> : null}</td><td className="r">{l.lots}</td><td className="r">{l.shares}</td><td className="r"><b>{l.amount}</b></td></tr>)}

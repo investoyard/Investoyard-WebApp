@@ -172,21 +172,21 @@ export default function SubscriptionPage({ model }: { model: SubscriptionModel }
               </div>
               <div className="h-tbl-wrap">
                 <table className="h-tbl h-tbl-sub">
-                  <thead><tr><th className="num">#</th><th>IPO name</th><th>Sector</th><th className="r">Price band</th><th className="r">Issue size</th><th className="r h-hl">Overall</th><th className="r">QIB</th><th className="r">NII</th><th className="r">Retail</th><th className="r">Employee</th><th>Updated</th></tr></thead>
+                  <thead><tr><th className="num h-s2">#</th><th>IPO name</th><th className="h-s1">Sector</th><th className="r h-s3">Price band</th><th className="r h-s4">Issue size</th><th className="r h-hl">Overall</th><th className="r">QIB</th><th className="r h-s4">NII</th><th className="r">Retail</th><th className="r h-s2">Employee</th><th className="h-s3">Updated</th></tr></thead>
                   <tbody>
                     {rows.length ? rows.map((r, i) => (
                       <tr key={r.sym} className={r.sym === sel.sym ? 'is-sel' : undefined}>
-                        <td className="num h-muted">{i + 1}</td>
+                        <td className="num h-muted h-s2">{i + 1}</td>
                         <td><div className="h-subname"><Link href={r.href}>{r.name}</Link><span className={`h-day${liveSyms.has(r.sym) ? '' : ' fin'}`}>{dayOf(r)}</span></div></td>
-                        <td className="h-muted">{r.industry || '—'}</td>
-                        <td className="r num">{r.band}</td>
-                        <td className="r num">{r.size}</td>
+                        <td className="h-muted h-s1">{r.industry || '—'}</td>
+                        <td className="r num h-s3">{r.band}</td>
+                        <td className="r num h-s4">{r.size}</td>
                         <td className="r num h-hl"><b>{r.subs || '—'}</b></td>
                         <td className="r num">{r.qib}</td>
-                        <td className="r num">{r.nii}</td>
+                        <td className="r num h-s4">{r.nii}</td>
                         <td className="r num">{r.retail}</td>
-                        <td className="r num">{r.employee}</td>
-                        <td className="h-muted num">{r.asOf || (r.close ? `Closed ${dayMon(r.close)}` : '—')}</td>
+                        <td className="r num h-s2">{r.employee}</td>
+                        <td className="h-muted num h-s3">{r.asOf || (r.close ? `Closed ${dayMon(r.close)}` : '—')}</td>
                       </tr>
                     )) : <tr><td colSpan={11} className="h-tbl-none">No issue matches these filters.</td></tr>}
                   </tbody>

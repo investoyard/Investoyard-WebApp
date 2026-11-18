@@ -57,7 +57,7 @@ function SubTable({ rows, first }: { rows: SubscriptionModel['closed']; first: '
   return (
     <>
       <div className="s-table-wrap" style={{ marginTop: 20 }}>
-        <table className="s-table" style={{ minWidth: 940 }}>
+        <table className="s-table">
           <thead>
             <tr>
               <th style={{ width: '32%' }}>Company</th>

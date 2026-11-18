@@ -335,14 +335,8 @@ ol, ul { padding: 0; list-style: none; }
   .s-tools { width: 100%; }
   .s-tools label { flex: 1; }
   .s-tools .s-field { width: 100%; }
-  .s-tabs { gap: 24px; }
+  .s-tabs { gap: 0 20px; flex-wrap: wrap; overflow: visible; }
   .s-cards { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .s-table-wrap { display: none; }
-  .s-rows { display: block; margin-top: 8px; }
-  .s-rows a { display: flex; gap: 12px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line2); }
-  .s-rows .s-rows-r { margin-left: auto; text-align: right; flex-shrink: 0; }
-  .s-rows .s-rows-r b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
-  .s-rows .s-rows-r span { font-size: 12px; color: var(--muted); }
   .s-steps { grid-template-columns: minmax(0, 1fr); }
   .s-steps li, .s-steps li:first-child { padding: 18px 0; border-left: 0; border-top: 1px solid var(--line); }
   .s-steps li:first-child { border-top: 0; }
@@ -464,3 +458,21 @@ ol, ul { padding: 0; list-style: none; }
 }
 .s-cal h2.s-cal-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .s-cal-h .s-link { font-size: 14px; }
+
+/* Operator tables: the editor's inline font sizes give way to ours, and narrow screens keep the label plus the three latest periods. */
+.s-prose td span[style], .s-prose th span[style] { font-size: inherit !important; }
+@media (max-width: 520px) {
+  .s-prose table { font-size: 12.5px; }
+  .s-prose table tr > :nth-child(n + 5) { display: none; }
+  .s-prose td, .s-prose th { padding-left: 6px; padding-right: 6px; }
+}
+
+/* The full tables give way to the row lists below 1000px, where their columns no longer fit. */
+@media (max-width: 1000px) {
+  .s-table-wrap { display: none; }
+  .s-rows { display: block; margin-top: 8px; }
+  .s-rows a { display: flex; gap: 12px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line2); }
+  .s-rows .s-rows-r { margin-left: auto; text-align: right; flex-shrink: 0; }
+  .s-rows .s-rows-r b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .s-rows .s-rows-r span { font-size: 12px; color: var(--muted); }
+}

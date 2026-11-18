@@ -70,6 +70,8 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
     lines: SUMMARY.map(([k, one, many]) => { const n = model.ipos.filter((x) => x[k] === d).length; return n ? `${n} ${n === 1 ? one : many}` : ''; }).filter(Boolean),
   })).filter((g) => g.lines.length);
 
+  /* The date column a tab is about, or none. */
+  const key: keyof CalIpo | null = tab === 'allot' ? 'allot' : tab === 'list' ? 'list' : null;
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
     return model.ipos
@@ -77,13 +79,22 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
       .filter((x) => tab === 'all' || (tab === 'open' ? x.tone === 'open' : tab === 'upcoming' ? x.tone === 'upcoming' : tab === 'allot' ? x.allot.startsWith(ym) : x.list.startsWith(ym)))
       .filter((x) => (board === 'all' || x.board === board) && (sector === 'all' || x.industry === sector) && (!s || x.name.toLowerCase().includes(s) || x.sym.toLowerCase().includes(s)))
       .sort((a, b) => {
+        /* Allotment and Listing order by THEIR date: the nearest one still ahead first, then the most recent. In most months
+           nearly every IPO has both dates, so filtering alone left the list looking unchanged. */
+        if (key) {
+          const da = String(a[key]), db = String(b[key]);
+          const fa = da >= today, fb = db >= today;
+          if (fa !== fb) return fa ? -1 : 1;
+          if (da !== db) return fa ? (da < db ? -1 : 1) : (da < db ? 1 : -1);
+          return a.name.localeCompare(b.name);
+        }
         const rank = (x: CalIpo) => (x.tone === 'open' ? 0 : x.tone === 'upcoming' ? 1 : 2);
         if (rank(a) !== rank(b)) return rank(a) - rank(b);
         const ao = a.open || '9', bo = b.open || '9';
         const dir = rank(a) === 2 ? -1 : 1;
         return ao < bo ? -dir : ao > bo ? dir : a.name.localeCompare(b.name);
       });
-  }, [model.ipos, ym, tab, board, sector, q]);
+  }, [model.ipos, ym, tab, board, sector, q, key, today]);
   const pages = Math.max(1, Math.ceil(rows.length / PER));
   const p = Math.min(page, pages - 1);
   const shown = rows.slice(p * PER, p * PER + PER);
@@ -139,21 +150,21 @@ export default function CalendarPage({ model }: { model: CalendarModel }) {
           <div className="h-tbl-wrap">
             <table className="h-tbl h-tbl-cal">
               <thead>
-                <tr><th className="num">#</th><th>Company / IPO</th><th className="r">Issue size</th><th className="r">Price band (₹)</th><th>Board</th>{DATES.map(([, l]) => <th key={l}>{l}</th>)}<th>Status</th></tr>
+                <tr><th className="num h-k1">#</th><th>Company / IPO</th><th className="r h-k3">Issue size</th><th className="r">Price band (₹)</th><th className="h-k1">Board</th>{DATES.map(([k, l]) => <th key={l} className={[k === key ? 'is-key' : '', k === 'refund' || k === 'demat' ? 'h-k2' : ''].join(' ').trim() || undefined}>{l}</th>)}<th className="h-k3">Status</th></tr>
               </thead>
               <tbody>
                 {shown.length ? shown.map((x, i) => (
                   <tr key={x.sym}>
-                    <td className="num h-muted">{p * PER + i + 1}</td>
+                    <td className="num h-muted h-k1">{p * PER + i + 1}</td>
                     <td><Link className="h-co" href={x.href}><Logo ipo={x} size="sm" /><span><b>{x.name}</b>{x.industry ? <small>{x.industry}</small> : null}</span></Link></td>
-                    <td className="r num">{x.size}</td>
+                    <td className="r num h-k3">{x.size}</td>
                     <td className="r num">{x.band.replace(/₹/g, '')}</td>
-                    <td><span className={`h-board${x.board === 'SME' ? ' sme' : ''}`}>{x.board}</span></td>
+                    <td className="h-k1"><span className={`h-board${x.board === 'SME' ? ' sme' : ''}`}>{x.board}</span></td>
                     {DATES.map(([k]) => {
                       const d = String(x[k]);
-                      return <td key={k} className={`num h-dt${d === today ? ' is-today' : ''}${!d ? ' h-muted' : ''}`}>{dd(d, ym)}</td>;
+                      return <td key={k} className={`num h-dt${d === today ? ' is-today' : ''}${!d ? ' h-muted' : ''}${k === key ? ' is-key' : ''}${k === key && d >= today ? ' is-ahead' : ''}${k === 'refund' || k === 'demat' ? ' h-k2' : ''}`}>{dd(d, ym)}</td>;
                     })}
-                    <td><Status tone={x.tone}>{x.tone === 'open' ? 'Open' : x.tone === 'upcoming' ? 'Upcoming' : x.list && x.list <= today ? 'Listed' : 'Closed'}</Status></td>
+                    <td className="h-k3"><Status tone={x.tone}>{x.tone === 'open' ? 'Open' : x.tone === 'upcoming' ? 'Upcoming' : x.list && x.list <= today ? 'Listed' : 'Closed'}</Status></td>
                   </tr>
                 )) : <tr><td colSpan={12} className="h-tbl-none">No IPO matches in {monthLabel(ym)}.</td></tr>}
               </tbody>

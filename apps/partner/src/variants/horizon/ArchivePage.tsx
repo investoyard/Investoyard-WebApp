@@ -109,19 +109,19 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
           </div>
           <div className="h-tbl-wrap">
             <table className="h-tbl h-tbl-ar">
-              <thead><tr><th className="num">#</th><th>IPO / company</th><th>Issue dates</th><th className="r">Price band</th><th className="r">Issue size</th><th className="r">Subscribed</th><th>Sector</th><th>Status</th><th><span className="sr">Open</span></th></tr></thead>
+              <thead><tr><th className="num h-a2">#</th><th>IPO / company</th><th>Issue dates</th><th className="r h-a3">Price band</th><th className="r">Issue size</th><th className="r">Subscribed</th><th className="h-a1">Sector</th><th className="h-a3">Status</th><th className="h-a2"><span className="sr">Open</span></th></tr></thead>
               <tbody>
                 {shown.length ? shown.map((r, i) => (
                   <tr key={r.sym}>
-                    <td className="num h-muted">{p * per + i + 1}</td>
+                    <td className="num h-muted h-a2">{p * per + i + 1}</td>
                     <td><Link className="h-co" href={r.href}><Logo ipo={r} size="sm" /><span><b>{r.name}</b><small><Board board={r.board} /></small></span></Link></td>
                     <td className="num">{r.dates}{r.year ? <span className="h-muted"> {r.year}</span> : null}</td>
-                    <td className="r num">{r.band}</td>
+                    <td className="r num h-a3">{r.band}</td>
                     <td className="r num">{r.size}</td>
                     <td className="r num"><b>{r.subs || '—'}</b></td>
-                    <td className="h-muted">{r.industry || '—'}</td>
-                    <td><Status tone={r.tone}>{r.status}</Status></td>
-                    <td><Link className="h-view" href={r.href}>View <Icon name="arrow" size={13} stroke={2} /></Link></td>
+                    <td className="h-muted h-a1">{r.industry || '—'}</td>
+                    <td className="h-a3"><Status tone={r.tone}>{r.status}</Status></td>
+                    <td className="h-a2"><Link className="h-view" href={r.href}>View <Icon name="arrow" size={13} stroke={2} /></Link></td>
                   </tr>
                 )) : <tr><td colSpan={9} className="h-tbl-none">No IPO matches. Try a shorter name, or reset the filters.</td></tr>}
               </tbody>

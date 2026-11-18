@@ -1,4 +1,4 @@
-import { Bricolage_Grotesque, Onest } from 'next/font/google';
+import { Be_Vietnam_Pro, Onest } from 'next/font/google';
 import type { VariantModule } from '@/core/variant';
 import './bento.css';
 import Shell from './Shell';
@@ -10,16 +10,19 @@ import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
 
 /*
- * BENTO — variant 2. Friendly, app-like, tile-built.
- * Bricolage Grotesque for display, Onest for text: neither is used by Sterling,
- * apps/web, or any earlier partner theme.
+ * BENTO — variant 2, rebuilt 2026-11-17 from Sir's reference layouts: a crisp
+ * IPO dashboard. Bold sans headings (Be Vietnam Pro) over Onest text — no
+ * other design or apps/web uses either — a filled-pill menu, stat tiles,
+ * charts (day-wise bars, financials, a demand donut) and soft, filled
+ * illustrations in the partner's colour. Kept clearly apart from Horizon,
+ * which is serif, line-drawn and table-first.
  */
-const display = Bricolage_Grotesque({ subsets: ['latin'], weight: ['500', '600', '700', '800'], variable: '--font-bento-display', display: 'swap' });
-const body = Onest({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-bento-body', display: 'swap' });
+const head = Be_Vietnam_Pro({ subsets: ['latin'], weight: ['600', '700', '800'], variable: '--font-bn-head', display: 'swap' });
+const body = Onest({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-bn-body', display: 'swap' });
 
 const bento: VariantModule = {
   name: 'bento',
-  fontClassName: `${display.variable} ${body.variable}`,
+  fontClassName: `${head.variable} ${body.variable}`,
   Shell,
   HomePage,
   DetailPage,
