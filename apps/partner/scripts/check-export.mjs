@@ -35,6 +35,12 @@ let pages = 0;
 try { pages = fs.readdirSync(path.join(root, 'ipos')).filter((d) => fs.existsSync(path.join(root, 'ipos', d, 'index.html'))).length; } catch { /* none */ }
 ok(pages >= 1000, `IPO detail pages: ${pages} (floor 1000)`);
 for (const p of ['subscription/index.html', 'allotment/index.html', 'ipos/index.html', 'calendar/index.html']) ok(read(p).length > 5_000, `${p} present`);
+/* The partner's own legal pages. Their text is fetched in the browser, so the baked page is only the frame. */
+for (const p of ['about', 'terms', 'privacy', 'disclaimer']) ok(read(`${p}/index.html`).length > 2_000, `${p}/index.html present`);
+/* A production build must never carry the sample broker (an invented company on a real domain); a preview build must. */
+const sample = index.includes('Meru Securities');
+const preview = !!process.env.PARTNER_BASE_PATH;
+ok(preview ? sample : !sample, preview ? 'preview build carries the sample broker' : 'production build carries no sample broker');
 
 if (fails.length) { console.error(`\nREFUSED: ${fails.length} check(s) failed for ${variant}`); process.exit(1); }
 console.log(`\n${variant}: export verified`);

@@ -802,14 +802,17 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
       </p>
       {/* SAID PLAINLY, because the setting otherwise saves, reports success and
           changes nothing visible — which reads as a broken panel. A partner
-          design is not served on a partner's domain until that domain is pointed
-          at the partner site, which is a server step; until then their domain
-          keeps showing our layout. */}
+          design reaches the partner's domain only once that partner has been
+          switched on for the partner site (a server step:
+          `node scripts/partner-routes.js --enable <slug>`). After that, the
+          routes task applies this choice within about ten minutes, and later
+          changes here follow by themselves. */}
       <div className="banner warn" style={{ marginBottom: 12 }}>
-        Choosing a design saves it for this partner and previews it below. It does not change what
-        {tenant.customDomain ? <> <b>{tenant.customDomain}</b></> : ' their site'} shows yet: that
-        switches when their domain is pointed at the partner site, which is a server step. Until
-        then it keeps showing the Investoyard layout.
+        Choosing a design saves it for this partner and previews it below. Once this partner is
+        switched on for the partner site,
+        {tenant.customDomain ? <> <b>{tenant.customDomain}</b></> : ' their domain'} changes to the
+        chosen design within about 10 minutes, and later changes here follow by themselves. Until
+        they are switched on, it keeps showing the Investoyard layout.
       </div>
 
       {/* ---- the design ---- */}

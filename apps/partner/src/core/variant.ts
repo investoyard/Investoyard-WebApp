@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
+import type { TenantPageKey } from '@investoyard/shared-types';
 import type { CalendarModel } from './calendar';
 import type { AllotmentChoiceFull, ArchiveRow, DetailModel, HomeModel, SubscriptionModel } from './models';
 
@@ -23,4 +24,6 @@ export interface VariantModule {
   AllotmentPage: ComponentType<{ choices: AllotmentChoiceFull[] }>;
   ArchivePage: ComponentType<{ rows: ArchiveRow[] }>;
   CalendarPage: ComponentType<{ model: CalendarModel }>;
+  /** About / Terms / Privacy / Disclaimer. The body comes from core LegalBody; the variant owns the frame. */
+  LegalPage: ComponentType<{ page: TenantPageKey }>;
 }

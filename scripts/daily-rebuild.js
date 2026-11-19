@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The nightly web rebuild.
+ * The nightly web rebuild — and, after it, the five partner-site designs.
  *
  *
  * WHY IT EXISTS: THE STATIC EXPORT GOES WRONG THE DAY AFTER IT IS BUILT
@@ -116,7 +116,8 @@ say(`=== daily-rebuild ${new Date().toISOString()} ===`);
    network: if the answer is no, nothing should have been started.
 
    `--allow-dirty` is for a run BY HAND. The scheduled task never passes it. */
-const WATCH = ['apps/web', 'packages/shared-types', 'packages/i18n'];
+/* apps/partner is watched too: the same run rebuilds the five partner designs (see the end of this file). */
+const WATCH = ['apps/web', 'apps/partner', 'packages/shared-types', 'packages/i18n'];
 const allowDirty = process.argv.includes('--allow-dirty');
 
 function git(args) {
@@ -298,4 +299,31 @@ if (after.ipoPages < Math.floor(before.ipoPages * 0.8) || after.indexBytes < 1_0
   done(1, 'published-looks-wrong', { ...after, note: `was ${before.ipoPages} pages` });
 }
 
-done(0, 'ok', { ...after, note: `${after.ipoPages} pages` });
+/* ---------------------------------------------------------- partner designs */
+/* THE PARTNER SITES BAKE THEIR FIGURES AT BUILD TIME TOO, so they go stale on
+   the same clock. After the website is safely published:
+     1. the five designs are rebuilt for production into apps/web/out/_partner/<design>/,
+        which is what a switched-on partner's domain is served from;
+     2. the five admin previews (investoyard.com/partner-preview/<design>/) are rebuilt;
+     3. the host -> design map is re-applied, which also picks up a partner whose
+        domain only became known to the build tonight.
+   Each step refuses a bad build on its own and leaves the live copy as it was,
+   so a failure here never touches the website just published. */
+const PARTNER = path.join(ROOT, 'apps', 'partner');
+function step(label, file, args, cwd) {
+  const r = spawnSync(process.execPath, [file, ...args], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const tail = (String(r.stdout || '') + String(r.stderr || '')).trim().split('\n').slice(-8);
+  say(`${label}: ${r.status === 0 ? 'ok' : 'FAILED (exit ' + r.status + ')'}`);
+  say(tail.map((l) => '  | ' + l).join('\n'));
+  return r.status === 0;
+}
+const partnerSteps = [
+  step('partner designs (live)', path.join(PARTNER, 'scripts', 'publish-live.mjs'), [], PARTNER),
+  step('partner designs (admin previews)', path.join(PARTNER, 'scripts', 'publish-preview.mjs'), [], PARTNER),
+  step('partner routes', path.join(ROOT, 'scripts', 'partner-routes.js'), ['--apply'], ROOT),
+];
+if (partnerSteps.some((x) => !x)) {
+  done(1, 'partner-failed', { ...after, note: `website ok (${after.ipoPages} pages); partner steps: ${partnerSteps.map((x) => (x ? 'ok' : 'FAIL')).join('/')}` });
+}
+
+done(0, 'ok', { ...after, note: `${after.ipoPages} pages; partner designs ok` });

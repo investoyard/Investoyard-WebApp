@@ -17,7 +17,7 @@
  * failure class this whole change exists for — robocopy retries where Next's
  * rmdir simply aborted.
  */
-import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 
@@ -51,6 +51,8 @@ const checks = [
   ['web.config present', () => size(join(STAGING, 'web.config')) > 0,
     'carries the canonical 301 + the SPA fallbacks'],
   ['_next/static present', () => existsSync(join(STAGING, '_next', 'static')), ''],
+  ['partner-routes.config present', () => size(join(STAGING, 'partner-routes.config')) > 0,
+    'web.config reads it with configSource; without it IIS answers 500 for every page'],
   [`ipo pages >= ${MIN_IPOS}`, () => dirCount(join(STAGING, 'ipos')) >= MIN_IPOS,
     `${dirCount(join(STAGING, 'ipos'))} built, live has ${liveIpos}`],
   ['home page is a real render', () => {
@@ -98,11 +100,25 @@ const robo = (args, label) => {
  * on every deploy and every nightly rebuild. Robocopy neither copies nor deletes an excluded
  * directory.
  */
-const COMMON = ['/R:3', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/XD', 'partner-preview'];
+/*
+ * _partner/ AND partner-routes.config ARE NOT OURS EITHER. _partner/<design>/ holds the live partner
+ * designs (apps/partner/scripts/publish-live.mjs) and partner-routes.config is the host -> design map
+ * that scripts/partner-routes.js writes. A deploy must neither delete them nor overwrite the map with
+ * the build's blank one — that would take every routed partner domain back to our pages.
+ *
+ * THE MAP MUST EXIST BEFORE THE NEW web.config LANDS: web.config reads it with configSource, and a
+ * missing file makes IIS answer 500 for EVERY page on every host. So on the first deploy that carries
+ * the routing, the build's blank copy is put in place first.
+ */
+if (!existsSync(join(LIVE, 'partner-routes.config'))) {
+  copyFileSync(join(STAGING, 'partner-routes.config'), join(LIVE, 'partner-routes.config'));
+  console.log('\npartner-routes.config was missing from the live folder: blank copy put in place before web.config');
+}
+const COMMON = ['/R:3', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/XD', 'partner-preview', '_partner', '/XF', 'partner-routes.config'];
 robo([STAGING, LIVE, '/E', ...COMMON], 'pass 1/2  copy new and changed files (no deletions yet)');
 robo([STAGING, LIVE, '/MIR', ...COMMON], 'pass 2/2  remove files no longer in the build');
 
-const ok = size(join(LIVE, 'index.html')) >= 1_000_000 && size(join(LIVE, 'web.config')) > 0;
+const ok = size(join(LIVE, 'index.html')) >= 1_000_000 && size(join(LIVE, 'web.config')) > 0 && size(join(LIVE, 'partner-routes.config')) > 0;
 console.log(`\n${ok ? 'PUBLISHED' : 'PUBLISH LOOKS WRONG'} — live index.html ${size(join(LIVE, 'index.html')).toLocaleString()} bytes, ` +
             `web.config ${size(join(LIVE, 'web.config')).toLocaleString()} bytes, ${dirCount(join(LIVE, 'ipos'))} ipo pages`);
 process.exit(ok ? 0 : 1);

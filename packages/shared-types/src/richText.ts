@@ -18,6 +18,22 @@
 
 const KEEP_STYLE = /^(color|background-color|text-align|font-size)\s*:/i;
 
+/**
+ * ELEMENTS THAT NEVER BELONG IN OPERATOR PROSE, removed WITH their content.
+ *
+ * Found 2026-11-19 while testing partner legal pages: this module removed
+ * event handlers but kept the elements, so a `<script>` survived intact. It
+ * does not run when inserted with innerHTML — but an UNQUOTED handler did
+ * survive (the handler patterns required quotes), and `<img src=x onerror=…>`
+ * DOES run that way. A partner admin can write their own legal pages and the
+ * admin preview shows them under our domain, so that was script on our origin.
+ * A stylesheet or form has no business in prose either.
+ */
+const DROP_ELEMENTS = 'script|style|iframe|frame|frameset|object|embed|applet|noscript|template|svg|math|form|textarea|select|button|base|link|meta|title|head';
+const DROP_WITH_CONTENT = new RegExp(`<(${DROP_ELEMENTS})\\b[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
+/* ...and whatever is left of them: an unclosed opening tag, a stray closing tag, a void <input>. */
+const DROP_TAGS = new RegExp(`<\\/?(${DROP_ELEMENTS}|input)\\b[^>]*>`, 'gi');
+
 function filterStyle(css: string): string {
   return css
     .split(';')
@@ -29,8 +45,18 @@ function filterStyle(css: string): string {
 export function cleanRich(html?: string | null): string {
   if (!html) return '';
   return String(html)
+    .replace(DROP_WITH_CONTENT, '')
+    .replace(DROP_TAGS, '')
     .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')      // event handlers
     .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+    /* ...and the forms those two miss: UNQUOTED (`onerror=x`), and after a slash
+       (`<img/onerror=x>`), both valid attributes to a browser. Matched only INSIDE
+       a tag — the tag pattern steps over quoted values, so a `>` inside one cannot
+       end it early — so prose such as "set online=true" is never touched. */
+    .replace(/<[a-z](?:[^>"']|"[^"]*"|'[^']*')*>/gi, (tag) => tag
+      /* Quoted values are matched first and kept whole, so a URL such as "/onload=1.png" is never cut into. */
+      .replace(/("[^"]*"|'[^']*')|[\s/]on[a-z]+\s*=\s*[^\s>"']+/gi, (m, quoted) => quoted || '')
+      .replace(/\s(srcdoc|formaction|xlink:href)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''))
     .replace(/\sstyle\s*=\s*"([^"]*)"/gi, (_, css) => {
       const kept = filterStyle(css);
       return kept ? ` style="${kept}"` : '';

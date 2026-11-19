@@ -8,6 +8,7 @@ import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
+import LegalPage from './LegalPage';
 
 /*
  * PRISM — variant 5 (was Ledger). A bright IPO dashboard built from the
@@ -26,6 +27,7 @@ const prism: VariantModule = {
   AllotmentPage,
   ArchivePage,
   CalendarPage,
+  LegalPage,
 };
 
 export default prism;

@@ -1,3 +1,4 @@
+import { PAGE_LABEL, type TenantPageKey } from '@investoyard/shared-types';
 import type { PartnerIdentity } from './tenant.server';
 
 /*
@@ -61,3 +62,8 @@ export const RISK_TEXT =
   'Investments in the securities market are subject to market risks. Read all related documents carefully before investing. ' +
   'IPO figures — dates, price bands, subscription and allotment — are as published by NSE, BSE and the registrar. ' +
   'This site informs; it does not recommend any issue.';
+
+/** The partner's four legal pages, in footer order. Each is the partner's own text or says it is not published. */
+export const LEGAL_PAGES: readonly { key: TenantPageKey; label: string; href: string }[] = (
+  ['about', 'terms', 'privacy', 'disclaimer'] as const
+).map((key) => ({ key, label: PAGE_LABEL[key], href: `/${key}/` }));

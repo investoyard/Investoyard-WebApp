@@ -8,6 +8,7 @@ import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
+import LegalPage from './LegalPage';
 
 /*
  * HORIZON — variant 4, rebuilt 2026-11-17 from the operator's reference
@@ -29,6 +30,7 @@ const horizon: VariantModule = {
   AllotmentPage,
   ArchivePage,
   CalendarPage,
+  LegalPage,
 };
 
 export default horizon;

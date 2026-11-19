@@ -8,6 +8,7 @@ import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
+import LegalPage from './LegalPage';
 
 /*
  * BENTO — variant 2, rebuilt 2026-11-17 from Sir's reference layouts: a crisp
@@ -30,6 +31,7 @@ const bento: VariantModule = {
   AllotmentPage,
   ArchivePage,
   CalendarPage,
+  LegalPage,
 };
 
 export default bento;

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.sterling.json && tsc --noEmit -p tsconfig.bento.json && tsc --noEmit -p tsconfig.terminal.json && tsc --noEmit -p tsconfig.horizon.json && tsc --noEmit -p tsconfig.prism.json",
     "build:horizon": "node scripts/build.mjs horizon",
     "publish:preview": "node scripts/publish-preview.mjs",
-    "build:prism": "node scripts/build.mjs prism"
+    "build:prism": "node scripts/build.mjs prism",
+    "publish:live": "node scripts/publish-live.mjs"
   },
   "dependencies": {
     "@investoyard/shared-types": "*",

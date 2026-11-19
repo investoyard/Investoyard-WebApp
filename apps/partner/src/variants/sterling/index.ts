@@ -8,6 +8,7 @@ import SubscriptionPage from './SubscriptionPage';
 import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
+import LegalPage from './LegalPage';
 
 /*
  * STERLING — variant 1. Quiet, institutional, precise.
@@ -25,6 +26,7 @@ const sterling: VariantModule = {
   AllotmentPage,
   ArchivePage,
   CalendarPage,
+  LegalPage,
 };
 
 export default sterling;

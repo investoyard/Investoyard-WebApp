@@ -1,0 +1,33 @@
+/*
+ * The prose of a partner's legal page. It sets rhythm and nothing else: the
+ * typeface, colours and accent all come from the variant's own tokens (--ink,
+ * --ink2, --muted, --line, --brand-ink), so the page reads as part of whichever
+ * design it sits in. Every variant declares all five.
+ */
+.pw-legal { max-width: 760px; font-size: 15.5px; line-height: 1.7; color: var(--ink2); }
+.pw-legal-note { margin: 0; color: var(--muted); }
+.pw-legal-retry { margin-top: 14px; font: inherit; font-weight: 600; color: var(--brand-ink); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.pw-legal-retry:focus-visible { outline: 2px solid var(--brand-ink); outline-offset: 2px; }
+
+.pw-legal-prose > :first-child { margin-top: 0; }
+.pw-legal-prose h1, .pw-legal-prose h2, .pw-legal-prose h3, .pw-legal-prose h4 { color: var(--ink); line-height: 1.3; margin: 1.8em 0 .5em; text-wrap: balance; }
+.pw-legal-prose h1 { font-size: 1.5em; }
+.pw-legal-prose h2 { font-size: 1.25em; }
+.pw-legal-prose h3 { font-size: 1.08em; }
+.pw-legal-prose h4 { font-size: 1em; }
+.pw-legal-prose p, .pw-legal-prose ul, .pw-legal-prose ol, .pw-legal-prose blockquote, .pw-legal-prose table { margin: 0 0 1em; }
+.pw-legal-prose ul, .pw-legal-prose ol { padding-left: 1.4em; }
+/* Every design resets list markers for its menus; numbered clauses and bullet points in a legal text need them back. */
+.pw-legal-prose ul { list-style: disc; }
+.pw-legal-prose ol { list-style: decimal; }
+.pw-legal-prose li { display: list-item; }
+.pw-legal-prose li + li { margin-top: .3em; }
+.pw-legal-prose a { color: var(--brand-ink); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.pw-legal-prose strong, .pw-legal-prose b { color: var(--ink); }
+.pw-legal-prose blockquote { border-left: 3px solid var(--line); padding-left: 1em; color: var(--muted); }
+.pw-legal-prose hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+/* A pasted table must never push the page sideways on a phone. */
+.pw-legal-prose table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .93em; }
+.pw-legal-prose th, .pw-legal-prose td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+/* The rich-text editor writes inline font sizes; the page keeps its own scale. */
+.pw-legal-prose [style] { font-size: inherit !important; }

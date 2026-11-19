@@ -147,3 +147,48 @@ describe('cleanRichKeepLinks — inputs that cannot parse as HTML anyway', () =>
     expect(cleanRichKeepLinks('plain text</a>')).toBe('plain text');
   });
 });
+
+describe('cleanRich — elements and handlers that must never reach a page (2026-11-19)', () => {
+  it('removes a script element together with its content', () => {
+    expect(cleanRich('<p>a</p><script>window.x=1</script><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(cleanRichKeepLinks('<p>a</p><SCRIPT type="text/javascript">x()</SCRIPT>')).toBe('<p>a</p>');
+  });
+
+  it('removes style, iframe, object, embed, svg, form and their content', () => {
+    for (const el of ['style', 'iframe', 'object', 'embed', 'svg', 'form', 'noscript', 'template', 'math']) {
+      expect(cleanRich(`<p>a</p><${el} x="1">inside</${el}><p>b</p>`)).toBe('<p>a</p><p>b</p>');
+    }
+  });
+
+  it('removes an unclosed or stray dangerous tag', () => {
+    expect(cleanRich('<p>a<script src="//evil.test/x.js"></p>')).toBe('<p>a</p>');
+    expect(cleanRich('<p>a</p></script>')).toBe('<p>a</p>');
+    expect(cleanRich('<p>a<input value="x"></p>')).toBe('<p>a</p>');
+    expect(cleanRich('<p>a<meta http-equiv="refresh" content="0;url=//evil.test"></p>')).toBe('<p>a</p>');
+  });
+
+  it('strips an UNQUOTED event handler, which a browser runs', () => {
+    expect(cleanRich('<img src=x onerror=steal()>')).toBe('<img src=x>');
+    expect(cleanRichKeepLinks('<p>a<img src="x" onerror=steal()></p>')).toBe('<p>a<img src="x"></p>');
+  });
+
+  it('strips a handler that follows a slash instead of a space', () => {
+    expect(cleanRich('<img/onerror=steal() src="x">')).toBe('<img src="x">');
+  });
+
+  it('is not fooled by a > inside an earlier quoted attribute', () => {
+    expect(cleanRich('<img title="a>b" onerror=steal()>')).toBe('<img title="a>b">');
+  });
+
+  it('never cuts into a quoted value that merely contains on…=', () => {
+    expect(cleanRich('<img src="https://cdn.test/onload=1.png">')).toBe('<img src="https://cdn.test/onload=1.png">');
+  });
+
+  it('leaves ordinary prose that looks like a handler alone', () => {
+    expect(cleanRich('<p>Set online=true in the form.</p>')).toBe('<p>Set online=true in the form.</p>');
+  });
+
+  it('strips srcdoc and formaction', () => {
+    expect(cleanRich('<p srcdoc="<b>x</b>">a</p>')).toBe('<p>a</p>');
+  });
+});

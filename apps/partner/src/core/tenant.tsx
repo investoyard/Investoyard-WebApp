@@ -18,6 +18,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [partner, setPartner] = useState<PartnerIdentity | null>(null);
   useEffect(() => {
     const p = (window as unknown as { __PARTNER__?: PartnerIdentity }).__PARTNER__;
+    /* The pre-paint script found no partner for this domain. Its own title change is undone when the page hydrates, so it is set again here. */
+    if (document.documentElement.hasAttribute('data-unconfigured')) { document.title = 'Site not configured'; return; }
     if (p) {
       setPartner(p);
       if (!document.title.includes(p.name)) document.title = `${document.title} · ${p.name}`;

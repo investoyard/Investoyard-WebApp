@@ -16,7 +16,7 @@ export type AllotmentChoice = { id: string; name: string; date: string };
 export type AllotmentResult = { applicant: string; category: string; lots: number; status: 'allotted' | 'not_allotted' | 'processing' | 'pending'; allottedShares: number | null };
 export type AllotmentCheck = { ipo: { symbol: string; name: string; allotmentDate: string | null }; allotmentOut: boolean; found: boolean; results: AllotmentResult[] };
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://newipoapi.finwave.co/api';
+import { API } from './api';
 export const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
 export function useAllotmentCheck(choices: AllotmentChoice[]) {

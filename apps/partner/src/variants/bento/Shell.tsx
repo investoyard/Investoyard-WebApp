@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { initialOf, usePartner } from '@/core/tenant';
-import { footerLogo, footerModel, RISK_TEXT } from '@/core/footer';
+import { footerLogo, footerModel, LEGAL_PAGES, RISK_TEXT } from '@/core/footer';
 import { Icon, type IconName } from './parts';
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
@@ -74,6 +74,8 @@ function Footer() {
           <nav aria-label="Tools">
             <strong>Tools</strong>
             <Link href="/allotment/">Allotment status</Link>
+            <strong style={{ marginTop: 10 }}>Legal</strong>
+            {LEGAL_PAGES.map((l) => <Link key={l.key} href={l.href}>{l.label}</Link>)}
           </nav>
           {f.support.length || f.grievance.length ? (
             <nav aria-label="Contact">

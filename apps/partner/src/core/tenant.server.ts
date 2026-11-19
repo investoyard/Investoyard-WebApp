@@ -39,9 +39,11 @@ export interface PartnerIdentity {
 }
 
 /**
- * Shown only when the host matches no partner — a local preview or a preview
- * host. A production partner domain always matches its tenant. Clearly a
- * sample: no legal name, no registration number.
+ * The SAMPLE broker, shown ONLY by a preview build (investoyard.com/partner-preview/…)
+ * when no ?brand= is given. A production build never shows it: on a real domain
+ * an invented broker is a statement about the wrong company, so a host that
+ * matches no partner gets the "site not configured" page instead. Clearly a
+ * sample either way: no legal name, no registration number.
  */
 export const PREVIEW_IDENTITY: PartnerIdentity = {
   slug: 'preview', name: 'Meru Securities', domains: [], brand: '#0E6E66', logo: null, footerLogo: null,
@@ -86,9 +88,9 @@ export function partnerRegistry(tenants: RawTenant[]): PartnerIdentity[] {
  * the brand mixed toward white — so a pale partner colour never produces
  * unreadable links.
  */
-export function prepaintScript(registry: PartnerIdentity[]): string {
+export function prepaintScript(registry: PartnerIdentity[], allowSample: boolean): string {
   const reg = JSON.stringify(registry).replace(/</g, '\\u003c');
-  const fallback = JSON.stringify(PREVIEW_IDENTITY);
+  const fallback = allowSample ? JSON.stringify(PREVIEW_IDENTITY) : 'null';
   return [
     '(function(){',
     'var R=' + reg + ',F=' + fallback + ';',
@@ -98,9 +100,24 @@ export function prepaintScript(registry: PartnerIdentity[]): string {
     'function lum(c){var r=c.map(function(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);});return .2126*r[0]+.7152*r[1]+.0722*r[2];}',
     'function con(a,b){var x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05);}',
     'var q=null,s=null;try{q=new URLSearchParams(location.search).get("brand");if(q)sessionStorage.setItem("pw_brand",q);s=q||sessionStorage.getItem("pw_brand");}catch(e){}',
-    'var h=location.hostname.toLowerCase(),t=null;',
-    'for(var i=0;i<R.length;i++){var x=R[i];if(s?x.slug===s:x.domains.indexOf(h)>=0){t=x;break;}}',
+    /*
+     * THE DOMAIN DECIDES FIRST, AND ON A PARTNER'S OWN DOMAIN ?brand= IS IGNORED.
+     * Otherwise ?brand=<another slug> on a real partner domain would print a
+     * different company's name and legal details there. ?brand= exists for
+     * previews: investoyard.com/partner-preview, a local copy, an unbound host.
+     */
+    'var h=location.hostname.toLowerCase(),t=null,i,x;',
+    'for(i=0;i<R.length;i++){x=R[i];if(x.domains.indexOf(h)>=0){t=x;break;}}',
+    'if(!t&&s){for(i=0;i<R.length;i++){x=R[i];if(x.slug===s){t=x;break;}}}',
     'if(!t)t=F;window.__PARTNER__=t;',
+    /*
+     * NO PARTNER AND NO SAMPLE: the layout's inline style hides the site and
+     * shows the "not configured" notice, before first paint. Kept out of
+     * search engines too, so a stray host never gets an indexed copy.
+     */
+    'if(!t){document.documentElement.setAttribute("data-unconfigured","");',
+    'var m=document.createElement("meta");m.name="robots";m.content="noindex, nofollow";document.head.appendChild(m);',
+    'document.addEventListener("DOMContentLoaded",function(){document.title="Site not configured";});return;}',
     'var b=rgb(t.brand),W=[255,255,255],K=[0,0,0],ink=b,k=0;while(con(ink,W)<4.6&&k<24){ink=mix(ink,K,.08);k++;}',
     'var d=document.documentElement,st=d.style;',
     'st.setProperty("--brand",hex(b));st.setProperty("--brand-ink",hex(ink));',
