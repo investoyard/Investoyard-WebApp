@@ -26,7 +26,7 @@ function pageList(p: number, pages: number): (number | null)[] {
   return out;
 }
 
-export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
+export default function ArchivePage({ rows, heading }: { rows: ArchiveRow[]; heading?: { title: string; sub: string } }) {
   const [q, setQ] = useState('');
   const [year, setYear] = useState('all');
   const [sector, setSector] = useState('all');
@@ -83,7 +83,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <>
-      <Hero eyebrow="IPO research" title="IPO archive" sub={`Every mainboard and SME IPO${years.length ? ` since ${years[years.length - 1]}` : ''}: dates, price bands, issue sizes and final subscription in one place.`} art="exchange" />
+      <Hero eyebrow="IPO research" title={heading ? heading.title : 'IPO archive'} sub={heading ? heading.sub : `Every mainboard and SME IPO${years.length ? ` since ${years[years.length - 1]}` : ''}: dates, price bands, issue sizes and final subscription in one place.`} art="exchange" />
       <div className="h-wrap h-main">
         <section className="h-card h-arfilters" aria-label="Filters">
           <label className="h-qbox h-qbox-lg"><Icon name="search" size={18} /><span className="sr">Search</span><input type="search" placeholder="Search IPO or company" value={q} onChange={(e) => { setQ(e.target.value); reset(); }} /></label>

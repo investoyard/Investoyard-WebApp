@@ -214,7 +214,19 @@ function touch(file) { const now = new Date(); fs.utimesSync(file, now, now); }
     if (host.startsWith('www.') && entries.some(([k]) => k === host.slice(4))) continue; // a www twin may have no binding; the apex is the check
     const r = await served(host);
     if (!r) { problems.push(`${host}: no answer on this box`); continue; }
-    if (variantOf(r.body) !== design) problems.push(`${host}: served "${variantOf(r.body) || 'our pages'}", expected "${design}"`);
+    if (variantOf(r.body) !== design) { problems.push(`${host}: served "${variantOf(r.body) || 'our pages'}", expected "${design}"`); continue; }
+    /* The design's code must load from its own folder, or the page is unstyled and dead. */
+    const asset = (r.body.match(new RegExp(`/_v/${design}/_next/static/[^"'\\s]+\\.(?:css|js)`)) || [])[0];
+    if (!asset) problems.push(`${host}: the page names no /_v/${design}/ asset — was it built with its asset prefix?`);
+    else {
+      let a = null;
+      for (const addr of ADDRS) { a = await probe(host, addr, asset); if (a && a.status === 200) break; }
+      if (!a || a.status !== 200) problems.push(`${host}: ${asset} did not load (${a ? a.status : 'no answer'})`);
+    }
+    /* /admin stays on our site: the partner's own staff sign in there. */
+    let adm = null;
+    for (const addr of ADDRS) { adm = await probe(host, addr, '/admin/'); if (adm && adm.status === 200) break; }
+    if (!adm || adm.status !== 200 || variantOf(adm.body)) problems.push(`${host}: /admin/ is not our admin any more (${adm ? adm.status : 'no answer'})`);
   }
   for (const host of removed) {
     if (host.startsWith('www.')) continue;

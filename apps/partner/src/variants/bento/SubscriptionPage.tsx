@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useSymbolParam } from '@/core/useSymbolParam';
 import type { SubscriptionModel } from '@/core/models';
 import { dayMon, lowerFirst } from '@/core/format';
 import { Board, DayBars, Hero, Icon, Logo, Status, Ttl, ring, shade, type IconName } from './parts';
@@ -14,6 +15,7 @@ export default function SubscriptionPage({ model }: { model: SubscriptionModel }
   const all: Row[] = useMemo(() => [...model.live, ...model.closed], [model]);
   const live = useMemo(() => new Set(model.live.map((r) => r.sym)), [model.live]);
   const [sym, setSym] = useState(all[0]?.sym || '');
+  useSymbolParam(all.map((r) => r.sym), setSym);
   const [tab, setTab] = useState<Tab>('details');
   const [status, setStatus] = useState(model.live.length ? 'live' : 'all');
   const [board, setBoard] = useState('all');

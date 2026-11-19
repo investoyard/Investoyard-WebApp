@@ -28,7 +28,7 @@ function pageList(p: number, pages: number): (number | null)[] {
 }
 const d = (iso: string) => (iso ? dayMonYear(iso) : '—');
 
-export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
+export default function ArchivePage({ rows, heading }: { rows: ArchiveRow[]; heading?: { title: string; sub: string } }) {
   const [q, setQ] = useState('');
   const [year, setYear] = useState('all');
   const [sector, setSector] = useState('all');
@@ -81,7 +81,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <>
-      <Hero eyebrow="IPO archive" title="Historical IPO Database" sub={`Explore every mainboard and SME IPO${years.length ? ` since ${years[years.length - 1]}` : ''}: dates, price bands, issue sizes and final subscription in one place.`} art="exchange">
+      <Hero eyebrow={heading ? 'IPOs' : 'IPO archive'} title={heading ? heading.title : 'Historical IPO Database'} sub={heading ? heading.sub : `Explore every mainboard and SME IPO${years.length ? ` since ${years[years.length - 1]}` : ''}: dates, price bands, issue sizes and final subscription in one place.`} art="exchange">
         <dl className="b-hstats">
           {stats.map(([ic, v, l]) => <div key={l}><span className="b-strip-ic"><Icon name={ic} size={22} /></span><span><dt>{l}</dt><dd className="num">{v}</dd></span></div>)}
         </dl>

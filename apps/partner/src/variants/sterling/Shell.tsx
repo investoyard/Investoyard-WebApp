@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { initialOf, usePartner } from '@/core/tenant';
-import { footerLogo, footerModel, LEGAL_PAGES, RISK_TEXT } from '@/core/footer';
+import { footerLogo, footerModel, HELP_LINKS, LEGAL_PAGES, moreIpoLinks, RISK_TEXT } from '@/core/footer';
 
 const NAV = [
   { href: '/', label: 'IPOs' },
@@ -93,10 +93,12 @@ function Footer() {
             <Link href="/subscription/">Live subscription</Link>
             <Link href="/calendar/">IPO calendar</Link>
             <Link href="/ipos/">All IPOs</Link>
+            {moreIpoLinks(p).map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
           </nav>
           <nav className="s-foot-col" aria-label="Tools">
             <strong>Tools</strong>
             <Link href="/allotment/">Allotment status</Link>
+            {HELP_LINKS.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
             <strong style={{ marginTop: 10 }}>Legal</strong>
             {LEGAL_PAGES.map((l) => <Link key={l.key} href={l.href}>{l.label}</Link>)}
           </nav>

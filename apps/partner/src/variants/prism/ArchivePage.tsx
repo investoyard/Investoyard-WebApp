@@ -7,7 +7,7 @@ import { BoardTag, Hero, Icon, Logo } from './parts';
 
 const PER = 20;
 
-export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
+export default function ArchivePage({ rows, heading }: { rows: ArchiveRow[]; heading?: { title: string; sub: string } }) {
   const [q, setQ] = useState('');
   const [board, setBoard] = useState('all');
   const [year, setYear] = useState('all');
@@ -37,7 +37,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <>
-      <Hero icon="layers" title="IPO archive" sub={`Explore ${stat.total.toLocaleString('en-IN')} mainboard and SME IPOs${years.length ? ` since ${years[years.length - 1]}` : ''}, with dates, price bands, issue size and subscription.`} />
+      <Hero icon="layers" title={heading ? heading.title : 'IPO archive'} sub={heading ? heading.sub : `Explore ${stat.total.toLocaleString('en-IN')} mainboard and SME IPOs${years.length ? ` since ${years[years.length - 1]}` : ''}, with dates, price bands, issue size and subscription.`} />
       <div className="p-wrap p-main">
         <dl className="p-stats">
           <div className="p-stat"><span className="p-tile"><Icon name="layers" size={24} /></span><div className="p-stat-t"><dt>Total IPOs</dt><dd>{stat.total.toLocaleString('en-IN')}</dd></div></div>

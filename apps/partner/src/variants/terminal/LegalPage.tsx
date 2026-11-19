@@ -2,17 +2,13 @@
 
 import type { TenantPageKey } from '@investoyard/shared-types';
 import { LEGAL_SUB, LegalBody, legalLabel } from '@/core/legal';
+import InfoPage from './InfoPage';
 
-/* Terminal: the intro line every page opens with, then the text in a panel. */
+/* The partner's own legal text in this design's page frame. */
 export default function LegalPage({ page }: { page: TenantPageKey }) {
   return (
-    <div className="t-page">
-      <div className="t-intro"><div><h1>{legalLabel(page)}</h1><p>{LEGAL_SUB[page]}</p></div></div>
-      <section className="t-panel">
-        <div className="t-pb" style={{ padding: '22px 24px' }}>
-          <LegalBody page={page} />
-        </div>
-      </section>
-    </div>
+    <InfoPage head={{ title: legalLabel(page), sub: LEGAL_SUB[page] }}>
+      <LegalBody page={page} />
+    </InfoPage>
   );
 }

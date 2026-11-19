@@ -547,6 +547,47 @@ export function detailSymbols(raw: RawIpo[]): string[] {
   return raw.map((x) => x.symbol).filter((s) => /^[A-Za-z0-9._-]+$/.test(s));
 }
 
+/*
+ * THE SAME ADDRESSES AS investoyard.com. A partner's domain may have served our
+ * own site before it moved to a design, so search engines and bookmarks hold
+ * OUR addresses for it. Every design answers them, in its own look, so a
+ * partner switching design never breaks a link.
+ *
+ * An IPO page answers both its symbol (/ipos/JPL/) and its SEO slug
+ * (/ipos/jio-platforms-ipo/), exactly as apps/web emits both.
+ */
+const HANDLE_RE = /^[A-Za-z0-9._-]+$/;
+export function detailHandles(raw: RawIpo[]): string[] {
+  const out = new Set<string>();
+  for (const x of raw) {
+    if (x.symbol && HANDLE_RE.test(x.symbol)) out.add(x.symbol);
+    if (x.slug && HANDLE_RE.test(x.slug)) out.add(x.slug);
+  }
+  return [...out];
+}
+export function findIpo(raw: RawIpo[], handle: string): RawIpo | undefined {
+  const h = decodeURIComponent(handle);
+  return raw.find((x) => x.symbol === h) || raw.find((x) => x.slug === h);
+}
+
+/** The filtered IPO lists investoyard.com publishes at their own addresses. */
+export type ListPreset = 'open' | 'upcoming' | 'listed' | 'sme';
+export const LIST_PRESETS: Readonly<Record<ListPreset, { title: string; sub: string }>> = {
+  open: { title: 'Open IPOs', sub: 'IPOs open for bidding now: dates, price bands, lot sizes and live subscription.' },
+  upcoming: { title: 'Upcoming IPOs', sub: 'IPOs announced and opening soon, with their dates and price bands.' },
+  listed: { title: 'Listed IPOs', sub: 'IPOs that have listed on the exchange, with their final subscription.' },
+  sme: { title: 'SME IPOs', sub: 'Every SME IPO on NSE Emerge and BSE SME: dates, price bands, issue sizes and subscription.' },
+};
+export function presetIpos(raw: RawIpo[], preset: ListPreset): RawIpo[] {
+  return raw.filter((ipo) => {
+    if (preset === 'sme') return String(ipo.type).toLowerCase() === 'sme';
+    const s = st.stageOf(normalise(ipo) as any);
+    if (preset === 'open') return OPEN_STAGES.includes(s);
+    if (preset === 'upcoming') return s === 'upcoming' || s === 'preapply';
+    return s === 'listed';
+  });
+}
+
 /* --------------------------------------------------------- subscription --- */
 
 type SubCells = { qib: string; nii: string; retail: string; hni: string; hni2: string; employee: string };
@@ -624,4 +665,56 @@ export function subscriptionModel(raw: RawIpo[]): SubscriptionModel {
     if (inLive || inClosed) focus[r.x.symbol] = subFocus(r.x, r.t);
   }
   return { live, closed, next: upcoming[0] ? toCard(upcoming[0], maxT) : null, focus };
+}
+
+/* ---------------------------------------------------------- performance --- */
+
+/*
+ * LISTING PERFORMANCE — the listed issues of the last twelve months with what
+ * the record actually holds. Listing price is recorded for very few issues, so
+ * a missing one is a dash, never an estimate; the gain is the API's own
+ * listingGainPct, never re-derived here.
+ */
+export interface PerfRow { card: IpoCard; listD: string; issue: string; listPrice: string; gainN: number | null; gain: string }
+export function performanceModel(raw: RawIpo[]): { rows: PerfRow[]; held: number } {
+  const today = st.istToday();
+  const all = raw.map(normalise);
+  const max = Math.max(1, ...all.map((x) => totalTimes(x) || 0));
+  const rows = all
+    .filter((x) => st.stageOf(x as any) === 'listed' && x.listingDate && daysBetween(x.listingDate, today) <= 365)
+    .sort((a, b) => (a.listingDate! < b.listingDate! ? 1 : a.listingDate! > b.listingDate! ? -1 : a.symbol.localeCompare(b.symbol)))
+    .map((x) => {
+      const ex = x.extra || {};
+      const lp = num(ex.nseListingPrice) || num(ex.bseListingPrice);
+      const g = num((x as any).listingGainPct);
+      return {
+        card: toCard(x, max), listD: dayMonYear(x.listingDate), issue: rupees(num(x.priceBandMax)),
+        listPrice: lp && lp > 0 ? `₹${lp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—',
+        gainN: g, gain: g == null ? '—' : `${g > 0 ? '+' : g < 0 ? '−' : ''}${Math.abs(g).toFixed(2)}%`,
+      };
+    });
+  return { rows, held: rows.filter((r) => r.gainN != null).length };
+}
+
+/* ------------------------------------------------------------------ gmp --- */
+
+/*
+ * THE GREY MARKET PREMIUM, for partners who have it switched on. Unofficial and
+ * unregulated, so the page carries the disclaimer and shows the figure in
+ * neutral ink with a sign, never in gain/loss colours. Only issues not yet
+ * listed: after listing the real price exists and a premium means nothing.
+ */
+export interface GmpRow { card: IpoCard; gmp: string; pct: string }
+export function gmpModel(raw: RawIpo[]): GmpRow[] {
+  const all = raw.map(normalise);
+  const max = Math.max(1, ...all.map((x) => totalTimes(x) || 0));
+  const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}₹${inr(Math.abs(n))}`;
+  return all
+    .filter((x) => num((x as any).gmp) != null && st.stageOf(x as any) !== 'listed' && st.stageOf(x as any) !== 'withdrawn')
+    .sort((a, b) => st.compareForList(a as any, b as any))
+    .map((x) => {
+      const g = num((x as any).gmp) as number;
+      const p = num((x as any).gmpPct);
+      return { card: toCard(x, max), gmp: signed(g), pct: p == null ? '—' : `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p).toFixed(1)}%` };
+    });
 }

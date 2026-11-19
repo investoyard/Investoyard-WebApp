@@ -9,6 +9,7 @@ import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
 import LegalPage from './LegalPage';
+import InfoPage from './InfoPage';
 
 /*
  * HORIZON — variant 4, rebuilt 2026-11-17 from the operator's reference
@@ -31,6 +32,8 @@ const horizon: VariantModule = {
   ArchivePage,
   CalendarPage,
   LegalPage,
+  InfoPage,
+  ui: { tableWrap: 'h-tbl-wrap', table: 'h-tbl' },
 };
 
 export default horizon;

@@ -6,7 +6,7 @@ import type { ArchiveRow } from '@/core/models';
 
 const PER = 50;
 
-export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
+export default function ArchivePage({ rows, heading }: { rows: ArchiveRow[]; heading?: { title: string; sub: string } }) {
   const [q, setQ] = useState('');
   const [board, setBoard] = useState('all');
   const [year, setYear] = useState('all');
@@ -27,8 +27,8 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <div className="s-wrap s-page">
-      <h1 className="s-ph1">All IPOs</h1>
-      <p className="s-plede">Every mainboard and SME issue we cover, newest first.</p>
+      <h1 className="s-ph1">{heading ? heading.title : 'All IPOs'}</h1>
+      <p className="s-plede">{heading ? heading.sub : 'Every mainboard and SME issue we cover, newest first.'}</p>
       <div className="s-tools" style={{ marginTop: 28 }}>
         <label style={{ flex: '1 1 280px' }}>
           <span className="sr">Search</span>

@@ -9,6 +9,7 @@ import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
 import LegalPage from './LegalPage';
+import InfoPage from './InfoPage';
 
 /*
  * BENTO — variant 2, rebuilt 2026-11-17 from Sir's reference layouts: a crisp
@@ -32,6 +33,8 @@ const bento: VariantModule = {
   ArchivePage,
   CalendarPage,
   LegalPage,
+  InfoPage,
+  ui: { tableWrap: 'b-tbl-wrap', table: 'b-tbl' },
 };
 
 export default bento;

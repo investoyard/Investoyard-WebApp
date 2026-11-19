@@ -6,7 +6,7 @@ import type { ArchiveRow } from '@/core/models';
 
 const PER = 50;
 
-export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
+export default function ArchivePage({ rows, heading }: { rows: ArchiveRow[]; heading?: { title: string; sub: string } }) {
   const [q, setQ] = useState('');
   const [board, setBoard] = useState('all');
   const [year, setYear] = useState('all');
@@ -25,7 +25,7 @@ export default function ArchivePage({ rows }: { rows: ArchiveRow[] }) {
     <div className="t-page">
       <section className="t-panel">
         <div className="t-ph">
-          <h1>All IPOs <span className="t-muted num" style={{ fontWeight: 500, marginLeft: 6 }}>{list.length.toLocaleString('en-IN')}</span></h1>
+          <h1>{heading ? heading.title : 'All IPOs'} <span className="t-muted num" style={{ fontWeight: 500, marginLeft: 6 }}>{list.length.toLocaleString('en-IN')}</span></h1>
           <div className="t-tools">
             <input className="t-input" type="search" aria-label="Search" placeholder="Search company or symbol" value={q} onChange={(e) => { setQ(e.target.value); reset(); }} />
             <select className="t-input" aria-label="Board" value={board} onChange={(e) => { setBoard(e.target.value); reset(); }}><option value="all">All boards</option><option value="Mainboard">Mainboard</option><option value="SME">SME</option></select>

@@ -67,3 +67,20 @@ export const RISK_TEXT =
 export const LEGAL_PAGES: readonly { key: TenantPageKey; label: string; href: string }[] = (
   ['about', 'terms', 'privacy', 'disclaimer'] as const
 ).map((key) => ({ key, label: PAGE_LABEL[key], href: `/${key}/` }));
+
+/*
+ * The content pages every design carries at investoyard.com's own addresses.
+ * The premium page is linked only where the partner publishes it — the page
+ * exists for every partner (an old link must still land somewhere), but a
+ * footer must not advertise figures the site does not show.
+ */
+export const moreIpoLinks = (p: PartnerIdentity) => [
+  { href: '/performance/', label: 'Listing performance' },
+  { href: '/news/', label: 'IPO news' },
+  ...(p.gmp ? [{ href: '/gmp/', label: 'Exp. Premium' }] : []),
+];
+export const HELP_LINKS = [
+  { href: '/faqs/', label: 'FAQs' },
+  { href: '/glossary/', label: 'Glossary' },
+  { href: '/contact/', label: 'Contact us' },
+];

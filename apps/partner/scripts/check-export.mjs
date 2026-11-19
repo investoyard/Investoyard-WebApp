@@ -37,7 +37,21 @@ ok(pages >= 1000, `IPO detail pages: ${pages} (floor 1000)`);
 for (const p of ['subscription/index.html', 'allotment/index.html', 'ipos/index.html', 'calendar/index.html']) ok(read(p).length > 5_000, `${p} present`);
 /* The partner's own legal pages. Their text is fetched in the browser, so the baked page is only the frame. */
 for (const p of ['about', 'terms', 'privacy', 'disclaimer']) ok(read(`${p}/index.html`).length > 2_000, `${p}/index.html present`);
+/*
+ * investoyard.com's own addresses, answered in the design. A partner domain may
+ * have served our site before, so search engines hold these for it; a design
+ * missing one would turn an indexed link into a "not found".
+ */
+for (const p of ['ipos/open', 'ipos/upcoming', 'ipos/listed', 'ipos/archive', 'sme', 'subscription/v2', 'privacy-policy',
+  'faqs', 'glossary', 'news', 'performance', 'gmp', 'contact']) ok(read(`${p}/index.html`).length > 2_000, `${p}/index.html present (investoyard.com address)`);
+let slugPages = 0;
+try { slugPages = fs.readdirSync(path.join(root, 'ipos')).filter((d) => /-ipo$/.test(d) && fs.existsSync(path.join(root, 'ipos', d, 'index.html'))).length; } catch { /* none */ }
+ok(slugPages >= 500, `IPO pages at their long investoyard.com address: ${slugPages} (floor 500)`);
 /* A production build must never carry the sample broker (an invented company on a real domain); a preview build must. */
+/* A live build's code and styles must come from its own folder (/_v/<variant>/_next/), never /_next/, which belongs to investoyard.com's site on the same domain. */
+const prefix = process.env.PARTNER_ASSET_PREFIX;
+if (prefix) ok(index.includes(`${prefix}/_next/`) && !/["']\/_next\//.test(index), `assets load from ${prefix}/_next/ and nothing from /_next/`);
+ok(fs.existsSync(path.join(root, 'sw.js')), 'sw.js present (retires the old service worker on a domain that served our site)');
 const sample = index.includes('Meru Securities');
 const preview = !!process.env.PARTNER_BASE_PATH;
 ok(preview ? sample : !sample, preview ? 'preview build carries the sample broker' : 'production build carries no sample broker');

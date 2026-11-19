@@ -9,6 +9,7 @@ import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
 import LegalPage from './LegalPage';
+import InfoPage from './InfoPage';
 
 /*
  * STERLING — variant 1. Quiet, institutional, precise.
@@ -27,6 +28,8 @@ const sterling: VariantModule = {
   ArchivePage,
   CalendarPage,
   LegalPage,
+  InfoPage,
+  ui: { tableWrap: 's-table-wrap', table: 's-table' },
 };
 
 export default sterling;

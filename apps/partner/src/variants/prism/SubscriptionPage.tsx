@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useSymbolParam } from '@/core/useSymbolParam';
 import type { SubFocus, SubscriptionModel } from '@/core/models';
 import { dayMonYear, lowerFirst } from '@/core/format';
 import { Bar, BoardTag, Hero, Icon, Logo, State, ring, shade, xs } from './parts';
@@ -85,6 +86,7 @@ export default function SubscriptionPage({ model }: { model: SubscriptionModel }
   const [status, setStatus] = useState('all');
   const list = rowsAll.filter((r) => (board === 'all' || r.board === board) && (status === 'all' || (status === 'live') === r.live));
   const [sel, setSel] = useState(rowsAll[0]?.sym || '');
+  useSymbolParam(rowsAll.map((r) => r.sym), setSel);
   const [mode, setMode] = useState<'day' | 'cat'>('day');
   const cur = list.find((r) => r.sym === sel) || list[0];
   const f = cur ? model.focus[cur.sym] : undefined;

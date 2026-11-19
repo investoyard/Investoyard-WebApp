@@ -107,3 +107,23 @@ export function loadTenants(): Promise<RawTenant[]> {
   }
   return tenantsP;
 }
+
+/*
+ * NEWS POSTS, written in admin. Optional content, so unlike the catalogue a
+ * failed read does NOT fail the build: the news page then says there is no
+ * news, which is the truth about what reached this build. Each article's body
+ * is fetched once at build time and sanitised where it is rendered.
+ */
+export interface RawPost {
+  slug: string; title: string; excerpt?: string | null; coverUrl?: string | null;
+  ipoSymbol?: string | null; tags?: string[]; author?: string | null; publishedAt?: string | null; body?: string;
+}
+let postsP: Promise<RawPost[]> | null = null;
+export function loadPosts(): Promise<RawPost[]> {
+  return (postsP = postsP || getJson<RawPost[]>('/posts?limit=60').then((p) => (Array.isArray(p) ? p.filter((x) => x && /^[A-Za-z0-9._-]+$/.test(x.slug || '')) : [])).catch(() => []));
+}
+const postP = new Map<string, Promise<RawPost | null>>();
+export function loadPost(slug: string): Promise<RawPost | null> {
+  if (!postP.has(slug)) postP.set(slug, getJson<RawPost>(`/posts/${encodeURIComponent(slug)}`).catch(() => null));
+  return postP.get(slug)!;
+}

@@ -9,6 +9,7 @@ import AllotmentPage from './AllotmentPage';
 import ArchivePage from './ArchivePage';
 import CalendarPage from './CalendarPage';
 import LegalPage from './LegalPage';
+import InfoPage from './InfoPage';
 
 /*
  * TERMINAL — variant 3. A broker's trading platform: dark navy, precise,
@@ -28,6 +29,8 @@ const terminal: VariantModule = {
   ArchivePage,
   CalendarPage,
   LegalPage,
+  InfoPage,
+  ui: { tableWrap: 't-table-wrap', table: 't-table' },
 };
 
 export default terminal;

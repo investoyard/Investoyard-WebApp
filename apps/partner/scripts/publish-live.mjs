@@ -46,9 +46,16 @@ for (const k of ['PARTNER_BASE_PATH', 'PARTNER_EXPORT_DIR', 'PARTNER_ASSET_PREFI
 const results = [];
 for (const v of list) {
   console.log(`\n=== ${v}: building for production ===`);
-  let b = spawnSync(process.execPath, [path.join(app, 'scripts', 'build.mjs'), v], { cwd: app, env, stdio: 'inherit' });
+  /*
+   * ITS OWN ASSET FOLDER, /_v/<variant>/_next/. On a partner's domain the admin, sign-in, apply and
+   * print pages still come from investoyard.com's site, which owns /_next/; the design's code and
+   * styles must not share that path or one site would load the other's files. web.config maps
+   * /_v/<variant>/ to _partner/<variant>/.
+   */
+  const venv = { ...env, PARTNER_ASSET_PREFIX: `/_v/${v}` };
+  let b = spawnSync(process.execPath, [path.join(app, 'scripts', 'build.mjs'), v], { cwd: app, env: venv, stdio: 'inherit' });
   /* One retry: the next/font and EISDIR flakes documented for apps/web have both succeeded on a first retry. */
-  if (b.status !== 0) { console.log(`\n${v}: build failed, retrying once`); b = spawnSync(process.execPath, [path.join(app, 'scripts', 'build.mjs'), v], { cwd: app, env, stdio: 'inherit' }); }
+  if (b.status !== 0) { console.log(`\n${v}: build failed, retrying once`); b = spawnSync(process.execPath, [path.join(app, 'scripts', 'build.mjs'), v], { cwd: app, env: venv, stdio: 'inherit' }); }
   if (b.status !== 0) { results.push([v, 'NOT PUBLISHED — build or check failed']); continue; }
   const src = path.join(app, 'out', v);
   const dst = path.join(webOut, '_partner', v);
