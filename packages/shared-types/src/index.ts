@@ -346,3 +346,6 @@ export * from './tenantSite';
 export * from './tenantContent';
 export * from './richText';
 export * from './asbaForm';
+
+/* What each kind of sign-up agrees to, and the consent version it records. */
+export * from './signupNotice';

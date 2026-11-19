@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { store } from '@/lib/store';
 import { requestOtp, verifyOtp, setConsumerSession, isHaveAccount } from '@/lib/consumer-api';
 import { makeT, Lang } from '@investoyard/i18n';
+import { signupNotice } from '@investoyard/shared-types';
 
 const CODES = ['en', 'hi', 'ta', 'te', 'bn', 'mr'];
 
@@ -105,7 +106,7 @@ export function SignupForm() {
     try {
       // The name is what tells the server this is a signup rather than a
       // sign-in; without it an unknown mobile is refused.
-      const { accessToken, user } = await verifyOtp(requestId, otp.join(''), name.trim());
+      const { accessToken, user } = await verifyOtp(requestId, otp.join(''), name.trim(), partner ? 'partner' : undefined);
       setConsumerSession(accessToken, user);
       store.signIn(mobile, user.name);
       /* Signed in already — the confirmation is a screen, not a gate. Anything
@@ -152,7 +153,7 @@ export function SignupForm() {
               <span>
                 I agree to the <a href={`/terms${q}`} target="_blank" rel="noreferrer">Terms</a> and the{' '}
                 <a href={`/privacy-policy${q}`} target="_blank" rel="noreferrer">Privacy Policy</a>, and to
-                Investoyard holding the details I enter so it can submit my IPO applications.
+                Investoyard {signupNotice(partner ? 'partner' : 'client').text}
               </span>
             </label>
 

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { SIGNUP_PURPOSES, type SignupPurpose } from '@investoyard/shared-types';
 import { AuthService } from './auth.service';
 
 class RequestOtpDto {
@@ -19,6 +20,12 @@ class VerifyOtpDto {
    * request/verify path that would drift from this one.
    */
   @IsOptional() @IsString() @Length(2, 60) name?: string;
+  /*
+   * WHICH SIGN-UP THIS IS, so the consent recorded is the one the person saw:
+   * a partner applying sees different wording from an investor. Optional — an
+   * older client that omits it is an ordinary client sign-up, exactly as before.
+   */
+  @IsOptional() @IsIn(SIGNUP_PURPOSES as unknown as string[]) purpose?: SignupPurpose;
 }
 /**
  * Password sign-in for a CUSTOMER. Separate from OperatorLoginDto because the
@@ -58,7 +65,7 @@ export class AuthController {
 
   @Post('otp/verify')
   verify(@Body() dto: VerifyOtpDto, @Req() req: any) {
-    return this.auth.verifyOtp(dto.requestId, dto.otp, clientIp(req), dto.name);
+    return this.auth.verifyOtp(dto.requestId, dto.otp, clientIp(req), dto.name, dto.purpose);
   }
 
   /**

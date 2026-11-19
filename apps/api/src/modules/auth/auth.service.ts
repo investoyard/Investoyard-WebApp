@@ -7,6 +7,7 @@ import { RedisService } from '../../common/redis.service';
 import { hashPassword, verifyPassword } from '../../common/password';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { tenantContext } from '../../common/tenant-context';
+import { SIGNUP_NOTICES, signupNotice } from '@investoyard/shared-types';
 
 const DEV_OTP = '123456';      // accepted only when SMS delivery is not configured
 const OTP_TTL = 5 * 60;        // seconds
@@ -47,7 +48,8 @@ interface OtpRec { mobile: string; otp: string; exp: number }
  * notice here (gmp-v2, ds-rail-v1): BUMP IT when the wording changes, so a
  * stored consent still says which text it was given against.
  */
-export const SIGNUP_NOTICE_VERSION = 'service-v1';
+/* The wording and version of each kind of sign-up live in shared-types (signupNotice.ts), beside the text the web shows. */
+export const SIGNUP_NOTICE_VERSION = SIGNUP_NOTICES.client.version;
 
 /**
  * The name a new account is created with, or null if it is not one.
@@ -236,7 +238,7 @@ export class AuthService {
     return { requestId, channel };
   }
 
-  async verifyOtp(requestId: string, otp: string, ip?: string, name?: string) {
+  async verifyOtp(requestId: string, otp: string, ip?: string, name?: string, purpose?: string) {
     const rec = await this.readOtp(requestId);
     if (!rec || rec.exp < Date.now()) {
       this.audit('auth.otp.expired', { mobile: rec?.mobile ?? null, detail: { requestId, ip } });
@@ -316,8 +318,9 @@ export class AuthService {
             tenantId: inboundTenant,
             userId: u.id,
             type: 'service',
-            noticeVersion: SIGNUP_NOTICE_VERSION,
-            channel: 'signup',
+            /* The notice this person was shown: a partner applying agrees to different wording from an investor. */
+            noticeVersion: signupNotice(purpose).version,
+            channel: signupNotice(purpose).channel,
           },
         });
         return u;

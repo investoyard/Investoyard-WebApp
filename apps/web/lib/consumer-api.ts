@@ -170,8 +170,9 @@ export const setOtpChannel = (channel: 'sms' | 'whatsapp') =>
  * refused with NO_ACCOUNT rather than silently becoming an account, which is
  * what it used to do.
  */
-export const verifyOtp = (requestId: string, otp: string, name?: string) =>
-  post<{ accessToken: string; user: ConsumerUser }>('/auth/otp/verify', name ? { requestId, otp, name } : { requestId, otp });
+export const verifyOtp = (requestId: string, otp: string, name?: string, purpose?: 'partner') =>
+  /* purpose goes only with a partner sign-up, so the consent recorded is the partner wording it was shown. */
+  post<{ accessToken: string; user: ConsumerUser }>('/auth/otp/verify', name ? { requestId, otp, name, ...(purpose ? { purpose } : {}) } : { requestId, otp });
 
 // ---- investor profiles (self + family) ----
 /** Admin-managed via Masters → Relationships; stored/compared lowercase. */
