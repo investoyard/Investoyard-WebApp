@@ -33,6 +33,8 @@ export function SignupForm() {
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const next = sp.get('next') || `/account${q}`;
+  /* Arrived from the partner application (next=/partner/apply): this account only signs the partner in, so the screen must not talk about applicants and demat accounts. */
+  const partner = (sp.get('next') || '').startsWith('/partner');
 
   /**
    * 'done' is sir's point 4 — "user can't know his registration success or not".
@@ -117,8 +119,8 @@ export function SignupForm() {
     <div className="su-wrap">
       <div className="panel su-form">
         {step !== 'done' && <>
-          <h1 style={{ fontSize: 26 }}>Create your account</h1>
-          <p className="muted">Apply for IPOs with your own PAN, demat and bank account.</p>
+          <h1 style={{ fontSize: 26 }}>{partner ? 'Create your account to apply as a partner' : 'Create your account'}</h1>
+          <p className="muted">{partner ? 'This account signs you in. Next you fill in the partner application for your firm.' : 'Apply for IPOs with your own PAN, demat and bank account.'}</p>
         </>}
 
         {step === 'details' ? (
@@ -129,7 +131,7 @@ export function SignupForm() {
                 id="nm" className="input" autoComplete="name" placeholder="As on your PAN"
                 value={name} maxLength={60} onChange={(e) => setName(e.target.value)}
               />
-              <span className="hint">We use this to address you — your applicants are added separately.</span>
+              <span className="hint">{partner ? 'Your own name — the contact person for the application.' : 'We use this to address you — your applicants are added separately.'}</span>
             </div>
 
             <div className="field">
@@ -166,7 +168,8 @@ export function SignupForm() {
             )}
 
             <p style={{ textAlign: 'center', marginTop: 14 }} className="muted">
-              Already have an account? <a href={`/login${q}`}>Sign in</a>
+              {/* Keeps next, so a partner who already has an account goes back to the partner application, not to the client account page. */}
+              Already have an account? <a href={sp.get('next') ? `/login?${new URLSearchParams({ ...(lang !== 'en' ? { lang } : {}), next: sp.get('next') as string }).toString()}` : `/login${q}`}>Sign in</a>
             </p>
           </div>
         ) : step === 'otp' ? (
@@ -204,11 +207,18 @@ export function SignupForm() {
               {name.trim() ? <>Welcome, <b>{name.trim()}</b>. </> : null}
               Signed in as <span className="mono">+91 {mobile}</span>.
             </p>
-            <div className="su-next">
-              <b>Next:</b> add the person who will apply — their own PAN, demat and
-              bank account. You can add family members too, each with their own PAN.
-            </div>
-            <a className="btn btn-block btn-lg" href={next} style={{ marginTop: 16 }}>Add an applicant</a>
+            {partner ? (
+              <div className="su-next">
+                <b>Next:</b> fill in the partner application — your firm’s name, PAN,
+                registration and contact details.
+              </div>
+            ) : (
+              <div className="su-next">
+                <b>Next:</b> add the person who will apply — their own PAN, demat and
+                bank account. You can add family members too, each with their own PAN.
+              </div>
+            )}
+            <a className="btn btn-block btn-lg" href={next} style={{ marginTop: 16 }}>{partner ? 'Continue to the partner application' : 'Add an applicant'}</a>
             <p style={{ textAlign: 'center', marginTop: 12 }}>
               <a className="linklike" href={`/${q}`}>Browse IPOs first</a>
             </p>
@@ -220,6 +230,17 @@ export function SignupForm() {
           phone in your hand and finding out at the end is finding out late. */}
       <aside className="panel su-handy">
         <h2>What to keep handy</h2>
+        {partner ? (
+          <>
+            <p className="muted">For the partner application you’ll need:</p>
+            <ul className="su-list">
+              <li><b>Business name and type</b> — as registered</li>
+              <li><b>Business PAN</b> and <b>GSTIN</b> (if you have one)</li>
+              <li><b>SEBI / AP registration number</b>, or your <b>AMFI ARN</b></li>
+              <li><b>Contact person</b>, email, city and state</li>
+            </ul>
+          </>
+        ) : <>
         <p className="muted">To apply for an IPO you’ll need:</p>
         <ul className="su-list">
           <li><b>PAN</b> — of the person applying</li>
@@ -235,6 +256,7 @@ export function SignupForm() {
           address and email as well, and we’ll fill the form for you to print
           and sign — instead of writing it out by hand.
         </div>
+        </>}
         {/* Stale the moment the account exists — the checklist above is still
             what they need, this sentence is not. */}
         {step !== 'done' && (

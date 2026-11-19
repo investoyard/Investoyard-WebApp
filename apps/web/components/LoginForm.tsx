@@ -14,6 +14,22 @@ export function LoginForm() {
   const tr = makeT(lang);
   const q = lang !== 'en' ? `?lang=${lang}` : '';
   const next = sp.get('next') || `/account${q}`;
+  /*
+   * A PARTNER APPLYING ARRIVES HERE WITH next=/partner/apply, and most have no
+   * account yet. The sign-up link used to drop next, so a new partner signed up,
+   * landed on the CLIENT account page ("Add an applicant") and never got back to
+   * the partner application. The link now carries next through, and both
+   * screens say what this account is for.
+   */
+  const partner = (sp.get('next') || '').startsWith('/partner');
+  const signupHref = (m: string) => {
+    const p = new URLSearchParams();
+    if (lang !== 'en') p.set('lang', lang);
+    if (m.length === 10) p.set('mobile', m);
+    if (sp.get('next')) p.set('next', sp.get('next') as string);
+    const s = p.toString();
+    return `/signup${s ? '?' + s : ''}`;
+  };
 
   /* 'otp' | 'password' — which door. Both are always OFFERED, because the only
      way to know whether THIS number has a password is to ask the server about
@@ -106,7 +122,8 @@ export function LoginForm() {
 
   return (
     <div className="panel" style={{ maxWidth: 440, margin: '12px auto 0' }}>
-      <h1 style={{ fontSize: 26 }}>{tr('login.title')}</h1>
+      <h1 style={{ fontSize: 26 }}>{partner ? 'Sign in to apply as a partner' : tr('login.title')}</h1>
+      {partner && <p className="muted" style={{ marginTop: 6 }}>New here? Create an account first — it only signs you in. Your firm’s details go in the partner application next.</p>}
       <p className="muted">{tr('login.subtitle')}</p>
 
       {/* Shown only on the first step: once a code is on its way, the choice
@@ -165,8 +182,8 @@ export function LoginForm() {
           {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
           {noAccount && (
             <div className="banner" style={{ marginTop: 12 }}>
-              <b>No account on +91 {mobile}.</b>{' '}
-              <a href={`/signup${q ? q + '&' : '?'}mobile=${mobile}`}>Create one</a> — it takes a minute.
+              <span><b>No account on +91 {mobile}.</b>{' '}
+              <a href={signupHref(mobile)}>Create one</a>{partner ? ' to continue your partner application' : ''} — it takes a minute.</span>
             </div>
           )}
           {/* Sir's point 6. Signing up was reachable only through the banner
@@ -183,7 +200,7 @@ export function LoginForm() {
           {!noAccount && (
             <p style={{ textAlign: 'center', marginTop: 16 }} className="muted">
               New to Investoyard?{' '}
-              <a href={mobile.length === 10 ? `/signup${q ? q + '&' : '?'}mobile=${mobile}` : `/signup${q}`}>
+              <a href={signupHref(mobile)}>
                 Create an account
               </a>
             </p>
@@ -215,8 +232,8 @@ export function LoginForm() {
           {err && <div className="banner warn" style={{ marginTop: 12 }}>{err}</div>}
           {noAccount && (
             <div className="banner" style={{ marginTop: 12 }}>
-              <b>No account on +91 {mobile}.</b>{' '}
-              <a href={`/signup${q ? q + '&' : '?'}mobile=${mobile}`}>Create one</a> — it takes a minute.
+              <span><b>No account on +91 {mobile}.</b>{' '}
+              <a href={signupHref(mobile)}>Create one</a>{partner ? ' to continue your partner application' : ''} — it takes a minute.</span>
             </div>
           )}
           <p style={{ textAlign: 'center', marginTop: 14 }}>
