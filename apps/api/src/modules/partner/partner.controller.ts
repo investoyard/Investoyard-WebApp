@@ -6,10 +6,11 @@ import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard, RequireScope, partnerClientIp } from './partner-scope';
 import { PartnerBidsService, type PartnerCtx } from './partner-bids.service';
 import { PartnerWebhooksService } from './partner-webhooks.service';
+import { SuperadminGuard } from '../../common/superadmin.guard';
 import { PartnerService } from './partner.service';
 import {
   CreatePartnerKeyDto, PartnerBidBatchDto, PartnerBidModifyDto, PartnerBidRefDto, PartnerBidUpiDto,
-  PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
+  PartnerBidLimitsDto, PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
 } from './partner.dto';
 import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 
@@ -122,6 +123,13 @@ export class PartnerController {
       ref: q.ref, orderId: q.orderId, ipoSymbol: q.ipoSymbol, status: q.status,
       page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
     });
+  }
+
+  /** GET /partner/v1/bids/limits — this account's live limits and what it has used today. */
+  @Get('bids/limits')
+  @RequireScope('bids:read')
+  bidLimits(@Req() req: any) {
+    return this.bids.limits(this.ctx(req));
   }
 
   /** GET /partner/v1/bids/summary?ipoSymbol= */
@@ -381,5 +389,26 @@ export class PartnerWebhookAdminController {
   @Post(':tenantId/ping')
   ping(@Req() req: any, @Param('tenantId') tenantId: string) {
     return this.hooks.ping(req.user.sub, tenantId);
+  }
+}
+
+/**
+ * A partner's LIVE bidding limits (Phase 3 pilot). Platform operators only:
+ * this is the switch that lets a partner send real bids under our membership,
+ * so no partner — not even for itself — may change it.
+ */
+@Controller('admin/partner-bid-limits')
+@UseGuards(JwtAuthGuard, SuperadminGuard)
+export class PartnerBidLimitsAdminController {
+  constructor(private readonly bids: PartnerBidsService) {}
+
+  @Get(':tenantId')
+  get(@Param('tenantId') tenantId: string) {
+    return this.bids.adminLimits(tenantId);
+  }
+
+  @Put(':tenantId')
+  set(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: PartnerBidLimitsDto) {
+    return this.bids.setAdminLimits(req.user.sub, tenantId, dto);
   }
 }

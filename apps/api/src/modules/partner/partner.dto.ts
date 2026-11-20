@@ -126,3 +126,12 @@ export class PartnerWebhookDto {
 export class PartnerKeyIpAllowlistDto {
   @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) ipAllowlist!: string[];
 }
+
+/** A partner's live bidding limits (Phase 3 pilot). Checked by limitsSaveProblems. */
+export class PartnerBidLimitsDto {
+  @IsBoolean() enabled!: boolean;
+  @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) ipoSymbols!: string[];
+  @IsNumber() maxAmountPerBid!: number;
+  @IsNumber() maxBidsPerDay!: number;
+  @IsNumber() maxAmountPerDay!: number;
+}

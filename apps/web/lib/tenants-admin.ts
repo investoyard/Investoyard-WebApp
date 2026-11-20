@@ -40,8 +40,17 @@ async function j<T>(res: Response): Promise<T> {
   const body = await res.text();
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const b = JSON.parse(body); if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message; } catch { /* ignore */ }
-    throw new Error(msg);
+    let problems: string[] | undefined;
+    try {
+      const b = JSON.parse(body);
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message;
+      // The partner-bid endpoints answer with a list of every problem; keep it,
+      // or a refusal reads "not saved" with nothing to say why.
+      if (Array.isArray(b?.problems)) problems = b.problems;
+    } catch { /* ignore */ }
+    const err: Error & { problems?: string[] } = new Error(msg);
+    if (problems) err.problems = problems;
+    throw err;
   }
   // an empty 200 (Nest returns one for a null handler result, and for 204) is
   // "no content", not a parse error — see the note in consumer-api.ts
@@ -1864,4 +1873,17 @@ export const fetchWebhookDeliveries = (q: { tenantId?: string; state?: string; d
 export const replayWebhookDelivery = (id: string) =>
   authed<{ queued: boolean }>(`${API}/admin/partner-api/webhook-deliveries/replay`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  });
+
+/* ---- live partner bidding limits (Phase 3 pilot; platform operators only) ---- */
+export interface PartnerBidLimitsView {
+  liveOpen: boolean; enabled: boolean; ipoSymbols: string[];
+  maxAmountPerBid: number; maxBidsPerDay: number; maxAmountPerDay: number;
+  updatedAt: string | null; usedToday: { bids: number; amount: number };
+}
+export const fetchPartnerBidLimits = (tenantId: string) =>
+  authed<PartnerBidLimitsView>(`${API}/admin/partner-bid-limits/${tenantId}`, { method: 'GET' });
+export const savePartnerBidLimits = (tenantId: string, body: { enabled: boolean; ipoSymbols: string[]; maxAmountPerBid: number; maxBidsPerDay: number; maxAmountPerDay: number }) =>
+  authed<PartnerBidLimitsView>(`${API}/admin/partner-bid-limits/${tenantId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });

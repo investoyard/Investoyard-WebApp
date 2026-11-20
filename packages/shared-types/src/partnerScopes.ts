@@ -58,7 +58,7 @@ export const PARTNER_SCOPE_META = [
     key: 'bids:read',
     label: 'Bid status',
     hint: 'Read the status of this partner’s bids — one, a list, or counts per IPO.',
-    endpoints: ['GET /partner/v1/bids', 'GET /partner/v1/bids/summary'],
+    endpoints: ['GET /partner/v1/bids', 'GET /partner/v1/bids/summary', 'GET /partner/v1/bids/limits'],
     byDefault: false,
   },
   {

@@ -13,6 +13,7 @@ import { BrandingPanel, ContentPanel, PagesPanel, TemplatePanel } from "@/compon
 import { RichText } from '@/components/ui/RichText';
 import { PAGE_LABEL, PARTNER_SCOPE_META, TENANT_PAGE_KEYS } from '@investoyard/shared-types';
 import { PartnerKeysPanel } from '@/components/admin/PartnerKeysPanel';
+import { PartnerBidLimitsPanel } from '@/components/admin/PartnerBidLimitsPanel';
 
 function fmtVal(f: EField, v: any) {
   if (v == null || v === '' || (Array.isArray(v) && !v.length)) return null;
@@ -252,6 +253,9 @@ function PartnerProfilePage() {
       <PartnerKeysPanel tenantId={data.id} title="API keys" />
 
       <ApiAccessControlPanel slug={slug} tenant={data} onSaved={load} />
+
+      {/* Platform operators only: this is what lets a partner send REAL bids. */}
+      {me?.isSuperAdmin && <PartnerBidLimitsPanel tenantId={data.id} />}
 
       <div>
         {edit ? (

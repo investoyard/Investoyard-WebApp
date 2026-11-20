@@ -1591,3 +1591,18 @@ model WebhookDelivery {
   @@index([state, nextAttemptAt])
   @@index([tenantId, createdAt])
 }
+
+/// Live partner bidding for ONE partner (Phase 3 pilot controls, 2026-11-20).
+/// The global PARTNER_BIDS_LIVE switch says live partner bidding exists at all;
+/// this row says who may use it, on which IPOs and how much. Both must allow a
+/// bid. An empty IPO list allows nothing — never "all". See partnerBidLimits.ts.
+model PartnerBidLimits {
+  tenantId        String   @id
+  enabled         Boolean  @default(false)
+  ipoSymbols      String[] @default([])
+  maxAmountPerBid Int      @default(0)
+  maxBidsPerDay   Int      @default(0)
+  maxAmountPerDay Int      @default(0)
+  updatedBy       String?
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+}

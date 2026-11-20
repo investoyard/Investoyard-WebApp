@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
   PARTNER_BID_BATCH_MAX, UPI_PATTERN, bidWebhookEvent, checkPartnerBid, checkPartnerBidTerms,
-  mayAcceptBid, mayChangeUpi, panBucketOf, type PartnerBidInput, type PartnerBidIpo,
+  istToday, limitsSaveProblems, liveLimitProblems, mayAcceptBid, normaliseLimitSymbols, mayChangeUpi, panBucketOf,
+  type PartnerBidInput, type PartnerBidIpo, type PartnerBidLimits,
 } from '@investoyard/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
@@ -173,6 +174,9 @@ export class PartnerBidsService {
 
     const batchId = randomUUID();
     const out = await this.bidOps.unscopedTx(async (tx) => {
+      // LIVE: the daily caps span every IPO, so the partner is locked too —
+      // ALWAYS before the IPO lock, the one order every caller takes them in.
+      if (!test) await this.lockTenantBids(tx, ctx.tenant.id);
       await this.bidOps.lockIpoBids(tx, ipo.id);
       // Idempotency is decided UNDER the lock, so two identical calls arriving
       // together cannot both create the same orderId.
@@ -185,6 +189,13 @@ export class PartnerBidsService {
         if (e.ipoId !== ipo.id) throw new ConflictException(`orderId ${e.partnerOrderId} was already used for a different IPO.`);
       }
       const fresh = prepared.filter((p) => !byOrder.has(p.orderId));
+      if (!test && fresh.length) {
+        const used = await this.usedToday(tx, ctx.tenant.id);
+        const lp = liveLimitProblems(await this.limitsOf(tx, ctx.tenant.id), {
+          ipoSymbol: ipo.symbol, amounts: fresh.map((p) => p.terms.amount), usedBids: used.bids, usedAmount: used.amount,
+        });
+        if (lp.length) throw new ForbiddenException({ statusCode: 403, error: 'Forbidden', message: 'No bid was placed — it is outside your live bidding limits.', problems: lp });
+      }
       for (const p of fresh) {
         await this.apps.assertPanFree(tx, ipo.id, p.panHash, p.terms.applicantType, ctx.tenant.id, `${p.orderId}: `, test);
       }
@@ -260,6 +271,12 @@ export class PartnerBidsService {
       this.bidIpo(app.ipo),
     );
     if (!t.ok) throw new BadRequestException({ statusCode: 400, error: 'Bad Request', message: 'The bid was not changed.', problems: t.problems });
+    if (!app.testMode) {
+      const l = await this.limitsOf(this.prisma, ctx.tenant.id);
+      const lp = liveLimitProblems(l, { ipoSymbol: app.ipo.symbol, amounts: [t.terms.amount], usedBids: 0, usedAmount: 0 })
+        .filter((m) => !/live bids today/.test(m)); // a modify is not a new bid; the per-bid cap and IPO list still hold
+      if (lp.length) throw new ForbiddenException({ statusCode: 403, error: 'Forbidden', message: 'The bid was not changed — it would be outside your live bidding limits.', problems: lp });
+    }
     const op = await this.bidOps.queueModify(app.id, t.terms.qty, t.terms.price, { amount: t.terms.amount, lots: t.terms.lots, atCutoff });
     await this.record(ctx, 'modify', app.id, app.partnerOrderId, String(dto.consentRef), t.terms);
     return { ref: app.id, orderId: app.partnerOrderId, ...t.terms, operationId: op?.id ?? null };
@@ -297,6 +314,46 @@ export class PartnerBidsService {
     const r = await this.bidOps.queueUpiChange(app.id);
     await this.record(ctx, 'upi', app.id, app.partnerOrderId, String(dto.consentRef), { restated: r.queued });
     return { ref: app.id, orderId: app.partnerOrderId, restatedAtExchange: r.queued };
+  }
+
+  /* ── live pilot limits (Phase 3) ───────────────────────────────────── */
+
+  /** Serialise one partner's LIVE bids, so two calls cannot both fit under a daily cap. */
+  private async lockTenantBids(tx: any, tenantId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bid-tenant:' + tenantId}::text))`;
+  }
+
+  private async limitsOf(db: any, tenantId: string): Promise<PartnerBidLimits | null> {
+    return (await db.partnerBidLimits.findUnique({ where: { tenantId } })) as PartnerBidLimits | null;
+  }
+
+  /**
+   * Live bids this partner placed today (India day), across every IPO, and their
+   * total. Every placed bid counts, whatever became of it — the cap is on what
+   * the partner asked us to send, and a rejected bid was still sent.
+   */
+  private async usedToday(db: any, tenantId: string): Promise<{ bids: number; amount: number }> {
+    const since = new Date(`${istToday()}T00:00:00+05:30`);
+    const agg = await db.application.aggregate({
+      where: { tenantId, testMode: false, partnerOrderId: { not: null }, createdAt: { gte: since } },
+      _count: { _all: true }, _sum: { amount: true },
+    });
+    return { bids: agg._count._all, amount: Number(agg._sum.amount ?? 0) };
+  }
+
+  /** GET /partner/v1/bids/limits — the partner's own live limits and what it has used today. */
+  async limits(ctx: PartnerCtx) {
+    const l = await this.limitsOf(this.prisma, ctx.tenant.id);
+    const used = await this.usedToday(this.prisma, ctx.tenant.id);
+    return {
+      liveOpen: process.env.PARTNER_BIDS_LIVE === 'true',
+      enabled: !!l?.enabled,
+      ipoSymbols: l?.ipoSymbols ?? [],
+      maxAmountPerBid: l?.maxAmountPerBid ?? 0,
+      maxBidsPerDay: l?.maxBidsPerDay ?? 0,
+      maxAmountPerDay: l?.maxAmountPerDay ?? 0,
+      usedToday: used,
+    };
   }
 
   /* ── read ──────────────────────────────────────────────────────────── */
@@ -427,6 +484,53 @@ export class PartnerBidsService {
         throw new BadRequestException('event must be one of mandate_accepted, mandate_rejected, exchange_rejected, allotted, not_allotted, refund.');
     }
     return this.read(ctx, allowlist, { ref: app.id });
+  }
+
+
+  /* ── operator: a partner's live limits ─────────────────────────────── */
+
+  /** The operator's view: the row as saved, what the partner used today, and the global switch. */
+  async adminLimits(tenantId: string) {
+    const t = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } }));
+    if (!t) throw new NotFoundException('Partner not found.');
+    const l: any = await tenantContext.runUnscoped(() => (this.prisma as any).partnerBidLimits.findUnique({ where: { tenantId } }));
+    const used = await this.bidOps.unscopedTx((tx) => this.usedToday(tx, tenantId));
+    return {
+      liveOpen: process.env.PARTNER_BIDS_LIVE === 'true',
+      enabled: !!l?.enabled,
+      ipoSymbols: l?.ipoSymbols ?? [],
+      maxAmountPerBid: l?.maxAmountPerBid ?? 0,
+      maxBidsPerDay: l?.maxBidsPerDay ?? 0,
+      maxAmountPerDay: l?.maxAmountPerDay ?? 0,
+      updatedAt: l?.updatedAt ?? null,
+      usedToday: used,
+    };
+  }
+
+  /**
+   * Save a partner's live limits. Refused when switching on without a listed
+   * IPO and every cap — "enabled" must never mean "unlimited". Audited, because
+   * this is the switch that lets a partner send real bids under our membership.
+   */
+  async setAdminLimits(callerId: string, tenantId: string, dto: Partial<PartnerBidLimits>) {
+    const t = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }));
+    if (!t) throw new NotFoundException('Partner not found.');
+    const next: PartnerBidLimits = {
+      enabled: dto.enabled === true,
+      ipoSymbols: normaliseLimitSymbols(dto.ipoSymbols ?? []),
+      maxAmountPerBid: Number(dto.maxAmountPerBid ?? 0),
+      maxBidsPerDay: Number(dto.maxBidsPerDay ?? 0),
+      maxAmountPerDay: Number(dto.maxAmountPerDay ?? 0),
+    };
+    const problems = limitsSaveProblems(next);
+    if (problems.length) throw new BadRequestException({ statusCode: 400, error: 'Bad Request', message: 'The limits were not saved.', problems });
+    await tenantContext.runUnscoped(() => (this.prisma as any).partnerBidLimits.upsert({
+      where: { tenantId }, create: { tenantId, ...next, updatedBy: callerId }, update: { ...next, updatedBy: callerId },
+    }));
+    await this.prisma.auditLog.create({
+      data: { action: 'partner.bid-limits', actorId: callerId, targetType: 'tenant', targetId: tenantId, targetLabel: t.slug, tenantSlug: t.slug, detail: next as any },
+    }).catch(() => { /* best-effort */ });
+    return this.adminLimits(tenantId);
   }
 
   /* ── admin ─────────────────────────────────────────────────────────── */

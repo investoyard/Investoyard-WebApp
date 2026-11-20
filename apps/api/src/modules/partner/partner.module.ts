@@ -8,7 +8,10 @@ import { ApplicationsModule } from '../applications/applications.module';
 import { RailModule } from '../rail/rail.module';
 import { PartnerBidsService } from './partner-bids.service';
 import { PartnerWebhooksService } from './partner-webhooks.service';
-import { PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController } from './partner.controller';
+import {
+  PartnerBidLimitsAdminController, PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController,
+} from './partner.controller';
+import { SuperadminGuard } from '../../common/superadmin.guard';
 import { PartnerService } from './partner.service';
 import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard } from './partner-scope';
@@ -23,7 +26,7 @@ import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
  */
 @Module({
   imports: [ApplicationsModule, RailModule, JwtModule.register({})],
-  controllers: [PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController],
-  providers: [PartnerService, PartnerBidsService, PartnerWebhooksService, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  controllers: [PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController, PartnerBidLimitsAdminController],
+  providers: [PartnerService, PartnerBidsService, PartnerWebhooksService, SuperadminGuard, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
 })
 export class PartnerModule {}

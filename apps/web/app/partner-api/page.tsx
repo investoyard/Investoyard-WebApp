@@ -645,6 +645,8 @@ with open(data["filename"], "wb") as f:
             <p style={{ fontSize: '.9rem' }}>One bid with its full history. Without <code>ref</code> or <code>orderId</code>, a page of bids filtered by <code>ipoSymbol</code> and <code>status</code>.</p>
             <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/bids/<b>summary</b>?ipoSymbol=</span></div>
             <p style={{ fontSize: '.9rem' }}>Bids and rupees by status for one IPO.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/bids/<b>limits</b></span></div>
+            <p style={{ fontSize: '.9rem' }}>Your live bidding limits and what you have used today. Live bidding is switched on per partner by the operator, for named IPOs, with a cap per bid, a number of bids per day and rupees per day — counted across every IPO in the India day. A live batch that would go past any of them is refused whole, with each reason listed.</p>
             <p style={{ fontSize: '.9rem' }}>Statuses: <code>submitted</code> (queued) · <code>mandate_pending</code> (sent; waiting for the investor) · <code>upi_blocked</code> (funds blocked) · <code>dp_verified</code> · <code>confirmed</code> · <code>allotted</code> · <code>not_allotted</code> · <code>released</code> (refunded) · <code>cancelled</code> · <code>rejected</code> · <code>failed</code>.</p>
           </section>
 

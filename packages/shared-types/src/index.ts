@@ -329,6 +329,7 @@ export * from './bidRules';
 export * from './bidGate';
 export * from './partnerScopes';
 export * from './partnerBid';
+export * from './partnerBidLimits';
 export * from './unblockRules';
 export * from './sponsorBank';
 export * from './ipoDocs';
