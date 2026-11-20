@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
@@ -44,7 +45,7 @@ export class PartnerService {
   }
 
   /** The partner tenant's synthetic service account that owns API-created rows. */
-  private async serviceUser(tenant: { id: string; slug: string; name: string }) {
+  async serviceUser(tenant: { id: string; slug: string; name: string }) {
     const username = `api-${tenant.slug}`;
     const existing = await this.prisma.user.findUnique({ where: { username } });
     if (existing) return existing;
@@ -362,7 +363,7 @@ export class PartnerService {
    * rows itself — filtering by its id returned zero, hiding the reports. The
    * legacy `direct` type collapses to the same case.
    */
-  private async reportScope(): Promise<string | null> {
+  async reportScope(): Promise<string | null> {
     const tid = tenantContext.tenantId();
     if (!tid) return null;
     const t = await tenantContext.runUnscoped(() =>
@@ -371,7 +372,7 @@ export class PartnerService {
     return (t?.type === 'direct' || t?.type === 'platform') ? null : tid;
   }
 
-  private async tenantNames(ids: string[]) {
+  async tenantNames(ids: string[]) {
     const rows = await tenantContext.runUnscoped(() =>
       this.prisma.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, slug: true, name: true } }),
     );
@@ -645,7 +646,7 @@ export class PartnerService {
       this.prisma.partnerApiKey.findMany({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, keyId: true, label: true, scopes: true, active: true, createdAt: true, revokedAt: true, lastUsedAt: true } as any,
+        select: { id: true, keyId: true, label: true, scopes: true, mode: true, ipAllowlist: true, active: true, createdAt: true, revokedAt: true, lastUsedAt: true } as any,
       }),
     );
   }
@@ -668,7 +669,7 @@ export class PartnerService {
   }
 
   /** Create a key — the SECRET is returned once and never stored in plain. */
-  async createKey(callerId: string, tenantId: string, label?: string, scopes?: string[]) {
+  async createKey(callerId: string, tenantId: string, label?: string, scopes?: string[], mode: 'live' | 'test' = 'live', ipAllowlist?: string[]) {
     await this.assertCanManageKeys(callerId, tenantId);
     const tenant = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId } }));
     if (!tenant) throw new NotFoundException('Tenant not found.');
@@ -677,10 +678,10 @@ export class PartnerService {
     const secret = randomBytes(24).toString('hex');
     await tenantContext.runUnscoped(() =>
       this.prisma.partnerApiKey.create({
-        data: { tenantId, keyId, secretHash: sha256(secret), label: label || null, scopes: list } as any,
+        data: { tenantId, keyId, secretHash: sha256(secret), label: label || null, scopes: list, mode, ipAllowlist: cleanIps(ipAllowlist) } as any,
       }),
     );
-    return { keyId, secret, apiKey: `${keyId}.${secret}`, scopes: list };
+    return { keyId, secret, apiKey: `${keyId}.${secret}`, scopes: list, mode };
   }
 
   /**
@@ -709,6 +710,20 @@ export class PartnerService {
       },
     }).catch(() => { /* best-effort */ });
     return { keyId: key.keyId, scopes: list };
+  }
+
+  /** The addresses a key may be used from. Required before a LIVE key can place bids. */
+  async updateKeyIps(callerId: string, id: string, ipAllowlist: string[]) {
+    const key = await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiKey.findUnique({ where: { id }, select: { tenantId: true, keyId: true } }),
+    );
+    if (!key) throw new NotFoundException('Key not found.');
+    await this.assertCanManageKeys(callerId, key.tenantId);
+    const list = cleanIps(ipAllowlist);
+    await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiKey.update({ where: { id }, data: { ipAllowlist: list } as any }),
+    );
+    return { keyId: key.keyId, ipAllowlist: list };
   }
 
   async revokeKey(callerId: string, id: string) {
@@ -1118,3 +1133,11 @@ export class PartnerService {
 /* Small shared shapers for the v1 projection. */
 const day = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : undefined);
 const dec = (v: any) => (v == null ? undefined : Number(v));
+
+/** Plain IPv4 / IPv6 addresses only, deduplicated. A CIDR or a hostname is refused rather than half-understood. */
+function cleanIps(list?: string[]): string[] {
+  const out = [...new Set((list ?? []).map((s) => String(s).trim()).filter(Boolean))];
+  const bad = out.filter((ip) => !isIP(ip));
+  if (bad.length) throw new BadRequestException(`Not an IP address: ${bad.join(', ')}. List each server address on its own.`);
+  return out;
+}

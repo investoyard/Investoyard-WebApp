@@ -5,7 +5,10 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { ApplicationsModule } from '../applications/applications.module';
-import { PartnerController, PartnerKeysAdminController, PartnerReportsAdminController } from './partner.controller';
+import { RailModule } from '../rail/rail.module';
+import { PartnerBidsService } from './partner-bids.service';
+import { PartnerWebhooksService } from './partner-webhooks.service';
+import { PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController } from './partner.controller';
 import { PartnerService } from './partner.service';
 import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard } from './partner-scope';
@@ -19,8 +22,8 @@ import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
  * (Tenants → API access).
  */
 @Module({
-  imports: [ApplicationsModule, JwtModule.register({})],
-  controllers: [PartnerController, PartnerKeysAdminController, PartnerReportsAdminController],
-  providers: [PartnerService, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  imports: [ApplicationsModule, RailModule, JwtModule.register({})],
+  controllers: [PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController],
+  providers: [PartnerService, PartnerBidsService, PartnerWebhooksService, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
 })
 export class PartnerModule {}

@@ -86,6 +86,8 @@ const NAV: NavNode[] = [
     { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.keys.manage', hidePlatform: true },
     { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.calls.view' },
     { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.prints.view' },
+    { href: '/admin/partner-api/bids', label: 'Bids', perm: 'partner-api.prints.view' },
+    { href: '/admin/partner-api/webhooks', label: 'Webhooks', perm: 'partner-api.calls.view' },
   ] },
   // Masters are platform reference tables (registrars, lead managers,
   // exchanges …) shared across all tenants. Gated so only platform-tier

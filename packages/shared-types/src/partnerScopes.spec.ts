@@ -17,7 +17,7 @@ describe('partner scopes', () => {
   it('knows the two Phase 1 read scopes', () => {
     expect(isPartnerScope('prints:read')).toBe(true);
     expect(isPartnerScope('allotment:read')).toBe(true);
-    expect(isPartnerScope('bids:write')).toBe(false);
+    expect(isPartnerScope('nosuch:write')).toBe(false);
     expect(isPartnerScope(undefined)).toBe(false);
   });
 });
@@ -57,6 +57,6 @@ describe('keyScopesProblem', () => {
   });
 
   it('refuses an unknown scope', () => {
-    expect(keyScopesProblem(['ipos:read'], ['bids:write'])).toBe('Unknown scope: bids:write.');
+    expect(keyScopesProblem(['ipos:read'], ['nosuch:write'])).toBe('Unknown scope: nosuch:write.');
   });
 });

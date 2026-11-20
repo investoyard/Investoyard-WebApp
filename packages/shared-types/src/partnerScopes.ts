@@ -48,6 +48,20 @@ export const PARTNER_SCOPE_META = [
     byDefault: false,
   },
   {
+    key: 'bids:write',
+    label: 'Place bids',
+    hint: 'Place UPI bids for clients under our exchange membership, and modify, cancel or change their UPI ID. Test keys go to a simulator.',
+    endpoints: ['POST /partner/v1/bids', 'POST /partner/v1/bids/modify', 'POST /partner/v1/bids/cancel', 'POST /partner/v1/bids/upi'],
+    byDefault: false,
+  },
+  {
+    key: 'bids:read',
+    label: 'Bid status',
+    hint: 'Read the status of this partner’s bids — one, a list, or counts per IPO.',
+    endpoints: ['GET /partner/v1/bids', 'GET /partner/v1/bids/summary'],
+    byDefault: false,
+  },
+  {
     key: 'ipos:read',
     label: 'IPO catalog',
     hint: 'Read the live IPO list and each issue’s detail.',

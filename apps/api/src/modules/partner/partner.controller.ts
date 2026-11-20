@@ -1,11 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { PartnerApiKeyGuard } from './partner.guard';
-import { PartnerScopeGuard, RequireScope } from './partner-scope';
+import { PartnerScopeGuard, RequireScope, partnerClientIp } from './partner-scope';
+import { PartnerBidsService, type PartnerCtx } from './partner-bids.service';
+import { PartnerWebhooksService } from './partner-webhooks.service';
 import { PartnerService } from './partner.service';
-import { CreatePartnerKeyDto, PartnerPrintFormsDto, UpdatePartnerKeyScopesDto } from './partner.dto';
+import {
+  CreatePartnerKeyDto, PartnerBidBatchDto, PartnerBidModifyDto, PartnerBidRefDto, PartnerBidUpiDto,
+  PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
+} from './partner.dto';
 import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 
 /**
@@ -21,7 +26,7 @@ import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 @UseGuards(PartnerApiKeyGuard, PartnerScopeGuard)
 @UseInterceptors(PartnerCallLogInterceptor)
 export class PartnerController {
-  constructor(private readonly partner: PartnerService) {}
+  constructor(private readonly partner: PartnerService, private readonly bids: PartnerBidsService) {}
 
   /**
    * POST /partner/v1/print-forms — store the partner's FINAL application data
@@ -73,6 +78,66 @@ export class PartnerController {
     });
   }
 
+  /* ── Bids (Phase 2, 2026-11-20) ───────────────────────────────────────────
+     Every reference travels in the BODY or the QUERY, never the path. A test
+     key's bids go to the simulator; live bidding is shut until Phase 3. */
+
+  private ctx(req: any): PartnerCtx {
+    return { tenant: req.partnerTenant, keyId: req.partnerKeyId, mode: req.partnerKeyMode === 'test' ? 'test' : 'live', ip: partnerClientIp(req) };
+  }
+
+  /** POST /partner/v1/bids — up to 25 bids, all or nothing. */
+  @Post('bids')
+  @RequireScope('bids:write')
+  placeBids(@Req() req: any, @Body() dto: PartnerBidBatchDto) {
+    return this.bids.place(this.ctx(req), req.partnerKeyIps ?? [], dto as any);
+  }
+
+  /** POST /partner/v1/bids/modify */
+  @Post('bids/modify')
+  @RequireScope('bids:write')
+  modifyBid(@Req() req: any, @Body() dto: PartnerBidModifyDto) {
+    return this.bids.modify(this.ctx(req), req.partnerKeyIps ?? [], dto as any);
+  }
+
+  /** POST /partner/v1/bids/cancel */
+  @Post('bids/cancel')
+  @RequireScope('bids:write')
+  cancelBid(@Req() req: any, @Body() dto: PartnerBidRefDto) {
+    return this.bids.cancel(this.ctx(req), req.partnerKeyIps ?? [], dto as any);
+  }
+
+  /** POST /partner/v1/bids/upi */
+  @Post('bids/upi')
+  @RequireScope('bids:write')
+  changeBidUpi(@Req() req: any, @Body() dto: PartnerBidUpiDto) {
+    return this.bids.changeUpi(this.ctx(req), req.partnerKeyIps ?? [], dto as any);
+  }
+
+  /** GET /partner/v1/bids?ref= | ?orderId= | ?ipoSymbol=&status=&page=&per= */
+  @Get('bids')
+  @RequireScope('bids:read')
+  readBids(@Req() req: any, @Query() q: any) {
+    return this.bids.read(this.ctx(req), req.partnerKeyIps ?? [], {
+      ref: q.ref, orderId: q.orderId, ipoSymbol: q.ipoSymbol, status: q.status,
+      page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
+    });
+  }
+
+  /** GET /partner/v1/bids/summary?ipoSymbol= */
+  @Get('bids/summary')
+  @RequireScope('bids:read')
+  bidSummary(@Req() req: any, @Query('ipoSymbol') ipoSymbol: string) {
+    return this.bids.summary(this.ctx(req), req.partnerKeyIps ?? [], { ipoSymbol });
+  }
+
+  /** POST /partner/v1/test/simulate — test keys only. */
+  @Post('test/simulate')
+  @RequireScope('bids:write')
+  simulate(@Req() req: any, @Body() dto: PartnerSimulateDto) {
+    return this.bids.simulate(this.ctx(req), req.partnerKeyIps ?? [], dto as any);
+  }
+
   /* ── Read surface ────────────────────────────────────────────────────────
      Every response is projected through the operational contract, so adding a
      reporting field can never change what a partner receives. See
@@ -121,7 +186,38 @@ export class PartnerController {
 @Controller('admin/partner-api')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PartnerReportsAdminController {
-  constructor(private readonly partner: PartnerService) {}
+  constructor(
+    private readonly partner: PartnerService,
+    private readonly bids: PartnerBidsService,
+    private readonly hooks: PartnerWebhooksService,
+  ) {}
+
+  /** Partner bids (Phase 2) — operator sees every partner, a partner its own. */
+  @Get('bids')
+  @RequirePermissions('partner-api.prints.view')
+  async bidsReport(@Query() q: any) {
+    return this.bids.report(await this.partner.reportScope(), {
+      tenantId: q.tenantId, mode: q.mode, status: q.status,
+      days: q.days ? Number(q.days) : undefined, page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
+    });
+  }
+
+  /** Webhook deliveries and their retries (Phase 2). */
+  @Get('webhook-deliveries')
+  @RequirePermissions('partner-api.calls.view')
+  async deliveries(@Query() q: any) {
+    return this.hooks.listDeliveries(await this.partner.reportScope(), {
+      tenantId: q.tenantId, state: q.state,
+      days: q.days ? Number(q.days) : undefined, page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
+    });
+  }
+
+  @Post('webhook-deliveries/replay')
+  @RequirePermissions('partner-api.calls.view')
+  async replay(@Body('id') id: string) {
+    return this.hooks.replay(await this.partner.reportScope(), String(id ?? ''));
+  }
+
 
   @Get('calls')
   @RequirePermissions('partner-api.calls.view')
@@ -230,13 +326,19 @@ export class PartnerKeysAdminController {
 
   @Post(':tenantId')
   create(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: CreatePartnerKeyDto) {
-    return this.partner.createKey(req.user.sub, tenantId, dto.label, dto.scopes);
+    return this.partner.createKey(req.user.sub, tenantId, dto.label, dto.scopes, dto.mode ?? 'live', dto.ipAllowlist);
   }
 
   /** What a key on this tenant may be given (the tenant's own scopes). */
   @Get(':tenantId/scope-options')
   scopeOptions(@Req() req: any, @Param('tenantId') tenantId: string) {
     return this.partner.keyScopeOptions(req.user.sub, tenantId);
+  }
+
+  /** The addresses a key may be used from; required before a live key can bid. */
+  @Patch(':id/ip-allowlist')
+  updateIps(@Req() req: any, @Param('id') id: string, @Body() dto: PartnerKeyIpAllowlistDto) {
+    return this.partner.updateKeyIps(req.user.sub, id, dto.ipAllowlist);
   }
 
   /** Change an existing key's scopes; [] = everything its tenant has. */
@@ -248,5 +350,36 @@ export class PartnerKeysAdminController {
   @Delete(':id')
   revoke(@Req() req: any, @Param('id') id: string) {
     return this.partner.revokeKey(req.user.sub, id);
+  }
+}
+
+/**
+ * Partner webhook settings (Phase 2). Same access rule as API keys —
+ * superadmin, or a member of that partner — enforced in the service.
+ */
+@Controller('admin/partner-webhook')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class PartnerWebhookAdminController {
+  constructor(private readonly hooks: PartnerWebhooksService) {}
+
+  @Get(':tenantId')
+  get(@Req() req: any, @Param('tenantId') tenantId: string) {
+    return this.hooks.getConfig(req.user.sub, tenantId);
+  }
+
+  /** Set the URL. The secret is created on the first call and returned once. */
+  @Put(':tenantId')
+  set(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: PartnerWebhookDto) {
+    return this.hooks.setConfig(req.user.sub, tenantId, dto);
+  }
+
+  @Post(':tenantId/rotate')
+  rotate(@Req() req: any, @Param('tenantId') tenantId: string) {
+    return this.hooks.rotate(req.user.sub, tenantId);
+  }
+
+  @Post(':tenantId/ping')
+  ping(@Req() req: any, @Param('tenantId') tenantId: string) {
+    return this.hooks.ping(req.user.sub, tenantId);
   }
 }

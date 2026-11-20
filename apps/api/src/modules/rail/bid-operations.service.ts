@@ -147,7 +147,15 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
    * only for a bid that is actually at the exchange — an unposted bid is our
    * own record and no rule touches it.
    */
-  async queueModify(applicationId: string, nextQty: number, price?: number | null) {
+  async queueModify(
+    applicationId: string,
+    nextQty: number,
+    price?: number | null,
+    /* The amount and lots move with the quantity. Without them the stored
+       amount went stale after a modify — and at cut-off that amount is what
+       the exchange is sent. */
+    extra?: { amount?: number; lots?: number; atCutoff?: boolean },
+  ) {
     const app = await this.loadApp(applicationId);
     const current = this.qtyOf(app);
     const atExchange = this.atExchange(app);
@@ -171,7 +179,13 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
         : await tx.bidOperation.create({ data: this.intent(app, 'modify', nextQty, price) });
       await tx.application.update({
         where: { id: app.id },
-        data: { shareQty: nextQty, ...(price != null ? { bidPrice: new Prisma.Decimal(price) } : {}) },
+        data: {
+          shareQty: nextQty,
+          ...(price != null ? { bidPrice: new Prisma.Decimal(price) } : {}),
+          ...(extra?.amount != null ? { amount: new Prisma.Decimal(extra.amount) } : {}),
+          ...(extra?.lots != null ? { lots: extra.lots } : {}),
+          ...(extra?.atCutoff != null ? { atCutoff: extra.atCutoff } : {}),
+        },
       });
       return op;
     }).then((r) => { this.kick(); return r; });
@@ -205,7 +219,7 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
    * coming back, and a bid can be cancelled before anything was ever blocked.
    * Keeping them apart is also what lets the investor re-apply afterwards.
    */
-  async queueCancel(applicationId: string, by: 'operator' | 'investor' = 'operator') {
+  async queueCancel(applicationId: string, by: 'operator' | 'investor' | 'partner' = 'operator') {
     const app = await this.loadApp(applicationId);
     const check = mayCancel(app.category, this.atExchange(app));
     if (!check.ok) throw new BadRequestException(check.reason);
@@ -358,7 +372,9 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
     if (process.env.BID_POST_DISABLED === 'true') return;
     if (this.draining) { this.again = true; return; }
     this.draining = true;
-    setImmediate(async () => {
+    // NOT the caller's context: setImmediate inherits the request's tenant, and
+    // the sender works across every tenant (see postPending).
+    setImmediate(() => tenantContext.runUnscoped(async () => {
       try {
         do {
           this.again = false;
@@ -369,7 +385,7 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
       } finally {
         this.draining = false;
       }
-    });
+    }));
   }
 
   /** Attempts before a network-type failure is given up on. */
@@ -392,14 +408,25 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
    * senders — two ticks, or two processes — can never send the same row twice.
    */
   async postPending(limit = 50) {
+    /* ALWAYS without a tenant context (2026-11-20). Kicked from an apply
+       request, this ran AS THAT TENANT: its read saw only that tenant's
+       operations, and every write inside its transactions went down a
+       separate connection under the tenant extension, so they were not atomic.
+       Found by a Phase 2 probe whose transaction closed under it. */
+    return tenantContext.runUnscoped(() => this.postPendingNow(limit));
+  }
+
+  private async postPendingNow(limit: number) {
     const pending = await this.prisma.bidOperation.findMany({
-      where: { state: 'pending', memberCredentialId: { not: null } },
+      // A live bid needs the member it goes under; a TEST bid has none and goes
+      // to the simulator (Phase 2). Nothing else may be sent without a member.
+      where: { state: 'pending', OR: [{ memberCredentialId: { not: null } }, { application: { testMode: true } }] },
       orderBy: { createdAt: 'asc' },
       take: limit * 2,
       // dematAccounts rides along: toSubmission() resolves WHICH demat this
       // application named, and reading the profile's own columns would send the
       // default every time.
-      include: { application: { include: { ipo: true, profile: { include: { dematAccounts: true } } } } },
+      include: { application: { include: { ipo: true, bidApplicant: true, profile: { include: { dematAccounts: true } } } } },
     });
     const now = Date.now();
     const due = pending
@@ -443,7 +470,7 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
       this.log.warn(`bid op ${op.id} (${op.action}) will retry: ${reason}`);
       return 'retry';
     }
-    await this.prisma.$transaction(async (tx) => {
+    await this.unscopedTx(async (tx) => {
       await tx.bidOperation.update({
         where: { id: op.id },
         data: { state: 'failed', reason, errorCode: e?.code ?? null },
@@ -489,7 +516,11 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
   private async postOne(op: any): Promise<boolean> {
     const app = op.application;
     const req = await this.toSubmission(op, app);
-    const call = op.action === 'modify' ? this.rail.orchestrator.modify(req, op.memberCredentialId)
+    /* A TEST bid is built exactly like a live one — so a payload the exchange
+       would refuse is refused here too — and then answered by the simulator
+       instead of an exchange. It never reaches a member's login. */
+    const call: Promise<BidResult> = app.testMode ? Promise.resolve(simulateExchange(op, app))
+      : op.action === 'modify' ? this.rail.orchestrator.modify(req, op.memberCredentialId)
       : op.action === 'cancel' ? this.rail.orchestrator.cancel(req, op.memberCredentialId)
       : this.rail.orchestrator.submit(req, op.memberCredentialId);
 
@@ -501,11 +532,13 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
     const ok = res?.ok !== false;
     const reference = res?.bidIds?.[0] ?? null;
     const reason = ok ? null : String(res?.message ?? 'The exchange rejected this bid.').slice(0, 300);
-    const cred = await this.prisma.memberCredential.findUnique({
-      where: { id: op.memberCredentialId }, select: { exchange: true },
-    });
+    const cred = app.testMode
+      ? { exchange: 'NSE_EIPO' as const } // the simulator stands in for NSE
+      : await this.prisma.memberCredential.findUnique({
+          where: { id: op.memberCredentialId }, select: { exchange: true },
+        });
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.unscopedTx(async (tx) => {
       await tx.bidOperation.update({
         where: { id: op.id },
         data: {
@@ -567,7 +600,37 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
    * a different one is worse than a bid that does not go. Same reasoning as the
    * rail builder already refusing a print payload with no PAN or DP ID.
    */
+  /**
+   * A PARTNER bid (Phase 2): the client is not ours, so the PAN, demat and UPI
+   * come from the bid's own `BidApplicant` row rather than a profile. Resolved
+   * just-in-time, exactly as the profile path does, and a failed resolve becomes
+   * an empty string so the builder's refusal names the applicant.
+   */
+  private async toPartnerSubmission(op: any, app: any): Promise<BidSubmission> {
+    const b = app.bidApplicant;
+    return buildBidSubmission({
+      activity: op.action,
+      clientRef: app.remark ?? app.id,
+      symbol: app.ipo?.symbol,
+      category: app.category,
+      applicationNumber: app.applicationNumber,
+      bidReferenceNumber: app.bidReferenceNumber,
+      applicantName: b.fullName,
+      pan: await this.resolveOrBlank(b.panTokenRef),
+      depository: b.depository,
+      dpId: b.dpId,
+      clientId: await this.resolveOrBlank(b.clientIdTokenRef),
+      upi: await this.resolveOrBlank(b.upiTokenRef),
+      asbaBlockRef: app.asbaBlockRef,
+      quantity: op.qty,
+      atCutOff: op.atCutoff,
+      price: op.price != null ? Number(op.price) : null,
+      amount: app.amount != null ? Number(app.amount) : null,
+    });
+  }
+
   private async toSubmission(op: any, app: any): Promise<BidSubmission> {
+    if (app.bidApplicant) return this.toPartnerSubmission(op, app);
     const demat = dematForApplication(app.profile, app.profile?.dematAccounts ?? [], app.dematAccountId);
     if (!demat) {
       throw new BidSubmissionError(
@@ -616,4 +679,22 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
     if (!ref) return '';
     try { return await this.vault.resolve(ref); } catch { return ''; }
   }
+}
+
+/**
+ * The exchange a TEST bid talks to (Phase 2, 2026-11-20). It accepts every
+ * well-formed instruction, echoes our application number and hands back a
+ * reference that cannot be mistaken for a real one. What happens AFTER that —
+ * the investor approving the mandate, the allotment — is driven by the partner
+ * through `POST /partner/v1/test/simulate`, so a test cycle is deterministic
+ * rather than timed.
+ */
+function simulateExchange(op: any, app: any): BidResult {
+  return {
+    clientRef: app.remark ?? app.id,
+    ok: true,
+    applicationNumber: app.applicationNumber,
+    bidIds: [`SIM-${String(op.id).slice(0, 8).toUpperCase()}`],
+    raw: { simulated: true, action: op.action },
+  } as BidResult;
 }

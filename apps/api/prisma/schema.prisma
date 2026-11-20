@@ -324,6 +324,11 @@ model PartnerApiKey {
   /// key issued before key scopes existed (2026-11-20) means. See
   /// effectiveKeyScopes() in shared-types.
   scopes     String[]  @default([])
+  /// live | test. A test key's bids go to the simulator and never reach an exchange.
+  mode        String   @default("live")
+  /// Addresses this key may be used from. Required for a live key that places
+  /// bids; enforced on a test key when set.
+  ipAllowlist String[] @default([])
   active     Boolean   @default(true)
   createdAt  DateTime  @default(now()) @db.Timestamptz(3)
   revokedAt  DateTime? @db.Timestamptz(3)
@@ -1150,17 +1155,24 @@ model Application {
   /// touched by a different flow. Nullable: only set by the partner API flow;
   /// legacy rows and non-partner flows leave it null.
   partnerPayload     Json?
+  /// A partner bid placed with a TEST key: goes to the simulator, never to an
+  /// exchange, takes no number from our series and is invisible to live rules.
+  testMode           Boolean           @default(false)
+  /// The partner's own id for this bid; with the tenant it makes a retried call safe.
+  partnerOrderId     String?
   idempotencyKey     String            @unique
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
   events     ApplicationStatusEvent[]
   operations BidOperation[]
+  bidApplicant BidApplicant?
 
   @@index([userId])
   @@index([ipoId])
   @@index([tenantId])
   @@index([rail, applicationNumber])
+  @@index([tenantId, partnerOrderId])
 }
 
 /// User notifications (allotment / listing / status). Persisted so the app has an
@@ -1499,4 +1511,83 @@ model PageVisit {
   @@unique([hourStart, path, symbol, visitorKey])
   @@index([hourStart])
   @@index([path, hourStart])
+}
+
+/// The client behind ONE partner bid (Phase 2, 2026-11-20). A partner's client
+/// is not registered with us, so there is no InvestorProfile to read the PAN,
+/// demat and UPI from; they arrive with the bid and are vaulted here, one row
+/// per bid, never shared between bids. A UPI change rewrites this row only.
+/// `panHash` is the same HMAC as `InvestorProfile.panHash`, so the duplicate-PAN
+/// rule and allotment matching see a partner's client and our own customers
+/// as the same person when they are.
+model BidApplicant {
+  id               String      @id @default(uuid())
+  applicationId    String      @unique
+  application      Application @relation(fields: [applicationId], references: [id])
+  tenantId         String
+  fullName         String
+  panTokenRef      String
+  panHash          String
+  depository       String // NSDL | CDSL
+  dpId             String      @default("") // CDSL has none
+  clientIdTokenRef String
+  upiTokenRef      String
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@index([tenantId, panHash])
+  @@index([panHash])
+}
+
+/// One instruction from a partner, kept as it arrived and never edited:
+/// which key, from which address, when, the partner's consent reference and the
+/// terms. This is the record that a client instructed the bid — the partner
+/// holds the client's consent; we hold proof of the instruction.
+model BidInstruction {
+  id            String   @id @default(uuid())
+  tenantId      String
+  keyId         String
+  mode          String // test | live
+  ip            String   @default("")
+  action        String // new | modify | cancel | upi
+  applicationId String?
+  orderId       String?
+  consentRef    String?
+  terms         Json
+  at            DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, at])
+  @@index([applicationId])
+}
+
+/// Where a partner's bid webhooks go. The secret is vaulted: it signs every
+/// delivery, so it has to be readable, and it is shown to the partner once.
+model PartnerWebhook {
+  tenantId       String   @id
+  url            String
+  secretTokenRef String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// One webhook send and its retries. Built from ApplicationStatusEvent rows
+/// (outbox): `statusEventId` is unique, so an event can never be queued twice.
+model WebhookDelivery {
+  id            String    @id @default(uuid())
+  tenantId      String
+  statusEventId String?   @unique
+  applicationId String?
+  event         String
+  payload       Json
+  state         String    @default("pending") // pending | delivered | failed
+  attempts      Int       @default(0)
+  lastStatus    Int?
+  lastError     String?
+  nextAttemptAt DateTime  @default(now()) @db.Timestamptz(3)
+  deliveredAt   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([state, nextAttemptAt])
+  @@index([tenantId, createdAt])
 }

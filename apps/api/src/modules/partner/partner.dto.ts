@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -61,8 +61,68 @@ export class CreatePartnerKeyDto {
   @IsOptional() @IsString() label?: string;
   /** The key's own scopes, a subset of its tenant's. Omitted or [] = everything the tenant has. */
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) scopes?: string[];
+  /** live | test. A test key's bids go to the simulator. */
+  @IsOptional() @IsIn(['live', 'test']) mode?: 'live' | 'test';
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) ipAllowlist?: string[];
 }
 
 export class UpdatePartnerKeyScopesDto {
   @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) scopes!: string[];
+}
+
+/* ── Partner bid API (Phase 2) ───────────────────────────────────────────
+   Every field is declared here even though the rules live in shared-types
+   (`checkPartnerBid`): the global ValidationPipe runs with `whitelist`, so a
+   field missing from these classes is silently stripped before the service
+   ever sees it. The service, not class-validator, decides what is valid, so
+   the partner gets every problem in one answer. */
+export class PartnerBidDto {
+  @IsOptional() @IsString() orderId?: string;
+  @IsOptional() @IsString() consentRef?: string;
+  @IsOptional() @IsString() fullName?: string;
+  @IsOptional() @IsString() pan?: string;
+  @IsOptional() @IsString() depository?: string;
+  @IsOptional() @IsString() dpId?: string;
+  @IsOptional() @IsString() clientId?: string;
+  @IsOptional() @IsString() upiId?: string;
+  @IsOptional() @IsString() category?: string;
+  @IsOptional() @IsNumber() lots?: number;
+  @IsOptional() @IsBoolean() atCutoff?: boolean;
+  @IsOptional() @IsNumber() price?: number;
+}
+
+export class PartnerBidBatchDto {
+  @IsString() ipoSymbol!: string;
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(25) @ValidateNested({ each: true }) @Type(() => PartnerBidDto)
+  bids!: PartnerBidDto[];
+}
+
+export class PartnerBidRefDto {
+  @IsOptional() @IsString() ref?: string;
+  @IsOptional() @IsString() orderId?: string;
+  @IsOptional() @IsString() consentRef?: string;
+}
+
+export class PartnerBidModifyDto extends PartnerBidRefDto {
+  @IsNumber() lots!: number;
+  @IsOptional() @IsNumber() price?: number;
+  @IsOptional() @IsBoolean() atCutoff?: boolean;
+}
+
+export class PartnerBidUpiDto extends PartnerBidRefDto {
+  @IsString() upiId!: string;
+}
+
+export class PartnerSimulateDto extends PartnerBidRefDto {
+  @IsString() event!: string;
+  @IsOptional() @IsNumber() allottedLots?: number;
+}
+
+export class PartnerWebhookDto {
+  @IsString() url!: string;
+  @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class PartnerKeyIpAllowlistDto {
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) ipAllowlist!: string[];
 }

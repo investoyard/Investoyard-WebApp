@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { PartnerApiScrollSpy } from './scroll-spy';
-import { PARTNER_SCOPE_META } from '@investoyard/shared-types';
+import { PARTNER_BID_BATCH_MAX, PARTNER_SCOPE_META } from '@investoyard/shared-types';
 /* The canonical and og:url are ABSOLUTE by necessity, so they are built from
    the one origin constant rather than typed — a page with a stale canonical
    tells Google its own domain is a duplicate of a domain we no longer use. */
@@ -134,8 +134,13 @@ export default function PartnerApiDoc() {
             <a href="#list-prints" className="pa-nested">GET /prints</a>
             <a href="#get-print" className="pa-nested">GET /prints/detail · /pdf</a>
             <a href="#allotment" className="pa-nested">GET /allotment</a>
+            <a href="#bids" className="pa-nested">POST /bids</a>
+            <a href="#bid-changes" className="pa-nested">Change or cancel</a>
+            <a href="#bid-status" className="pa-nested">GET /bids</a>
 
             <div className="pa-toc-label">Reference</div>
+            <a href="#webhooks">Webhooks</a>
+            <a href="#test-mode">Test mode</a>
             <a href="#scopes">Scopes and keys</a>
             <a href="#errors">Error responses</a>
             <a href="#limits">Limits &amp; behaviour</a>
@@ -571,9 +576,116 @@ with open(data["filename"], "wb") as f:
             </table></div>
           </section>
 
+          {/* ── POST /bids ── */}
+          <section id="bids" className="pa-section pa-noprint">
+            <h2><span className="pa-num">10</span>Place bids</h2>
+            <p>Place UPI bids for your clients under our exchange membership. Needs the <code>bids:write</code> scope. Up to {PARTNER_BID_BATCH_MAX} bids per call, <strong>all or nothing</strong>: every bid is checked first, and if any fails none is placed and every problem is listed.</p>
+            <div className="pa-callout pa-warn">
+              <div className="pa-icon">!</div>
+              <div><strong>Live bidding is not open yet.</strong> Use a <strong>test key</strong>: its bids go to a simulator and never reach an exchange, so you can build and test your whole integration now. See <a href="#test-mode">Test mode</a>.</div>
+            </div>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-post">POST</span>
+              <span className="pa-endpoint-path">/partner/v1/<b>bids</b></span>
+            </div>
+            <div className="pa-code">
+              <div className="pa-code-head"><span>Body — application/json</span><span>example</span></div>
+              <pre>{`{
+  "ipoSymbol": "PERNIASPOP",
+  "bids": [
+    {
+      "orderId":    "ORD-2026-000123",
+      "consentRef": "CONSENT-88412",
+      "fullName":   "Rakesh Kumar",
+      "pan":        "ABCDE1234F",
+      "depository": "NSDL",
+      "dpId":       "IN301234",
+      "clientId":   "12345678",
+      "upiId":      "rakesh@okhdfcbank",
+      "category":   "retail",
+      "lots":       1,
+      "atCutoff":   true
+    }
+  ]
+}`}</pre>
+            </div>
+            <div className="pa-fields"><table>
+              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>orderId</td><td className="pa-type">string</td><td className="pa-notes">Your own id for this bid. <strong>Sending the same orderId again returns the bid it made</strong> (<code>replayed: true</code>) and places nothing new, so a retried call is always safe.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>consentRef</td><td className="pa-type">string</td><td className="pa-notes">Your reference for the client&apos;s instruction and consent to this bid. We keep it with the instruction; you keep the consent itself.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>pan · fullName</td><td className="pa-type">string</td><td className="pa-notes">The applicant&apos;s own PAN and name. One public bid per PAN per IPO, plus one in each reserved quota — across every channel, not only yours.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>depository · dpId · clientId</td><td className="pa-type">string</td><td className="pa-notes">NSDL: <code>dpId</code> is IN and six digits, <code>clientId</code> eight digits. CDSL: no <code>dpId</code>, <code>clientId</code> is the sixteen-digit demat number.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>upiId</td><td className="pa-type">string</td><td className="pa-notes">The applicant&apos;s own UPI ID; the mandate request goes there.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>category</td><td className="pa-type">string</td><td className="pa-notes"><code>retail</code>, <code>shni</code>, <code>shareholder</code> or <code>employee</code> (reserved quotas only where the IPO offers them). It must agree with the amount: retail up to ₹2 lakh on mainboard (exactly the minimum lots on SME), small-HNI above ₹2 lakh. A UPI mandate is capped at ₹5 lakh, so big-HNI bids go through print forms.</td></tr>
+                <tr><td className="pa-name"><span className="pa-req-dot"></span>lots</td><td className="pa-type">integer</td><td className="pa-notes">At least the category&apos;s minimum for this IPO.</td></tr>
+                <tr><td className="pa-name">atCutoff · price</td><td className="pa-type">boolean · number</td><td className="pa-notes">Cut-off is for retail and reserved quotas only. Otherwise send a <code>price</code> inside the price band.</td></tr>
+              </tbody>
+            </table></div>
+            <p style={{ fontSize: '.9rem' }}>The response lists each bid with its <code>ref</code> (our id — keep it), our <code>applicationNumber</code>, its status and amount. A bid is then sent to the exchange within seconds; you hear about every step by <a href="#webhooks">webhook</a>.</p>
+          </section>
+
+          {/* ── change a bid ── */}
+          <section id="bid-changes" className="pa-section pa-noprint">
+            <h2><span className="pa-num">11</span>Change or cancel a bid</h2>
+            <p>Each takes <code>ref</code> or <code>orderId</code>, and a <code>consentRef</code> for the client&apos;s instruction. Needs <code>bids:write</code>.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>modify</b></span></div>
+            <p style={{ fontSize: '.9rem' }}>New <code>lots</code> (and <code>price</code> or <code>atCutoff</code>). SEBI does not let an HNI bid at the exchange be lowered — only raised.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>cancel</b></span></div>
+            <p style={{ fontSize: '.9rem' }}>Withdraw a bid. Once at the exchange, only retail and reserved-quota bids may be withdrawn.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>upi</b></span></div>
+            <p style={{ fontSize: '.9rem' }}>A new <code>upiId</code>. Refused once the funds are blocked — the block sits behind the old UPI ID.</p>
+          </section>
+
+          {/* ── read ── */}
+          <section id="bid-status" className="pa-section pa-noprint">
+            <h2><span className="pa-num">12</span>Bid status</h2>
+            <p>Needs <code>bids:read</code>. A key reads only bids in its own mode — a test key sees test bids.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/<b>bids</b>?ref= | ?orderId=</span></div>
+            <p style={{ fontSize: '.9rem' }}>One bid with its full history. Without <code>ref</code> or <code>orderId</code>, a page of bids filtered by <code>ipoSymbol</code> and <code>status</code>.</p>
+            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/bids/<b>summary</b>?ipoSymbol=</span></div>
+            <p style={{ fontSize: '.9rem' }}>Bids and rupees by status for one IPO.</p>
+            <p style={{ fontSize: '.9rem' }}>Statuses: <code>submitted</code> (queued) · <code>mandate_pending</code> (sent; waiting for the investor) · <code>upi_blocked</code> (funds blocked) · <code>dp_verified</code> · <code>confirmed</code> · <code>allotted</code> · <code>not_allotted</code> · <code>released</code> (refunded) · <code>cancelled</code> · <code>rejected</code> · <code>failed</code>.</p>
+          </section>
+
+          {/* ── webhooks ── */}
+          <section id="webhooks" className="pa-section pa-noprint">
+            <h2><span className="pa-num">13</span>Webhooks</h2>
+            <p>Set an https endpoint under <strong>Partner API → Webhooks</strong> in the partner admin. Whenever one of your bids changes we send a <code>POST</code> with the event and the bid&apos;s current state. Events: <code>bid.accepted</code>, <code>bid.sent</code>, <code>bid.funds_blocked</code>, <code>bid.demat_verified</code>, <code>bid.rejected</code>, <code>bid.instruction_refused</code>, <code>bid.cancelled</code>, <code>bid.allotment</code>, <code>bid.refund</code>, <code>bid.status</code>.</p>
+            <div className="pa-code">
+              <div className="pa-code-head"><span>Verify a delivery — Node.js</span></div>
+              <pre>{`import crypto from 'node:crypto';
+
+// header: X-Investoyard-Signature: t=1700000000,v1=<hex>
+function verify(rawBody, header, secret) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  const expected = crypto.createHmac('sha256', secret).update(\`\${t}.\${rawBody}\`).digest('hex');
+  const fresh = Math.abs(Date.now() / 1000 - Number(t)) < 300;
+  return fresh && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}`}</pre>
+            </div>
+            <p style={{ fontSize: '.9rem' }}>Answer with any 2xx within 10 seconds. Anything else is retried — after 1 minute, 5 minutes, 30 minutes, 2, 6, 12 and 24 hours — then marked failed, and can be sent again from the admin. Deliveries can arrive more than once and out of order: use <code>X-Investoyard-Delivery</code> to ignore repeats, and the bid&apos;s <code>status</code> as the truth. <code>GET /bids</code> is always the backup.</p>
+          </section>
+
+          {/* ── test mode ── */}
+          <section id="test-mode" className="pa-section pa-noprint">
+            <h2><span className="pa-num">14</span>Test mode</h2>
+            <p>Ask for a <strong>test key</strong> (or create one under <strong>My API Keys</strong>). Bids placed with it behave like live bids — the same checks, the same responses, the same webhooks — except that they:</p>
+            <ul>
+              <li>go to a simulator and never reach an exchange;</li>
+              <li>are accepted for any IPO in the catalogue, open or not;</li>
+              <li>get application numbers starting <code>TEST</code>;</li>
+              <li>are invisible to live keys and to every live rule.</li>
+            </ul>
+            <p>Move a test bid on with:</p>
+            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/test/<b>simulate</b></span></div>
+            <p style={{ fontSize: '.9rem' }}><code>{'{ "ref": "…", "event": "mandate_accepted" }'}</code> — events: <code>mandate_accepted</code>, <code>mandate_rejected</code>, <code>exchange_rejected</code>, <code>allotted</code> (with <code>allottedLots</code>), <code>not_allotted</code>, <code>refund</code>. A full cycle: place → <code>bid.sent</code> → <code>mandate_accepted</code> → <code>allotted</code> → <code>refund</code>.</p>
+            <p style={{ fontSize: '.9rem' }}>A <strong>live</strong> key that places bids must have an IP allowlist; requests from any other address are refused. A test key is held to its allowlist only when one is set.</p>
+          </section>
+
           {/* ── Scopes ── */}
           <section id="scopes" className="pa-section pa-noprint">
-            <h2><span className="pa-num">10</span>Scopes and keys</h2>
+            <h2><span className="pa-num">15</span>Scopes and keys</h2>
             <p>Each endpoint needs a scope. The operator switches scopes on for your account; you can then limit any key to some of them, so a system that only reads allotment results does not hold a key that can print forms. A key with no scopes of its own can use everything your account has.</p>
             <div className="pa-fields"><table>
               <thead><tr><th>Scope</th><th>Opens</th><th>For a new partner</th></tr></thead>
@@ -592,7 +704,7 @@ with open(data["filename"], "wb") as f:
 
           {/* ── Error responses ── */}
           <section id="errors" className="pa-section">
-            <h2><span className="pa-num">11</span>Error responses</h2>
+            <h2><span className="pa-num">16</span>Error responses</h2>
             <p>All errors are JSON with a machine-readable status code and a human-readable message. The <code>Content-Type</code> is <code>application/json</code>. HTTP status classes:</p>
 
             <div className="pa-fields"><table>
@@ -618,6 +730,11 @@ with open(data["filename"], "wb") as f:
                   <td className="pa-notes">Not found</td>
                   <td className="pa-notes">No IPO in the catalog matches the <code>ipoSymbol</code> you sent, or no record of yours matches the <code>ref</code>.</td>
                 </tr>
+                <tr className="pa-noprint">
+                  <td className="pa-name"><span className="pa-status pa-err">409</span></td>
+                  <td className="pa-notes">Conflict</td>
+                  <td className="pa-notes">A bid: this PAN already has a live application for this IPO in the same quota, or the orderId was already used for a different IPO.</td>
+                </tr>
                 <tr>
                   <td className="pa-name"><span className="pa-status pa-err">5xx</span></td>
                   <td className="pa-notes">Server error</td>
@@ -639,7 +756,7 @@ with open(data["filename"], "wb") as f:
 
           {/* ── Limits & behaviour ── */}
           <section id="limits" className="pa-section pa-noprint">
-            <h2><span className="pa-num">12</span>Limits &amp; behaviour</h2>
+            <h2><span className="pa-num">17</span>Limits &amp; behaviour</h2>
             <div className="pa-fields"><table>
               <thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead>
               <tbody>
@@ -658,7 +775,7 @@ with open(data["filename"], "wb") as f:
 
           {/* ── Support ── */}
           <section id="support" className="pa-section">
-            <h2 className="pa-noprint"><span className="pa-num">13</span>Support</h2>
+            <h2 className="pa-noprint"><span className="pa-num">18</span>Support</h2>
             <p className="pa-noprint">Questions about the API, key issuance, incident reports, and feature requests: contact the operator through your existing empanelment channel, or reach out to your Investoyard relationship manager.</p>
             <p className="pa-noprint">When reporting an integration issue, include: the request timestamp (UTC), your keyId (never the secret), the endpoint called, the HTTP status you received, and the response body — this is enough for us to trace the call in the audit log.</p>
 

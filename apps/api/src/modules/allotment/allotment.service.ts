@@ -292,11 +292,14 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     const apps = await tenantContext.runUnscoped(() => this.prisma.$transaction(async (tx: any) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant_id', '', true)`;
       return tx.application.findMany({
-        where: { ipoId, status: { notIn: ['draft', 'failed', 'rejected'] } },
+        // a TEST bid is the simulator's business; it is never matched to registrar data
+        where: { ipoId, testMode: false, status: { notIn: ['draft', 'failed', 'rejected'] } },
         select: {
           id: true, lots: true, applicantType: true, applicationNumber: true,
           allottedAt: true, allottedLots: true,
           profile: { select: { panTokenRef: true } },
+          // a partner bid's client (Phase 2) has no profile
+          bidApplicant: { select: { panTokenRef: true } },
           ipo: { select: { lotSize: true } },
         },
       });
@@ -305,9 +308,10 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
     for (const app of apps) {
       // A print whose client profile has been cleared has no PAN to match on —
       // skip it exactly as an unreadable token is skipped below.
-      if (!app.profile) continue;
+      const panRef = app.profile?.panTokenRef ?? app.bidApplicant?.panTokenRef;
+      if (!panRef) continue;
       let pan = '';
-      try { pan = (await this.vault.resolve(app.profile.panTokenRef)).trim().toUpperCase(); } catch { continue; }
+      try { pan = (await this.vault.resolve(panRef)).trim().toUpperCase(); } catch { continue; }
       if (!pan) continue;
       const recs: any[] = await this.prisma.allotmentRecord.findMany({ where: { ipoId, pan }, take: 10 });
       if (recs.length === 0) continue;

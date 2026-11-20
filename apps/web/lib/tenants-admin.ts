@@ -199,14 +199,22 @@ export interface PartnerApiKeyRow {
   id: string; keyId: string; label?: string | null; active: boolean;
   /** The key's own scopes; empty = everything its partner has. */
   scopes?: string[];
+  /** live | test — a test key's bids go to the simulator. */
+  mode?: 'live' | 'test';
+  ipAllowlist?: string[];
   createdAt: string; revokedAt?: string | null; lastUsedAt?: string | null;
 }
 export const listPartnerKeys = (tenantId: string) =>
   authed<PartnerApiKeyRow[]>(`${API}/admin/partner-keys/${tenantId}`, { method: 'GET' });
 /** Returns { keyId, secret, apiKey } — the secret is shown ONCE, never retrievable again. */
-export const createPartnerKey = (tenantId: string, label?: string, scopes?: string[]) =>
-  authed<{ keyId: string; secret: string; apiKey: string; scopes: string[] }>(`${API}/admin/partner-keys/${tenantId}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, scopes }),
+export const createPartnerKey = (tenantId: string, label?: string, scopes?: string[], mode: 'live' | 'test' = 'live', ipAllowlist?: string[]) =>
+  authed<{ keyId: string; secret: string; apiKey: string; scopes: string[]; mode: string }>(`${API}/admin/partner-keys/${tenantId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, scopes, mode, ipAllowlist }),
+  });
+/** The addresses a key may be used from; required before a live key can bid. */
+export const updatePartnerKeyIps = (id: string, ipAllowlist: string[]) =>
+  authed<{ keyId: string; ipAllowlist: string[] }>(`${API}/admin/partner-keys/${id}/ip-allowlist`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ipAllowlist }),
   });
 /** What a key on this tenant may be given — the tenant's own scopes. */
 export const partnerKeyScopeOptions = (tenantId: string) =>
@@ -1821,3 +1829,39 @@ export async function exportVisitorsCsv(q: VisitorQuery) {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+/* ---- partner bids + webhooks (Phase 2) ---- */
+export interface PartnerBidRow {
+  ref: string; orderId: string | null; mode: 'live' | 'test'; ipoSymbol: string | null;
+  category: string; lots: number; qty: number; atCutoff: boolean; price: number | null; amount: number;
+  applicationNumber: string | null; status: string; upiStatus: string | null; reason: string | null;
+  allotment: { lots: number; shares: number; amount: number | null; refund: number | null } | null;
+  placedAt: string; partner: string; applicant: string | null;
+}
+export const fetchPartnerBids = (q: { tenantId?: string; mode?: string; status?: string; days?: number; page?: number }) =>
+  authed<PartnerReport<PartnerBidRow>>(`${API}/admin/partner-api/bids?${qstr(q)}`, { method: 'GET' });
+
+export interface PartnerWebhookConfig { url: string; active: boolean; createdAt: string; updatedAt: string }
+export const fetchPartnerWebhook = (tenantId: string) =>
+  authed<PartnerWebhookConfig | null>(`${API}/admin/partner-webhook/${tenantId}`, { method: 'GET' });
+/** Returns the secret ONCE, on the first save. */
+export const savePartnerWebhook = (tenantId: string, url: string, active?: boolean) =>
+  authed<{ url: string; active: boolean; secret: string | null }>(`${API}/admin/partner-webhook/${tenantId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, active }),
+  });
+export const rotatePartnerWebhook = (tenantId: string) =>
+  authed<{ secret: string }>(`${API}/admin/partner-webhook/${tenantId}/rotate`, { method: 'POST' });
+export const pingPartnerWebhook = (tenantId: string) =>
+  authed<{ ok: boolean; status?: number; error?: string }>(`${API}/admin/partner-webhook/${tenantId}/ping`, { method: 'POST' });
+
+export interface WebhookDeliveryRow {
+  id: string; tenantId: string; event: string; state: 'pending' | 'delivered' | 'failed'; attempts: number;
+  lastStatus: number | null; lastError: string | null; createdAt: string; deliveredAt: string | null;
+  nextAttemptAt: string | null; ref: string | null; orderId: string | null; mode: string | null;
+}
+export const fetchWebhookDeliveries = (q: { tenantId?: string; state?: string; days?: number; page?: number }) =>
+  authed<{ total: number; page: number; per: number; rows: WebhookDeliveryRow[] }>(`${API}/admin/partner-api/webhook-deliveries?${qstr(q)}`, { method: 'GET' });
+export const replayWebhookDelivery = (id: string) =>
+  authed<{ queued: boolean }>(`${API}/admin/partner-api/webhook-deliveries/replay`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+  });

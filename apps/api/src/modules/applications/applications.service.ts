@@ -128,13 +128,17 @@ export class ApplicationsService {
     });
 
     return tenantContext.runUnscoped(async () => {
+      // A PARTNER's application (a print or an API bid) belongs to the partner's
+      // service account, not a person: the partner hears about it by webhook or
+      // the allotment API, and an app notification would reach nobody.
+      const partnerApp = /^(partner|pbid):/.test(String((app as any).idempotencyKey ?? ''));
 
       // Notify the investor of the allotment outcome (push + in-app inbox).
       const sym = app.ipo.symbol;
       const msg = allottedLots > 0
         ? { title: `Allotted — ${sym} 🎉`, body: `You've been allotted ${allottedLots} lot(s) of ${sym}. ₹${refundAmount.toLocaleString('en-IN')} will be refunded.` }
         : { title: `Not allotted — ${sym}`, body: `No shares allotted in ${sym}. Your blocked ₹${refundAmount.toLocaleString('en-IN')} is being released.` };
-      await this.notifications.pushToUser(app.userId, {
+      if (!partnerApp) await this.notifications.pushToUser(app.userId, {
         type: 'allotment', tenantId: app.tenantId, ...msg,
         data: { applicationId: app.id, ipoSymbol: sym, status, allottedLots },
       }).catch(() => { /* notifications are best-effort */ });
@@ -323,22 +327,32 @@ export class ApplicationsService {
    * `panHash` is keyed on the platform master, not per tenant, so the same PAN
    * hashes the same everywhere. Must run inside `unscopedTx` after the IPO lock.
    */
-  private async assertPanFree(
+  async assertPanFree(
     tx: any,
     ipoId: string,
     panHash: string | null,
     applicantType: string,
     tenantId: string,
     prefix = '',
+    testMode = false,
   ) {
     if (!panHash) throw new BadRequestException(`${prefix}This applicant has no PAN on file.`);
     const dup = await tx.application.findFirst({
       where: {
         ipoId,
-        profile: { panHash },
         status: { notIn: ['draft', 'failed', 'rejected'] },
         ...this.panBucketWhere(applicantType),
-        OR: [{ tenantId }, { applyMethod: 'native' }],
+        /* TEST AND LIVE NEVER SEE EACH OTHER (Phase 2). A test bid is checked
+           against the same partner's other test bids only, and a live bid
+           ignores every test bid — otherwise a partner's sandbox run would
+           block a real client's application, or the reverse. */
+        testMode,
+        AND: [
+          // A partner bid's client is a BidApplicant, not a profile; the hash is
+          // the same HMAC, so the same PAN matches across both.
+          { OR: [{ profile: { panHash } }, { bidApplicant: { panHash } }] },
+          testMode ? { tenantId } : { OR: [{ tenantId }, { applyMethod: 'native' }] },
+        ],
       },
       select: { tenantId: true },
     });

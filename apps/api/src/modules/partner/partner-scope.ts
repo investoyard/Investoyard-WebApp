@@ -120,3 +120,8 @@ export function partnerSymbolOf(req: any): string | null {
   const s = req?.params?.symbol ?? req?.body?.ipoSymbol ?? req?.query?.ipoSymbol;
   return typeof s === 'string' && s.trim() ? s.trim().toUpperCase().slice(0, 40) : null;
 }
+
+/** The caller's address. iisnode forwards it in X-Forwarded-For (enableXFF), so the first entry is the client. */
+export function partnerClientIp(req: any): string {
+  return String(req?.headers?.['cf-connecting-ip'] ?? req?.headers?.['x-forwarded-for'] ?? req?.ip ?? '').split(',')[0].trim().replace(/^::ffff:/, '');
+}
