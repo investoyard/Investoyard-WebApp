@@ -197,14 +197,24 @@ export const updateTenantSite = (slug: string, patch: Partial<TenantSite>) =>
 /* ---- partner API keys (white-label Print-PDF API) ---- */
 export interface PartnerApiKeyRow {
   id: string; keyId: string; label?: string | null; active: boolean;
+  /** The key's own scopes; empty = everything its partner has. */
+  scopes?: string[];
   createdAt: string; revokedAt?: string | null; lastUsedAt?: string | null;
 }
 export const listPartnerKeys = (tenantId: string) =>
   authed<PartnerApiKeyRow[]>(`${API}/admin/partner-keys/${tenantId}`, { method: 'GET' });
 /** Returns { keyId, secret, apiKey } — the secret is shown ONCE, never retrievable again. */
-export const createPartnerKey = (tenantId: string, label?: string) =>
-  authed<{ keyId: string; secret: string; apiKey: string }>(`${API}/admin/partner-keys/${tenantId}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
+export const createPartnerKey = (tenantId: string, label?: string, scopes?: string[]) =>
+  authed<{ keyId: string; secret: string; apiKey: string; scopes: string[] }>(`${API}/admin/partner-keys/${tenantId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, scopes }),
+  });
+/** What a key on this tenant may be given — the tenant's own scopes. */
+export const partnerKeyScopeOptions = (tenantId: string) =>
+  authed<{ tenantScopes: string[] }>(`${API}/admin/partner-keys/${tenantId}/scope-options`, { method: 'GET' });
+/** Change a key's scopes; [] = everything its partner has. */
+export const updatePartnerKeyScopes = (id: string, scopes: string[]) =>
+  authed<{ keyId: string; scopes: string[] }>(`${API}/admin/partner-keys/${id}/scopes`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes }),
   });
 export const revokePartnerKey = (id: string) =>
   authed<{ revoked: boolean }>(`${API}/admin/partner-keys/${id}`, { method: 'DELETE' });
@@ -270,7 +280,7 @@ export async function exportPartnerApiPrintsCsv(q: { tenantId?: string; days?: n
 }
 
 /** API-call summary, grouped. `label` is null on an IPO we do not carry. */
-export type CallsSummaryBy = 'partner' | 'day' | 'month' | 'ipo';
+export type CallsSummaryBy = 'partner' | 'key' | 'day' | 'month' | 'ipo';
 export interface PartnerCallsSummaryRow {
   key: string; label: string | null;
   calls: number; failed: number; applicants: number; avgMs: number; lastAt: string | null;

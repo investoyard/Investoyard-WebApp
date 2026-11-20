@@ -12,7 +12,7 @@ const RANGE: [number, string][] = [[7, '7 days'], [30, '30 days'], [90, '90 days
 
 /** The list, then the four groupings the operator asked for (2026-09-28). */
 type Tab = 'log' | api.CallsSummaryBy;
-const TABS: [Tab, string][] = [['log', 'Calls'], ['partner', 'By partner'], ['day', 'By day'], ['month', 'By month'], ['ipo', 'By IPO']];
+const TABS: [Tab, string][] = [['log', 'Calls'], ['partner', 'By partner'], ['key', 'By key'], ['day', 'By day'], ['month', 'By month'], ['ipo', 'By IPO']];
 
 /** API Call Report — every partner-API call (success & failure). Partner logins see only their own. */
 export default function PartnerApiCallsPage() {
@@ -163,7 +163,7 @@ export default function PartnerApiCallsPage() {
 }
 
 const HEAD: Record<api.CallsSummaryBy, string> = {
-  partner: 'Partner', day: 'Date', month: 'Month', ipo: 'IPO',
+  partner: 'Partner', key: 'Key', day: 'Date', month: 'Month', ipo: 'IPO',
 };
 
 /** What one row of each grouping IS, for the line beside the badge. Pluralised
@@ -171,6 +171,7 @@ const HEAD: Record<api.CallsSummaryBy, string> = {
  *  report look unmaintained. */
 const GROUP_NOUN: Record<api.CallsSummaryBy, (n: number) => string> = {
   partner: (n) => (n === 1 ? 'partner' : 'partners'),
+  key: (n) => (n === 1 ? 'key' : 'keys'),
   day: (n) => (n === 1 ? 'day' : 'days'),
   month: (n) => (n === 1 ? 'month' : 'months'),
   ipo: (n) => (n === 1 ? 'IPO' : 'IPOs'),
@@ -229,6 +230,7 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
           <table className="table" style={{ width: '100%' }}>
             <thead><tr>
               <th>{HEAD[sum.by]}</th>
+              {sum.by === 'key' && <th>Partner · label</th>}
               {sum.by === 'ipo' && <th>Name</th>}
               {/* The Open column exists because the rows are SORTED by it. A
                   table ordered by a column it does not show reads as arbitrary,
@@ -258,6 +260,14 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
                       title={sum.by === 'partner' ? r.key : undefined}>
                       {sum.by === 'partner' ? (r.label ?? r.key) : r.key}
                     </td>
+                    {sum.by === 'key' && (
+                      /* A keyId is opaque; whose key it is and what the partner
+                         called it is what an operator recognises. */
+                      <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={r.label ?? undefined}>
+                        {r.key === '(none)' ? <span className="muted">calls logged before keys were recorded</span> : (r.label ?? <span className="muted">key not found</span>)}
+                      </td>
+                    )}
                     {sum.by === 'ipo' && (
                       /* No name means the symbol is not in the catalogue —
                          which IS the diagnosis for every failure on that row. */
@@ -311,6 +321,7 @@ function SummaryCard({ sum, tenantId, days }: { sum: api.PartnerCallsSummary | n
               {/* TWO spacers for the IPO grouping — Name and Open. One short and
                   every figure in the total row shifts a column left, which is
                   exactly the misalignment this row was fixed for on 1 Oct. */}
+              {sum.by === 'key' && <td />}
               {sum.by === 'ipo' && <><td /><td /></>}
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{totals.calls.toLocaleString('en-IN')}</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: totals.failed > 0 ? 'var(--neg)' : undefined }}>

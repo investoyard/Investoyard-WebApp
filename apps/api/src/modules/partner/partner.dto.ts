@@ -59,4 +59,10 @@ export class PartnerPrintFormsDto {
 
 export class CreatePartnerKeyDto {
   @IsOptional() @IsString() label?: string;
+  /** The key's own scopes, a subset of its tenant's. Omitted or [] = everything the tenant has. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) scopes?: string[];
+}
+
+export class UpdatePartnerKeyScopesDto {
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) scopes!: string[];
 }

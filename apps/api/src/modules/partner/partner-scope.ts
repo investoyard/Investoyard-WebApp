@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { effectiveKeyScopes, type PartnerScope } from '@investoyard/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { tenantContext } from '../../common/tenant-context';
 
@@ -9,8 +10,11 @@ import { tenantContext } from '../../common/tenant-context';
  * Every controller method that a partner can call is tagged with
  *   @RequireScope('scope-name')
  * The PartnerScopeGuard runs AFTER PartnerApiKeyGuard (which has set the
- * tenant on the request), reads `tenant.partnerApiScopes`, and 403s the
- * call if the required scope isn't present.
+ * tenant and the key on the request) and 403s the call unless the scope is in
+ * the KEY's effective list: the key's own scopes narrowed to the tenant's, or
+ * the tenant's when the key has none (Phase 1, 2026-11-20). The list itself
+ * lives in shared-types (`PARTNER_SCOPE_META`) so the admin screens offer
+ * exactly what this guard enforces.
  *
  * Branch inheritance: a branch tenant with an EMPTY scope array falls
  * back to its parent's scopes (walks the tenant tree, up to the platform
@@ -20,25 +24,39 @@ import { tenantContext } from '../../common/tenant-context';
  * deliberate override.
  */
 
+export { PARTNER_SCOPES, DEFAULT_PARTNER_SCOPES, type PartnerScope } from '@investoyard/shared-types';
+
 export const REQUIRE_SCOPE_KEY = 'partner:scope';
 
 /** Attach a required scope to a controller method. */
 export const RequireScope = (scope: PartnerScope) => SetMetadata(REQUIRE_SCOPE_KEY, scope);
 
-/** Every scope the Partner API recognises today. Keep in step with the
- *  ScopeCheckboxes in the admin tenant page and the doc's scope table. */
-export const PARTNER_SCOPES = [
-  'print-forms',        // POST /partner/v1/print-forms
-  'ipos:read',          // GET  /partner/v1/ipos, GET /partner/v1/ipos/:symbol
-  'subscription:read',  // GET  /partner/v1/ipos/:symbol/subscription
-  'gmp:read',           // GET  /partner/v1/ipos/:symbol/gmp
-] as const;
-export type PartnerScope = typeof PARTNER_SCOPES[number];
-
-/** Default scope set for a new partner tenant. Matches the two endpoints
- *  the public /partner-api doc actually advertises. Other scopes are
- *  opt-in per tenant. Kept in sync with schema.prisma's default. */
-export const DEFAULT_PARTNER_SCOPES: PartnerScope[] = ['print-forms', 'ipos:read'];
+/**
+ * Walk tenantId → parent → … up to platform, taking the first tenant
+ * that has a NON-EMPTY partnerApiScopes list. An empty list means
+ * "inherit from parent"; a set list is a deliberate override. Bounded
+ * at 6 hops to match the ProviderConfigService pattern.
+ *
+ * Exported because key issue has to answer the same question — a key may only
+ * be given what its tenant has — and two answers to it would drift.
+ */
+export async function resolveTenantScopes(prisma: PrismaService, tenantId: string): Promise<string[]> {
+  let currentId: string | null = tenantId;
+  for (let i = 0; i < 6 && currentId; i++) {
+    const t: any = await tenantContext.runUnscoped(() =>
+      prisma.tenant.findUnique({
+        where: { id: currentId! },
+        select: { partnerApiScopes: true, parentId: true },
+      }),
+    );
+    if (!t) return [];
+    if (Array.isArray(t.partnerApiScopes) && t.partnerApiScopes.length > 0) {
+      return t.partnerApiScopes as string[];
+    }
+    currentId = t.parentId;
+  }
+  return [];
+}
 
 @Injectable()
 export class PartnerScopeGuard implements CanActivate {
@@ -57,36 +75,48 @@ export class PartnerScopeGuard implements CanActivate {
       throw new ForbiddenException('Partner tenant not resolved.');
     }
 
-    const scopes = await this.resolveScopes(tenant.id);
-    if (scopes.includes(required)) return true;
+    const tenantScopes = await resolveTenantScopes(this.prisma, tenant.id);
+    const scopes = effectiveKeyScopes(tenantScopes, req.partnerKeyScopes);
+    req.partnerScopes = scopes;
+    if ((scopes as string[]).includes(required)) return true;
 
-    throw new ForbiddenException(
-      `This endpoint requires the "${required}" scope. Your tenant does not have it enabled — ` +
-      `contact the operator to request it.`,
-    );
-  }
+    // Which side said no decides what the partner can do about it.
+    const message = tenantScopes.includes(required)
+      ? `This API key is not allowed to call this endpoint (it needs the "${required}" scope). ` +
+        `Use a key that has it, or ask for this key's scopes to be changed.`
+      : `This endpoint requires the "${required}" scope. Your account does not have it enabled — ` +
+        `contact the operator to request it.`;
 
-  /**
-   * Walk tenantId → parent → … up to platform, taking the first tenant
-   * that has a NON-EMPTY partnerApiScopes list. An empty list means
-   * "inherit from parent"; a set list is a deliberate override. Bounded
-   * at 6 hops to match the ProviderConfigService pattern.
-   */
-  private async resolveScopes(tenantId: string): Promise<string[]> {
-    let currentId: string | null = tenantId;
-    for (let i = 0; i < 6 && currentId; i++) {
-      const t: any = await tenantContext.runUnscoped(() =>
-        this.prisma.tenant.findUnique({
-          where: { id: currentId! },
-          select: { partnerApiScopes: true, parentId: true },
-        }),
-      );
-      if (!t) return [];
-      if (Array.isArray(t.partnerApiScopes) && t.partnerApiScopes.length > 0) {
-        return t.partnerApiScopes as string[];
-      }
-      currentId = t.parentId;
-    }
-    return [];
+    // A refused call is exactly what an operator looks for in the call report
+    // after changing a key's scopes, and the logging interceptor never sees it
+    // (guards run first). Best-effort: logging must not change the answer.
+    await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiCall.create({
+        data: {
+          tenantId: tenant.id, keyId: req.partnerKeyId ?? '', endpoint: partnerEndpointOf(req),
+          ipoSymbol: partnerSymbolOf(req), status: 'error', httpStatus: 403, error: message.slice(0, 500), durationMs: 0,
+        },
+      }),
+    ).catch(() => {});
+
+    throw new ForbiddenException(message);
   }
+}
+
+/**
+ * The endpoint label stored on a call row: the route as declared, without the
+ * `/api/partner/v1/` prefix — `print-forms`, `ipos/:symbol`, `prints/pdf`.
+ * `print-forms` matches what every row logged before Phase 1 carries, so the
+ * reports read continuously across the change.
+ */
+export function partnerEndpointOf(req: any): string {
+  const path = String(req?.route?.path ?? req?.path ?? req?.url ?? '').split('?')[0];
+  const i = path.indexOf('partner/v1/');
+  return (i >= 0 ? path.slice(i + 'partner/v1/'.length) : path).replace(/\/+$/, '') || '(root)';
+}
+
+/** The IPO a call was about, as the partner sent it — for the By-IPO report. */
+export function partnerSymbolOf(req: any): string | null {
+  const s = req?.params?.symbol ?? req?.body?.ipoSymbol ?? req?.query?.ipoSymbol;
+  return typeof s === 'string' && s.trim() ? s.trim().toUpperCase().slice(0, 40) : null;
 }

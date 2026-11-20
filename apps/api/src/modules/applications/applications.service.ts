@@ -93,8 +93,18 @@ export class ApplicationsService {
    * reconcile applications across tenants; RLS-scoped viewing is unaffected.
    */
   async recordAllotment(applicationId: string, allottedLots: number, reason?: string) {
-    return tenantContext.runUnscoped(async () => {
-      const app = await this.prisma.application.findUnique({ where: { id: applicationId }, include: { ipo: true } });
+    /*
+     * The read and the two writes run in ONE transaction that clears the tenant
+     * GUC first (2026-11-20). They used to run under a bare `runUnscoped`,
+     * which CLAUDE.md records as unreliable on a pooled connection — the
+     * Print-report View modal 404'd on real rows that way. On 2026-11-20 the
+     * matcher, run by hand, would record 1,181 JPL partner prints, yet all 18
+     * live JPL imports reported `matched: 0` and no application anywhere carries
+     * an allotment. Every failure here is caught by the caller and logging is
+     * off under iisnode, so it failed with nothing to show for it.
+     */
+    const { app, updated, status, allottedAmount, refundAmount } = await this.bidOps.unscopedTx(async (tx) => {
+      const app = await tx.application.findUnique({ where: { id: applicationId }, include: { ipo: true } });
       if (!app) throw new NotFoundException('Application not found');
       if (allottedLots < 0 || allottedLots > app.lots) {
         throw new BadRequestException(`allottedLots must be between 0 and the applied ${app.lots}.`);
@@ -107,13 +117,17 @@ export class ApplicationsService {
       const status = allottedLots > 0 ? 'allotted' : 'not_allotted';
       const allotmentReason = allottedLots > 0 ? null : (reason?.trim() || null); // registrar's rejection reason
 
-      const updated = await this.prisma.application.update({
+      const updated = await tx.application.update({
         where: { id: app.id },
         data: { allottedLots, allottedAmount, refundAmount, allottedAt: new Date(), status, allotmentReason },
       });
-      await this.prisma.applicationStatusEvent.create({
+      await tx.applicationStatusEvent.create({
         data: { applicationId: app.id, status, detail: { allottedLots, allottedAmount, refundAmount, ...(allotmentReason ? { reason: allotmentReason } : {}) } as any },
       });
+      return { app, updated, status, allottedAmount, refundAmount };
+    });
+
+    return tenantContext.runUnscoped(async () => {
 
       // Notify the investor of the allotment outcome (push + in-app inbox).
       const sym = app.ipo.symbol;

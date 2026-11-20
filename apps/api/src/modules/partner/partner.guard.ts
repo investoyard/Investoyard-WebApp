@@ -34,6 +34,8 @@ export class PartnerApiKeyGuard implements CanActivate {
     tenantContext.set({ tenantId: key.tenantId, tenantSlug: key.tenant.slug });
     req.partnerTenant = key.tenant;
     req.partnerKeyId = key.keyId;
+    // the key's own scopes; PartnerScopeGuard narrows them to the tenant's
+    req.partnerKeyScopes = (key as any).scopes ?? [];
     // best-effort usage stamp — never blocks the call
     tenantContext.runUnscoped(() =>
       this.prisma.partnerApiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } }),

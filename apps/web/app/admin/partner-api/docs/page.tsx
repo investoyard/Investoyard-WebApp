@@ -6,6 +6,7 @@ import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
+import { PARTNER_SCOPE_META } from '@investoyard/shared-types';
 
 /** Sample applicants JSON pre-loaded into the Test panel textarea. Trimmed
  *  down from the SAMPLE_REQUEST — this is JUST the applicants array so the
@@ -126,8 +127,9 @@ const FIELDS: [string, string, string][] = [
 
 const ERRORS: [string, string][] = [
   ['401', 'Missing / invalid / revoked X-Api-Key, or partner account inactive.'],
-  ['400', 'Malformed JSON, unknown category value, > 100 applicants, or printing not enabled for the IPO. (No data validation — values print as sent.)'],
-  ['404', 'ipoSymbol not found in the catalog.'],
+  ['400', 'Malformed JSON, unknown category value, more applicants than your per-call limit (25 unless the operator has raised it), or printing not enabled for the IPO. (No data validation — values print as sent.)'],
+  ['403', 'The endpoint needs a scope this key, or your account, does not have. The message says which.'],
+  ['404', 'ipoSymbol not found in the catalog, or no record of yours matches the ref.'],
   ['500', 'Unexpected failure — the call is logged; retry after checking the API Calls report.'],
 ];
 
@@ -201,6 +203,31 @@ export default function PartnerApiDocsPage() {
           creation — store it in your secret manager. Revoked keys fail with <span className="mono">401</span> immediately.
           All traffic is HTTPS-only; every call (success or failure) is audit-logged and visible in your API Calls report.
         </p>
+      </div></div>
+
+      {/* The scope list is shared with the API's guard, so this table cannot
+          promise an endpoint the guard does not know about. */}
+      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
+        <div className="fs-head">
+          <div className="t">Scopes — what a key can call</div>
+          <div className="d">
+            The operator switches scopes on for your account; each key can then be limited further on{' '}
+            <a href="/admin/partner-api/keys">My API Keys</a>. A key with no scopes of its own can use everything your account has.
+            Full request and response details for every endpoint are in the <a href="/partner-api#list-prints">API reference</a>.
+          </div>
+        </div>
+        <table className="table" style={{ marginTop: 10 }}>
+          <thead><tr><th>Scope</th><th>Endpoints</th><th>What it is for</th></tr></thead>
+          <tbody>
+            {PARTNER_SCOPE_META.map((s) => (
+              <tr key={s.key}>
+                <td className="mono" style={{ whiteSpace: 'nowrap' }}>{s.key}</td>
+                <td className="mono" style={{ fontSize: 12.5 }}>{s.endpoints.map((e) => <div key={e}>{e}</div>)}</td>
+                <td style={{ fontSize: 13.5 }}>{s.hint}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div></div>
 
       <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">

@@ -284,8 +284,14 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
    * re-uploads and FILE1..FILEn don't double-notify.
    */
   private async matchOurApplications(ipoId: string): Promise<number> {
-    const apps = await tenantContext.runUnscoped(() =>
-      this.prisma.application.findMany({
+    /* Read with the tenant GUC explicitly cleared inside a transaction — the
+       documented fix for a cross-tenant read on a pooled connection (see
+       `recordAllotment`, and CLAUDE.md on `runUnscoped`). EVERY application on
+       an IPO a partner prints for belongs to that partner, so a read filtered
+       to any other tenant finds nothing and reports `matched: 0` as a success. */
+    const apps = await tenantContext.runUnscoped(() => this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', '', true)`;
+      return tx.application.findMany({
         where: { ipoId, status: { notIn: ['draft', 'failed', 'rejected'] } },
         select: {
           id: true, lots: true, applicantType: true, applicationNumber: true,
@@ -293,8 +299,8 @@ export class AllotmentService implements OnModuleInit, OnModuleDestroy {
           profile: { select: { panTokenRef: true } },
           ipo: { select: { lotSize: true } },
         },
-      }),
-    );
+      });
+    }));
     let matched = 0;
     for (const app of apps) {
       // A print whose client profile has been cleared has no PAN to match on —

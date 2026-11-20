@@ -327,6 +327,7 @@ export * from './masterMatch';
 export * from './operationalContract';
 export * from './bidRules';
 export * from './bidGate';
+export * from './partnerScopes';
 export * from './unblockRules';
 export * from './sponsorBank';
 export * from './ipoDocs';

@@ -7952,3 +7952,12 @@ html[data-template='cobalt']   .thm-chrome[data-theme-chrome='cobalt'] { display
   font-size: 12.5px; color: rgba(255,255,255,.52);
 }
 .thm-foot-dis { max-width: 56ch; }
+
+/* ── Partner API key panel (components/admin/PartnerKeysPanel.tsx) ──────────
+   `akp-`, not `pk-`: that prefix is the public partner landing page's. */
+.akp-new { margin: 10px 0 16px; display: grid; gap: 10px; }
+.akp-scopes { display: grid; gap: 6px; }
+.akp-scope { display: grid; grid-template-columns: 16px auto 1fr; gap: 8px; align-items: center; font-size: 13.5px; cursor: pointer; }
+.akp-scope .mono { font-size: 11.5px; }
+.akp-note { font-size: 12.5px; }
+.akp-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }

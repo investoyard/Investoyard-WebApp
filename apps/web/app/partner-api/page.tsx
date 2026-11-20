@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { PartnerApiScrollSpy } from './scroll-spy';
+import { PARTNER_SCOPE_META } from '@investoyard/shared-types';
 /* The canonical and og:url are ABSOLUTE by necessity, so they are built from
    the one origin constant rather than typed — a page with a stale canonical
    tells Google its own domain is a duplicate of a domain we no longer use. */
@@ -130,8 +131,12 @@ export default function PartnerApiDoc() {
             <a href="#print-forms" className="pa-nested">POST /print-forms</a>
             <a href="#list-ipos" className="pa-nested">GET /ipos</a>
             <a href="#get-ipo" className="pa-nested">GET /ipos/{'{'}symbol{'}'}</a>
+            <a href="#list-prints" className="pa-nested">GET /prints</a>
+            <a href="#get-print" className="pa-nested">GET /prints/detail · /pdf</a>
+            <a href="#allotment" className="pa-nested">GET /allotment</a>
 
             <div className="pa-toc-label">Reference</div>
+            <a href="#scopes">Scopes and keys</a>
             <a href="#errors">Error responses</a>
             <a href="#limits">Limits &amp; behaviour</a>
             <a href="#support">Support</a>
@@ -480,9 +485,114 @@ with open(data["filename"], "wb") as f:
             <p style={{ fontSize: '.9rem' }}>Response is a single IPO record shaped by the same operational contract as the list endpoint.</p>
           </section>
 
+          {/* ── GET /prints ── */}
+          <section id="list-prints" className="pa-section pa-noprint">
+            <h2><span className="pa-num">07</span>Your print records</h2>
+            <p>The forms your account has printed, newest first. Needs the <code>prints:read</code> scope. Only your own records are ever returned.</p>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-get">GET</span>
+              <span className="pa-endpoint-path">/partner/v1/<b>prints</b></span>
+            </div>
+            <h4>Query parameters — all optional</h4>
+            <div className="pa-fields"><table>
+              <thead><tr><th>Parameter</th><th>Type</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td className="pa-name">ipoSymbol</td><td className="pa-type">string</td><td className="pa-notes">Only prints for this IPO. An unknown symbol returns <code>404</code>.</td></tr>
+                <tr><td className="pa-name">batchId</td><td className="pa-type">string</td><td className="pa-notes">Only the applications from one <code>print-forms</code> call.</td></tr>
+                <tr><td className="pa-name">from · to</td><td className="pa-type">date</td><td className="pa-notes"><code>YYYY-MM-DD</code>, India time, both ends included.</td></tr>
+                <tr><td className="pa-name">page · per</td><td className="pa-type">integer</td><td className="pa-notes">Page number (from 1) and page size. <code>per</code> defaults to 50 and is capped at 200.</td></tr>
+              </tbody>
+            </table></div>
+            <div className="pa-code">
+              <div className="pa-code-head"><span>Response — application/json</span><span>200 OK</span></div>
+              <pre>{`{
+  "total": 132, "page": 1, "per": 50,
+  "rows": [
+    {
+      "applicationRef": "9b2f0c1e-…",
+      "batchId":        "4d7a…",
+      "formNo":         "40012345",
+      "ipoSymbol":      "PERNIASPOP",
+      "printedAt":      "2026-11-20T06:41:12.000Z",
+      "keyId":          "pk_a1b2c3d4",
+      "fullName":       "Rakesh Kumar",
+      "panMasked":      "ABCDE**34F",
+      "category":       "sHNI",
+      "lots":           2,
+      "shareQty":       530,
+      "amount":         225250
+    }
+  ]
+}`}</pre>
+            </div>
+          </section>
+
+          {/* ── GET /prints/detail + /prints/pdf ── */}
+          <section id="get-print" className="pa-section pa-noprint">
+            <h2><span className="pa-num">08</span>One print, and its PDF again</h2>
+            <p>Read one record, or download the same form again — same form number, filled from the data you sent the first time. Use this instead of calling <code>print-forms</code> a second time, which would create a second record and take a new form number. Both need <code>prints:read</code>.</p>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-get">GET</span>
+              <span className="pa-endpoint-path">/partner/v1/prints/<b>detail</b>?ref=<b>{'{applicationRef}'}</b></span>
+            </div>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-get">GET</span>
+              <span className="pa-endpoint-path">/partner/v1/prints/<b>pdf</b>?ref=<b>{'{applicationRef}'}</b></span>
+            </div>
+            <p style={{ fontSize: '.9rem' }}><code>ref</code> is the <code>applicationRef</code> that <code>print-forms</code> returned. <code>detail</code> adds the depository, DP ID, bank and branch to the list fields; the client ID and bank account come back masked to their last four digits. <code>pdf</code> returns <code>{'{ applicationRef, formNo, filename, pdfBase64 }'}</code>, the same shape as <code>print-forms</code>.</p>
+            <div className="pa-callout">
+              <div className="pa-icon">i</div>
+              <div>PAN, client ID and bank account are masked in every read, including details you sent us yourself. They are your records, but a leaked API key must not become a way to read them back.</div>
+            </div>
+          </section>
+
+          {/* ── GET /allotment ── */}
+          <section id="allotment" className="pa-section pa-noprint">
+            <h2><span className="pa-num">09</span>Allotment results</h2>
+            <p>The allotment outcome of your own applications, once the registrar has published and we have imported its file. Needs the <code>allotment:read</code> scope. It answers for applications you printed through this API; it does not look up other PANs.</p>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-get">GET</span>
+              <span className="pa-endpoint-path">/partner/v1/<b>allotment</b>?ipoSymbol=<b>{'{symbol}'}</b></span>
+            </div>
+            <div className="pa-endpoint">
+              <span className="pa-method pa-get">GET</span>
+              <span className="pa-endpoint-path">/partner/v1/<b>allotment</b>?ref=<b>{'{applicationRef}'}</b></span>
+            </div>
+            <p style={{ fontSize: '.9rem' }}>Send <code>ipoSymbol</code> for every application on one IPO (paged with <code>page</code> and <code>per</code>), or <code>ref</code> for one application.</p>
+            <div className="pa-fields"><table>
+              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td className="pa-name">result</td><td className="pa-type">string</td><td className="pa-notes"><code>allotted</code> · <code>not_allotted</code> (not picked in the draw) · <code>rejected</code> (the registrar gave a reason, in <code>reason</code>) · <code>pending</code> (no result recorded yet).</td></tr>
+                <tr><td className="pa-name">allottedLots · allottedShares</td><td className="pa-type">integer</td><td className="pa-notes"><code>null</code> while pending.</td></tr>
+                <tr><td className="pa-name">allottedAmount · refundAmount</td><td className="pa-type">number</td><td className="pa-notes">Rupees, from the application amount. <code>null</code> while pending.</td></tr>
+                <tr><td className="pa-name">registrarFileReceived</td><td className="pa-type">boolean</td><td className="pa-notes">Whether we hold the registrar&apos;s file for this IPO. <code>true</code> with <code>result: &quot;pending&quot;</code> means the file is in but this application could not be matched — contact support with its <code>applicationRef</code>.</td></tr>
+                <tr><td className="pa-name">applicationRef · formNo · ipoSymbol · fullName · panMasked · appliedLots · recordedAt</td><td className="pa-type">—</td><td className="pa-notes">As in the print records.</td></tr>
+              </tbody>
+            </table></div>
+          </section>
+
+          {/* ── Scopes ── */}
+          <section id="scopes" className="pa-section pa-noprint">
+            <h2><span className="pa-num">10</span>Scopes and keys</h2>
+            <p>Each endpoint needs a scope. The operator switches scopes on for your account; you can then limit any key to some of them, so a system that only reads allotment results does not hold a key that can print forms. A key with no scopes of its own can use everything your account has.</p>
+            <div className="pa-fields"><table>
+              <thead><tr><th>Scope</th><th>Opens</th><th>For a new partner</th></tr></thead>
+              <tbody>
+                {PARTNER_SCOPE_META.filter((s) => s.key !== 'subscription:read' && s.key !== 'gmp:read').map((s) => (
+                  <tr key={s.key}>
+                    <td className="pa-name">{s.key}</td>
+                    <td className="pa-notes">{s.endpoints.map((e) => <div key={e}><code>{e.replace('/partner/v1', '')}</code></div>)}</td>
+                    <td className="pa-notes">{s.byDefault ? 'On' : 'On request'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+            <p style={{ fontSize: '.9rem' }}>Keys are created and limited in the partner admin under <strong>My API Keys</strong>, and a key&apos;s scopes can be changed without issuing a new secret. A call your key is not allowed to make returns <code>403</code> and says whether it is the key or your account that lacks the scope.</p>
+          </section>
+
           {/* ── Error responses ── */}
           <section id="errors" className="pa-section">
-            <h2><span className="pa-num">07</span>Error responses</h2>
+            <h2><span className="pa-num">11</span>Error responses</h2>
             <p>All errors are JSON with a machine-readable status code and a human-readable message. The <code>Content-Type</code> is <code>application/json</code>. HTTP status classes:</p>
 
             <div className="pa-fields"><table>
@@ -499,9 +609,14 @@ with open(data["filename"], "wb") as f:
                   <td className="pa-notes">Missing <code>X-Api-Key</code>, malformed header (not <code>keyId.secret</code>), invalid or revoked key, or partner account not active.</td>
                 </tr>
                 <tr>
+                  <td className="pa-name"><span className="pa-status pa-err">403</span></td>
+                  <td className="pa-notes">Forbidden</td>
+                  <td className="pa-notes">The endpoint needs a scope this key, or your account, does not have. The message names the scope and says which of the two lacks it.</td>
+                </tr>
+                <tr>
                   <td className="pa-name"><span className="pa-status pa-err">404</span></td>
                   <td className="pa-notes">Not found</td>
-                  <td className="pa-notes">No IPO in the catalog matches the <code>ipoSymbol</code> you sent.</td>
+                  <td className="pa-notes">No IPO in the catalog matches the <code>ipoSymbol</code> you sent, or no record of yours matches the <code>ref</code>.</td>
                 </tr>
                 <tr>
                   <td className="pa-name"><span className="pa-status pa-err">5xx</span></td>
@@ -524,7 +639,7 @@ with open(data["filename"], "wb") as f:
 
           {/* ── Limits & behaviour ── */}
           <section id="limits" className="pa-section pa-noprint">
-            <h2><span className="pa-num">08</span>Limits &amp; behaviour</h2>
+            <h2><span className="pa-num">12</span>Limits &amp; behaviour</h2>
             <div className="pa-fields"><table>
               <thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead>
               <tbody>
@@ -535,15 +650,15 @@ with open(data["filename"], "wb") as f:
                 <tr><td className="pa-name">Audit trail</td><td className="pa-notes">Every print-forms call writes an audit row: <code>keyId</code>, IPO, applicant count, batchId. PII is never audited.</td></tr>
                 <tr><td className="pa-name">Rate limits</td><td className="pa-notes">No hard rate limit today. Sustained bursts above a few requests per second are visible on the operator's monitoring; if that becomes a routine pattern, please coordinate on a scheduled window.</td></tr>
                 <tr><td className="pa-name">Timeouts</td><td className="pa-notes">Merging 100 forms takes several seconds. Set your client timeout to at least 60s.</td></tr>
-                <tr><td className="pa-name">Reporting</td><td className="pa-notes">Every partner call is available to the operator in the API Call Report and Print Report (CSV). If you need a report of your own calls, ask the operator to share the CSV.</td></tr>
-                <tr><td className="pa-name">Endpoint access</td><td className="pa-notes">Each endpoint is gated per tenant. Your key can call an endpoint only if the operator has granted that scope to your tenant. Calls to a scope your tenant lacks return <code>403</code> with a message naming the scope. Defaults for a new partner: print-forms + ipo catalog reads. Additional endpoints (not documented here) are available on request.</td></tr>
+                <tr><td className="pa-name">Reporting</td><td className="pa-notes">Your own print records and allotment results can be read through <code>/prints</code> and <code>/allotment</code>. Every call — including a refused one — is also in the operator&apos;s API Call Report, by partner, key, day and IPO.</td></tr>
+                <tr><td className="pa-name">Endpoint access</td><td className="pa-notes">Each endpoint needs a scope. The operator switches scopes on for your account and you can limit each key further — see <a href="#scopes">Scopes and keys</a>. Defaults for a new partner: print-forms and the IPO catalogue reads.</td></tr>
               </tbody>
             </table></div>
           </section>
 
           {/* ── Support ── */}
           <section id="support" className="pa-section">
-            <h2 className="pa-noprint"><span className="pa-num">09</span>Support</h2>
+            <h2 className="pa-noprint"><span className="pa-num">13</span>Support</h2>
             <p className="pa-noprint">Questions about the API, key issuance, incident reports, and feature requests: contact the operator through your existing empanelment channel, or reach out to your Investoyard relationship manager.</p>
             <p className="pa-noprint">When reporting an integration issue, include: the request timestamp (UTC), your keyId (never the secret), the endpoint called, the HTTP status you received, and the response body — this is enough for us to trace the call in the audit log.</p>
 

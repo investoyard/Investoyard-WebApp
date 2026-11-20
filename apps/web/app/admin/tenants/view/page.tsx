@@ -11,7 +11,8 @@ import { EMPANELMENT, isIndividual, type EField } from '@/lib/empanelment';
 import * as api from '@/lib/tenants-admin';
 import { BrandingPanel, ContentPanel, PagesPanel, TemplatePanel } from "@/components/admin/TenantSitePanels";
 import { RichText } from '@/components/ui/RichText';
-import { PAGE_LABEL, TENANT_PAGE_KEYS } from '@investoyard/shared-types';
+import { PAGE_LABEL, PARTNER_SCOPE_META, TENANT_PAGE_KEYS } from '@investoyard/shared-types';
+import { PartnerKeysPanel } from '@/components/admin/PartnerKeysPanel';
 
 function fmtVal(f: EField, v: any) {
   if (v == null || v === '' || (Array.isArray(v) && !v.length)) return null;
@@ -48,85 +49,16 @@ function ProfileView({ profile }: { profile: Record<string, any> }) {
   );
 }
 
-/** API access — issue/revoke keys for the white-label Print-PDF API. */
-function ApiKeysPanel({ tenantId }: { tenantId: string }) {
-  const [rows, setRows] = useState<api.PartnerApiKeyRow[] | null>(null);
-  const [label, setLabel] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [fresh, setFresh] = useState<{ keyId: string; apiKey: string } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const load = () => api.listPartnerKeys(tenantId).then(setRows).catch((e) => { setErr(String(e?.message ?? e)); setRows([]); });
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [tenantId]);
-
-  const generate = async () => {
-    setBusy(true); setErr(null);
-    try { const r = await api.createPartnerKey(tenantId, label || undefined); setFresh(r); setLabel(''); load(); }
-    catch (e: any) { setErr(String(e?.message ?? e)); }
-    finally { setBusy(false); }
-  };
-  const revoke = async (id: string) => {
-    setBusy(true); setErr(null);
-    try { await api.revokePartnerKey(id); load(); }
-    catch (e: any) { setErr(String(e?.message ?? e)); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-      <div className="fs-head" style={{ marginBottom: 6 }}>
-        <div className="t">API access — Print-PDF</div>
-        <div className="d">Partner calls <span className="mono">POST /partner/v1/print-forms</span> with header <span className="mono">X-Api-Key: keyId.secret</span>. Forms number from each IPO&apos;s own PDF series.</div>
-      </div>
-      {err && <div className="banner warn" style={{ margin: '10px 0' }}>{err}</div>}
-      {fresh && (
-        <div className="banner ok" style={{ margin: '10px 0', wordBreak: 'break-all' }}>
-          Key created — copy it NOW, the secret is never shown again:&nbsp;
-          <b className="mono">{fresh.apiKey}</b>
-        </div>
-      )}
-      <div className="row" style={{ gap: 8, margin: '10px 0 14px' }}>
-        <input className="input" style={{ maxWidth: 260 }} placeholder="Label (e.g. Production)" value={label} onChange={(e) => setLabel(e.target.value)} />
-        <button className="btn btn-sm" disabled={busy} onClick={generate}>{busy ? 'Working…' : 'Generate key'}</button>
-      </div>
-      {rows === null ? <Loader /> : rows.length === 0 ? (
-        <div className="muted" style={{ fontSize: 13.5 }}>No API keys yet.</div>
-      ) : (
-        <table className="table">
-          <thead><tr><th>Key ID</th><th>Label</th><th>Status</th><th>Created</th><th>Last used</th><th /></tr></thead>
-          <tbody>
-            {rows.map((k) => (
-              <tr key={k.id}>
-                <td className="mono">{k.keyId}</td>
-                <td>{k.label ?? '—'}</td>
-                <td>{k.active ? <span className="pill" style={{ background: 'var(--pos-soft)', color: 'var(--pos)' }}>active</span> : <span className="pill">revoked</span>}</td>
-                <td>{new Date(k.createdAt).toLocaleDateString('en-IN')}</td>
-                <td>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-IN') : '—'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {k.active && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => revoke(k.id)}>Revoke</button>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div></div>
-  );
-}
-
 /**
  * Partner API operator controls — scope checkboxes + applicants-per-call cap.
- * Sits below ApiKeysPanel on the tenant view. Saves to the same PATCH
+ * Sits below the API keys panel on the tenant view. Saves to the same PATCH
  * endpoint the profile edits use; changes are effective on the very next
- * partner call (no cache, no restart). Scope semantics live in
- * apps/api/src/modules/partner/partner-scope.ts — keep in step.
+ * partner call (no cache, no restart). The scope list itself is
+ * PARTNER_SCOPE_META in shared-types.
  */
-const SCOPE_META: { key: string; label: string; hint: string }[] = [
-  { key: 'print-forms',       label: 'Print forms',       hint: 'POST /partner/v1/print-forms — the merged prefilled PDF endpoint. The flagship of the API.' },
-  { key: 'ipos:read',         label: 'IPO catalog',       hint: 'GET /ipos, GET /ipos/{symbol} — read the live IPO list and per-issue detail.' },
-  { key: 'subscription:read', label: 'Subscription snapshot', hint: 'GET /ipos/{symbol}/subscription — gross subscription figures from the exchange. Opt-in per partner (not in the public doc).' },
-  { key: 'gmp:read',          label: 'Grey Market Premium', hint: 'GET /ipos/{symbol}/gmp — GMP with SEBI disclaimer. Opt-in per partner (not in the public doc).' },
-];
+/* The list is shared with the API's scope guard and the key panel — one list,
+   so the screen offers exactly what the guard enforces. */
+const SCOPE_META = PARTNER_SCOPE_META;
 
 function ApiAccessControlPanel({ slug, tenant, onSaved }: {
   slug: string;
@@ -183,7 +115,7 @@ function ApiAccessControlPanel({ slug, tenant, onSaved }: {
         ))}
         {isBranch && (
           <div className="muted" style={{ fontSize: 12.5, marginTop: 2, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-            Branch behaviour: leave all four unchecked to <b>inherit</b> the parent partner's scopes.
+            Branch behaviour: leave every box unchecked to <b>inherit</b> the parent partner's scopes.
             {inheriting && ' Currently inheriting.'}
           </div>
         )}
@@ -317,7 +249,7 @@ function PartnerProfilePage() {
         </>
       ) : null}
 
-      <ApiKeysPanel tenantId={data.id} />
+      <PartnerKeysPanel tenantId={data.id} title="API keys" />
 
       <ApiAccessControlPanel slug={slug} tenant={data} onSaved={load} />
 

@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, UseGuards, UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { RequirePermissions } from '../../common/require-permissions.decorator';
 import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard, RequireScope } from './partner-scope';
 import { PartnerService } from './partner.service';
-import { CreatePartnerKeyDto, PartnerPrintFormsDto } from './partner.dto';
+import { CreatePartnerKeyDto, PartnerPrintFormsDto, UpdatePartnerKeyScopesDto } from './partner.dto';
+import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 
 /**
  * Public partner API (API-key auth) — v1.
@@ -18,6 +19,7 @@ import { CreatePartnerKeyDto, PartnerPrintFormsDto } from './partner.dto';
  */
 @Controller('partner/v1')
 @UseGuards(PartnerApiKeyGuard, PartnerScopeGuard)
+@UseInterceptors(PartnerCallLogInterceptor)
 export class PartnerController {
   constructor(private readonly partner: PartnerService) {}
 
@@ -28,7 +30,47 @@ export class PartnerController {
   @Post('print-forms')
   @RequireScope('print-forms')
   printForms(@Req() req: any, @Body() dto: PartnerPrintFormsDto) {
-    return this.partner.printFormsLogged(req.partnerTenant, req.partnerKeyId, dto);
+    return this.partner.printForms(req.partnerTenant, req.partnerKeyId, dto);
+  }
+
+  /* ── The partner's own records (Phase 1, 2026-11-20) ──────────────────────
+     Literal paths with the reference in a QUERY PARAMETER, never
+     `prints/<uuid>`: that shape was intercepted upstream once (the admin
+     Print-report View modal), and a partner integration should not depend on
+     whichever proxy sits in front of us this year.                          */
+
+  /** GET /partner/v1/prints?ipoSymbol=&batchId=&from=&to=&page=&per= */
+  @Get('prints')
+  @RequireScope('prints:read')
+  listPrints(@Req() req: any, @Query() q: any) {
+    return this.partner.listPrints(req.partnerTenant, {
+      ipoSymbol: q.ipoSymbol, batchId: q.batchId, from: q.from, to: q.to,
+      page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
+    });
+  }
+
+  /** GET /partner/v1/prints/detail?ref=<applicationRef> */
+  @Get('prints/detail')
+  @RequireScope('prints:read')
+  printDetail(@Req() req: any, @Query('ref') ref: string) {
+    return this.partner.printDetailForPartner(req.partnerTenant, ref);
+  }
+
+  /** GET /partner/v1/prints/pdf?ref=<applicationRef> — the same form again, same number. */
+  @Get('prints/pdf')
+  @RequireScope('prints:read')
+  reprint(@Req() req: any, @Query('ref') ref: string) {
+    return this.partner.reprintPdf(req.partnerTenant, req.partnerKeyId, ref);
+  }
+
+  /** GET /partner/v1/allotment?ipoSymbol=&page=&per=  or  ?ref=<applicationRef> */
+  @Get('allotment')
+  @RequireScope('allotment:read')
+  allotment(@Req() req: any, @Query() q: any) {
+    return this.partner.allotmentForPartner(req.partnerTenant, {
+      ipoSymbol: q.ipoSymbol, ref: q.ref,
+      page: q.page ? Number(q.page) : undefined, per: q.per ? Number(q.per) : undefined,
+    });
   }
 
   /* ── Read surface ────────────────────────────────────────────────────────
@@ -188,7 +230,19 @@ export class PartnerKeysAdminController {
 
   @Post(':tenantId')
   create(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: CreatePartnerKeyDto) {
-    return this.partner.createKey(req.user.sub, tenantId, dto.label);
+    return this.partner.createKey(req.user.sub, tenantId, dto.label, dto.scopes);
+  }
+
+  /** What a key on this tenant may be given (the tenant's own scopes). */
+  @Get(':tenantId/scope-options')
+  scopeOptions(@Req() req: any, @Param('tenantId') tenantId: string) {
+    return this.partner.keyScopeOptions(req.user.sub, tenantId);
+  }
+
+  /** Change an existing key's scopes; [] = everything its tenant has. */
+  @Patch(':id/scopes')
+  updateScopes(@Req() req: any, @Param('id') id: string, @Body() dto: UpdatePartnerKeyScopesDto) {
+    return this.partner.updateKeyScopes(req.user.sub, id, dto.scopes);
   }
 
   @Delete(':id')

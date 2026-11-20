@@ -5,7 +5,8 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { sha256 } from './partner.guard';
-import { partnerV1Extra } from '@investoyard/shared-types';
+import { keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
+import { resolveTenantScopes } from './partner-scope';
 import { PartnerApplicantDto, PartnerPrintFormsDto } from './partner.dto';
 
 /**
@@ -353,29 +354,6 @@ export class PartnerService {
     });
   }
 
-  /** printForms wrapped with per-call logging (success AND failure) for the API Call Report. */
-  async printFormsLogged(tenant: { id: string; slug: string; name: string }, keyId: string, dto: PartnerPrintFormsDto) {
-    const t0 = Date.now();
-    const log = (status: 'ok' | 'error', httpStatus: number, error?: string) =>
-      tenantContext.runUnscoped(() =>
-        this.prisma.partnerApiCall.create({
-          data: {
-            tenantId: tenant.id, keyId, endpoint: 'print-forms',
-            ipoSymbol: dto?.ipoSymbol ?? null, applicants: dto?.applicants?.length ?? null,
-            status, httpStatus, error: error?.slice(0, 500) ?? null, durationMs: Date.now() - t0,
-          },
-        }),
-      ).catch(() => { /* logging must never break the call */ });
-    try {
-      const res = await this.printForms(tenant, keyId, dto);
-      await log('ok', 201);
-      return res;
-    } catch (e: any) {
-      await log('error', typeof e?.getStatus === 'function' ? e.getStatus() : 500, String(e?.message ?? e));
-      throw e;
-    }
-  }
-
   /* ---------------- admin: reports (platform sees all; partner sees own) ---------------- */
 
   /**
@@ -446,9 +424,10 @@ export class PartnerService {
     const tenantId = scope ?? (q.tenantId || undefined);
     const days = Math.min(Math.max(q.days ?? 30, 1), 365);
     const since = new Date(Date.now() - days * 86400000);
-    const by = ['partner', 'day', 'month', 'ipo'].includes(q.by ?? '') ? q.by! : 'day';
+    const by = ['partner', 'key', 'day', 'month', 'ipo'].includes(q.by ?? '') ? q.by! : 'day';
     // Not interpolated from user input — `by` is whitelisted above.
     const keyExpr = by === 'partner' ? '"tenantId"'
+      : by === 'key' ? 'coalesce(nullif("keyId", \'\'), \'(none)\')'
       : by === 'ipo' ? 'coalesce("ipoSymbol", \'(none)\')'
         : by === 'month' ? `to_char(("at" AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM')`
           : `to_char(("at" AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD')`;
@@ -474,6 +453,16 @@ export class PartnerService {
     if (by === 'partner') {
       const names = await this.tenantNames(rows.map((r) => r.key));
       label = new Map(rows.map((r) => [r.key, names.get(r.key)?.name ?? r.key]));
+    } else if (by === 'key') {
+      // A key is labelled by what the partner called it, with whose it is —
+      // a keyId alone tells an operator nothing.
+      const keys = await tenantContext.runUnscoped(() => this.prisma.partnerApiKey.findMany({
+        where: { keyId: { in: rows.map((r) => r.key) } },
+        select: { keyId: true, label: true, tenantId: true, active: true },
+      }));
+      const names = await this.tenantNames([...new Set(keys.map((k) => k.tenantId))]);
+      label = new Map(keys.map((k) => [k.keyId,
+        `${names.get(k.tenantId)?.name ?? 'Unknown partner'} · ${k.label || 'no label'}${k.active ? '' : ' (revoked)'}`]));
     } else if (by === 'ipo') {
       const ipos = await tenantContext.runUnscoped(() => this.prisma.ipo.findMany({
         where: { symbol: { in: rows.map((r) => r.key) } },
@@ -536,13 +525,15 @@ export class PartnerService {
   async callsSummaryCsv(q: { tenantId?: string; days?: number; by?: string }): Promise<string> {
     const { by, rows } = await this.callsSummary(q);
     const esc = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const first = by === 'partner' ? 'Partner' : by === 'ipo' ? 'IPO' : by === 'month' ? 'Month' : 'Date';
+    const first = by === 'partner' ? 'Partner' : by === 'key' ? 'Key' : by === 'ipo' ? 'IPO' : by === 'month' ? 'Month' : 'Date';
     /* The CSV carries Board and Open for the IPO grouping and inherits the
        open-date order from `callsSummary` — a spreadsheet sorted by a column it
        does not contain is impossible to re-sort or to trust. */
-    const head = [first, ...(by === 'ipo' ? ['Name', 'Board', 'Open'] : []), 'Calls', 'Failed', 'Failed %', 'Applicants', 'Avg ms', 'Last call'];
+    const head = [first, ...(by === 'key' ? ['Partner / label'] : []), ...(by === 'ipo' ? ['Name', 'Board', 'Open'] : []), 'Calls', 'Failed', 'Failed %', 'Applicants', 'Avg ms', 'Last call'];
     const lines = rows.map((r) => [
-      r.key,
+      // a partner's key is a uuid — the name is what a spreadsheet reader needs
+      by === 'partner' ? r.label : r.key,
+      ...(by === 'key' ? [r.label] : []),
       ...(by === 'ipo' ? [
         r.label ?? 'not in catalogue',
         (r as any).board === 'sme' ? 'SME' : (r as any).board === 'mainboard' ? 'Mainboard' : '',
@@ -654,24 +645,70 @@ export class PartnerService {
       this.prisma.partnerApiKey.findMany({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, keyId: true, label: true, active: true, createdAt: true, revokedAt: true, lastUsedAt: true },
+        select: { id: true, keyId: true, label: true, scopes: true, active: true, createdAt: true, revokedAt: true, lastUsedAt: true } as any,
       }),
     );
   }
 
+  /**
+   * What a key on this tenant may be given — the tenant's own scopes, resolved
+   * through branch inheritance exactly as the scope guard resolves them.
+   */
+  async keyScopeOptions(callerId: string, tenantId: string) {
+    await this.assertCanManageKeys(callerId, tenantId);
+    return { tenantScopes: await resolveTenantScopes(this.prisma, tenantId) };
+  }
+
+  /** Refuse a key scope list its tenant cannot back. Empty = everything the tenant has. */
+  private async assertKeyScopes(tenantId: string, scopes: string[] | undefined): Promise<string[]> {
+    const list = [...new Set((scopes ?? []).map((s) => String(s).trim()).filter(Boolean))];
+    const problem = keyScopesProblem(await resolveTenantScopes(this.prisma, tenantId), list);
+    if (problem) throw new BadRequestException(problem);
+    return list;
+  }
+
   /** Create a key — the SECRET is returned once and never stored in plain. */
-  async createKey(callerId: string, tenantId: string, label?: string) {
+  async createKey(callerId: string, tenantId: string, label?: string, scopes?: string[]) {
     await this.assertCanManageKeys(callerId, tenantId);
     const tenant = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId } }));
     if (!tenant) throw new NotFoundException('Tenant not found.');
+    const list = await this.assertKeyScopes(tenantId, scopes);
     const keyId = `pk_${randomBytes(6).toString('hex')}`;
     const secret = randomBytes(24).toString('hex');
     await tenantContext.runUnscoped(() =>
       this.prisma.partnerApiKey.create({
-        data: { tenantId, keyId, secretHash: sha256(secret), label: label || null },
+        data: { tenantId, keyId, secretHash: sha256(secret), label: label || null, scopes: list } as any,
       }),
     );
-    return { keyId, secret, apiKey: `${keyId}.${secret}` };
+    return { keyId, secret, apiKey: `${keyId}.${secret}`, scopes: list };
+  }
+
+  /**
+   * Change what an existing key may do, without re-issuing it — re-issuing
+   * means the partner redeploys a secret, which is the expensive half of a
+   * scope change. Takes effect on the key's next call.
+   */
+  async updateKeyScopes(callerId: string, id: string, scopes: string[]) {
+    const key = await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiKey.findUnique({ where: { id }, select: { tenantId: true, keyId: true, active: true } }),
+    );
+    if (!key) throw new NotFoundException('Key not found.');
+    await this.assertCanManageKeys(callerId, key.tenantId);
+    if (!key.active) throw new BadRequestException('This key is revoked; its scopes cannot be changed.');
+    const list = await this.assertKeyScopes(key.tenantId, scopes);
+    await tenantContext.runUnscoped(() =>
+      this.prisma.partnerApiKey.update({ where: { id }, data: { scopes: list } as any }),
+    );
+    const tenant = await tenantContext.runUnscoped(() =>
+      this.prisma.tenant.findUnique({ where: { id: key.tenantId }, select: { slug: true } }),
+    );
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'partner.key-scopes', actorId: callerId, targetType: 'partner-key', targetId: id,
+        targetLabel: key.keyId, tenantSlug: tenant?.slug ?? null, detail: { scopes: list } as any,
+      },
+    }).catch(() => { /* best-effort */ });
+    return { keyId: key.keyId, scopes: list };
   }
 
   async revokeKey(callerId: string, id: string) {
@@ -686,6 +723,264 @@ export class PartnerService {
       this.prisma.partnerApiKey.update({ where: { id }, data: { active: false, revokedAt: new Date() } }),
     );
     return { revoked: true };
+  }
+
+  /* ══ Partner READ API — the partner's OWN records (Phase 1, 2026-11-20) ═════
+   *
+   * Everything below reads under the partner's tenant context, which the key
+   * guard set: Postgres RLS admits only that tenant's applications, and every
+   * query ALSO names `tenantId` — two locks on one door, so a later refactor
+   * that drops either still cannot hand one partner another's records.
+   *
+   * PII IS MASKED IN EVERY RESPONSE, including fields the partner itself sent.
+   * The data is the partner's own, but a leaked API key must not become a way
+   * to read back every PAN and bank account ever printed with it.
+   */
+
+  /** Applications created by this partner's print-forms calls. */
+  private ownPrintsWhere(tenantId: string) {
+    return { tenantId, applyMethod: 'pdf' as const, idempotencyKey: { startsWith: 'partner:' } };
+  }
+
+  /** An IPO by symbol, or a 404 that names what was asked for. */
+  private async ipoBySymbol(symbol: string) {
+    const ipo = await tenantContext.runUnscoped(() =>
+      this.prisma.ipo.findFirst({
+        where: { symbol: { equals: String(symbol).trim(), mode: 'insensitive' } },
+        select: { id: true, symbol: true, lotSize: true, allotmentDate: true },
+      }),
+    );
+    if (!ipo) throw new NotFoundException(`IPO '${symbol}' not found.`);
+    return ipo;
+  }
+
+  /** `YYYY-MM-DD` as an IST day boundary, or a 400 naming the parameter. */
+  private istDay(v: string | undefined, name: string, endOfDay = false): Date | undefined {
+    if (v == null || v === '') return undefined;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new BadRequestException(`${name} must be a date as YYYY-MM-DD.`);
+    const d = new Date(`${v}T00:00:00+05:30`);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException(`${name} is not a real date.`);
+    return endOfDay ? new Date(d.getTime() + 86_400_000) : d;
+  }
+
+  private assertRef(ref: string | undefined): string {
+    const r = String(ref ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r)) {
+      throw new BadRequestException('ref must be an applicationRef as returned by print-forms.');
+    }
+    return r;
+  }
+
+  private page(q: { page?: number; per?: number }) {
+    const per = Math.min(Math.max(Number(q.per) || 50, 1), 200);
+    const page = Math.max(Number(q.page) || 1, 1);
+    return { per, page, skip: (page - 1) * per };
+  }
+
+  /** The key that printed it, read off the idempotency key `partner:<keyId>:…`. */
+  private keyOf(idempotencyKey: string | null): string | null {
+    const m = /^partner:([^:]+):/.exec(idempotencyKey ?? '');
+    return m ? m[1] : null;
+  }
+
+  private async maskedPan(payload: any, profile?: { panTokenRef: string | null } | null): Promise<string | null> {
+    if (payload?.pan) return this.vault.mask(String(payload.pan));
+    if (!profile?.panTokenRef) return null;
+    try { return this.vault.mask(await this.vault.resolve(profile.panTokenRef)); } catch { return null; }
+  }
+
+  private last4(v: unknown): string | null {
+    const s = String(v ?? '').replace(/\s+/g, '');
+    return s ? `•••• ${s.slice(-4)}` : null;
+  }
+
+  private async printRow(r: any) {
+    const p = (r.partnerPayload ?? {}) as any;
+    return {
+      applicationRef: r.id,
+      batchId: r.batchId ?? null,
+      formNo: r.asbaFormNo ?? null,
+      ipoSymbol: r.ipo?.symbol ?? null,
+      printedAt: r.createdAt,
+      keyId: this.keyOf(r.idempotencyKey),
+      fullName: p.fullName ?? r.profile?.fullName ?? null,
+      panMasked: await this.maskedPan(p, r.profile),
+      category: r.category || null,
+      lots: r.lots,
+      shareQty: r.shareQty ?? null,
+      amount: Number(r.amount),
+    };
+  }
+
+  /** GET /partner/v1/prints — this partner's printed forms, newest first. */
+  async listPrints(tenant: { id: string }, q: { ipoSymbol?: string; batchId?: string; from?: string; to?: string; page?: number; per?: number }) {
+    const { per, page, skip } = this.page(q);
+    const from = this.istDay(q.from, 'from');
+    const to = this.istDay(q.to, 'to', true);
+    const ipo = q.ipoSymbol ? await this.ipoBySymbol(q.ipoSymbol) : null;
+    const where: any = {
+      ...this.ownPrintsWhere(tenant.id),
+      ...(ipo ? { ipoId: ipo.id } : {}),
+      ...(q.batchId ? { batchId: String(q.batchId) } : {}),
+      ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.application.findMany({
+        where, orderBy: { createdAt: 'desc' }, skip, take: per,
+        include: { profile: { select: { fullName: true, panTokenRef: true } }, ipo: { select: { symbol: true } } },
+      }),
+      this.prisma.application.count({ where }),
+    ]);
+    const out = [];
+    for (const r of rows) out.push(await this.printRow(r));
+    return { total, page, per, rows: out };
+  }
+
+  /** GET /partner/v1/prints/detail?ref= — one printed form, masked. */
+  async printDetailForPartner(tenant: { id: string }, ref: string | undefined) {
+    const id = this.assertRef(ref);
+    const r: any = await this.prisma.application.findFirst({
+      where: { id, ...this.ownPrintsWhere(tenant.id) },
+      include: { profile: { select: { fullName: true, panTokenRef: true } }, ipo: { select: { symbol: true } } },
+    });
+    if (!r) throw new NotFoundException('No print with that applicationRef for your account.');
+    const p = (r.partnerPayload ?? {}) as any;
+    return {
+      ...(await this.printRow(r)),
+      applicant: {
+        depository: p.depository ?? null,
+        dpId: p.dpId ?? null,
+        clientIdMasked: this.last4(p.clientId),
+        bankName: p.bankName ?? null,
+        branchName: p.branchName ?? null,
+        bankAccountMasked: this.last4(p.bankAccount),
+        familyGroup: r.familyGroup ?? p.familyGroup ?? null,
+      },
+      bid: {
+        sharePrice: p.sharePrice ?? (r.bidPrice != null ? Number(r.bidPrice) : null),
+        shareQty: r.shareQty ?? p.shareQty ?? null,
+        lots: r.lots,
+        amount: Number(r.amount),
+      },
+    };
+  }
+
+  /**
+   * GET /partner/v1/prints/pdf?ref= — the same form again, same form number.
+   *
+   * Filled from the payload stored at print time, exactly as the first print
+   * was, so a lost PDF can be recovered without a second print-forms call —
+   * which would create a second record and take a second form number. A print
+   * that went out with no number (no series configured that day) comes back
+   * without one: a reprint never takes a number, because that would make the
+   * copy differ from the form already in the client's hands.
+   */
+  async reprintPdf(tenant: { id: string; slug: string }, keyId: string, ref: string | undefined) {
+    const id = this.assertRef(ref);
+    const r: any = await this.prisma.application.findFirst({
+      where: { id, ...this.ownPrintsWhere(tenant.id) },
+      select: { id: true, asbaFormNo: true, partnerPayload: true, ipoId: true },
+    });
+    if (!r) throw new NotFoundException('No print with that applicationRef for your account.');
+    if (!r.partnerPayload) throw new BadRequestException('This print has no stored data to regenerate it from.');
+    const ipo = await tenantContext.runUnscoped(() =>
+      this.prisma.ipo.findUnique({ where: { id: r.ipoId }, include: { documents: true } }),
+    );
+    if (!ipo) throw new NotFoundException('The IPO for this print no longer exists.');
+    const buffer = await this.apps.buildAsbaFromPayload(ipo, r.partnerPayload, r.asbaFormNo ?? r.id.slice(0, 8));
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'partner.reprint', actorId: keyId, targetType: 'application', targetId: r.id,
+        targetLabel: ipo.symbol, tenantSlug: tenant.slug, detail: { formNo: r.asbaFormNo ?? null } as any,
+      },
+    }).catch(() => { /* best-effort */ });
+    return {
+      applicationRef: r.id,
+      formNo: r.asbaFormNo ?? null,
+      filename: `${ipo.symbol}_${r.asbaFormNo ?? r.id.slice(0, 8)}.pdf`,
+      pdfBase64: buffer.toString('base64'),
+    };
+  }
+
+  /**
+   * GET /partner/v1/allotment?ipoSymbol= | ?ref= — the allotment outcome of
+   * this partner's OWN applications.
+   *
+   * No new matching: when a registrar file is imported, `matchOurApplications`
+   * already finds every one of our applications by PAN and records the result
+   * on it. This reads that result. It deliberately does NOT look up arbitrary
+   * PANs in the registrar data — that would turn a partner key into a bulk
+   * PAN-lookup service over people who never dealt with the partner.
+   *
+   * `result`: allotted · not_allotted (lost the draw) · rejected (the registrar
+   * gave a reason) · pending (no result recorded yet). `registrarFileReceived`
+   * tells "the registrar has not published" apart from "published, and we could
+   * not match this application" — the second can happen when a print's PAN
+   * could not be read.
+   */
+  async allotmentForPartner(tenant: { id: string }, q: { ipoSymbol?: string; ref?: string; page?: number; per?: number }) {
+    if (!q.ipoSymbol && !q.ref) throw new BadRequestException('Send ipoSymbol, or ref for a single application.');
+    const { per, page, skip } = this.page(q);
+    const where: any = { tenantId: tenant.id, status: { notIn: ['draft'] } };
+    let ipo: { id: string; symbol: string; lotSize: number | null; allotmentDate: Date | null } | null = null;
+    if (q.ref) {
+      where.id = this.assertRef(q.ref);
+    } else {
+      ipo = await this.ipoBySymbol(q.ipoSymbol!);
+      where.ipoId = ipo.id;
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.application.findMany({
+        where, orderBy: { createdAt: 'asc' }, skip, take: per,
+        include: {
+          profile: { select: { fullName: true, panTokenRef: true } },
+          ipo: { select: { id: true, symbol: true, lotSize: true, allotmentDate: true } },
+        },
+      }),
+      this.prisma.application.count({ where }),
+    ]);
+    if (q.ref && rows.length === 0) throw new NotFoundException('No application with that applicationRef for your account.');
+
+    const ipoIds = [...new Set([...(ipo ? [ipo.id] : []), ...rows.map((r: any) => r.ipoId as string)])];
+    const received = new Set(
+      (await tenantContext.runUnscoped(() =>
+        this.prisma.allotmentImport.findMany({ where: { ipoId: { in: ipoIds }, status: 'done' }, select: { ipoId: true }, distinct: ['ipoId'] }),
+      )).map((i) => i.ipoId),
+    );
+
+    const out = [];
+    for (const r of rows as any[]) {
+      const lot = r.ipo?.lotSize ?? 0;
+      const recorded = !!r.allottedAt;
+      const result = !recorded ? 'pending'
+        : r.status === 'allotted' ? 'allotted'
+          : r.allotmentReason ? 'rejected' : 'not_allotted';
+      out.push({
+        applicationRef: r.id,
+        formNo: r.asbaFormNo ?? null,
+        applicationNumber: r.applicationNumber ?? null,
+        ipoSymbol: r.ipo?.symbol ?? null,
+        fullName: (r.partnerPayload as any)?.fullName ?? r.profile?.fullName ?? null,
+        panMasked: await this.maskedPan(r.partnerPayload, r.profile),
+        appliedLots: r.lots,
+        result,
+        reason: r.allotmentReason ?? null,
+        allottedLots: recorded ? (r.allottedLots ?? 0) : null,
+        allottedShares: recorded ? (r.allottedLots ?? 0) * lot : null,
+        allottedAmount: recorded && r.allottedAmount != null ? Number(r.allottedAmount) : null,
+        refundAmount: recorded && r.refundAmount != null ? Number(r.refundAmount) : null,
+        recordedAt: r.allottedAt ?? null,
+        registrarFileReceived: received.has(r.ipoId),
+      });
+    }
+    return {
+      ...(ipo ? {
+        ipoSymbol: ipo.symbol,
+        allotmentDate: day(ipo.allotmentDate) ?? null,
+        registrarFileReceived: received.has(ipo.id),
+      } : {}),
+      total, page, per, rows: out,
+    };
   }
 
   /* ══ Partner READ API, v1 ══════════════════════════════════════════════════
