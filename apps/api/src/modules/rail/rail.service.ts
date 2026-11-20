@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { activeOnlineSeries } from '@investoyard/shared-types';
 import {
   HolidayEntry,
   IpoMasterEntry,
@@ -77,28 +78,49 @@ export class RailService {
   }
 
   /**
-   * Resolve the member credential to submit THIS ipo's bids under:
-   * 1. the credential whose member name matches the IPO's active "Online Apply"
-   *    series member (we work with multiple members — each IPO bids under its own);
-   * 2. else any active credential on the IPO's selected exchange;
-   * 3. else any active credential, so a mis-configured IPO still submits somewhere.
+   * Resolve WHERE this IPO's bids go: the member credential, and the online
+   * series the application number is taken from.
+   *
+   * REFUSES, NEVER FALLS BACK (Phase 0, 2026-11-20). This used to fall back to
+   * "any active credential on the exchange", then to "any active credential at
+   * all", with the comment "so a mis-configured IPO still submits somewhere".
+   * That is right for one membership and wrong for several: it places a client's
+   * bid under a trading member nobody chose for this issue, which hands that
+   * member the regulatory ownership of a client it never agreed to carry. As
+   * measured that day, every IPO with an online series named a member (Axis,
+   * DAM) that has NO credential row, so the fallback would have sent all of them
+   * under our own subscription login instead.
+   *
+   * The rule is the one the bid builder already follows for a demat: a choice
+   * that cannot be resolved stops the bid; it is never silently replaced.
    */
-  async resolveBidCredentialId(ipo: { extra?: any; exchanges?: string[] }): Promise<string> {
-    const exchange = this.pickBidExchange(ipo);
-    const extra: any = ipo?.extra ?? {};
-    const series: Array<{ member?: string; active?: boolean }> = Array.isArray(extra.onlineSeries) ? extra.onlineSeries : [];
-    const memberName = String(series.find((s) => s.active)?.member ?? '').trim();
-    if (memberName) {
-      const byMember = await this.prisma.memberCredential.findFirst({
-        where: { exchange, active: true, memberName: { equals: memberName, mode: 'insensitive' } },
-        select: { id: true },
-      });
-      if (byMember) return byMember.id;
+  async resolveBidRoute(ipo: { extra?: any; exchanges?: string[] }): Promise<{
+    memberCredentialId: string;
+    exchange: 'NSE_EIPO' | 'BSE_IBBS';
+    series: { member: string; from: string | null; to: string | null };
+  }> {
+    const row = activeOnlineSeries(ipo?.extra);
+    if (!row) {
+      throw new BadRequestException('Online bidding is not set up for this IPO yet (no bidding member is selected).');
     }
-    const cred = await this.prisma.memberCredential.findFirst({ where: { exchange, active: true }, select: { id: true } });
-    if (cred) return cred.id;
-    const any = await this.prisma.memberCredential.findFirstOrThrow({ where: { active: true }, select: { id: true } });
-    return any.id;
+    const exchange = this.pickBidExchange(ipo);
+    const cred = await this.prisma.memberCredential.findFirst({
+      where: { exchange, active: true, memberName: { equals: row.member, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (!cred) {
+      const on = exchange === 'BSE_IBBS' ? 'BSE' : 'NSE';
+      throw new BadRequestException(`Online bidding is not available for this IPO yet (no ${on} login is set up for ${row.member}).`);
+    }
+    return {
+      memberCredentialId: cred.id,
+      exchange,
+      series: {
+        member: row.member,
+        from: row.from != null && String(row.from).trim() !== '' ? String(row.from).trim() : null,
+        to: row.to != null && String(row.to).trim() !== '' ? String(row.to).trim() : null,
+      },
+    };
   }
 
   /** Resolve the active NSE member credential, or null if none is configured (no throw — for background jobs). */

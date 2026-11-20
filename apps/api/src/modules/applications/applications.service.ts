@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
 import { RailService } from '../rail/rail.service';
-import { SubmissionQueueService } from '../queue/submission-queue.service';
 import { BidOperationsService } from '../rail/bid-operations.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -17,12 +16,15 @@ import { UPLOAD_DIR } from '../upload/upload.module';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ApplicantCategory, ApplyMethod, CreateApplicationDto, CreateBulkApplicationDto } from './applications.dto';
-import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, mayCancel, mayChangeUpi, mayRequestUnblock, matchSponsorBanks, asbaDocOrder, resolveSeriesRange, type AsbaDocType } from '@investoyard/shared-types';
+import { RETAIL_MAX_AMOUNT, UPI_MANDATE_MAX, mayAcceptBid, closeAt, mayChangeUpi, mayRequestUnblock, matchSponsorBanks, asbaDocOrder, resolveSeriesRange, type AsbaDocType } from '@investoyard/shared-types';
 
 /* The ₹5,00,000 Resident/Syndicate threshold is NOT re-stated here any more.
    It lives in `asbaDocOrder` (shared-types), beside ASBA_SYNDICATE_ABOVE and
    under test — one copy, so the form that prints and the series its number
    comes from can never be decided against two different numbers. */
+
+/** A native bid sends the investor a UPI mandate request, so it cannot go without a UPI ID. */
+const NO_UPI = 'Add a UPI ID to this applicant before applying — the bid sends the payment request to it.';
 
 /** Shared relations needed to fill an ASBA form for an application. */
 const ASBA_INCLUDE = {
@@ -40,7 +42,6 @@ export class ApplicationsService {
     private prisma: PrismaService,
     private vault: PiiVaultService,
     private rail: RailService,
-    private queue: SubmissionQueueService,
     private notifications: NotificationsService,
     private bidOps: BidOperationsService,
     private profiles: ProfilesService,
@@ -170,21 +171,6 @@ export class ApplicationsService {
       if (applicantType !== ApplicantCategory.individual && !ipo.reservations.includes(applicantType)) {
         throw new BadRequestException(`This IPO does not offer a ${applicantType} reservation.`);
       }
-
-      // Self-PAN rule (SEBI), per BUCKET: a PAN may hold ONE public (retail/HNI —
-      // either, not both) application per IPO, PLUS one in each reserved quota the
-      // issue offers (shareholder / employee) — reserved-category bids are not
-      // counted as multiple applications. panHash is unique per tenant, so this
-      // also blocks a second application via any profile.
-      const dup = await this.prisma.application.findFirst({
-        where: {
-          ipoId: ipo.id,
-          profile: { panHash: profile.panHash },
-          status: { notIn: ['draft', 'failed', 'rejected'] },
-          ...this.panBucketWhere(applicantType),
-        },
-      });
-      if (dup) throw new ConflictException(this.panBucketConflict(applicantType));
     }
 
     const qty = dto.lots * ipo.lotSize;
@@ -204,49 +190,147 @@ export class ApplicationsService {
       if (amount > UPI_MANDATE_MAX) {
         throw new BadRequestException('Amount above ₹5,00,000 must use bank ASBA (UPI mandate limit).');
       }
+      this.assertBidOpen(ipo);
+      if (!profile.upiTokenRef) throw new BadRequestException(NO_UPI);
     }
+
+    // Who the bid goes under, decided BEFORE consent is recorded so a refusal
+    // (no member chosen, no login for that member) costs the investor nothing.
+    const route = isPrint ? null : await this.rail.resolveBidRoute(ipo);
 
     // DPDP: capture the applicant's explicit consent to share their financial data
     // with the partner rail/merchant-banker BEFORE any PII is processed for the bid.
     const consent = await this.captureDataSharingConsent(userId, dto);
+    const tenantId = tenantContext.requireTenantId();
 
-    const idempotencyKey = `${userId}:${dto.ipoId}:${profile.id}`;
-
-    const app = await this.prisma.application.create({
-      data: {
-        tenantId: tenantContext.requireTenantId(),
-        userId,
-        investorProfileId: profile.id,
-        // null = the profile default; see dematForApplication()
-        dematAccountId,
-        ipoId: ipo.id,
-        category: dto.category,
-        applicantType,
-        lots: dto.lots,
-        atCutoff: dto.atCutoff,
-        bidPrice: dto.atCutoff ? null : dto.bidPrice,
-        amount,
-        applyMethod: dto.applyMethod as any,
-        status: 'draft',
-        idempotencyKey,
-        consentId: consent.id,
-      },
-    });
-
-    if (dto.applyMethod === ApplyMethod.pdf) {
+    if (isPrint) {
+      const app = await this.prisma.application.create({
+        data: {
+          tenantId,
+          userId,
+          investorProfileId: profile.id,
+          // null = the profile default; see dematForApplication()
+          dematAccountId,
+          ipoId: ipo.id,
+          category: dto.category,
+          applicantType,
+          lots: dto.lots,
+          atCutoff: dto.atCutoff,
+          bidPrice: dto.atCutoff ? null : dto.bidPrice,
+          amount,
+          applyMethod: dto.applyMethod as any,
+          status: 'draft',
+          idempotencyKey: `${userId}:${dto.ipoId}:${profile.id}`,
+          consentId: consent.id,
+        },
+      });
       // STUB: generate the prefilled ASBA PDF (reuse the FINWAVE PDF engine)
       return { application: app, pdfUrl: `/api/applications/${app.id}/pdf` };
     }
 
-    // NATIVE: ENQUEUE by reference only — no PII in the job/Redis. The worker
-    // hydrates (DB row + vault resolve) just-in-time before the rail call; the
-    // queue handles idempotency + retry + closing-day bursts.
-    const memberCredentialId = await this.rail.resolveBidCredentialId(ipo);
-    await this.prisma.application.update({ where: { id: app.id }, data: { status: 'submitted' } });
-    await this.queue.enqueue({ applicationId: app.id, memberCredentialId, idempotencyKey });
+    /*
+     * NATIVE: the application, its number from our online series, and the
+     * operation that tells the sender to post it are written in ONE transaction
+     * that holds a per-IPO lock (Phase 0, 2026-11-20). The lock is what makes the
+     * duplicate-PAN check and the numbering safe when two bids arrive together;
+     * the single transaction is what stops a crash leaving an application with
+     * no instruction to send it, or an instruction with no application.
+     *
+     * Nothing is posted here. The sender picks the operation up within seconds
+     * (kick() asks it to start now) and resolves the PII just-in-time.
+     */
+    const app = await this.bidOps.unscopedTx(async (tx) => {
+      await this.bidOps.lockIpoBids(tx, ipo.id);
+      await this.assertPanFree(tx, ipo.id, profile.panHash, applicantType, tenantId);
+      const [applicationNumber] = await this.bidOps.allocateApplicationNumbers(tx, ipo, 1);
+      const created = await tx.application.create({
+        data: {
+          tenantId,
+          userId,
+          investorProfileId: profile.id,
+          dematAccountId,
+          ipoId: ipo.id,
+          category: dto.category,
+          applicantType,
+          lots: dto.lots,
+          atCutoff: dto.atCutoff,
+          bidPrice: dto.atCutoff ? null : dto.bidPrice,
+          amount,
+          applyMethod: 'native',
+          status: 'submitted',
+          memberCredentialId: route!.memberCredentialId,
+          applicationNumber,
+          // Unique per bid. The old `${user}:${ipo}:${profile}` key made a
+          // second attempt after a FAILED bid hit the unique index and 500;
+          // double-submission is now stopped by the locked PAN check instead.
+          idempotencyKey: `bid:${ipo.id}:${applicationNumber}`,
+          consentId: consent.id,
+        },
+      });
+      await tx.bidOperation.create({ data: this.bidOps.intent(created, 'new', qty) });
+      await tx.applicationStatusEvent.create({
+        data: { applicationId: created.id, status: 'submitted', detail: { queued: true, applicationNumber } as any },
+      });
+      return created;
+    });
+    this.bidOps.kick();
+    return { application: app, status: app.status };
+  }
 
-    const current = await this.prisma.application.findUnique({ where: { id: app.id } });
-    return { application: current, status: current?.status };
+  /**
+   * The server-side bid gate: Start Bid on, inside the bidding window, on a
+   * trading day, inside the day's hours. The apply screen hides its button on
+   * the same rule, but a hidden button is not a rule — anything that can reach
+   * this endpoint could otherwise bid an issue the operator has not opened.
+   */
+  private assertBidOpen(ipo: { openDate: Date | null; closeDate: Date | null; extra: any }) {
+    // The date columns hold UTC midnight of the IST date, so the first ten
+    // characters of the ISO string ARE that date.
+    const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+    const gate = mayAcceptBid({ openDate: day(ipo.openDate), closeDate: day(ipo.closeDate), extra: ipo.extra });
+    if (!gate.ok) throw new BadRequestException(gate.reason);
+  }
+
+  /**
+   * Self-PAN rule (SEBI), per BUCKET: a PAN may hold ONE public (retail/HNI —
+   * either, not both) application per IPO, PLUS one in each reserved quota the
+   * issue offers (shareholder / employee) — reserved-category bids are not
+   * counted as multiple applications.
+   *
+   * ACROSS TENANTS, not only within ours (Phase 0, operator decision). The same
+   * person can be a client of two partners, and the exchange would reject the
+   * second bid as a multiple application anyway — after a UPI mandate request
+   * had already gone to the investor. Within the caller's own tenant every live
+   * application counts; from another tenant only a bid we send to the exchange
+   * (`native`) counts, because a partner's printed form is a records-only
+   * service we never submit. The refusal for another tenant's bid is NEUTRAL:
+   * it must not tell one partner who another partner's clients are.
+   *
+   * `panHash` is keyed on the platform master, not per tenant, so the same PAN
+   * hashes the same everywhere. Must run inside `unscopedTx` after the IPO lock.
+   */
+  private async assertPanFree(
+    tx: any,
+    ipoId: string,
+    panHash: string | null,
+    applicantType: string,
+    tenantId: string,
+    prefix = '',
+  ) {
+    if (!panHash) throw new BadRequestException(`${prefix}This applicant has no PAN on file.`);
+    const dup = await tx.application.findFirst({
+      where: {
+        ipoId,
+        profile: { panHash },
+        status: { notIn: ['draft', 'failed', 'rejected'] },
+        ...this.panBucketWhere(applicantType),
+        OR: [{ tenantId }, { applyMethod: 'native' }],
+      },
+      select: { tenantId: true },
+    });
+    if (!dup) return;
+    if (dup.tenantId === tenantId) throw new ConflictException(`${prefix}${this.panBucketConflict(applicantType)}`);
+    throw new ConflictException(`${prefix}This PAN already has an application for this IPO through another channel, so another one cannot be placed.`);
   }
 
   /**
@@ -700,29 +784,36 @@ export class ApplicationsService {
     const { row: active } = resolveSeriesRange(ipo.extra, docType);
     const from = Number(active?.from), to = Number(active?.to);
     if (!Number.isFinite(from)) return null;
-    // next = max assigned within this IPO's range + 1 (or `from` if none yet)
-    const rows = await this.prisma.application.findMany({
-      where: { ipoId: ipo.id, asbaFormNo: { not: null } },
-      select: { asbaFormNo: true },
+    /*
+     * LOCKED, AND READ ACROSS EVERY TENANT (Phase 0, 2026-11-20). The range is
+     * the live member's, shared by every partner printing this IPO, so the
+     * numbers already used must be read from all of them — read under one
+     * tenant's scope, two partners printing the same IPO were each handed the
+     * same next number. The advisory lock makes read-then-write safe when two
+     * prints land together, which a family print or a partner's batch does.
+     */
+    return this.bidOps.unscopedTx(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'asba-series:' + ipo.id}::text))`;
+      // A reprint racing this one may have numbered the row while we waited.
+      const mine = await tx.application.findUnique({ where: { id: appId }, select: { asbaFormNo: true } });
+      if (mine?.asbaFormNo) return mine.asbaFormNo as string;
+      // next = max assigned within this IPO's range + 1 (or `from` if none yet)
+      const rows = await tx.application.findMany({
+        where: { ipoId: ipo.id, asbaFormNo: { not: null } },
+        select: { asbaFormNo: true },
+      });
+      let next = from;
+      for (const r of rows) {
+        const n = Number(r.asbaFormNo);
+        if (Number.isFinite(n) && n >= from && (!Number.isFinite(to) || n <= to) && n + 1 > next) next = n + 1;
+      }
+      if (Number.isFinite(to) && next > to) return null; // series exhausted — leave blank rather than misnumber
+      const formNo = String(next);
+      await tx.application.update({ where: { id: appId }, data: { asbaFormNo: formNo } });
+      return formNo;
     });
-    let next = from;
-    for (const r of rows) {
-      const n = Number(r.asbaFormNo);
-      if (Number.isFinite(n) && n >= from && (!Number.isFinite(to) || n <= to) && n + 1 > next) next = n + 1;
-    }
-    if (Number.isFinite(to) && next > to) return null; // series exhausted — leave blank rather than misnumber
-    const formNo = String(next);
-    await this.prisma.application.update({ where: { id: appId }, data: { asbaFormNo: formNo } });
-    return formNo;
   }
 
-  /**
-   * Withdraw an application (SEBI: retail may withdraw until issue close). Allowed
-   * only while the IPO is still open and the bid isn't already decided/withdrawn.
-   * Marks the row `released` (blocked funds unblock), logs a status event and
-   * notifies the investor. TODO(rail): once live, also send the rail's cancel
-   * activity when an applicationNumber exists.
-   */
   /**
    * On-the-spot UPI ID change for one application (sir's requirement 2).
    *
@@ -942,10 +1033,23 @@ export class ApplicationsService {
     };
   }
 
+  /**
+   * The investor withdraws their own bid. Routed through the ONE bid pipeline
+   * (Phase 0, 2026-11-20): a bid the exchange holds gets a cancel instruction
+   * that the sender posts; a bid not yet sent has its pending instruction
+   * withdrawn and nothing is ever posted.
+   *
+   * Two faults fixed here. It tested `ipo.status !== 'open'`, a dead column
+   * that reads `upcoming` on every row, so a withdrawal was ALWAYS refused. And
+   * it only marked our own row `released` — the exchange was never told, so the
+   * bid and the investor's blocked money would have stayed there.
+   */
   async withdraw(userId: string, id: string) {
     const app = await this.prisma.application.findFirst({ where: { id, userId }, include: { ipo: true } });
     if (!app) throw new NotFoundException();
-    if (app.ipo.status !== 'open') {
+    const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+    const close = closeAt({ closeDate: day(app.ipo.closeDate), extra: app.ipo.extra as any });
+    if (close == null || Date.now() > close) {
       throw new BadRequestException('The withdrawal window has closed — bids can be withdrawn only while the issue is open.');
     }
     const WITHDRAWABLE = ['submitted', 'mandate_pending', 'upi_blocked', 'dp_verified', 'confirmed'];
@@ -953,53 +1057,44 @@ export class ApplicationsService {
       throw new BadRequestException(`A ${app.status.replace(/_/g, ' ')} application cannot be withdrawn.`);
     }
 
-    /*
-     * The rule this method's own comment cites, now actually enforced. Only a
-     * retail bidder may withdraw; ICDR forbids an HNI or QIB from withdrawing
-     * or lowering a bid once it is with the exchange. Until now any category
-     * could withdraw here, and the exchange would have been the one to say no.
-     *
-     * A bid we never posted is a different matter — it exists only in our
-     * database, so cancelling it breaks no rule. `mayCancel` draws that line.
-     */
-    const atExchange = !!app.applicationNumber && !!app.rail;
-    const allowed = mayCancel(app.category, atExchange);
-    if (!allowed.ok) throw new BadRequestException(allowed.reason);
+    // queueCancel applies the ICDR rule (retail only, once at the exchange) and
+    // writes the instruction; it refuses with the reason when it may not.
+    await this.bidOps.queueCancel(app.id, 'investor');
 
-    const updated = await this.prisma.application.update({
-      where: { id: app.id },
-      data: { status: 'released', refundAmount: app.amountBlocked ?? app.amount },
-    });
-    await this.prisma.applicationStatusEvent.create({
-      data: { applicationId: app.id, status: 'released', detail: { withdrawnBy: 'investor' } as any },
-    });
     await this.notifications.pushToUser(userId, {
       type: 'status', tenantId: app.tenantId,
       title: `Withdrawn — ${app.ipo.symbol}`,
-      body: `Your ${app.ipo.symbol} application has been withdrawn. Blocked ₹${Number(app.amountBlocked ?? app.amount).toLocaleString('en-IN')} will be released.`,
-      data: { applicationId: app.id, ipoSymbol: app.ipo.symbol, status: 'released' },
+      body: `Your ${app.ipo.symbol} application has been withdrawn. Any amount blocked for it will be released.`,
+      data: { applicationId: app.id, ipoSymbol: app.ipo.symbol, status: 'cancelled' },
     }).catch(() => { /* best-effort */ });
 
+    const updated = await this.prisma.application.findUnique({ where: { id: app.id } });
     return toView({ ...updated, ipo: app.ipo });
   }
 
   /**
-   * Family / group apply — validates EVERY applicant first (all-or-nothing), creates
-   * all application rows in one transaction, and enqueues a SINGLE bulk job that the
-   * rail submits as one NSE addbulk call (≤100 applicants, one UPI mandate each —
-   * the self-PAN rule holds: every member bids with their own PAN/demat/UPI).
+   * Family / group apply — validates EVERY applicant first (all-or-nothing), then
+   * writes every application, its number and its send instruction in ONE locked
+   * transaction; the sender posts each bid (one UPI mandate each — the self-PAN
+   * rule holds: every member bids with their own PAN/demat/UPI).
    */
   async createBulk(userId: string, dto: CreateBulkApplicationDto) {
     const ipo = await this.prisma.ipo.findUnique({ where: { id: dto.ipoId } });
     if (!ipo || !ipo.lotSize) throw new NotFoundException('IPO not found');
+    const lotSize = ipo.lotSize;
+
+    // Gate and route first — a refusal here must cost the family nothing.
+    this.assertBidOpen(ipo);
+    const route = await this.rail.resolveBidRoute(ipo);
 
     // DPDP consent — one grant by the account holder covers this batch's sharing.
     const consent = await this.captureDataSharingConsent(userId, dto);
+    const tenantId = tenantContext.requireTenantId();
 
     // ---- validate every applicant before creating anything (all-or-nothing) ----
     const batchId = randomUUID(); // groups the family batch (admin view, reconciliation)
     const seenPans = new Set<string>();
-    const rows: any[] = [];
+    const rows: Array<{ who: string; panHash: string | null; applicantType: string; qty: number; data: any }> = [];
     for (let i = 0; i < dto.applicants.length; i++) {
       const a = dto.applicants[i];
       const who = `applicant ${i + 1}`;
@@ -1015,28 +1110,20 @@ export class ApplicationsService {
          own accounts. */
       const dematAccountId = this.assertDematOwned(profile, a.dematAccountId);
       if (!atCutoff && !a.bidPrice) throw new BadRequestException(`${who}: bidPrice required when not at cut-off`);
+      if (!profile.upiTokenRef) throw new BadRequestException(`${who}: ${NO_UPI}`);
 
       const applicantType = a.applicantType ?? ApplicantCategory.individual;
       if (applicantType !== ApplicantCategory.individual && !ipo.reservations.includes(applicantType)) {
         throw new BadRequestException(`${who}: this IPO does not offer a ${applicantType} reservation.`);
       }
 
-      // Self-PAN, per bucket (public vs shareholder vs employee) — against the
-      // DB and within this batch. See create() for the bucket rule.
+      // Self-PAN within this batch; against the database inside the locked
+      // transaction below. See assertPanFree() for the bucket rule.
       const bucketKey = `${profile.panHash}|${this.panBucket(applicantType)}`;
       if (seenPans.has(bucketKey)) throw new ConflictException(`${who}: duplicate PAN within this family batch.`);
       seenPans.add(bucketKey);
-      const dup = await this.prisma.application.findFirst({
-        where: {
-          ipoId: ipo.id,
-          profile: { panHash: profile.panHash },
-          status: { notIn: ['draft', 'failed', 'rejected'] },
-          ...this.panBucketWhere(applicantType),
-        },
-      });
-      if (dup) throw new ConflictException(`${who}: ${this.panBucketConflict(applicantType)}`);
 
-      const qty = a.lots * ipo.lotSize;
+      const qty = a.lots * lotSize;
       const unit = atCutoff ? Number(ipo.priceBandMax ?? 0) : (a.bidPrice as number);
       const amount = qty * unit;
       if (atCutoff && qty * Number(ipo.priceBandMax ?? 0) > RETAIL_MAX_AMOUNT) {
@@ -1051,34 +1138,53 @@ export class ApplicationsService {
       }
 
       rows.push({
-        tenantId: tenantContext.requireTenantId(),
-        userId,
-        investorProfileId: profile.id,
-        dematAccountId,
-        ipoId: ipo.id,
-        category: dto.category,
+        who,
+        panHash: profile.panHash,
         applicantType,
-        lots: a.lots,
-        atCutoff,
-        bidPrice: atCutoff ? null : a.bidPrice,
-        amount,
-        applyMethod: 'native',
-        status: 'submitted',
-        idempotencyKey: `${userId}:${dto.ipoId}:${profile.id}`,
-        consentId: consent.id,
-        batchId,
+        qty,
+        data: {
+          tenantId,
+          userId,
+          investorProfileId: profile.id,
+          dematAccountId,
+          ipoId: ipo.id,
+          category: dto.category,
+          applicantType,
+          lots: a.lots,
+          atCutoff,
+          bidPrice: atCutoff ? null : a.bidPrice,
+          amount,
+          applyMethod: 'native',
+          status: 'submitted',
+          memberCredentialId: route.memberCredentialId,
+          consentId: consent.id,
+          batchId,
+        },
       });
     }
 
-    // ---- create all rows atomically, then ONE lean bulk job (no PII in Redis) ----
-    const created = await this.prisma.$transaction(rows.map((data) => this.prisma.application.create({ data })));
-    const memberCredentialId = await this.rail.resolveBidCredentialId(ipo);
-    const applicationIds = created.map((c) => c.id);
-    await this.queue.enqueueBulk({
-      applicationIds,
-      memberCredentialId,
-      idempotencyKey: `bulk:${applicationIds[0]}:${applicationIds.length}`,
+    /* ---- all rows, their numbers and their operations in ONE locked
+       transaction; then the sender posts each one. Same reasoning as create():
+       a family is all-or-nothing up to here, and nothing is half-written. ---- */
+    const created = await this.bidOps.unscopedTx(async (tx) => {
+      await this.bidOps.lockIpoBids(tx, ipo.id);
+      for (const r of rows) await this.assertPanFree(tx, ipo.id, r.panHash, r.applicantType, tenantId, `${r.who}: `);
+      const numbers = await this.bidOps.allocateApplicationNumbers(tx, ipo, rows.length);
+      const out: any[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const applicationNumber = numbers[i];
+        const app = await tx.application.create({
+          data: { ...rows[i].data, applicationNumber, idempotencyKey: `bid:${ipo.id}:${applicationNumber}` },
+        });
+        await tx.bidOperation.create({ data: this.bidOps.intent(app, 'new', rows[i].qty) });
+        await tx.applicationStatusEvent.create({
+          data: { applicationId: app.id, status: 'submitted', detail: { queued: true, applicationNumber, batchId } as any },
+        });
+        out.push(app);
+      }
+      return out;
     });
+    this.bidOps.kick();
 
     return { count: created.length, applications: created.map((c) => toView({ ...c, ipo })) };
   }

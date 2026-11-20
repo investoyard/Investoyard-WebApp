@@ -20,7 +20,6 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { RailModule } from './modules/rail/rail.module';
-import { QueueModule } from './modules/queue/queue.module';
 import { ConsentModule } from './modules/consent/consent.module';
 import { WatchlistModule } from './modules/watchlist/watchlist.module';
 import { DevicesModule } from './modules/devices/devices.module';
@@ -59,7 +58,6 @@ import { MessageLogApiModule } from './modules/message-log/message-log.module';
     AdminModule,
     ApplicationsModule,
     RailModule,
-    QueueModule,
     ConsentModule,
     WatchlistModule,
     DevicesModule,

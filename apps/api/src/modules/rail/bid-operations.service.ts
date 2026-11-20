@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { mayCancel, mayReviseTo, mayChangeUpi, dematForApplication } from '@investoyard/shared-types';
-import { buildBidSubmission, type BidSubmission } from '@investoyard/rail-adapters';
+import { mayCancel, mayReviseTo, mayChangeUpi, dematForApplication, activeOnlineSeries, nextSeriesNumber } from '@investoyard/shared-types';
+import { buildBidSubmission, BidSubmissionError, isTransient, type BidResult, type BidSubmission } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
+import { tenantContext } from '../../common/tenant-context';
 import { RailService } from './rail.service';
 
 /**
@@ -26,7 +27,7 @@ import { RailService } from './rail.service';
  * Rejection column.
  */
 @Injectable()
-export class BidOperationsService {
+export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(BidOperationsService.name);
 
   constructor(
@@ -51,8 +52,83 @@ export class BidOperationsService {
     return app;
   }
 
-  /** Shape the row that records one intent. Never posts. */
-  private opData(app: any, action: 'new' | 'modify' | 'cancel', qty: number, price?: number | null) {
+  /**
+   * An interactive transaction that is ACTUALLY atomic, with the tenant GUC
+   * cleared so it can see every tenant's rows.
+   *
+   * Why not plain `this.prisma.$transaction(async tx => ...)`: under a request's
+   * tenant context PrismaService wraps every operation on a scoped model in a
+   * batch `$transaction([set_config, op])` of its own — a DIFFERENT connection —
+   * so the writes inside an interactive transaction were not in that
+   * transaction at all. Run unscoped, the extension passes operations through
+   * to `tx`, and they share the one connection.
+   *
+   * Callers check ownership BEFORE entering (loadApp and the apply path read
+   * under the tenant's own scope); inside, rows are addressed by id.
+   */
+  unscopedTx<T>(fn: (tx: any) => Promise<T>): Promise<T> {
+    return tenantContext.runUnscoped(() =>
+      this.prisma.$transaction(async (tx: any) => {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant_id', '', true)`;
+        return fn(tx);
+      }, { timeout: 20_000 }),
+    );
+  }
+
+  /* ── Application numbers from OUR online series ───────────────────────
+
+     Operator decision (2026-11-20): a bid carries an application number from
+     the IPO's active "Online Apply" series — the same way a printed form takes
+     its number from the PDF series — rather than leaving the exchange to assign
+     one. Both adapters already send `applicationNumber` when it is set.
+
+     Run inside `unscopedTx`. The series is shared by EVERY tenant bidding this
+     IPO, so the used numbers must be read across all of them — under RLS a
+     partner would see only its own and hand out a number another partner
+     already holds. And the advisory lock is transaction-scoped, so the read
+     and the write must happen on the one connection that holds it. */
+
+  /**
+   * Serialise bid creation for one IPO until the transaction ends. Taken before
+   * the duplicate-PAN check as well as the numbering, so two bids for the same
+   * PAN arriving at the same moment cannot both pass the check.
+   */
+  async lockIpoBids(tx: any, ipoId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bid-series:' + ipoId}::text))`;
+  }
+
+  /**
+   * The next `count` application numbers from the IPO's active online series.
+   * Refuses when no series range is set or the range is used up — a bid is never
+   * sent with a number we invented, nor left for the exchange to number when the
+   * operator has chosen our own series.
+   */
+  async allocateApplicationNumbers(tx: any, ipo: { id: string; extra?: any }, count = 1): Promise<string[]> {
+    const row = activeOnlineSeries(ipo.extra);
+    if (!row || row.from == null || String(row.from).trim() === '') {
+      throw new BadRequestException('Online bidding is not set up for this IPO yet (no application-number series is set).');
+    }
+    await this.lockIpoBids(tx, ipo.id);
+    const used: Array<string | null> = (await tx.application.findMany({
+      where: { ipoId: ipo.id, applicationNumber: { not: null } },
+      select: { applicationNumber: true },
+    })).map((r: any) => r.applicationNumber);
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const n = nextSeriesNumber(used, row.from, row.to);
+      if (!n) throw new BadRequestException('The online application-number series for this IPO is used up. Please contact support.');
+      out.push(n);
+      used.push(n);
+    }
+    return out;
+  }
+
+
+  /**
+   * Shape the row that records one intent. Never posts. Public so the apply
+   * path can write a new bid and its operation in ONE transaction.
+   */
+  intent(app: any, action: 'new' | 'modify' | 'cancel', qty: number, price?: number | null) {
     return {
       applicationId: app.id,
       ipoId: app.ipoId,
@@ -64,18 +140,6 @@ export class BidOperationsService {
       price: price != null ? new Prisma.Decimal(price) : app.bidPrice,
       atCutoff: app.atCutoff,
     };
-  }
-
-  /**
-   * Record that a bid should be placed. Called when an application is created;
-   * posting happens separately so a slow or unreachable exchange never fails an
-   * investor's apply.
-   */
-  async queueNew(applicationId: string) {
-    const app = await this.loadApp(applicationId);
-    return this.prisma.bidOperation.create({
-      data: this.opData(app, 'new', this.qtyOf(app)),
-    });
   }
 
   /**
@@ -101,19 +165,35 @@ export class BidOperationsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.unscopedTx(async (tx) => {
       const op = pendingNew
-        ? await tx.bidOperation.update({
-            where: { id: pendingNew.id },
-            data: { qty: nextQty, ...(price != null ? { price: new Prisma.Decimal(price) } : {}) },
-          })
-        : await tx.bidOperation.create({ data: this.opData(app, 'modify', nextQty, price) });
+        ? await this.amendPendingNew(tx, pendingNew, { qty: nextQty, ...(price != null ? { price: new Prisma.Decimal(price) } : {}) })
+        : await tx.bidOperation.create({ data: this.intent(app, 'modify', nextQty, price) });
       await tx.application.update({
         where: { id: app.id },
         data: { shareQty: nextQty, ...(price != null ? { bidPrice: new Prisma.Decimal(price) } : {}) },
       });
       return op;
+    }).then((r) => { this.kick(); return r; });
+  }
+
+  /**
+   * Change a pending NEW operation only if the sender has not picked it up.
+   *
+   * The sender claims a row by bumping `attempts`; once it has, the bid may be
+   * on its way to the exchange, and quietly editing the row would leave our
+   * ledger describing a bid the exchange never received. So the edit is
+   * conditional on the row being exactly as we read it, and refused otherwise.
+   */
+  private async amendPendingNew(tx: any, pendingNew: { id: string; attempts: number }, data: any) {
+    const done = await tx.bidOperation.updateMany({
+      where: { id: pendingNew.id, state: 'pending', attempts: pendingNew.attempts },
+      data,
     });
+    if (done.count !== 1) {
+      throw new BadRequestException('This bid is being sent to the exchange right now. Try again in a minute.');
+    }
+    return tx.bidOperation.findUnique({ where: { id: pendingNew.id } });
   }
 
   /**
@@ -125,7 +205,7 @@ export class BidOperationsService {
    * coming back, and a bid can be cancelled before anything was ever blocked.
    * Keeping them apart is also what lets the investor re-apply afterwards.
    */
-  async queueCancel(applicationId: string) {
+  async queueCancel(applicationId: string, by: 'operator' | 'investor' = 'operator') {
     const app = await this.loadApp(applicationId);
     const check = mayCancel(app.category, this.atExchange(app));
     if (!check.ok) throw new BadRequestException(check.reason);
@@ -142,22 +222,19 @@ export class BidOperationsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.unscopedTx(async (tx) => {
       const op = pendingNew
-        ? await tx.bidOperation.update({
-            where: { id: pendingNew.id },
-            data: { state: 'failed', reason: 'Cancelled before it was sent to the exchange.' },
-          })
-        : await tx.bidOperation.create({ data: this.opData(app, 'cancel', this.qtyOf(app)) });
+        ? await this.amendPendingNew(tx, pendingNew, { state: 'failed', reason: 'Cancelled before it was sent to the exchange.' })
+        : await tx.bidOperation.create({ data: this.intent(app, 'cancel', this.qtyOf(app)) });
       await tx.application.update({ where: { id: app.id }, data: { status: 'cancelled' } });
       await tx.applicationStatusEvent.create({
         data: {
           applicationId: app.id, status: 'cancelled',
-          detail: { by: 'operator', opId: op.id, atExchange } as any,
+          detail: { by, opId: op.id, atExchange } as any,
         },
       });
       return op;
-    });
+    }).then((r) => { this.kick(); return r; });
   }
 
   /**
@@ -168,7 +245,7 @@ export class BidOperationsService {
    * fails it stays pending and is retried; at no point does the cancellation
    * exist without its replacement.
    *
-   * The new row gets its own idempotency key and no application number — it is
+   * The new row gets its own idempotency key and a NEW number from our series — it is
    * genuinely a new bid, which is also why the investor must approve a fresh
    * UPI mandate. The money does not carry across.
    */
@@ -179,34 +256,37 @@ export class BidOperationsService {
     if (!check.ok) throw new BadRequestException(check.reason);
 
     const qty = nextQty ?? this.qtyOf(app);
-    return this.prisma.$transaction(async (tx) => {
-      const cancelOp = await tx.bidOperation.create({ data: this.opData(app, 'cancel', this.qtyOf(app)) });
+    return this.unscopedTx(async (tx) => {
+      const cancelOp = await tx.bidOperation.create({ data: this.intent(app, 'cancel', this.qtyOf(app)) });
       await tx.application.update({ where: { id: app.id }, data: { status: 'cancelled' } });
 
       const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = app as any;
       delete rest.ipo;
+      // a new bid at the exchange takes a NEW number from our series
+      const [applicationNumber] = await this.allocateApplicationNumbers(tx, app.ipo, 1);
       const fresh = await tx.application.create({
         data: {
           ...rest,
           shareQty: qty,
           ...(price != null ? { bidPrice: new Prisma.Decimal(price) } : {}),
           // a new bid at the exchange: none of the old identifiers carry over
-          applicationNumber: null,
+          applicationNumber,
+          rail: null,
           bidReferenceNumber: null,
           rejectionReason: null,
           upiStatusText: null,
           upiStatusAt: null,
           amountBlocked: null,
-          status: 'draft',
+          status: 'submitted',
           idempotencyKey: `rebid:${app.id}:${cancelOp.id}`,
         },
       });
-      const newOp = await tx.bidOperation.create({ data: this.opData({ ...fresh, ipoId: app.ipoId }, 'new', qty, price) });
+      const newOp = await tx.bidOperation.create({ data: this.intent({ ...fresh, ipoId: app.ipoId }, 'new', qty, price) });
       await tx.applicationStatusEvent.create({
         data: { applicationId: app.id, status: 'cancelled', detail: { reason: 'rebid', replacedBy: fresh.id } },
       });
       return { cancelled: app.id, created: fresh.id, ops: [cancelOp.id, newOp.id] };
-    });
+    }).then((r) => { this.kick(); return r; });
   }
 
   /**
@@ -236,9 +316,68 @@ export class BidOperationsService {
     if (!check.needsExchange) return { queued: false as const, reason: 'This bid is not with an exchange yet, so there is nothing to restate.' };
 
     const op = await this.prisma.bidOperation.create({
-      data: this.opData(app, 'modify', this.qtyOf(app), app.bidPrice != null ? Number(app.bidPrice) : null),
+      data: this.intent(app, 'modify', this.qtyOf(app), app.bidPrice != null ? Number(app.bidPrice) : null),
     });
+    this.kick();
     return { queued: true as const, operationId: op.id };
+  }
+
+  /* ── The sender ─────────────────────────────────────────────────────────
+
+     ONE PIPELINE FOR EVERY ACTION (Phase 0, 2026-11-20). New bids used to go
+     through a separate BullMQ queue whose worker skipped every one of them: the
+     application was marked `submitted` BEFORE it was queued, and the worker read
+     `submitted` as "already sent". Modify / cancel / UPI-change rows were written
+     here and nothing ever sent them, because nothing called `postPending`. Both
+     halves were latent only because no bid had ever been placed.
+
+     Now every action is a row in this table and this one sender drains them.
+     Whether something has been SENT is decided by the operation's own state,
+     never by the application's status — which is the confusion that broke the
+     old queue. */
+
+  private timer?: NodeJS.Timeout;
+  private draining = false;
+  private again = false;
+
+  onModuleInit() {
+    // Off for a boot test, like the subscription poller: a second API process
+    // must never send bids from the production database.
+    if (process.env.BID_POST_DISABLED === 'true') return;
+    const every = Math.max(1000, Number(process.env.BID_POST_INTERVAL_MS ?? 5000) || 5000);
+    this.timer = setInterval(() => this.kick(), every);
+    this.timer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  /** Ask the sender to run now. Cheap and safe to call after every write. */
+  kick() {
+    if (process.env.BID_POST_DISABLED === 'true') return;
+    if (this.draining) { this.again = true; return; }
+    this.draining = true;
+    setImmediate(async () => {
+      try {
+        do {
+          this.again = false;
+          await this.postPending();
+        } while (this.again);
+      } catch (e: any) {
+        this.log.warn(`bid sender: ${e?.message ?? e}`);
+      } finally {
+        this.draining = false;
+      }
+    });
+  }
+
+  /** Attempts before a network-type failure is given up on. */
+  private static readonly MAX_ATTEMPTS = 6;
+
+  /** Wait before retry N: 10s, 20s, 40s, 80s, 160s. */
+  private static backoffMs(attempts: number) {
+    return 10_000 * 2 ** Math.max(0, attempts - 1);
   }
 
   /**
@@ -246,39 +385,104 @@ export class BidOperationsService {
    *
    * Deliberately tolerant: one failing row must not stop the rest of the queue,
    * because a closing-day burst is exactly when this runs and exactly when one
-   * bad bid would do the most damage. A failure records the exchange's own
-   * reason and leaves the row for a retry.
+   * bad bid would do the most damage.
+   *
+   * EACH ROW IS CLAIMED BEFORE IT IS SENT. The claim is an update that only
+   * succeeds if the row is still pending with the attempt count we read, so two
+   * senders — two ticks, or two processes — can never send the same row twice.
    */
   async postPending(limit = 50) {
     const pending = await this.prisma.bidOperation.findMany({
       where: { state: 'pending', memberCredentialId: { not: null } },
       orderBy: { createdAt: 'asc' },
-      take: limit,
+      take: limit * 2,
       // dematAccounts rides along: toSubmission() resolves WHICH demat this
       // application named, and reading the profile's own columns would send the
       // default every time.
       include: { application: { include: { ipo: true, profile: { include: { dematAccounts: true } } } } },
     });
+    const now = Date.now();
+    const due = pending
+      .filter((op) => op.attempts === 0 || now - op.updatedAt.getTime() >= BidOperationsService.backoffMs(op.attempts))
+      .slice(0, limit);
 
-    let posted = 0, failed = 0;
-    for (const op of pending) {
+    let posted = 0, failed = 0, retrying = 0;
+    for (const op of due) {
+      const claim = await this.prisma.bidOperation.updateMany({
+        where: { id: op.id, state: 'pending', attempts: op.attempts },
+        data: { attempts: { increment: 1 } },
+      });
+      if (claim.count !== 1) continue; // someone else has it
       try {
-        const res = await this.postOne(op);
-        posted += res ? 1 : 0;
-        failed += res ? 0 : 1;
+        if (await this.postOne(op)) posted++; else failed++;
       } catch (e: any) {
-        failed++;
-        await this.prisma.bidOperation.update({
-          where: { id: op.id },
-          data: {
-            state: 'failed', attempts: { increment: 1 },
-            reason: String(e?.message ?? e).slice(0, 300),
-          },
-        });
-        this.log.warn(`bid op ${op.id} (${op.action}) failed: ${e?.message ?? e}`);
+        const outcome = await this.recordError(op, e);
+        if (outcome === 'retry') retrying++; else failed++;
       }
     }
-    return { considered: pending.length, posted, failed };
+    return { considered: due.length, posted, failed, retrying };
+  }
+
+  /**
+   * A thrown error, as opposed to an exchange rejection.
+   *
+   * A payload we refused to build (`BidSubmissionError` — no PAN, no UPI, a
+   * demat that cannot be resolved) is PERMANENT: retrying sends the same broken
+   * bid. A network failure, a timeout or a rate limit is worth retrying with a
+   * growing wait, up to MAX_ATTEMPTS.
+   */
+  private async recordError(op: any, e: any): Promise<'retry' | 'failed'> {
+    const reason = String(e?.message ?? e).slice(0, 300);
+    const attempts = op.attempts + 1;
+    const permanent = e instanceof BidSubmissionError || !isTransient(e);
+    if (!permanent && attempts < BidOperationsService.MAX_ATTEMPTS) {
+      await this.prisma.bidOperation.update({
+        where: { id: op.id },
+        data: { reason, errorCode: e?.code ?? null },
+      });
+      this.log.warn(`bid op ${op.id} (${op.action}) will retry: ${reason}`);
+      return 'retry';
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bidOperation.update({
+        where: { id: op.id },
+        data: { state: 'failed', reason, errorCode: e?.code ?? null },
+      });
+      await this.markApplicationAfterFailure(tx, op, reason, e?.code ?? null);
+    });
+    this.log.warn(`bid op ${op.id} (${op.action}) failed: ${reason}`);
+    return 'failed';
+  }
+
+  /**
+   * What a failed operation means for the application.
+   *
+   * A failed NEW bid never reached the exchange, so the application is `failed`
+   * and the investor may apply again. A failed MODIFY or CANCEL leaves the bid
+   * the exchange already holds exactly as it was, so only the reason is recorded.
+   * (A cancel marks the application `cancelled` when it is queued; if the
+   * exchange then refuses the cancel the bid is still live there — the event row
+   * and the reason say so, and the operator sees it in the Bidding Report.)
+   */
+  private async markApplicationAfterFailure(tx: any, op: any, reason: string, code: string | null) {
+    if (op.action === 'new') {
+      await tx.application.update({
+        where: { id: op.applicationId },
+        data: { status: 'failed', rejectionReason: reason || null },
+      });
+      await tx.applicationStatusEvent.create({
+        data: { applicationId: op.applicationId, status: 'failed', detail: { opId: op.id, code, reason } as any },
+      });
+    } else {
+      await tx.application.update({ where: { id: op.applicationId }, data: { rejectionReason: reason || null } });
+      await tx.applicationStatusEvent.create({
+        data: {
+          applicationId: op.applicationId,
+          status: op.application?.status ?? 'submitted',
+          detail: { opId: op.id, action: op.action, refused: true, code, reason } as any,
+        },
+      });
+    }
   }
 
   /** One operation → one exchange call → the row updated with what came back. */
@@ -289,36 +493,59 @@ export class BidOperationsService {
       : op.action === 'cancel' ? this.rail.orchestrator.cancel(req, op.memberCredentialId)
       : this.rail.orchestrator.submit(req, op.memberCredentialId);
 
-    const res: any = await call;
+    // The adapters answer with BidResult: applicationNumber, bidIds, errorCode,
+    // message. This used to read `bidReferenceNumber` and `reason`, which a
+    // BidResult does not have, so the exchange's id and its rejection text were
+    // both thrown away.
+    const res: BidResult = await call;
     const ok = res?.ok !== false;
+    const reference = res?.bidIds?.[0] ?? null;
+    const reason = ok ? null : String(res?.message ?? 'The exchange rejected this bid.').slice(0, 300);
+    const cred = await this.prisma.memberCredential.findUnique({
+      where: { id: op.memberCredentialId }, select: { exchange: true },
+    });
 
     await this.prisma.$transaction(async (tx) => {
       await tx.bidOperation.update({
         where: { id: op.id },
         data: {
           state: ok ? 'posted' : 'failed',
-          attempts: { increment: 1 },
           postedAt: ok ? new Date() : null,
-          reference: res?.bidReferenceNumber ?? res?.reference ?? null,
-          errorCode: res?.reasonCode ?? res?.errorCode ?? null,
-          reason: ok ? null : String(res?.reason ?? 'The exchange rejected this bid.').slice(0, 300),
-          raw: res ?? undefined,
+          exchange: cred?.exchange ?? op.exchange ?? null,
+          reference,
+          errorCode: res?.errorCode ?? null,
+          reason,
+          raw: (res?.raw ?? res ?? undefined) as any,
         },
       });
-      if (ok && op.action === 'new') {
+      if (!ok) {
+        await this.markApplicationAfterFailure(tx, op, reason ?? '', res?.errorCode ?? null);
+        return;
+      }
+      if (op.action === 'new') {
+        // UPI bid accepted: the investor now has a mandate request to approve.
+        const status = req.upi ? 'mandate_pending' : 'submitted';
         await tx.application.update({
           where: { id: app.id },
           data: {
-            status: 'submitted',
+            status,
+            rail: cred?.exchange ?? null,
             applicationNumber: res?.applicationNumber ?? app.applicationNumber,
-            bidReferenceNumber: res?.bidReferenceNumber ?? null,
+            bidReferenceNumber: reference ?? app.bidReferenceNumber,
+            upiFlag: req.upi ? 'Y' : 'N',
             rejectionReason: null,
           },
         });
-      } else if (!ok) {
+        await tx.applicationStatusEvent.create({
+          data: { applicationId: app.id, status, detail: { opId: op.id, sent: true } as any },
+        });
+      } else {
         await tx.application.update({
           where: { id: app.id },
-          data: { rejectionReason: String(res?.reason ?? '').slice(0, 300) || null },
+          data: { rejectionReason: null, ...(reference ? { bidReferenceNumber: reference } : {}) },
+        });
+        await tx.applicationStatusEvent.create({
+          data: { applicationId: app.id, status: app.status, detail: { opId: op.id, action: op.action, sent: true } as any },
         });
       }
     });
@@ -343,7 +570,7 @@ export class BidOperationsService {
   private async toSubmission(op: any, app: any): Promise<BidSubmission> {
     const demat = dematForApplication(app.profile, app.profile?.dematAccounts ?? [], app.dematAccountId);
     if (!demat) {
-      throw new Error(
+      throw new BidSubmissionError(
         `Application ${app.id}: the chosen demat account could not be resolved`
         + `${app.dematAccountId ? ` (${app.dematAccountId} — retired or removed)` : ' (the applicant has none)'}. `
         + 'Refusing to bid rather than credit a different account.',
