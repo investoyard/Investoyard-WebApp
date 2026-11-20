@@ -7961,3 +7961,17 @@ html[data-template='cobalt']   .thm-chrome[data-theme-chrome='cobalt'] { display
 .akp-scope .mono { font-size: 11.5px; }
 .akp-note { font-size: 12.5px; }
 .akp-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+/* ── Admin API docs (app/admin/partner-api/docs) — `apd-` ────────────────── */
+.apd-index { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 22px; margin-top: 12px; }
+.apd-index-t { display: block; font-weight: 700; font-size: 13.5px; color: var(--text); margin-bottom: 6px; text-decoration: none; }
+.apd-index-i { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 0; color: var(--text-muted); text-decoration: none; }
+.apd-index-i:hover .mono, .apd-index-t:hover { color: var(--brand); }
+.apd-method { display: inline-block; min-width: 40px; text-align: center; font: 700 10.5px/1 var(--font-sans); letter-spacing: .04em; padding: 4px 6px; border-radius: 6px; }
+.apd-method.get { background: var(--brand-50); color: var(--brand); }
+.apd-method.post { background: var(--pos-soft); color: var(--pos-ink); }
+.apd-ep { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; scroll-margin-top: calc(var(--header-h, 64px) + 16px); }
+.apd-ep-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.apd-path { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; }
+.apd-sum { font-size: 13.5px; line-height: 1.6; margin: 8px 0 0; }
+.apd-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 6px; }

@@ -6,7 +6,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { sha256 } from './partner.guard';
-import { keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
+import { effectiveIpoStatus, istToday, keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
 import { resolveTenantScopes } from './partner-scope';
 import { PartnerApplicantDto, PartnerPrintFormsDto } from './partner.dto';
 
@@ -1018,7 +1018,9 @@ export class PartnerService {
       name: ipo.name,
       board: ipo.type,
       instrument: ipo.instrument,
-      status: ipo.status,
+      // DERIVED — the later of the stored status and what the dates prove. This
+      // reported the raw stored column until 2026-11-20, which nobody advances.
+      status: effectiveIpoStatus(ipo),
       exchanges: ipo.exchanges?.length ? ipo.exchanges : undefined,
       openDate: day(ipo.openDate),
       closeDate: day(ipo.closeDate),
@@ -1047,7 +1049,7 @@ export class PartnerService {
     const where: any = { hidden: false };
     if (q.board === 'mainboard' || q.board === 'sme') where.type = q.board;
     if (q.instrument) where.instrument = q.instrument;
-    if (q.status) where.status = q.status;
+    if (q.status) Object.assign(where, ipoStatusWhere(String(q.status)));
 
     const [total, rows] = await Promise.all([
       this.prisma.ipo.count({ where }),
@@ -1140,4 +1142,38 @@ function cleanIps(list?: string[]): string[] {
   const bad = out.filter((ip) => !isIP(ip));
   if (bad.length) throw new BadRequestException(`Not an IP address: ${bad.join(', ')}. List each server address on its own.`);
   return out;
+}
+
+/**
+ * The `status` filter as a query — the same rule as `effectiveIpoStatus`: the
+ * LATER of the stored status and what the dates prove, with `withdrawn`
+ * winning outright. Filtering on the stored column alone found no open IPO at
+ * all (nobody advances it), and it is not dead either — 1,172 rows store
+ * 'listed', most with no listing date — so the dates alone are wrong too.
+ *
+ * Each stage is "stored as at least this, OR the dates reached it", and the
+ * stages above it must NOT hold. The negations spell out the NULL case: in SQL,
+ * NOT (listingDate <= t) is NULL for a missing date and would drop the row.
+ *
+ * The date columns hold UTC midnight of the India date, so "today" is that
+ * instant for the India day. An unknown status matches nothing rather than
+ * everything — a filter that silently does nothing reads as a correct answer.
+ */
+export function ipoStatusWhere(status: string, now: number = Date.now()): any {
+  const t = new Date(`${istToday(now)}T00:00:00Z`);
+  const notWithdrawn = { NOT: { status: 'withdrawn' as any } };
+  const listed = { OR: [{ status: 'listed' as any }, { listingDate: { lte: t } }] };
+  const notListed = { AND: [{ NOT: { status: 'listed' as any } }, { OR: [{ listingDate: null }, { listingDate: { gt: t } }] }] };
+  const closed = { OR: [{ status: 'closed' as any }, { closeDate: { lt: t } }] };
+  const notClosed = { AND: [{ NOT: { status: 'closed' as any } }, { OR: [{ closeDate: null }, { closeDate: { gte: t } }] }] };
+  const open = { OR: [{ status: 'open' as any }, { openDate: { lte: t } }] };
+  const notOpen = { AND: [{ NOT: { status: 'open' as any } }, { OR: [{ openDate: null }, { openDate: { gt: t } }] }] };
+  switch (status) {
+    case 'withdrawn': return { status: 'withdrawn' };
+    case 'listed': return { AND: [notWithdrawn, listed] };
+    case 'closed': return { AND: [notWithdrawn, notListed, closed] };
+    case 'open': return { AND: [notWithdrawn, notListed, notClosed, open] };
+    case 'upcoming': return { AND: [notWithdrawn, notListed, notClosed, notOpen] };
+    default: return { id: '__no_such_status__' };
+  }
 }

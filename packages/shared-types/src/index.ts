@@ -330,6 +330,7 @@ export * from './bidGate';
 export * from './partnerScopes';
 export * from './partnerBid';
 export * from './partnerBidLimits';
+export * from './ipoStatus';
 export * from './unblockRules';
 export * from './sponsorBank';
 export * from './ipoDocs';

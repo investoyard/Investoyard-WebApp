@@ -25,7 +25,7 @@
  * passes around, and the three view helpers below.
  */
 import type { IpoDetail, SubscriptionRow } from '@investoyard/shared-types';
-import { reservedPctFor, istToday } from '@investoyard/shared-types';
+import { effectiveIpoStatus, reservedPctFor, istToday } from '@investoyard/shared-types';
 
 /** Subscription row enriched with the category's reserved % of the issue. */
 export type SubRow = SubscriptionRow & { reservedPct?: number };
@@ -50,17 +50,10 @@ const RESERVED_SME: Record<string, number> = { qib: 0, nii: 50, retail: 50, empl
  * dates prove (an IPO whose close date passed can't still be "upcoming").
  * Explicit 'withdrawn' is always respected.
  */
-const STATUS_ORDER = ['upcoming', 'open', 'closed', 'listed'];
+/* The rule is `effectiveIpoStatus` in shared-types — one copy for web, mobile
+   and the partner API. */
 export function effectiveStatus(ipo: Pick<IpoDetail, 'status' | 'openDate' | 'closeDate' | 'listingDate'>): IpoDetail['status'] {
-  if (ipo.status === 'withdrawn') return ipo.status;
-  const day = istToday(); // IST — the issue's own calendar, not the phone's
-  let derived = 'upcoming';
-  if (ipo.listingDate && day >= ipo.listingDate) derived = 'listed';
-  else if (ipo.closeDate && day > ipo.closeDate) derived = 'closed';
-  else if (ipo.openDate && day >= ipo.openDate) derived = 'open';
-  const a = STATUS_ORDER.indexOf(ipo.status);
-  const d = STATUS_ORDER.indexOf(derived);
-  return (d > a ? derived : ipo.status) as IpoDetail['status'];
+  return effectiveIpoStatus(ipo) as IpoDetail['status'];
 }
 
 /**
