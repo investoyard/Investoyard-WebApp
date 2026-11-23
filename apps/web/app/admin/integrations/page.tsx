@@ -123,15 +123,15 @@ const SPECS = [
   },
   {
     key: 'alerts', label: 'Operator alerts — email', platformOnly: true,
-    hint: 'Where the system emails an alert — an exchange rejecting our member login, a login that keeps failing, an exchange feed that stopped updating, an open IPO the poller cannot read. One email when an alert opens and one when it clears. Leave blank to use bhavik@mysafal.com.',
-    fields: [{ name: 'emails', label: 'Send alerts to (comma-separated)', placeholder: 'bhavik@mysafal.com' }],
+    hint: 'Where the system emails an alert — an exchange rejecting our member login, a login that keeps failing, an exchange feed that stopped updating, an open IPO the poller cannot read. One email when an alert opens and one when it clears. Leave blank to use bhavik.patel@mysafal.com.',
+    fields: [{ name: 'emails', label: 'Send alerts to (comma-separated)', placeholder: 'bhavik.patel@mysafal.com' }],
     secretFields: [],
     guide: {
       title: 'Operator alerts',
       note: 'Alerts also appear at the top of the admin dashboard and in the bell. Email goes through the Email card above, so that card has to be configured for these to arrive.',
       steps: [
         'Type one or more addresses, separated by commas.',
-        'Turn Enabled on and click Save. With Enabled off, alerts go to bhavik@mysafal.com.',
+        'Turn Enabled on and click Save. With Enabled off, alerts go to bhavik.patel@mysafal.com.',
         'When the exchange rejects a password, every job using that login stops at once — subscription, the IPO master and holidays, and bid sending. Save the new password on Exchange Rails: it is tested first and everything resumes on its own.',
       ],
       footer: 'Changes take effect within about a minute. No restart needed.',

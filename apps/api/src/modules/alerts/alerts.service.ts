@@ -23,7 +23,7 @@ export type AlertKind = 'login-rejected' | 'login-failing' | 'feed-stopped' | 'n
 export interface AlertInput { key: string; kind: AlertKind; severity: AlertSeverity; title: string; detail: string }
 
 /** Operator decision 2026-11-23. Editable in System Settings → Provider Keys → Operator alerts. */
-const DEFAULT_RECIPIENTS = ['bhavik@mysafal.com'];
+const DEFAULT_RECIPIENTS = ['bhavik.patel@mysafal.com'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
