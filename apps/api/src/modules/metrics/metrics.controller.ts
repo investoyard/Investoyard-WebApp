@@ -120,6 +120,13 @@ export class MetricsAdminController {
    * signed in. Paged — the summary above it is the thing to read at a glance,
    * this is for answering a question about one visit.
    */
+  /** Bots on the tracked pages, read from the server access log (2026-11-23). */
+  @Get('bots')
+  @RequirePermissions('dashboard.view')
+  bots(@Query('from') from?: string, @Query('to') to?: string, @Query('path') path?: string) {
+    return this.metrics.bots({ from, to, path });
+  }
+
   @Get('visits')
   @RequirePermissions('dashboard.view')
   visits(

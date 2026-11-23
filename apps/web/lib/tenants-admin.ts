@@ -834,12 +834,14 @@ export interface RailCred {
   id: string; exchange: 'NSE_EIPO' | 'BSE_IBBS'; memberName: string; memberType: string;
   loginId: string; memberCode: string; subBrokerCode?: string; baseUrl: string;
   env: 'live' | 'uat'; active: boolean; subscriptionUse?: boolean; passwordSet: boolean; ibbsIdSet: boolean; checksumKeySet?: boolean;
+  /** Set by the system when the exchange rejected this login (2026-11-23): nothing uses it until a new password works. */
+  pausedAt?: string | null; pausedReason?: string | null;
 }
 export const fetchRails = () => authed<RailCred[]>(`${API}/admin/rails`, { method: 'GET' });
 export const createRail = (body: any) =>
   authed<{ id: string }>(`${API}/admin/rails`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const updateRail = (id: string, body: any) =>
-  authed<{ updated: boolean }>(`${API}/admin/rails/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  authed<{ updated: boolean; resumed?: boolean; note?: string }>(`${API}/admin/rails/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 export const deleteRail = (id: string) =>
   authed<{ deleted: boolean; memberName: string }>(`${API}/admin/rails/${id}`, { method: 'DELETE' });
 export type RailTestOutcome = 'connected' | 'rejected' | 'unreachable' | 'incomplete' | 'invalid_secret';
@@ -854,6 +856,9 @@ export interface RailTestResult {
 }
 export const testRail = (id: string) =>
   authed<RailTestResult>(`${API}/admin/rails/${id}/test`, { method: 'POST' });
+/** Resume a paused login — the server tests it first and stays paused if it is still refused. */
+export const resumeRail = (id: string) =>
+  authed<{ resumed: boolean; note: string }>(`${API}/admin/rails/${id}/resume`, { method: 'POST' });
 /** Run a live NSE subscription sweep now (all open IPOs). */
 export const pollSubscription = () =>
   authed<{ open: number; updated: number; reason?: string }>(`${API}/admin/rails/subscription/poll`, { method: 'POST' });
@@ -1225,6 +1230,15 @@ export const publishImportedIpos = (symbols: string[], published = true) =>
   });
 /** Admin catalog view includes bulk-imported rows; the public site never does. */
 export const fetchAllIpos = () => fetch(`${API}/ipos?all=1&limit=2000`).then(j<AdminIpo[]>);
+/* LIGHT LISTS (2026-11-23): the same rows without detail-page prose and the hourly
+   log — about 40% of the 2.9 MB full list. For screens that only LIST IPOs; anything
+   that saves an IPO loads the full record first. */
+export const fetchAllIposLight = () => fetch(`${API}/ipos?all=1&limit=2000&view=light`).then(j<AdminIpo[]>);
+export const fetchIposLight = () => fetch(`${API}/ipos?limit=2000&view=light`).then(j<AdminIpo[]>);
+/** Live, upcoming and closed in the last `days` days. */
+export const fetchRecentIpos = (days = 30) => fetch(`${API}/ipos?view=light&recentDays=${days}`).then(j<AdminIpo[]>);
+/** Find IPOs by symbol or name — for the search box on IPO Operations. */
+export const searchIpos = (q: string, limit = 20) => fetch(`${API}/ipos?view=light&limit=${limit}&q=${encodeURIComponent(q)}`).then(j<AdminIpo[]>);
 
 /* -------------------------------------------------- admin: GMP log + contributors */
 export interface GmpLogRow {
@@ -1931,3 +1945,26 @@ export const tryPartnerEndpoint = (req: { tenantId?: string; endpoint: string; q
   authed<PartnerTryResult>(`${API}/admin/partner-api/try`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req),
   });
+
+/* ── Operator alerts (2026-11-23) ─────────────────────────────────────────── */
+export interface OperatorAlert {
+  id: string; key: string;
+  kind: 'login-rejected' | 'login-failing' | 'feed-stopped' | 'no-reservation';
+  severity: 'critical' | 'warning';
+  title: string; detail: string;
+  openedAt: string; lastSeenAt: string; resolvedAt: string | null;
+  emailedAt: string | null; resolvedEmailedAt: string | null;
+}
+export interface AlertList { recipients: string[]; open: OperatorAlert[]; resolved: OperatorAlert[] }
+/** Platform operators only. */
+export const fetchAlerts = () => authed<AlertList>(`${API}/admin/alerts`, { method: 'GET' });
+
+/* ── Bots on the tracked pages, from the server access log (2026-11-23) ───── */
+export interface BotReport {
+  from: string; to: string; path: string | null; total: number;
+  bots: { bot: string; hits: number; pages: Record<string, number>; days: number; lastAt: string; sampleUa: string }[];
+  days: { day: string; hits: number }[];
+  lastSeenAt: string | null;
+}
+export const fetchBotReport = (q: { from?: string; to?: string; path?: string }) =>
+  authed<BotReport>(`${API}/admin/metrics/bots?${qstr(q as any)}`, { method: 'GET' });

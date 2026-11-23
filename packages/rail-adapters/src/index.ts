@@ -2,6 +2,7 @@
  * Investoyard rail adapters — barrel + orchestrator.
  */
 export * from './rail-adapter.types';
+export * from './auth-failure';
 export { NseEipoAdapter } from './nse-eipo.adapter';
 export type { HolidayEntry } from './nse-eipo.adapter';
 export { NseQueryAdapter } from './nse-query.adapter';

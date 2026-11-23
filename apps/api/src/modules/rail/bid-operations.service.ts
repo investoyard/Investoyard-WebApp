@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { mayCancel, mayReviseTo, mayChangeUpi, dematForApplication, activeOnlineSeries, nextSeriesNumber } from '@investoyard/shared-types';
-import { buildBidSubmission, BidSubmissionError, isTransient, type BidResult, type BidSubmission } from '@investoyard/rail-adapters';
+import { buildBidSubmission, BidSubmissionError, isAuthFailure, isTransient, type BidResult, type BidSubmission } from '@investoyard/rail-adapters';
+import { RailHealthService } from './rail-health.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { tenantContext } from '../../common/tenant-context';
@@ -34,6 +35,7 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
     private prisma: PrismaService,
     private rail: RailService,
     private vault: PiiVaultService,
+    private health: RailHealthService,
   ) {}
 
   /** The share quantity a bid currently stands at. */
@@ -429,7 +431,15 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
       include: { application: { include: { ipo: true, bidApplicant: true, profile: { include: { dematAccounts: true } } } } },
     });
     const now = Date.now();
+    // A member login the exchange has REJECTED is paused (2026-11-23): its bids
+    // wait, untouched and still pending, until a new password works — rather
+    // than each one being tried with a bad password and failed.
+    const credIds = [...new Set(pending.map((op: any) => op.memberCredentialId).filter(Boolean))] as string[];
+    const paused = new Set<string>(credIds.length
+      ? ((await (this.prisma as any).memberCredential.findMany({ where: { id: { in: credIds }, pausedAt: { not: null } }, select: { id: true } })) as any[]).map((c) => c.id)
+      : []);
     const due = pending
+      .filter((op: any) => !(op.memberCredentialId && paused.has(op.memberCredentialId)))
       .filter((op) => op.attempts === 0 || now - op.updatedAt.getTime() >= BidOperationsService.backoffMs(op.attempts))
       .slice(0, limit);
 
@@ -443,6 +453,17 @@ export class BidOperationsService implements OnModuleInit, OnModuleDestroy {
       try {
         if (await this.postOne(op)) posted++; else failed++;
       } catch (e: any) {
+        // OUR login was rejected — not the client's bid. Pause the login, give the
+        // attempt back and leave the bid pending: it goes when a password works.
+        if (isAuthFailure(e) && (op as any).memberCredentialId) {
+          await this.health.reportFailure((op as any).memberCredentialId, e, 'sending a bid');
+          await this.prisma.bidOperation.update({
+            where: { id: op.id },
+            data: { attempts: op.attempts, reason: 'Waiting: the exchange rejected our member login; it is sent once a new password works.' },
+          });
+          retrying++;
+          continue;
+        }
         const outcome = await this.recordError(op, e);
         if (outcome === 'retry') retrying++; else failed++;
       }

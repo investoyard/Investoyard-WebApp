@@ -22,9 +22,15 @@ export class IpoController {
     /** ISO yyyy-mm-dd window on the close date, for callers wanting a slice */
     @Query('from') from?: string,
     @Query('to') to?: string,
+    /** `light` drops page prose and the hourly log — for admin LISTS (2026-11-23) */
+    @Query('view') view?: string,
+    /** only issues closing on or after this many days ago (live, upcoming, recently closed) */
+    @Query('recentDays') recentDays?: string,
   ) {
     return this.ipo.list({
       type, status, q, from, to,
+      light: view === 'light',
+      recentDays: recentDays ? Number(recentDays) : undefined,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
       includeCatalogOnly: all === '1' || all === 'true',

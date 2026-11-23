@@ -5,6 +5,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RailService } from './rail.service';
 import { BidOperationsService } from './bid-operations.service';
+import { RailHealthService } from './rail-health.service';
 import { RailCallbackController } from './rail-callback.controller';
 import { RailCallbackGuard } from './rail-callback.guard';
 import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
@@ -14,6 +15,7 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
   controllers: [RailCallbackController],
   providers: [
     RailService,
+    RailHealthService,
     BidOperationsService,
     PrismaService,
     PiiVaultService,
@@ -30,6 +32,6 @@ import { PrismaApplicationRepo, PushNotifier } from './rail-callback.providers';
   // PrismaApplicationRepo is exported so BiddingRefreshService can share
   // the SAME application-update code path the callback handler uses —
   // pull and push writes must produce identical rows.
-  exports: [RailService, BidOperationsService, PrismaApplicationRepo],
+  exports: [RailService, RailHealthService, BidOperationsService, PrismaApplicationRepo],
 })
 export class RailModule {}

@@ -2809,6 +2809,8 @@ html[data-admin-theme="dark"] .admin-shell, html[data-admin-theme="dark"] .modal
 .rl-st.on  { background: rgba(18, 146, 90, 0.12); color: #12925a; }
 .rl-st.on .rl-dot  { background: #12925a; }
 .rl-st.off { background: var(--bg-2); color: var(--text-faint); }
+.rl-st.paused { background: var(--neg-soft); color: var(--neg-ink); }
+.rl-st.paused .rl-dot { background: var(--neg); }
 .rl-st.off .rl-dot { background: var(--text-faint); }
 
 /* Masters tables (MasterCrud + SimpleMaster) — consistent chip family with
@@ -3080,6 +3082,8 @@ button.ops-badge:disabled { opacity: .5; cursor: wait; }
 .notif-item .ni-ic.warn { background: var(--warn-soft); color: var(--warn); }
 .notif-item .ni-ic.brand { background: var(--brand-50); color: var(--brand); }
 .notif-item .ni-ic.ok { background: var(--pos-soft); color: var(--pos); }
+.notif-item .ni-ic.bad { background: var(--neg-soft); color: var(--neg-ink); }
+a.notif-item { color: inherit; text-decoration: none; }
 .notif-item .ni-t { font-size: 13px; font-weight: 600; line-height: 1.35; }
 .notif-item .ni-s { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
 .notif-empty { padding: 30px 16px; text-align: center; color: var(--text-faint); font-size: 13px; }
@@ -8082,3 +8086,24 @@ html[data-template='cobalt']   .thm-chrome[data-theme-chrome='cobalt'] { display
 
 /* The status chips here are sentences, not labels — .st capitalises every word. */
 .apx .st, .pac-table .st { text-transform: none; }
+
+/* ── Dashboard operator alerts (2026-11-23). Prefix ovl- (checked free). ── */
+.ovl-alerts { margin-bottom: 18px; border-color: var(--neg); }
+.ovl-alerts.quiet { border-color: var(--border); }
+.ovl-alerts .count-badge.bad { background: var(--neg-soft); color: var(--neg-ink); }
+.ovl-alerts button.linklike { border: 0; background: transparent; padding: 0; font: inherit; font-weight: 600; }
+.ovl-alert { padding: 14px 18px; border-top: 1px solid var(--border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.ovl-alert.critical { background: color-mix(in srgb, var(--neg-soft) 45%, transparent); }
+.ovl-alert-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ovl-alert-t { font-size: 14px; color: var(--text); }
+.ovl-alert-d { font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-line; max-width: 90ch; }
+.ovl-alert-m { font-size: 12px; color: var(--text-muted); }
+.ovl-alert.resolved .ovl-alert-t { color: var(--text-muted); font-weight: 600; }
+.ovl-alerts .st { text-transform: none; }
+
+/* Visitors → Bots tab (2026-11-23). The user-agent column is long; it is cut with
+   an ellipsis and the full string is in the title. The table scrolls inside its
+   own box on a narrow screen rather than pushing the page sideways. */
+.vis-bots-wrap { overflow-x: auto; }
+.vis-bots { min-width: 860px; }
+.vis-bots .vis-ua { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-muted); }

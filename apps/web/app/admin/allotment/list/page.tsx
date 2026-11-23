@@ -98,7 +98,7 @@ export default function AllotmentListPage() {
   const tableView = !panBulk && !appBulkOn;
 
   useEffect(() => {
-    api.fetchIpos().then((list) => {
+    api.fetchIposLight().then((list) => {
       const sorted = [...list].sort((a, b) => (b.openDate ?? '').localeCompare(a.openDate ?? ''));
       setIpos(sorted);
       if (sorted.length) setIpoId((cur) => cur || sorted[0].id);

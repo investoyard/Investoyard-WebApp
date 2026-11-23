@@ -659,6 +659,13 @@ export class AdminController {
     return this.admin.testRail(id);
   }
 
+  /** Resume a login the system paused after a rejected password — tests it first. */
+  @Post('rails/:id/resume')
+  @RequirePermissions('rails.manage')
+  resumeRail(@Param('id') id: string) {
+    return this.admin.resumeRail(id);
+  }
+
   /** Hard-delete a rail credential. Superadmin-only, and the service refuses
    *  when any application / bid operation / IPO onlineSeries references it. */
   @Delete('rails/:id')

@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { BseDemandRow, BseQueryAdapter, CatwiseRow, MemberCredential, NseQueryAdapter } from '@investoyard/rail-adapters';
+import { RailHealthService } from '../rail/rail-health.service';
+import { AlertsService } from '../alerts/alerts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RailService } from '../rail/rail.service';
 import { ProviderConfigService } from '../../common/provider-config.service';
@@ -14,6 +16,9 @@ import {
 import { offeredFromIpo, type Bucket } from './offered';
 
 // ── tunables ─────────────────────────────────────────────────────────────────
+/** How often the dashboard warnings are re-checked for alerts. */
+const ALERT_CHECK_MS = 5 * 60_000;
+
 // Base loop cadence — how often tick() runs. NOT the per-IPO refresh; that
 // comes from the runtime tuning below. Env-only (rarely changed).
 const TICK_MS = Number(process.env.SUBSCRIPTION_TICK_MS) || 10_000;
@@ -296,6 +301,7 @@ interface SweepCreds {
 export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('SubscriptionPoll');
   private timer?: NodeJS.Timeout;
+  private alertTimer?: NodeJS.Timeout;
   private readonly query = new NseQueryAdapter();
   private readonly bseQuery = new BseQueryAdapter();
 
@@ -309,6 +315,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     private prisma: PrismaService,
     private rail: RailService,
     private providers: ProviderConfigService,
+    private health: RailHealthService,
+    private alerts: AlertsService,
   ) {}
 
   /**
@@ -384,9 +392,40 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     if (process.env.SUBSCRIPTION_POLL_DISABLED === 'true') return;
     this.timer = setInterval(() => this.tick().catch((e) => this.log.warn(e.message)), TICK_MS);
     this.timer.unref(); // never keep the process alive just for the poll
+    // The dashboard's two subscription warnings, turned into alerts that come to
+    // the operator (2026-11-23). Same gate as the poller: a second process — a
+    // boot test — must not send alert emails from the production database.
+    this.alertTimer = setInterval(() => this.syncAlerts().catch((e) => this.log.warn(`alert check: ${e.message}`)), ALERT_CHECK_MS);
+    this.alertTimer.unref();
   }
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    if (this.alertTimer) clearInterval(this.alertTimer);
+  }
+
+  /**
+   * Open an alert for every feed that has stopped and every not-yet-closed
+   * issue the poller cannot compute; resolve the ones that have cleared. It
+   * calls `subscriptionReadiness()` — the dashboard cards' own check — so the
+   * email can never say something the dashboard does not.
+   */
+  async syncAlerts(): Promise<void> {
+    const r = await this.subscriptionReadiness();
+    await this.alerts.sync('feed-stopped', r.staleFeeds.map((f) => ({
+      key: `feed:${f.id}:${f.exchange}`, kind: 'feed-stopped' as const, severity: 'critical' as const,
+      title: `${f.exchange.toUpperCase()} subscription figures for ${f.symbol} stopped updating`,
+      detail: `${f.name} (${f.symbol}): ${f.exchange.toUpperCase()}'s figures have not changed for ${f.stalledMin} minutes, while the other exchange changed ${f.siblingMin} minutes ago. `
+        + `Our subscription numbers for this issue are short by whatever ${f.exchange.toUpperCase()} has received since. `
+        + `Check the exchange's own page; if it is still moving there, the exchange feed is the problem.`,
+    })), 'The feed is updating again.');
+    await this.alerts.sync('no-reservation', r.atRisk.map((a) => ({
+      key: `nobook:${a.id}`, kind: 'no-reservation' as const, severity: a.state === 'open' ? 'critical' as const : 'warning' as const,
+      title: `${a.symbol} ${a.state === 'open' ? 'is open' : 'opens soon'} and has no subscription data — ${a.reason}`,
+      detail: `${a.name} (${a.symbol}, ${a.board === 'sme' ? 'SME' : 'Mainboard'}) — ${a.reason}.\n`
+        + `Without it the poller cannot work out subscription, so every bidding day's figures are lost for good. `
+        + (a.state === 'open' ? `Trading days already lost: ${a.lostDays}. Days left: ${a.daysLeft}.\n` : `Opens ${a.openDate ?? 'soon'}.\n`)
+        + `Fix it in Admin → IPO List → ${a.symbol} → Offer & Reservation.`,
+    })), 'The issue now has what the poller needs, or it has closed.');
   }
 
   // ── the scheduled loop ──────────────────────────────────────────────────────
@@ -615,12 +654,20 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
       const nseRows: CatwiseRow[] = [];
       const bseRows: BseDemandRow[] = [];
       if (sweep.nse) {
-        try { nseRows.push(...(await this.query.getCatwise(ipo.symbol, sweep.nse))); }
-        catch (e: any) { this.log.warn(`${ipo.symbol} NSE: ${e.message}`); }
+        try { nseRows.push(...(await this.query.getCatwise(ipo.symbol, sweep.nse))); await this.health.reportSuccess(sweep.nse.id); }
+        catch (e: any) {
+          this.log.warn(`${ipo.symbol} NSE: ${e.message}`);
+          // The NSE feed sends the password on EVERY call; once it is rejected,
+          // stop using it for the rest of this sweep as well as the next ones.
+          if (await this.health.reportFailure(sweep.nse.id, e, 'reading NSE live subscription')) sweep.nse = null;
+        }
       }
       if (sweep.bse && sweep.bseToken) {
         try { bseRows.push(...(await this.bseQuery.getDemandSchedule(ipo.symbol, sweep.bseToken, sweep.bse))); }
-        catch (e: any) { this.log.warn(`${ipo.symbol} BSE: ${e.message}`); }
+        catch (e: any) {
+          this.log.warn(`${ipo.symbol} BSE: ${e.message}`);
+          if (await this.health.reportFailure(sweep.bse.id, e, 'reading BSE live subscription')) { sweep.bse = null; sweep.bseToken = null; }
+        }
       }
 
       const { buckets, qibSplit } = bucketize(nseRows, bseRows);
@@ -892,8 +939,14 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
     ]);
     let bseToken: string | null = null;
     if (bse) {
-      try { bseToken = await this.bseQuery.login(bse); }
-      catch (e: any) { this.log.warn(`BSE message login failed (NSE-only subscription this cycle): ${e.message}`); }
+      try { bseToken = await this.bseQuery.login(bse); await this.health.reportSuccess(bse.id); }
+      catch (e: any) {
+        this.log.warn(`BSE message login failed (NSE-only subscription this cycle): ${e.message}`);
+        // A REJECTED password pauses the login (2026-11-23): the next sweep finds
+        // no BSE credential and stops trying, instead of logging in with a bad
+        // password every minute — every 5 s near a close — until it is locked.
+        await this.health.reportFailure(bse.id, e, 'logging in for BSE live subscription');
+      }
     }
     return { nse, bse, bseToken };
   }

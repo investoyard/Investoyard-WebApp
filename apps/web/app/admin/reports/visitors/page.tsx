@@ -17,11 +17,19 @@ import * as api from '@/lib/tenants-admin';
  * switch) because *"who were those 59 people"* is a question asked of the
  * range already on screen.
  */
-type View = api.VisitorsBy | 'visits';
+type View = api.VisitorsBy | 'visits' | 'bots';
 const TABS: [View, string][] = [
   ['day', 'By day'], ['hour', 'By hour'], ['page', 'By page'], ['symbol', 'By IPO'],
-  ['visits', 'Visitors'],
+  ['visits', 'Visitors'], ['bots', 'Bots'],
 ];
+
+/*
+ * THE BOTS TAB READS THE SERVER'S ACCESS LOG, NOT THE PAGE BEACON (2026-11-23).
+ * A crawler rarely runs the page's JavaScript, so the beacon never hears from
+ * most of them — on 22 Nov the log held 898 bot hits on these two pages and the
+ * beacon saw a handful. A job reads the log every 15 minutes and counts hits per
+ * bot, per page, per IST day. No IP addresses are kept for bots.
+ */
 
 /** A visit time, in the operator's own zone. */
 const fmtAt = (iso: string) => {
@@ -58,7 +66,7 @@ export default function VisitorsReportPage() {
   const [view, setView] = useState<View>('day');
   /* The grouping the summary query uses. Held through a trip to the Visitors
      tab so coming back does not lose where the operator was. */
-  const by: api.VisitorsBy = view === 'visits' ? 'day' : view;
+  const by: api.VisitorsBy = view === 'visits' || view === 'bots' ? 'day' : view;
   const [from, setFrom] = useState(istDaysAgo(29));
   const [to, setTo] = useState(istToday());
   const [path, setPath] = useState('');
@@ -66,6 +74,7 @@ export default function VisitorsReportPage() {
   const [paths, setPaths] = useState<string[]>([]);
   const [data, setData] = useState<api.VisitorReport | null>(null);
   const [visits, setVisits] = useState<api.VisitList | null>(null);
+  const [botRep, setBotRep] = useState<api.BotReport | null>(null);
   const [page, setPage] = useState(1);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -97,6 +106,17 @@ export default function VisitorsReportPage() {
       .finally(() => { if (!dead) setBusy(false); });
     return () => { dead = true; };
   }, [view, query, page]);
+
+  useEffect(() => {
+    if (view !== 'bots') return;
+    let dead = false;
+    setBusy(true);
+    api.fetchBotReport({ from, to, path: path || undefined })
+      .then((d) => { if (!dead) { setBotRep(d); setErr(null); } })
+      .catch((e) => { if (!dead) setErr(String(e?.message ?? e)); })
+      .finally(() => { if (!dead) setBusy(false); });
+    return () => { dead = true; };
+  }, [view, from, to, path]);
 
   /* A filter change takes the reader back to page 1: page 4 of a different
      range is a different set of rows, and landing past the end shows an
@@ -145,19 +165,19 @@ export default function VisitorsReportPage() {
             ))}
           </div>
         </div>
-        <div className="field">
+        {view !== 'bots' && <div className="field">
           <label>&nbsp;</label>
           <label className="auth-pair" style={{ cursor: 'pointer' }}>
             <input type="checkbox" checked={bots} onChange={(e) => setBots(e.target.checked)} />
             <span>Include bots</span>
           </label>
-        </div>
-        <div className="field">
+        </div>}
+        {view !== 'bots' && <div className="field">
           <label>&nbsp;</label>
           <button type="button" className="btn btn-secondary" onClick={() => api.exportVisitorsCsv(query).catch((e) => setErr(String(e?.message ?? e)))}>
             <Icon name="download" size={14} /> CSV
           </button>
-        </div>
+        </div>}
       </div>
 
       {err && <div className="banner bad" style={{ fontSize: 13 }}>{err}</div>}
@@ -166,7 +186,12 @@ export default function VisitorsReportPage() {
         <div className="card-head">
           <h3>
             {TABS.find(([k]) => k === view)?.[1]}
-            {view === 'visits' ? (
+            {view === 'bots' ? (
+              <>
+                <span className="count-badge">{fmt(botRep?.total ?? 0)} hits</span>
+                <span className="count-badge">{fmt(botRep?.bots.length ?? 0)} bots</span>
+              </>
+            ) : view === 'visits' ? (
               <span className="count-badge">{fmt(visits?.total ?? 0)} visits</span>
             ) : (
               <>
@@ -182,7 +207,51 @@ export default function VisitorsReportPage() {
           </div>
         </div>
 
-        {view === 'visits' ? (
+        {view === 'bots' ? (
+          busy && !botRep ? <Loader /> : (botRep?.bots.length ?? 0) === 0 ? (
+            <div className="muted" style={{ padding: '26px 18px', fontSize: 13 }}>
+              {botRep?.lastSeenAt ? 'No bot visits in this range.' : 'The server log has not been read yet. It is read every 15 minutes.'}
+            </div>
+          ) : (
+            <div className="vis-bots-wrap">
+              <table className="table vis-bots">
+                <thead>
+                  <tr>
+                    <th>Bot</th>
+                    <th style={{ textAlign: 'right' }}>/subscription</th>
+                    <th style={{ textAlign: 'right' }}>/subscription/v2</th>
+                    <th style={{ textAlign: 'right' }}>Total hits</th>
+                    <th style={{ textAlign: 'right' }}>Days seen</th>
+                    <th>Last seen (IST)</th>
+                    <th>User agent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {botRep!.bots.map((b) => (
+                    <tr key={b.bot}>
+                      <td><b>{b.bot}</b></td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmt(b.pages['/subscription'] ?? 0)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmt(b.pages['/subscription/v2'] ?? 0)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}><b>{fmt(b.hits)}</b></td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmt(b.days)}</td>
+                      <td className="mono">{fmtAt(b.lastAt)}</td>
+                      <td className="vis-ua" title={b.sampleUa}>{b.sampleUa || <span className="muted">none sent</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="tbl-total">
+                    <td>Total</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(botRep!.bots.reduce((n, b) => n + (b.pages['/subscription'] ?? 0), 0))}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(botRep!.bots.reduce((n, b) => n + (b.pages['/subscription/v2'] ?? 0), 0))}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(botRep!.total)}</td>
+                    <td /><td /><td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )
+        ) : view === 'visits' ? (
           busy && !visits ? <Loader /> : (visits?.rows.length ?? 0) === 0 ? (
             <div className="muted" style={{ padding: '26px 18px', fontSize: 13 }}>
               No visits recorded in this range.
@@ -284,7 +353,15 @@ export default function VisitorsReportPage() {
         * yesterday's can never equal today's. A total that quietly disagrees
         * with its own column is a bug; one that says why is a measurement.
         */}
-      {view === 'visits' ? (
+      {view === 'bots' ? (
+        <p className="muted" style={{ fontSize: 12, marginTop: 10, lineHeight: 1.5 }}>
+          Counted from the web server&rsquo;s own access log, because most crawlers never run the page&rsquo;s
+          script and so never reach the other tabs. One hit is one request. A bot is named from the user
+          agent it sends, which a bot can fake; an unnamed crawler is shown by the tool it says it is.
+          No IP addresses are kept for bots.
+          {botRep?.lastSeenAt && <> Log read up to <b>{fmtAt(botRep.lastSeenAt)}</b>; it is read every 15 minutes.</>}
+        </p>
+      ) : view === 'visits' ? (
         /*
          * THE RETENTION WINDOW IS STATED WHERE THE DATA IS READ, not only in
          * a policy document. An operator looking at a list of IP addresses

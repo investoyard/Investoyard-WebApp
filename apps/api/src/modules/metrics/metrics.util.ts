@@ -76,6 +76,41 @@ export function isBot(ua: unknown): boolean {
   return BOT_RE.test(s);
 }
 
+/**
+ * WHICH bot this is, by name — for the Bots tab (2026-11-23), read from the IIS
+ * access log by `scripts/ingest-bot-log.js`. Null for a real browser.
+ *
+ * Known names are matched first so the report reads "Googlebot", not whatever
+ * token happens to come first; anything else that calls itself a bot, spider or
+ * crawler is named by that token; scripts and headless browsers get a plain
+ * label. Measured on the 22 Nov log: ShapBot, PetalBot, Bytespider,
+ * OAI-SearchBot, bingbot, SemrushBot, KeenableBot, Googlebot, Facebot.
+ */
+const KNOWN_BOTS: [RegExp, string][] = [
+  [/googlebot/i, 'Googlebot'], [/google-inspectiontool/i, 'Google Inspection Tool'], [/adsbot-google/i, 'AdsBot-Google'],
+  [/bingbot/i, 'bingbot'], [/bingpreview/i, 'BingPreview'], [/yandex/i, 'YandexBot'], [/baiduspider/i, 'Baiduspider'],
+  [/duckduckbot/i, 'DuckDuckBot'], [/applebot/i, 'Applebot'], [/petalbot/i, 'PetalBot'], [/bytespider/i, 'Bytespider'],
+  [/gptbot/i, 'GPTBot'], [/oai-searchbot/i, 'OAI-SearchBot'], [/chatgpt-user/i, 'ChatGPT-User'], [/claudebot|claude-web/i, 'ClaudeBot'],
+  [/perplexitybot/i, 'PerplexityBot'], [/amazonbot/i, 'Amazonbot'], [/ahrefsbot/i, 'AhrefsBot'], [/semrushbot/i, 'SemrushBot'],
+  [/mj12bot/i, 'MJ12bot'], [/dotbot/i, 'DotBot'], [/shapbot/i, 'ShapBot'], [/facebookexternalhit|facebot|meta-externalagent/i, 'Facebook'],
+  [/twitterbot/i, 'Twitterbot'], [/linkedinbot/i, 'LinkedInBot'], [/whatsapp/i, 'WhatsApp'], [/telegrambot/i, 'TelegramBot'],
+  [/slackbot/i, 'Slackbot'], [/discordbot/i, 'Discordbot'],
+];
+const SCRIPT_LABELS: [RegExp, string][] = [
+  [/headlesschrome/i, 'Headless Chrome'], [/lighthouse/i, 'Lighthouse'], [/python-requests|python-urllib|aiohttp/i, 'Python script'],
+  [/curl\//i, 'curl'], [/wget/i, 'Wget'], [/go-http-client/i, 'Go script'], [/axios|node-fetch|undici/i, 'Node script'],
+  [/okhttp/i, 'OkHttp'], [/java\//i, 'Java script'],
+];
+export function botName(ua: unknown): string | null {
+  const s = String(ua ?? '').trim();
+  if (!s) return 'No user agent';
+  for (const [re, name] of KNOWN_BOTS) if (re.test(s)) return name;
+  if (!isBot(s)) return null;
+  for (const [re, name] of SCRIPT_LABELS) if (re.test(s)) return name;
+  const m = s.match(/([A-Za-z0-9._-]*(?:bot|spider|crawler|crawl|slurp)[A-Za-z0-9._-]*)/i);
+  return m ? m[1].replace(/[._-]+$/, '').slice(0, 60) : 'Other bot';
+}
+
 /** IST is a fixed +05:30 — no DST, so this needs no timezone library. */
 const IST_OFFSET_MIN = 5 * 60 + 30;
 

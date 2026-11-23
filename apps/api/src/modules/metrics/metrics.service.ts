@@ -362,4 +362,34 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
 
   /** The paths the beacon accepts — so the admin filter cannot offer a dead one. */
   paths(): readonly string[] { return TRACKED_PATHS; }
+
+  /**
+   * BOTS ON THE TRACKED PAGES, from the IIS access log (2026-11-23). The page
+   * beacon only sees a bot that runs page code — measured on 22 Nov: 898 bot
+   * requests in the log, almost none in the beacon. `scripts/ingest-bot-log.js`
+   * writes BotVisit from the log; this reads it, by bot and by day.
+   */
+  async bots(opts: { from?: string; to?: string; path?: string }) {
+    const { from, to, path } = this.windowOf({ from: opts.from, to: opts.to, path: opts.path });
+    const where: any = { day: { gte: from, lte: to }, ...(path ? { path } : {}) };
+    const rows: any[] = await (this.prisma as any).botVisit.findMany({ where, orderBy: [{ day: 'desc' }] });
+    const byBot = new Map<string, { bot: string; hits: number; pages: Record<string, number>; days: number; lastAt: Date; sampleUa: string }>();
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      const b = byBot.get(r.bot) ?? { bot: r.bot, hits: 0, pages: {} as Record<string, number>, days: 0, lastAt: r.lastAt, sampleUa: r.sampleUa };
+      b.hits += r.hits; b.pages[r.path] = (b.pages[r.path] ?? 0) + r.hits;
+      if (r.lastAt > b.lastAt) { b.lastAt = r.lastAt; b.sampleUa = r.sampleUa || b.sampleUa; }
+      byBot.set(r.bot, b);
+      byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.hits);
+    }
+    for (const b of byBot.values()) b.days = new Set(rows.filter((r) => r.bot === b.bot).map((r) => r.day)).size;
+    const lastIngest: any = await (this.prisma as any).botVisit.findFirst({ orderBy: { lastAt: 'desc' }, select: { lastAt: true } });
+    return {
+      from, to, path: path ?? null,
+      total: rows.reduce((n, r) => n + r.hits, 0),
+      bots: [...byBot.values()].sort((a, b) => b.hits - a.hits),
+      days: [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([day, hits]) => ({ day, hits })),
+      lastSeenAt: lastIngest?.lastAt ?? null,
+    };
+  }
 }

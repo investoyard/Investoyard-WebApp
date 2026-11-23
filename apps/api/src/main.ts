@@ -2,11 +2,18 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const compression = require('compression');
 
 async function bootstrap() {
   // rawBody: true keeps the exact request bytes on req.rawBody so the WhatsApp
   // webhook can verify Meta's X-Hub-Signature-256 HMAC (re-serialized JSON won't match).
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  // GZIP EVERY RESPONSE THE CLIENT ACCEPTS (2026-11-23). The IPO list went out at
+  // 2.9 MB uncompressed to the site, the app and every admin page; gzipped it is
+  // ~430 KB. Measured before: no Content-Encoding at all, even with
+  // Accept-Encoding: gzip. Small responses (< 1 KB) are left alone by default.
+  app.use(compression());
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // Separate-hosting: the browser calls the API cross-origin from the web app. The known

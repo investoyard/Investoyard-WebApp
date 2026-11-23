@@ -13,7 +13,13 @@ import * as api from '@/lib/tenants-admin';
  * Start Bid (apply/pre-apply) · Start Printing (ASBA forms) · Subscription
  * auto-fetch · active Bid partner (routes exchange bids). Toggles save
  * instantly via the safe ops endpoint (server merges, never clobbers extra).
+ *
+ * OPENS ON WHAT IS IN PLAY (2026-11-23): live, upcoming and closed in the last
+ * 30 days — about 30 rows — instead of the whole 1,300-row catalogue, which
+ * downloaded 2.9 MB to show switches nobody touches on a 2018 issue. Typing a
+ * symbol or name also searches the whole catalogue and adds what it finds.
  */
+const RECENT_DAYS = 30;
 export default function IpoOperationsPage() {
   const me = useOperator();
   const [ipos, setIpos] = useState<api.AdminIpo[]>([]);
@@ -21,13 +27,31 @@ export default function IpoOperationsPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  /** older issues found by the search box, added to the table */
+  const [found, setFound] = useState<api.AdminIpo[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(async () => {
-    try { setIpos(await api.fetchIpos()); setErr(null); }
+    try { setIpos(await api.fetchRecentIpos(RECENT_DAYS)); setErr(null); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Search the whole catalogue as the operator types (2+ characters), debounced.
+  useEffect(() => {
+    const needle = q.trim();
+    if (needle.length < 2) { setFound([]); setSearching(false); return; }
+    let alive = true;
+    setSearching(true);
+    const t = setTimeout(() => {
+      api.searchIpos(needle, 25)
+        .then((list) => { if (alive) setFound(list); })
+        .catch(() => { if (alive) setFound([]); })
+        .finally(() => { if (alive) setSearching(false); });
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
 
   if (!me) return <Loader />;
   if (!operatorCan(me, 'ipos.operations')) return <NoAccess />;
@@ -35,7 +59,7 @@ export default function IpoOperationsPage() {
   const save = async (i: api.AdminIpo, ops: api.IpoOps) => {
     setSavingId(i.id); setErr(null);
     // optimistic update so the toggle answers instantly
-    setIpos((rows) => rows.map((r) => r.id !== i.id ? r : ({
+    const patch = (rows: api.AdminIpo[]) => rows.map((r) => r.id !== i.id ? r : ({
       ...r,
       ...(ops.autoPollSubscription !== undefined ? { autoPollSubscription: ops.autoPollSubscription } : {}),
       extra: {
@@ -46,14 +70,18 @@ export default function IpoOperationsPage() {
           ? { onlineSeries: ((r.extra as any)?.onlineSeries ?? []).map((s: any) => ({ ...s, active: s.member === ops.bidMember })) }
           : {}),
       },
-    })));
+    }));
+    setIpos(patch); setFound(patch);
     try { await api.updateIpoOps(i.id, ops); }
     catch (e: any) { setErr(String(e?.message ?? e)); await load(); }
     finally { setSavingId(null); }
   };
 
   const needle = q.trim().toLowerCase();
-  const rows = ipos.filter((i) => !needle || `${i.symbol} ${i.name}`.toLowerCase().includes(needle));
+  // The recent issues, plus anything the search found that is not already here.
+  const recentIds = new Set(ipos.map((i) => i.id));
+  const merged = [...ipos, ...found.filter((i) => !recentIds.has(i.id))];
+  const rows = merged.filter((i) => !needle || `${i.symbol} ${i.name}`.toLowerCase().includes(needle));
 
   return (
     <>
@@ -65,13 +93,20 @@ export default function IpoOperationsPage() {
 
       <div className="tbl-toolbar">
         <span className="spacer" style={{ flex: 1 }} />
-        <SearchBox value={q} onChange={setQ} placeholder="Search symbol or name…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Find any IPO by symbol or name…" />
       </div>
 
       <div className="card">
-        <div className="card-head"><span className="t">Operations <span className="count-badge">{rows.length}</span></span></div>
+        <div className="card-head">
+          <span className="t">Operations <span className="count-badge">{rows.length}</span></span>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            {needle.length >= 2
+              ? (searching ? 'Searching the whole catalogue…' : `Matches from the whole catalogue`)
+              : `Live, upcoming and closed in the last ${RECENT_DAYS} days. Type a symbol or name to find any other IPO.`}
+          </span>
+        </div>
         {loading ? <Loader /> : rows.length === 0 ? (
-          <div className="card-pad muted">No IPOs match.</div>
+          <div className="card-pad muted">{needle.length >= 2 ? (searching ? 'Searching…' : 'No IPO matches that symbol or name.') : 'Nothing live, upcoming or closed in the last 30 days. Search to find an older IPO.'}</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ width: '100%' }}>

@@ -2585,5 +2585,34 @@ The family is already tracked here; these are new shapes, and **three of five re
 - **A `cd` in a compound Git Bash command can leave you somewhere else.** One run resolved `../../scripts/api-forward.js` as `D:\scripts\...`, then ran `rm -rf .next/cache/fetch-cache out-staging` and a build from the wrong directory (harmless only because neither path existed there). Use absolute paths for anything that deletes.
 - **The deploy dropped the page for `SHREE`**: no record with that symbol exists any more (`/api/ipos/by-symbol/SHREE` answers 404), so robocopy purged it as stale. Expected if it was renamed or removed in admin; its old address is gone either way.
 
+## Operator alerts, paused logins, lighter IPO lists, bots (2026-11-23)
+
+**Why: MAHACOAL's subscription disagreed with other sites because BSE had answered "Change Password" for our member login, so only NSE figures were being read — and nothing told anyone.** Four asks from the operator, built and deployed the same day.
+
+### Alerts, on the dashboard and by email
+- **`OperatorAlert` table, one OPEN row per `key`.** `AlertsService.open()` creates the row and emails once; a repeat only bumps `lastSeenAt`. `resolve()` emails "Resolved: …" only if the opening email went out. `sync(kind, current)` resolves every open alert of that kind no longer in the current set. `apps/api/src/modules/alerts/` (a `@Global` module, so any service can inject it).
+- **Four kinds**: `login-rejected` (critical) · `login-failing` (warning: transport failures for 10 minutes) · `feed-stopped` (one exchange's figures frozen while the other moves — the `feedHealth` rule) · `no-reservation` (an open issue the poller cannot compute). The last two are built every 5 minutes from `subscriptionReadiness()` (`syncAlerts` in the subscription service, gated by `SUBSCRIPTION_POLL_DISABLED`), so the alert and the dashboard cards cannot disagree.
+- **Recipients**: Provider Keys → "Operator alerts — email" (`alerts` provider, setting `emails`, comma-separated); blank or disabled = `bhavik@mysafal.com`. Email goes through the Email provider, so that card must work for these to arrive. **Not yet proven end to end** — no alert has opened since deploy.
+- **Shown in three places**: the `AlertsCard` at the top of the dashboard (superadmin only; renders nothing when nothing is open or resolved in 7 days), the bell (alerts first, linking to the dashboard; refreshes every 2 minutes), and Exchange Rails.
+
+### A rejected password pauses everything that uses that login
+- **`isAuthFailure()` in `packages/rail-adapters/src/auth-failure.ts`** (7 tests): HTTP 401/403, or exchange wording (invalid id/password, change password, password expired, account locked, unauthorized, authentication failed). NETWORK and TIMEOUT are never auth failures. Only a transport failure counts toward `login-failing`; a business refusal counts toward nothing.
+- **`MemberCredential.pausedAt` / `pausedReason`**, set by `RailHealthService.reportFailure()`. While set: the subscription sweep drops that credential for the rest of the sweep, `activeCredentialOrNull` / `launchRailCredentialId` return nothing for it (**no fallback to another member's login** — that would send our traffic under a member nobody chose), `resolveBidRoute` refuses with "Online bidding is paused for this IPO", and the bid sender skips its operations (they wait as pending; an auth failure mid-send restores the attempt count).
+- **Resuming is automatic and tested first**: saving a new password on Exchange Rails calls `resumeRail()`, which does a real login (BSE message login when an iBBS id is set, otherwise the adapter's login; 15 s timeout) and clears the pause only if it works. "Test and resume" in the row menu does the same without a save. Exchange Rails shows a red **Paused** chip with the reason and a banner naming every paused login.
+
+### Lighter IPO lists (IPO Operations, IPO catalog, the bell)
+- **The API now gzips** (`compression` in `main.ts`): `/ipos?all=1&limit=2000` is 3.0 MB raw, **442 KB** on the wire.
+- **`view=light`** drops detail-page prose and the hourly log (`lightRow`): 1.57 MB raw / 242 KB wire. Used by every screen that only LISTS IPOs; anything that saves an IPO still loads the full record.
+- **`recentDays=N`** = live + upcoming + closed in the last N days; **`q`** now matches symbol OR name. IPO Operations opens on `recentDays=30` (21 rows, 18 KB) and its search box queries the whole catalogue (2+ characters, debounced). The bell reads the same recent list instead of the full catalogue on every admin page.
+
+### Visitors → Bots
+- **From the IIS access log, not the beacon**: most crawlers never run the page script (22 Nov: 898 bot hits in the log on the two pages). `scripts/ingest-bot-log.js` reads `C:/inetpub/logs/LogFiles/W3SVC6` (last 3 UTC files, or `--all`; `--dry-run` writes nothing), names bots with `botName()` from the COMPILED API (`metrics.util.js` — so it needs `dist`), and writes **absolute** per-day counts into `BotVisit (day IST, path, bot)`, so re-running never double-counts (verified). Log: `C:/ProgramData/Investoyard/bot-log.log`.
+- **An IST day spans two UTC log files**, which is why counts are rewritten whole each run rather than added to.
+- **`Investoyard-BotLog` scheduled task, every 15 minutes, Interactive like the others** (runs only while `finwave` is logged in). History loaded: 7,674 hits, 49 days, 18 Sep → 23 Nov. ShapBot is most of it.
+
+### Found while doing it
+- **The "Live subscription poller" Provider Keys card never worked**: `subscription` was not in the server's `PROVIDER_SPECS`, so the card loaded blank and Save failed "Unknown provider". The stored row held only defaults. Added (with `alerts`); both cards are platform-only.
+- **`/api/ipos` is now 4 MB at build time and over Next's 2 MB fetch cache**, so it is re-fetched rather than cached — stale-cache replay cannot affect the catalogue any more.
+
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.

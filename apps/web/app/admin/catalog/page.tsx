@@ -58,7 +58,7 @@ export default function AdminCatalog() {
 
   // admin sees EVERYTHING, including bulk-imported rows the public site hides
   const load = useCallback(async () => {
-    try { setIpos(await api.fetchAllIpos()); setErr(null); }
+    try { setIpos(await api.fetchAllIposLight()); setErr(null); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setLoading(false); }
   }, []);

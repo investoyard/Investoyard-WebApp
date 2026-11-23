@@ -38,6 +38,7 @@ import { GmpEntryModule } from './modules/gmp-entry/gmp-entry.module';
 import { GmpFeedModule } from './modules/gmp-feed/gmp-feed.module';
 import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
 import { MessageLogApiModule } from './modules/message-log/message-log.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { MessageLogApiModule } from './modules/message-log/message-log.module';
     TemplateModule,
     MessagingModule,
     EmailModule,
+    AlertsModule,
     MessageLogModule,
     HealthModule,
     UploadModule,

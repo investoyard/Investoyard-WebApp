@@ -9,6 +9,7 @@ import {
 } from '@investoyard/rail-adapters';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
+import { RailHealthService } from './rail-health.service';
 
 /**
  * RailService — wraps the rail-adapters RailOrchestrator for the Nest app.
@@ -19,7 +20,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 export class RailService {
   readonly orchestrator: RailOrchestrator;
 
-  constructor(private prisma: PrismaService, private vault: PiiVaultService) {
+  constructor(private prisma: PrismaService, private vault: PiiVaultService, private health: RailHealthService) {
     this.orchestrator = new RailOrchestrator((id) => this.resolveCredential(id));
   }
 
@@ -47,13 +48,16 @@ export class RailService {
    * else any active NSE member.
    */
   async launchRailCredentialId(): Promise<string> {
-    const own = await this.prisma.memberCredential.findFirst({
+    const own: any = await this.prisma.memberCredential.findFirst({
       where: { exchange: 'NSE_EIPO', active: true, subscriptionUse: true },
-      select: { id: true },
+      select: { id: true, pausedAt: true } as any,
     });
+    // OUR OWN login is paused → stop, rather than quietly switch to another
+    // member's login (2026-11-23: a rejected password stops what used it).
+    if (own?.pausedAt) throw new BadRequestException('The NSE login is paused: the exchange rejected its password. Save a new one in Exchange Rails.');
     if (own) return own.id;
     const cred = await this.prisma.memberCredential.findFirstOrThrow({
-      where: { exchange: 'NSE_EIPO', active: true },
+      where: { exchange: 'NSE_EIPO', active: true, pausedAt: null } as any,
     });
     return cred.id;
   }
@@ -104,10 +108,14 @@ export class RailService {
       throw new BadRequestException('Online bidding is not set up for this IPO yet (no bidding member is selected).');
     }
     const exchange = this.pickBidExchange(ipo);
-    const cred = await this.prisma.memberCredential.findFirst({
+    const cred: any = await this.prisma.memberCredential.findFirst({
       where: { exchange, active: true, memberName: { equals: row.member, mode: 'insensitive' } },
-      select: { id: true },
+      select: { id: true, pausedAt: true } as any,
     });
+    if (cred?.pausedAt) {
+      const on = exchange === 'BSE_IBBS' ? 'BSE' : 'NSE';
+      throw new BadRequestException(`Online bidding is paused for this IPO: ${on} rejected the login for ${row.member}. It resumes once a new password is saved.`);
+    }
     if (!cred) {
       const on = exchange === 'BSE_IBBS' ? 'BSE' : 'NSE';
       throw new BadRequestException(`Online bidding is not available for this IPO yet (no ${on} login is set up for ${row.member}).`);
@@ -136,9 +144,15 @@ export class RailService {
   private async activeCredentialOrNull(exchange: 'NSE_EIPO' | 'BSE_IBBS'): Promise<MemberCredential | null> {
     // Subscription polling always runs under OUR OWN membership — the credential
     // tagged "use for subscription" on the Rails page; else any active member.
-    const own = await this.prisma.memberCredential.findFirst({ where: { exchange, active: true, subscriptionUse: true }, select: { id: true } });
+    //
+    // A PAUSED login is never used (2026-11-23). If OUR OWN login is paused we
+    // return null rather than fall back to another member's login: the alert
+    // tells the operator that exchange's figures have stopped, and a quiet
+    // switch to someone else's membership would make that untrue.
+    const own: any = await this.prisma.memberCredential.findFirst({ where: { exchange, active: true, subscriptionUse: true }, select: { id: true, pausedAt: true } as any });
+    if (own?.pausedAt) return null;
     if (own) return this.resolveCredential(own.id);
-    const row = await this.prisma.memberCredential.findFirst({ where: { exchange, active: true }, select: { id: true } });
+    const row = await this.prisma.memberCredential.findFirst({ where: { exchange, active: true, pausedAt: null } as any, select: { id: true } });
     return row ? this.resolveCredential(row.id) : null;
   }
 
@@ -146,8 +160,15 @@ export class RailService {
     const id = await this.launchRailCredentialId();
     const cred = await this.resolveCredential(id);
     const adapter = (await import('@investoyard/rail-adapters')).getAdapter(cred.exchange);
-    const session = await adapter.login(cred);
-    return adapter.getIpoMaster(session, cred);
+    try {
+      const session = await adapter.login(cred);
+      const out = await adapter.getIpoMaster(session, cred);
+      await this.health.reportSuccess(cred.id);
+      return out;
+    } catch (e) {
+      await this.health.reportFailure(cred.id, e, 'reading the NSE IPO master');
+      throw e;
+    }
   }
 
   /** NSE trading-holiday calendar for a "dd-MM-yyyy" range; [] if no active credential. */
@@ -155,7 +176,14 @@ export class RailService {
     const cred = await this.activeNseCredentialOrNull();
     if (!cred) return [];
     const adapter = new NseEipoAdapter();
-    const session = await adapter.login(cred);
-    return adapter.getHolidayMaster(from, to, session, cred);
+    try {
+      const session = await adapter.login(cred);
+      const out = await adapter.getHolidayMaster(from, to, session, cred);
+      await this.health.reportSuccess(cred.id);
+      return out;
+    } catch (e) {
+      await this.health.reportFailure(cred.id, e, 'reading the NSE holiday list');
+      throw e;
+    }
   }
 }

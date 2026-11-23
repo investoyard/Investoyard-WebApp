@@ -70,6 +70,27 @@ const crStr = (d: any): string | undefined => {
 };
 
 /** Prisma Ipo (+ relations) → the shared IpoDetail view contract the web/mobile consume. */
+/**
+ * THE LIGHT ROW (2026-11-23) — what an admin LIST needs. The full list was 2.9 MB,
+ * and about 40% of it was detail-page prose no list shows (company description,
+ * financials, strengths, contact block, FAQs, objects of issue), plus the hourly
+ * subscription log. The completeness bar reads none of these (checked), and the
+ * screens that SAVE an IPO load the full record first, so a light row can never
+ * be written back over the real one.
+ */
+const LIGHT_DROP_EXTRA = ['companyDescription', 'companyFinancials', 'companyStrength', 'contactInfo', 'faqs', 'subLogHour'];
+function lightRow(d: any) {
+  if (d && typeof d === 'object') {
+    delete d.objectsOfIssue;
+    if (d.extra && typeof d.extra === 'object') {
+      const extra = { ...d.extra };
+      for (const k of LIGHT_DROP_EXTRA) delete extra[k];
+      d.extra = extra;
+    }
+  }
+  return d;
+}
+
 function toDetail(ipo: any) {
   const subs: any[] = ipo.subscriptions ?? [];
   const total = subs.find((s) => s.category === 'total');
@@ -149,7 +170,14 @@ export class IpoService {
   async list(f: {
     type?: string; status?: string; q?: string; limit?: number; offset?: number;
     includeCatalogOnly?: boolean; from?: string; to?: string;
+    light?: boolean; recentDays?: number;
   }) {
+    /* RECENT: live, upcoming and recently closed (IPO Operations, the admin
+       bell — 2026-11-23). An issue still to close has a future close date, so a
+       window on the close date covers all three; undated rows are found by search. */
+    const fromYmd = f.recentDays && f.recentDays > 0
+      ? new Date(Date.now() + 5.5 * 3_600_000 - f.recentDays * 86_400_000).toISOString().slice(0, 10)
+      : f.from;
     /* DEFAULT IS THE WHOLE CATALOGUE, not a page of it (operator, 2026-10-26).
        It used to be 500, and because NEITHER client passes a limit, both the
        site and the app silently saw only the 500 newest by close date - the
@@ -161,13 +189,14 @@ export class IpoService {
       where: {
         type: f.type as any,
         status: f.status as any,
-        name: f.q ? { contains: f.q, mode: 'insensitive' } : undefined,
+        // Symbol OR name — the search box on IPO Operations finds an issue either way.
+        ...(f.q ? { OR: [{ symbol: { contains: f.q.trim(), mode: 'insensitive' } }, { name: { contains: f.q.trim(), mode: 'insensitive' } }] } : {}),
         // A window on the CLOSE date. The catalog is about to go from twelve
         // rows to a couple of thousand, and every caller that only wants a
         // slice should be able to say so in the query rather than downloading
         // the lot and filtering in the browser.
-        ...(f.from || f.to
-          ? { closeDate: { ...(f.from ? { gte: new Date(`${f.from}T00:00:00Z`) } : {}),
+        ...(fromYmd || f.to
+          ? { closeDate: { ...(fromYmd ? { gte: new Date(`${fromYmd}T00:00:00Z`) } : {}),
                            ...(f.to ? { lte: new Date(`${f.to}T23:59:59Z`) } : {}) } }
           : {}),
         ...(f.includeCatalogOnly ? {} : { hidden: false }),
@@ -186,7 +215,7 @@ export class IpoService {
       take,
       skip: f.offset && f.offset > 0 ? f.offset : undefined,
     });
-    return rows.map(toDetail);
+    return f.light ? rows.map((r) => lightRow(toDetail(r))) : rows.map(toDetail);
   }
 
   /**

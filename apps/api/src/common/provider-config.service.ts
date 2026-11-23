@@ -66,6 +66,28 @@ export const PROVIDER_SPECS = [
     ],
     secretFields: [{ name: 'apiKey', label: 'Anthropic API key (sk-ant-…)' }],
   },
+  {
+    // Read by the subscription poller every tick. It had a card in admin and a
+    // stored row but was missing here, so the card loaded blank and Save failed
+    // with "Unknown provider" (found 2026-11-23).
+    key: 'subscription',
+    label: 'Live subscription poller — cadence & window',
+    fields: [
+      { name: 'normalSec', label: 'Refresh interval (seconds)' },
+      { name: 'fastSec', label: 'Closing-rush interval (seconds)' },
+      { name: 'fastWindowMin', label: 'Fast mode: minutes before 17:00 close' },
+      { name: 'fromMin', label: 'Poll from — minutes since IST midnight' },
+      { name: 'toMin', label: 'Poll until — minutes since IST midnight' },
+    ],
+    secretFields: [],
+  },
+  {
+    // Who receives operator alerts (AlertsService). Blank = the built-in default.
+    key: 'alerts',
+    label: 'Operator alerts — email',
+    fields: [{ name: 'emails', label: 'Send alerts to (comma-separated)' }],
+    secretFields: [],
+  },
 ] as const;
 
 export type ProviderKey = (typeof PROVIDER_SPECS)[number]['key'];

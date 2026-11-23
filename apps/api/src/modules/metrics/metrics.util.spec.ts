@@ -139,3 +139,24 @@ describe('visitorKey', () => {
     expect(visitorKey('salt-a', null, undefined)).toMatch(/^[0-9a-f]{32}$/);
   });
 });
+
+describe('botName — which bot, for the Bots tab', () => {
+  const { botName } = require('./metrics.util');
+  it('names the bots seen in the 22 Nov log', () => {
+    expect(botName('Mozilla/5.0 (compatible; ShapBot/0.1.0)')).toBe('ShapBot');
+    expect(botName('Mozilla/5.0 (Linux; Android 7.0;) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; PetalBot;+https://webmaster.petalsearch.com/site/petalbot)')).toBe('PetalBot');
+    expect(botName('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)')).toBe('Googlebot');
+    expect(botName('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Chrome/116.0 Safari/537.36')).toBe('bingbot');
+    expect(botName('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot')).toBe('OAI-SearchBot');
+  });
+  it('names an unknown bot by its own token, and labels scripts', () => {
+    expect(botName('Mozilla/5.0 (compatible; KeenableBot/1.0)')).toBe('KeenableBot');
+    expect(botName('python-requests/2.31.0')).toBe('Python script');
+    expect(botName('curl/8.4.0')).toBe('curl');
+    expect(botName('')).toBe('No user agent');
+  });
+  it('returns null for a real browser', () => {
+    expect(botName('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36')).toBeNull();
+    expect(botName('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1')).toBeNull();
+  });
+});

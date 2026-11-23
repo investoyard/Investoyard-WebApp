@@ -87,7 +87,7 @@ export default function ImportAllotmentPage() {
   const goneRef = useRef(false);
 
   useEffect(() => {
-    api.fetchIpos().then((list) => {
+    api.fetchIposLight().then((list) => {
       const sorted = [...list].sort((a, b) => (b.openDate ?? '').localeCompare(a.openDate ?? ''));
       setIpos(sorted);
       if (sorted.length && !ipoId) setIpoId(sorted[0].id);

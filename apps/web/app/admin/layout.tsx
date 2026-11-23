@@ -4,12 +4,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { ConfirmDialog } from '@/components/ui/Confirm';
 import { Loader } from '@/components/ui/Loader';
-import { fetchIpos } from '@/lib/tenants-admin';
+import { fetchAlerts, fetchRecentIpos } from '@/lib/tenants-admin';
 import { ipoPhase, daysUntil } from '@/lib/format';
 import { fetchMe, clearOperator, operatorCan, type OperatorMe } from '@/lib/operator';
 import { OperatorContext } from '@/lib/operator-context';
 
-type Notif = { id: string; tone: 'warn' | 'brand' | 'ok'; icon: Parameters<typeof Icon>[0]['name']; text: string; sub: string };
+type Notif = { id: string; tone: 'warn' | 'brand' | 'ok' | 'bad'; icon: Parameters<typeof Icon>[0]['name']; text: string; sub: string; href?: string };
 
 type IconName = Parameters<typeof Icon>[0]['name'];
 /** hidePlatform hides a leaf when the caller sits on the platform tenant —
@@ -158,24 +158,38 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => document.removeEventListener('click', close);
   }, [menuOpen, notifOpen, flyout]);
 
-  // notifications: time-sensitive IPO alerts (distinct from the audit log)
+  // notifications: operator alerts first (exchange logins, feeds — 2026-11-23),
+  // then time-sensitive IPO reminders. The IPO half used to download the WHOLE
+  // catalogue (2.9 MB) on every admin page just to find a handful of dates; it
+  // reads the light recent list now (live, upcoming, closed in 30 days).
   useEffect(() => {
     if ((path.replace(/\/+$/, '') || '/') === '/admin/login') return;
-    fetchIpos().then((ipos) => {
-      const out: Notif[] = [];
+    if (!me) return;
+    let alive = true;
+    const load = () => Promise.all([
+      me.isSuperAdmin ? fetchAlerts().then((a) => a.open).catch(() => []) : Promise.resolve([]),
+      fetchRecentIpos(30).catch(() => []),
+    ]).then(([alerts, ipos]) => {
+      if (!alive) return;
+      const out: Notif[] = alerts.map((a) => ({
+        id: 'alert-' + a.id, tone: a.severity === 'critical' ? 'bad' : 'warn', icon: 'bolt',
+        text: a.title, sub: 'Alert · see the dashboard', href: '/admin/overview',
+      }));
       for (const i of ipos) {
         const ph = ipoPhase(i);
         const dc = daysUntil(i.closeDate), don = daysUntil(i.openDate);
         const when = (d: number) => (d === 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`);
         if (ph.phase === 'live' && dc != null && dc >= 0 && dc <= 3) out.push({ id: i.id + 'c', tone: 'warn', icon: 'clock', text: `${i.symbol} closes ${when(dc)}`, sub: i.name });
         else if (ph.phase === 'upcoming' && don != null && don >= 0 && don <= 3) out.push({ id: i.id + 'o', tone: 'brand', icon: 'calendar', text: `${i.symbol} opens ${when(don)}`, sub: i.name });
-        else if (ph.phase === 'listed') out.push({ id: i.id + 'l', tone: 'ok', icon: 'check', text: `${i.symbol} has listed`, sub: i.name });
         else if (ph.phase === 'live') out.push({ id: i.id + 'v', tone: 'brand', icon: 'trending', text: `${i.symbol} is open for applications`, sub: i.name });
       }
-      setNotifs(out.slice(0, 8));
-    }).catch(() => {});
+      setNotifs(out.slice(0, 12));
+    });
+    void load();
+    const t = setInterval(load, 120_000);   // an alert should not wait for a page change
+    return () => { alive = false; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [me?.id, me?.isSuperAdmin]);
 
   // trailingSlash:true means pathname can end with "/" — normalise before comparing.
   const clean = path.replace(/\/+$/, '') || '/';
@@ -335,10 +349,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div className="nd-list">
                   {notifs.length === 0 ? <div className="notif-empty">You’re all caught up.</div> :
                     notifs.map((a) => (
-                      <div className="notif-item" key={a.id}>
+                      <a className="notif-item" key={a.id} href={a.href} style={a.href ? undefined : { cursor: 'default' }} onClick={a.href ? undefined : (e) => e.preventDefault()}>
                         <span className={`ni-ic ${a.tone}`}><Icon name={a.icon} size={16} /></span>
                         <div style={{ minWidth: 0 }}><div className="ni-t">{a.text}</div><div className="ni-s">{a.sub}</div></div>
-                      </div>
+                      </a>
                     ))}
                 </div>
               </div>

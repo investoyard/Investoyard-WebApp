@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PiiVaultService } from '../../common/pii-vault.service';
 import { hashPassword } from '../../common/password';
 import { RailService } from '../rail/rail.service';
+import { RailHealthService } from '../rail/rail-health.service';
 import { HealthService } from '../health/health.module';
 import { ProviderConfigService } from '../../common/provider-config.service';
 import { TemplateService } from '../../common/template.service';
@@ -179,6 +180,7 @@ export class AdminService {
     private empanelmentPdf: EmpanelmentPdfService,
     private templates: TemplateService,
     private sms: SmsService,
+    private railHealth: RailHealthService,
   ) {}
 
   /* -------------------------------- white-label integrations (per-tenant SMS/email + templates) */
@@ -344,6 +346,8 @@ export class AdminService {
       loginId: c.loginId, memberCode: c.memberCode, subBrokerCode: c.subBrokerCode ?? undefined,
       baseUrl: c.baseUrl, env: c.env, active: c.active, subscriptionUse: c.subscriptionUse,
       passwordSet: !!c.passwordRef, ibbsIdSet: !!c.ibbsIdRef, checksumKeySet: !!c.checksumKeyRef,
+      // Paused by the system after the exchange rejected the password (2026-11-23).
+      pausedAt: (c as any).pausedAt ?? null, pausedReason: (c as any).pausedReason ?? null,
     }));
   }
 
@@ -383,9 +387,41 @@ export class AdminService {
     if (dto.password) data.passwordRef = await this.vault.tokenize(dto.password);  // re-set secret
     if (dto.ibbsId !== undefined) data.ibbsIdRef = dto.ibbsId ? await this.vault.tokenize(dto.ibbsId) : null;
     if (dto.checksumKey !== undefined) data.checksumKeyRef = dto.checksumKey ? await this.vault.tokenize(dto.checksumKey) : null;
-    const updated = await this.prisma.memberCredential.update({ where: { id }, data });
+    const updated: any = await this.prisma.memberCredential.update({ where: { id }, data });
     if (data.subscriptionUse === true) await this.soleSubscriptionCred(id, updated.exchange);
+    // A PAUSED login whose secret was just changed: test it, and resume on a pass.
+    // Never resume untested — a second wrong password is a second strike at the
+    // exchange's lock-out counter.
+    if (updated.pausedAt && (dto.password || dto.ibbsId !== undefined || dto.checksumKey !== undefined)) {
+      const r = await this.resumeRail(id);
+      return { updated: true, resumed: r.resumed, note: r.note };
+    }
     return { updated: true };
+  }
+
+  /**
+   * Lift a pause — only after a test login with the stored password passes.
+   * BSE is tested on the Message API login, which is the one the subscription
+   * poller uses and the one that answered "Change Password" on 2026-11-23.
+   */
+  async resumeRail(id: string): Promise<{ resumed: boolean; note: string }> {
+    const c: any = await this.prisma.memberCredential.findUnique({ where: { id } });
+    if (!c) throw new NotFoundException('Credential not found');
+    if (!c.pausedAt) return { resumed: false, note: 'This login is not paused.' };
+    let cred;
+    try { cred = await this.rail.resolveCredential(id); }
+    catch { return { resumed: false, note: 'The stored password could not be read — enter it again.' }; }
+    try {
+      const ra = await import('@investoyard/rail-adapters');
+      const login = c.exchange === 'BSE_IBBS' && cred.ibbsId
+        ? new ra.BseQueryAdapter().login(cred)
+        : ra.getAdapter(cred.exchange).login(cred);
+      await Promise.race([login, new Promise((_, rej) => setTimeout(() => rej(new Error('Timed out after 15s')), 15_000))]);
+    } catch (e: any) {
+      return { resumed: false, note: `Still refused, so it stays paused: ${String(e?.message ?? e).slice(0, 200)}` };
+    }
+    await this.railHealth.resume(id, 'test login passed');
+    return { resumed: true, note: 'Test login passed — the login is in use again.' };
   }
 
   /**

@@ -41,6 +41,8 @@ export default function AdminOverview() {
   const [loading, setLoading] = useState(true);
   /** The daily subscription check — see `SubscriptionWatch` at the foot of this file. */
   const [readiness, setReadiness] = useState<api.SubscriptionReadiness | null>(null);
+  /** Operator alerts — platform operators only (the API refuses anyone else). */
+  const [alerts, setAlerts] = useState<api.AlertList | null>(null);
 
   const loadDash = useCallback(async (slug: string) => {
     try { setD(await api.fetchDashboard(slug)); setErr(null); }
@@ -57,6 +59,7 @@ export default function AdminOverview() {
              red banner over a dashboard that is otherwise fine. The card simply
              does not render. */
           operatorCan(me, 'ipos.view') ? api.fetchSubscriptionReadiness().then(setReadiness).catch(() => {}) : Promise.resolve(),
+          me?.isSuperAdmin ? api.fetchAlerts().then(setAlerts).catch(() => {}) : Promise.resolve(),
         ]);
         void t; void a; void r;
       } finally { setLoading(false); }
@@ -91,6 +94,7 @@ export default function AdminOverview() {
       {/* ABOVE the stat grid and OUTSIDE the loading gate: this is the one thing on
           the dashboard that is losing data while it is not looked at, and it must
           not wait on the counts to render. */}
+      <AlertsCard data={alerts} />
       <SubscriptionWatch data={readiness} />
       <FeedWatch data={readiness} />
       {loading || !c || !d ? <Loader /> : (
@@ -361,6 +365,59 @@ function SubscriptionWatch({ data }: { data: api.SubscriptionReadiness | null })
       <div className="card-pad muted" style={{ fontSize: 12, paddingTop: 10 }}>
         Days are TRADING days from the real NSE calendar — a weekend or a market holiday is not a lost day.
         Checked {new Date(data.checkedAt).toLocaleString('en-IN')}.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * OPERATOR ALERTS (2026-11-23) — exchange logins the system had to pause, calls
+ * that keep failing, feeds that stopped, open issues the poller cannot compute.
+ * The same rows are emailed to the recipients named at the foot of the card.
+ * Renders nothing when there is nothing open: a card that is always present
+ * and always empty is a card people stop reading.
+ */
+function AlertsCard({ data }: { data: api.AlertList | null }) {
+  const [showResolved, setShowResolved] = useState(false);
+  if (!data || (data.open.length === 0 && data.resolved.length === 0)) return null;
+  const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const critical = data.open.filter((a) => a.severity === 'critical').length;
+  return (
+    <div className={`card ovl-alerts${data.open.length ? '' : ' quiet'}`}>
+      <div className="card-head">
+        <span className="t">
+          <Icon name="bolt" size={15} /> {data.open.length ? 'Needs attention' : 'Alerts'}{' '}
+          {data.open.length > 0 && <span className={`count-badge${critical ? ' bad' : ''}`}>{data.open.length}</span>}
+        </span>
+        {data.resolved.length > 0 && (
+          <button type="button" className="linklike" style={{ fontSize: 13 }} onClick={() => setShowResolved((s) => !s)}>
+            {showResolved ? 'Hide' : 'Show'} resolved in the last 7 days ({data.resolved.length})
+          </button>
+        )}
+      </div>
+      {data.open.length === 0 && <div className="card-pad muted" style={{ fontSize: 13.5 }}>Nothing open right now.</div>}
+      {data.open.map((a) => (
+        <div key={a.id} className={`ovl-alert ${a.severity}`}>
+          <div className="ovl-alert-top">
+            <span className={`st ${a.severity === 'critical' ? 'bad' : 'warn'}`}>{a.severity === 'critical' ? 'Action needed' : 'Warning'}</span>
+            <b className="ovl-alert-t">{a.title}</b>
+          </div>
+          <div className="ovl-alert-d">{a.detail}</div>
+          <div className="ovl-alert-m">
+            Since {when(a.openedAt)} · last seen {when(a.lastSeenAt)} · {a.emailedAt ? `emailed ${when(a.emailedAt)}` : 'not emailed'}
+            {a.kind === 'login-rejected' && <> · <a href="/admin/rails-live">Exchange Rails →</a></>}
+            {a.kind === 'no-reservation' && <> · <a href="/admin/catalog">IPO List →</a></>}
+          </div>
+        </div>
+      ))}
+      {showResolved && data.resolved.map((a) => (
+        <div key={a.id} className="ovl-alert resolved">
+          <div className="ovl-alert-top"><span className="st ok">Resolved</span><b className="ovl-alert-t">{a.title}</b></div>
+          <div className="ovl-alert-m">Opened {when(a.openedAt)} · resolved {when(a.resolvedAt!)}</div>
+        </div>
+      ))}
+      <div className="card-pad muted" style={{ fontSize: 12, paddingTop: 10 }}>
+        Emailed to {data.recipients.join(', ')} when an alert opens and when it resolves. Change the list in System Settings → Provider Keys → Operator alerts.
       </div>
     </div>
   );

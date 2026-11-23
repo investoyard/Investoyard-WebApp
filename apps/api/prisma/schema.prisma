@@ -1079,6 +1079,13 @@ model MemberCredential {
   env             String // live / uat
   active          Boolean       @default(true)
   subscriptionUse Boolean       @default(false) // OUR OWN membership — background jobs (subscription poll, ipomaster, holidays) always use this one
+  /// Set by the system when the exchange REJECTS this login (wrong, expired or
+  /// locked password — 2026-11-23). While set, nothing uses this login: no
+  /// subscription polling, no IPO master or holiday reads, no bid sending —
+  /// because retrying a rejected password is how an exchange locks the account.
+  /// Cleared when a new password is saved and a test login passes.
+  pausedAt        DateTime?     @db.Timestamptz(3)
+  pausedReason    String?
   applications    Application[]
 
   @@index([tenantId])
@@ -1612,4 +1619,48 @@ model PartnerBidLimits {
   maxAmountPerDay Int      @default(0)
   updatedBy       String?
   updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// An operator alert (2026-11-23): shown on the admin dashboard and the bell,
+/// emailed once when it opens and once when it resolves. One OPEN row per
+/// `key`, so a problem that persists for an hour is one alert, not sixty.
+model OperatorAlert {
+  id                String    @id @default(uuid())
+  /// what the problem is about, e.g. "login:<credentialId>", "feed:<ipoId>:bse", "nobook:<ipoId>"
+  key               String
+  /// login-rejected | login-failing | feed-stopped | no-reservation
+  kind              String
+  /// critical | warning
+  severity          String
+  title             String
+  detail            String
+  openedAt          DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @db.Timestamptz(3)
+  resolvedAt        DateTime? @db.Timestamptz(3)
+  /// when the opening email went out; null = not sent (yet, or email off)
+  emailedAt         DateTime? @db.Timestamptz(3)
+  resolvedEmailedAt DateTime? @db.Timestamptz(3)
+
+  @@index([key, resolvedAt])
+  @@index([resolvedAt, openedAt])
+}
+
+/// Bot requests to the tracked pages, read from the IIS access log
+/// (scripts/ingest-bot-log.js, 2026-11-23). The page beacon only sees bots that
+/// run page code; the log sees every request, with the bot's name.
+model BotVisit {
+  id       String   @id @default(uuid())
+  /// the India date, YYYY-MM-DD
+  day      String
+  /// /subscription or /subscription/v2
+  path     String
+  /// the bot's name from its user agent, e.g. Googlebot, bingbot, ShapBot
+  bot      String
+  hits     Int
+  lastAt   DateTime @db.Timestamptz(3)
+  /// one user agent seen, so an unfamiliar name can be looked up
+  sampleUa String   @default("")
+
+  @@unique([day, path, bot])
+  @@index([day])
 }

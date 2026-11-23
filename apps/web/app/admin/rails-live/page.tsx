@@ -88,8 +88,9 @@ export default function AdminRailsLive() {
         if (form.password) body.password = form.password;
         if (form.ibbsId) body.ibbsId = form.ibbsId;
         if (form.checksumKey) body.checksumKey = form.checksumKey;
-        await api.updateRail(editId, body);
-        setMsg('Credential updated.');
+        const r = await api.updateRail(editId, body);
+        // A paused login with a new secret is tested on save and resumed if it works.
+        setMsg(r.note ? `Credential updated. ${r.note}` : 'Credential updated.');
       } else {
         await api.createRail(form);
         setMsg('Credential added.');
@@ -106,6 +107,16 @@ export default function AdminRailsLive() {
       setMsg(r.reason === 'no-credential'
         ? 'Add + activate an NSE credential first — nothing to poll.'
         : `Subscription refreshed: ${r.updated} of ${r.open} open IPO(s) updated.`);
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+  /** Resume a paused login — the server tests it first and keeps it paused if it is still refused. */
+  const doResume = async (rail: api.RailCred) => {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await api.resumeRail(rail.id);
+      await load();
+      if (r.resumed) setMsg(`${rail.memberName}: ${r.note}`); else setErr(`${rail.memberName}: ${r.note}`);
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   };
@@ -144,6 +155,12 @@ export default function AdminRailsLive() {
         </>}
       />
       {err && !showAdd && <div className="banner warn" style={{ marginBottom: 16 }}>{err}</div>}
+      {rails.some((c) => c.pausedAt) && (
+        <div className="banner bad" style={{ marginBottom: 16 }}>
+          <span><b>{rails.filter((c) => c.pausedAt).map((c) => `${EX_LABEL[c.exchange] ?? c.exchange} ${c.memberName}`).join(', ')} paused.</b>{' '}
+          The exchange rejected the password, so nothing uses this login until it works again — not subscription, not bids. Change or confirm the password with the exchange, then Edit → save the new password here: it is tested first and resumes automatically.</span>
+        </div>
+      )}
       {msg && <div className="banner ok" style={{ marginBottom: 16 }}>{msg}</div>}
       {loading ? <Loader /> : (
         <div className="card">
@@ -186,9 +203,16 @@ export default function AdminRailsLive() {
                             : <span className="rl-secret unset">not set</span>}
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <span className={`rl-st ${c.active ? 'on' : 'off'}`}>
-                            <span className="rl-dot" />{c.active ? 'Active' : 'Off'}
-                          </span>
+                          {c.pausedAt ? (
+                            <span className="rl-st paused" title={c.pausedReason ?? 'The exchange rejected the password'}>
+                              <span className="rl-dot" />Paused
+                            </span>
+                          ) : (
+                            <span className={`rl-st ${c.active ? 'on' : 'off'}`}>
+                              <span className="rl-dot" />{c.active ? 'Active' : 'Off'}
+                            </span>
+                          )}
+                          {c.pausedAt && c.pausedReason && <div className="rl-sub-line" style={{ maxWidth: 220, whiteSpace: 'normal', textTransform: 'none' }}>{c.pausedReason}</div>}
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>
                           <span className="row-actions">
@@ -199,6 +223,11 @@ export default function AdminRailsLive() {
                               <button disabled={busy} onClick={() => doTest(c)}>
                                 <Icon name={testing === c.id ? 'clock' : 'refresh'} size={14} /> Test connection
                               </button>
+                              {c.pausedAt && (
+                                <button disabled={busy} onClick={() => doResume(c)}>
+                                  <Icon name="power" size={14} /> Test and resume
+                                </button>
+                              )}
                               {!c.subscriptionUse && (
                                 <button disabled={busy}
                                   onClick={() => run(() => api.updateRail(c.id, { subscriptionUse: true }), `${c.memberName} is now used for subscription fetch on ${EX_LABEL[c.exchange] ?? c.exchange}.`)}>
