@@ -409,7 +409,22 @@ export async function getIpos(): Promise<IpoListItem[]> {
   };
   if (typeof window === 'undefined') return run();
   if (!iposShared) {
-    iposShared = run().catch((e) => { iposShared = null; throw e; });
+    /* SHARED WHILE IN FLIGHT AND FOR A FEW SECONDS AFTER, NEVER LONGER. The
+       first cut kept this promise for the life of the tab, so every 60-second
+       poll on /subscription and /subscription/v2 got the FIRST response back
+       and the live figures froze at page load (operator report, 2026-11-23).
+       15 s covers components mounting together; a poll 60 s later fetches.
+       An empty answer is never kept: safeGet turns a failure into [], and
+       keeping that would hold a page empty after the API recovered. */
+    const p = run();
+    iposShared = p;
+    p.then(
+      (list) => {
+        if (!list.length) { if (iposShared === p) iposShared = null; return; }
+        setTimeout(() => { if (iposShared === p) iposShared = null; }, 15_000);
+      },
+      () => { if (iposShared === p) iposShared = null; },
+    );
   }
   return iposShared;
 }
