@@ -21,6 +21,8 @@ const LABEL = new Map<string, string>(PARTNER_SCOPE_META.map((s) => [s.key, s.la
 export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string; title: string; intro?: ReactNode }) {
   const [rows, setRows] = useState<api.PartnerApiKeyRow[] | null>(null);
   const [tenantScopes, setTenantScopes] = useState<string[] | null>(null);
+  // The partner's API switch (2026-11-23). Off = every call refused, no new keys.
+  const [enabled, setEnabled] = useState<boolean | null>(null);
   const [label, setLabel] = useState('');
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -32,7 +34,9 @@ export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string;
 
   const load = () => {
     api.listPartnerKeys(tenantId).then(setRows).catch((e) => { setErr(String(e?.message ?? e)); setRows([]); });
-    api.partnerKeyScopeOptions(tenantId).then((r) => setTenantScopes(r.tenantScopes)).catch(() => setTenantScopes([]));
+    api.partnerKeyScopeOptions(tenantId)
+      .then((r) => { setTenantScopes(r.tenantScopes); setEnabled(r.enabled !== false); })
+      .catch(() => { setTenantScopes([]); setEnabled(null); });
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [tenantId]);
 
@@ -107,7 +111,14 @@ export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string;
         </div>
       )}
 
-      <div className="akp-new">
+      {enabled === false && (
+        <div className="banner warn" style={{ margin: '10px 0' }}>
+          <b>API access is switched off for this account.</b> Every call is refused and no new key can be made.
+          The Investoyard team switches it on in Partner API → Access.
+        </div>
+      )}
+
+      {enabled !== false && <div className="akp-new">
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <input className="input" style={{ maxWidth: 260 }} placeholder="Label (e.g. Production backend)"
             value={label} onChange={(e) => setLabel(e.target.value)} />
@@ -124,7 +135,7 @@ export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string;
         {tenantScopes === null ? null : offered.length === 0 ? (
           <div className="muted akp-note">This partner has no API scopes switched on, so a key would not be able to call anything yet.</div>
         ) : boxes(pick, (k) => setPick((s) => toggle(s, k)))}
-      </div>
+      </div>}
 
       {rows === null ? <Loader /> : rows.length === 0 ? (
         <div className="muted" style={{ fontSize: 13.5 }}>No API keys yet. The label helps tell keys apart when there are several — one per environment, say.</div>

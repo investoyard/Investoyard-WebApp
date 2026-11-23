@@ -1,6 +1,8 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { effectiveKeyScopes, type PartnerScope } from '@investoyard/shared-types';
+import {
+  effectiveKeyScopes, partnerApiAccess, type PartnerAccessNode, type PartnerApiAccess, type PartnerScope,
+} from '@investoyard/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { tenantContext } from '../../common/tenant-context';
 
@@ -16,12 +18,11 @@ import { tenantContext } from '../../common/tenant-context';
  * lives in shared-types (`PARTNER_SCOPE_META`) so the admin screens offer
  * exactly what this guard enforces.
  *
- * Branch inheritance: a branch tenant with an EMPTY scope array falls
- * back to its parent's scopes (walks the tenant tree, up to the platform
- * root). An explicit non-empty list on a branch is treated as its own
- * scope set — no merging. This matches how partner-onboarding registers
- * a branch: it inherits by default; setting scopes on a branch is a
- * deliberate override.
+ * The partner's API switch comes first: PartnerApiKeyGuard refuses every call
+ * from a partner whose `partnerApiEnabled` is off (2026-11-23). Branch
+ * inheritance: a branch with an EMPTY scope list uses its parent partner's;
+ * an EMPTY list on a partner means none — it no longer falls through to the
+ * platform tenant's default. Rules: `partnerApiAccess` in shared-types.
  */
 
 export { PARTNER_SCOPES, DEFAULT_PARTNER_SCOPES, type PartnerScope } from '@investoyard/shared-types';
@@ -32,30 +33,37 @@ export const REQUIRE_SCOPE_KEY = 'partner:scope';
 export const RequireScope = (scope: PartnerScope) => SetMetadata(REQUIRE_SCOPE_KEY, scope);
 
 /**
- * Walk tenantId → parent → … up to platform, taking the first tenant
- * that has a NON-EMPTY partnerApiScopes list. An empty list means
- * "inherit from parent"; a set list is a deliberate override. Bounded
- * at 6 hops to match the ProviderConfigService pattern.
+ * The scopes a tenant may use — empty when its API switch is off.
  *
  * Exported because key issue has to answer the same question — a key may only
  * be given what its tenant has — and two answers to it would drift.
  */
 export async function resolveTenantScopes(prisma: PrismaService, tenantId: string): Promise<string[]> {
+  return (await resolveTenantAccess(prisma, tenantId)).scopes;
+}
+
+/**
+ * The tenant's API access: its ON/OFF switch and the scopes it may use (rules
+ * in `partnerApiAccess`). The walk stops at the first tenant that is NOT a
+ * branch — it used to run on up to the platform tenant, whose default list
+ * then quietly applied to every partner with an empty one.
+ */
+export async function resolveTenantAccess(prisma: PrismaService, tenantId: string): Promise<PartnerApiAccess> {
+  const chain: PartnerAccessNode[] = [];
   let currentId: string | null = tenantId;
   for (let i = 0; i < 6 && currentId; i++) {
     const t: any = await tenantContext.runUnscoped(() =>
       prisma.tenant.findUnique({
         where: { id: currentId! },
-        select: { partnerApiScopes: true, parentId: true },
+        select: { type: true, partnerApiEnabled: true, partnerApiScopes: true, parentId: true } as any,
       }),
     );
-    if (!t) return [];
-    if (Array.isArray(t.partnerApiScopes) && t.partnerApiScopes.length > 0) {
-      return t.partnerApiScopes as string[];
-    }
+    if (!t) break;
+    chain.push({ type: String(t.type), enabled: t.partnerApiEnabled === true, scopes: (t.partnerApiScopes ?? []) as string[] });
+    if (t.type !== 'branch') break;
     currentId = t.parentId;
   }
-  return [];
+  return partnerApiAccess(chain);
 }
 
 @Injectable()
@@ -75,7 +83,9 @@ export class PartnerScopeGuard implements CanActivate {
       throw new ForbiddenException('Partner tenant not resolved.');
     }
 
-    const tenantScopes = await resolveTenantScopes(this.prisma, tenant.id);
+    // The key guard has already resolved this (and refused a partner whose
+    // switch is off); re-resolve only if it did not run first.
+    const tenantScopes: string[] = req.partnerTenantScopes ?? await resolveTenantScopes(this.prisma, tenant.id);
     const scopes = effectiveKeyScopes(tenantScopes, req.partnerKeyScopes);
     req.partnerScopes = scopes;
     if ((scopes as string[]).includes(required)) return true;

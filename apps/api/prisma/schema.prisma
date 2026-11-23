@@ -254,6 +254,13 @@ model Tenant {
   /// tenant's scopes at request time (see the guard).
   partnerApiScopes String[] @default(["print-forms","ipos:read"])
 
+  /// Partner API — the per-partner ON/OFF switch (2026-11-23). OFF by default:
+  /// only a partner the operator has allowed may call the API at all. The scope
+  /// list above says which API groups an enabled partner may use; an EMPTY list
+  /// on a partner means none. A branch needs its own switch AND its parent's.
+  /// See `partnerApiAccess` in shared-types.
+  partnerApiEnabled Boolean @default(false)
+
   createdAt      DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
 

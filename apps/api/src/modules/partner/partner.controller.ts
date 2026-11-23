@@ -10,7 +10,7 @@ import { SuperadminGuard } from '../../common/superadmin.guard';
 import { PartnerService } from './partner.service';
 import {
   CreatePartnerKeyDto, PartnerBidBatchDto, PartnerBidModifyDto, PartnerBidRefDto, PartnerBidUpiDto,
-  PartnerBidLimitsDto, PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
+  PartnerApiAccessDto, PartnerBidLimitsDto, PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
 } from './partner.dto';
 import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 
@@ -410,5 +410,26 @@ export class PartnerBidLimitsAdminController {
   @Put(':tenantId')
   set(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: PartnerBidLimitsDto) {
     return this.bids.setAdminLimits(req.user.sub, tenantId, dto);
+  }
+}
+
+/**
+ * Which partners may use the API at all, and which API groups (2026-11-23).
+ * Platform operators only: switching a partner's API on is a decision about
+ * who may act through our platform, so no partner may change it for itself.
+ */
+@Controller('admin/partner-api-access')
+@UseGuards(JwtAuthGuard, SuperadminGuard)
+export class PartnerAccessAdminController {
+  constructor(private readonly partner: PartnerService) {}
+
+  @Get()
+  list() {
+    return this.partner.accessOverview();
+  }
+
+  @Patch(':tenantId')
+  set(@Req() req: any, @Param('tenantId') tenantId: string, @Body() dto: PartnerApiAccessDto) {
+    return this.partner.setAccess(req.user.sub, tenantId, dto);
   }
 }

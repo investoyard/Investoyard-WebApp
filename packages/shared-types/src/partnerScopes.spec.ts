@@ -1,6 +1,6 @@
 import {
   DEFAULT_PARTNER_SCOPES, PARTNER_SCOPES, PARTNER_SCOPE_META,
-  effectiveKeyScopes, isPartnerScope, keyScopesProblem,
+  effectiveKeyScopes, isPartnerScope, keyScopesProblem, partnerApiAccess,
 } from './partnerScopes';
 
 describe('partner scopes', () => {
@@ -58,5 +58,49 @@ describe('keyScopesProblem', () => {
 
   it('refuses an unknown scope', () => {
     expect(keyScopesProblem(['ipos:read'], ['nosuch:write'])).toBe('Unknown scope: nosuch:write.');
+  });
+});
+
+describe('partnerApiAccess — the per-partner switch', () => {
+  const partner = (enabled: boolean, scopes: string[] = ['print-forms', 'ipos:read']) => ({ type: 'partner', enabled, scopes });
+  const branch = (enabled: boolean, scopes: string[] = []) => ({ type: 'branch', enabled, scopes });
+  const platform = { type: 'platform', enabled: false, scopes: ['print-forms', 'ipos:read'] };
+
+  it('a partner whose switch is off has no access, whatever its scopes say', () => {
+    expect(partnerApiAccess([partner(false), platform])).toEqual({ enabled: false, scopes: [], reason: 'off' });
+  });
+
+  it('an enabled partner gets exactly its own scopes', () => {
+    expect(partnerApiAccess([partner(true, ['allotment:read']), platform]))
+      .toEqual({ enabled: true, scopes: ['allotment:read'], reason: null });
+  });
+
+  it('an enabled partner with NO scopes gets none — it no longer inherits the platform default', () => {
+    expect(partnerApiAccess([partner(true, []), platform]).scopes).toEqual([]);
+  });
+
+  it('unknown scope names are dropped', () => {
+    expect(partnerApiAccess([partner(true, ['print-forms', 'nonsense'])]).scopes).toEqual(['print-forms']);
+  });
+
+  it('a branch with no scopes of its own inherits its parent partner’s', () => {
+    expect(partnerApiAccess([branch(true), partner(true, ['prints:read']), platform]).scopes).toEqual(['prints:read']);
+  });
+
+  it('a branch with its own list keeps it', () => {
+    expect(partnerApiAccess([branch(true, ['ipos:read']), partner(true, ['prints:read'])]).scopes).toEqual(['ipos:read']);
+  });
+
+  it('a branch is off when its own switch is off', () => {
+    expect(partnerApiAccess([branch(false), partner(true)]).reason).toBe('off');
+  });
+
+  it('a branch is off when its parent partner is off, even with its own switch on', () => {
+    expect(partnerApiAccess([branch(true, ['ipos:read']), partner(false)]))
+      .toEqual({ enabled: false, scopes: [], reason: 'parent-off' });
+  });
+
+  it('a missing tenant has no access', () => {
+    expect(partnerApiAccess([]).enabled).toBe(false);
   });
 });

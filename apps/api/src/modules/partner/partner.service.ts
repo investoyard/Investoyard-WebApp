@@ -6,8 +6,8 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { sha256 } from './partner.guard';
-import { effectiveIpoStatus, istToday, keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
-import { resolveTenantScopes } from './partner-scope';
+import { PARTNER_API_OFF_MESSAGE, effectiveIpoStatus, isPartnerScope, istToday, keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
+import { resolveTenantAccess, resolveTenantScopes } from './partner-scope';
 import { PartnerApplicantDto, PartnerPrintFormsDto } from './partner.dto';
 
 /**
@@ -626,7 +626,8 @@ export class PartnerService {
    * scope is enforced here.                                              */
 
   /** Scope check: is this caller allowed to manage keys on this tenant? */
-  private async assertCanManageKeys(callerId: string, tenantId: string): Promise<void> {
+  /** Returns true for a platform operator, false for the partner's own member. */
+  private async assertCanManageKeys(callerId: string, tenantId: string): Promise<boolean> {
     const memberships = await tenantContext.runUnscoped(() =>
       this.prisma.membership.findMany({
         where: { userId: callerId, status: 'active' },
@@ -634,9 +635,9 @@ export class PartnerService {
       }),
     );
     const superadmin = memberships.some((m) => m.role.scope === 'all');
-    if (superadmin) return;
+    if (superadmin) return true;
     const owns = memberships.some((m) => m.tenantId === tenantId);
-    if (owns) return;
+    if (owns) return false;
     throw new ForbiddenException('You do not manage this tenant.');
   }
 
@@ -657,7 +658,9 @@ export class PartnerService {
    */
   async keyScopeOptions(callerId: string, tenantId: string) {
     await this.assertCanManageKeys(callerId, tenantId);
-    return { tenantScopes: await resolveTenantScopes(this.prisma, tenantId) };
+    const access = await resolveTenantAccess(this.prisma, tenantId);
+    // `enabled` lets the key panel say why it offers no Create button.
+    return { tenantScopes: access.scopes, enabled: access.enabled, reason: access.reason };
   }
 
   /** Refuse a key scope list its tenant cannot back. Empty = everything the tenant has. */
@@ -670,9 +673,16 @@ export class PartnerService {
 
   /** Create a key — the SECRET is returned once and never stored in plain. */
   async createKey(callerId: string, tenantId: string, label?: string, scopes?: string[], mode: 'live' | 'test' = 'live', ipAllowlist?: string[]) {
-    await this.assertCanManageKeys(callerId, tenantId);
+    const superadmin = await this.assertCanManageKeys(callerId, tenantId);
     const tenant = await tenantContext.runUnscoped(() => this.prisma.tenant.findUnique({ where: { id: tenantId } }));
     if (!tenant) throw new NotFoundException('Tenant not found.');
+    // A partner whose API is switched off cannot make keys for itself — a key
+    // it could not use would only look like access it does not have.
+    if (!(await resolveTenantAccess(this.prisma, tenantId)).enabled) {
+      throw new ForbiddenException(superadmin
+        ? 'API access is switched off for this partner. Switch it on in Partner API → Access first.'
+        : PARTNER_API_OFF_MESSAGE);
+    }
     const list = await this.assertKeyScopes(tenantId, scopes);
     const keyId = `pk_${randomBytes(6).toString('hex')}`;
     const secret = randomBytes(24).toString('hex');
@@ -738,6 +748,94 @@ export class PartnerService {
       this.prisma.partnerApiKey.update({ where: { id }, data: { active: false, revokedAt: new Date() } }),
     );
     return { revoked: true };
+  }
+
+  /* ══ Per-partner API ACCESS (2026-11-23) ═══════════════════════════════════
+   * The operator's overview and switch. Platform operators only — the
+   * controller is behind SuperadminGuard. */
+
+  /** Every partner and branch with its switch, its API groups and how it is using them. */
+  async accessOverview() {
+    const tenants: any[] = await tenantContext.runUnscoped(() =>
+      this.prisma.tenant.findMany({
+        where: { type: { in: ['partner', 'branch'] } as any },
+        select: { id: true, slug: true, name: true, type: true, status: true, parentId: true, partnerApiEnabled: true, partnerApiScopes: true } as any,
+        orderBy: { name: 'asc' },
+      }),
+    );
+    const ids = tenants.map((t) => t.id);
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const [keys, calls, refused, last] = await Promise.all([
+      tenantContext.runUnscoped(() => this.prisma.partnerApiKey.findMany({
+        where: { tenantId: { in: ids } }, select: { tenantId: true, active: true, mode: true } as any,
+      })),
+      tenantContext.runUnscoped(() => this.prisma.partnerApiCall.groupBy({
+        by: ['tenantId'], where: { tenantId: { in: ids }, at: { gte: since } }, _count: { _all: true },
+      })),
+      tenantContext.runUnscoped(() => this.prisma.partnerApiCall.groupBy({
+        by: ['tenantId'], where: { tenantId: { in: ids }, at: { gte: since }, httpStatus: 403 }, _count: { _all: true },
+      })),
+      tenantContext.runUnscoped(() => this.prisma.partnerApiCall.groupBy({
+        by: ['tenantId'], where: { tenantId: { in: ids } }, _max: { at: true },
+      })),
+    ]);
+    const slugOf = new Map(tenants.map((t) => [t.id, t.slug]));
+    const count = (rows: any[], id: string) => rows.find((r) => r.tenantId === id)?._count?._all ?? 0;
+    return Promise.all(tenants.map(async (t) => {
+      const access = await resolveTenantAccess(this.prisma, t.id);
+      const mine = (keys as any[]).filter((k) => k.tenantId === t.id);
+      return {
+        tenantId: t.id, slug: t.slug, name: t.name, type: t.type, status: t.status,
+        parentSlug: t.parentId ? slugOf.get(t.parentId) ?? null : null,
+        enabled: t.partnerApiEnabled === true,
+        scopes: (t.partnerApiScopes ?? []) as string[],
+        effective: access,
+        keys: {
+          live: mine.filter((k) => k.active && k.mode !== 'test').length,
+          test: mine.filter((k) => k.active && k.mode === 'test').length,
+          revoked: mine.filter((k) => !k.active).length,
+        },
+        calls30d: count(calls as any[], t.id),
+        refused30d: count(refused as any[], t.id),
+        lastCallAt: (last as any[]).find((r) => r.tenantId === t.id)?._max?.at ?? null,
+      };
+    }));
+  }
+
+  /**
+   * Switch a partner's API on or off and/or set which API groups it may call.
+   * Takes effect on the partner's next call — the guards read it every time.
+   */
+  async setAccess(callerId: string, tenantId: string, patch: { enabled?: boolean; scopes?: string[] }) {
+    const t: any = await tenantContext.runUnscoped(() =>
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, type: true, partnerApiEnabled: true, partnerApiScopes: true } as any }),
+    );
+    if (!t) throw new NotFoundException('Partner not found.');
+    if (t.type !== 'partner' && t.type !== 'branch') throw new BadRequestException('API access applies to partners and branches only.');
+    const data: any = {};
+    if (patch.enabled !== undefined) data.partnerApiEnabled = patch.enabled === true;
+    if (patch.scopes !== undefined) {
+      const list = [...new Set(patch.scopes.map((s) => String(s).trim()).filter(Boolean))];
+      const unknown = list.filter((s) => !isPartnerScope(s));
+      if (unknown.length) throw new BadRequestException(`Unknown API group: ${unknown.join(', ')}.`);
+      data.partnerApiScopes = list;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Nothing to change.');
+    await tenantContext.runUnscoped(() => this.prisma.tenant.update({ where: { id: tenantId }, data }));
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'partner.api-access', actorId: callerId, targetType: 'tenant', targetId: tenantId, targetLabel: t.slug,
+        tenantSlug: t.slug,
+        detail: {
+          before: { enabled: t.partnerApiEnabled === true, scopes: t.partnerApiScopes ?? [] },
+          after: {
+            enabled: data.partnerApiEnabled ?? t.partnerApiEnabled === true,
+            scopes: data.partnerApiScopes ?? t.partnerApiScopes ?? [],
+          },
+        } as any,
+      },
+    }).catch(() => { /* best-effort */ });
+    return { tenantId, ...(await resolveTenantAccess(this.prisma, tenantId)) };
   }
 
   /* ══ Partner READ API — the partner's OWN records (Phase 1, 2026-11-20) ═════

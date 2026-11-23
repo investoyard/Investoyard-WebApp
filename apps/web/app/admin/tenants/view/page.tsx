@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
-import { PageHead, Field, FormActions } from '@/components/ui/Form';
+import { PageHead, Field, FormActions, Toggle } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
 import { EmpanelmentFields } from '@/components/EmpanelmentFields';
 import { EMPANELMENT, isIndividual, type EField } from '@/lib/empanelment';
@@ -66,6 +66,7 @@ function ApiAccessControlPanel({ slug, tenant, onSaved }: {
   tenant: api.PartnerDetail;
   onSaved: () => void;
 }) {
+  const [enabled, setEnabled] = useState<boolean>(tenant.partnerApiEnabled === true);
   const [scopes, setScopes] = useState<Set<string>>(() => new Set(tenant.partnerApiScopes ?? []));
   const [cap, setCap] = useState<string>(String(tenant.partnerMaxApplicantsPerCall ?? 25));
   const [busy, setBusy] = useState(false);
@@ -83,10 +84,10 @@ function ApiAccessControlPanel({ slug, tenant, onSaved }: {
     const capNum = Math.max(1, Math.min(500, Number(cap) || 25));
     setBusy(true); setErr(null);
     try {
-      await api.updateTenant(slug, {
-        partnerApiScopes: Array.from(scopes),
-        partnerMaxApplicantsPerCall: capNum,
-      });
+      // The switch and the API groups go through the one audited writer that
+      // Partner API → Access uses; the per-call cap stays on the tenant route.
+      await api.setPartnerAccess(tenant.id, { enabled, scopes: Array.from(scopes) });
+      await api.updateTenant(slug, { partnerMaxApplicantsPerCall: capNum });
       setCap(String(capNum));
       setSavedAt(Date.now());
       onSaved();
@@ -99,7 +100,16 @@ function ApiAccessControlPanel({ slug, tenant, onSaved }: {
     <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
       <div className="fs-head" style={{ marginBottom: 6 }}>
         <div className="t">API access &amp; limits</div>
-        <div className="d">Which Partner API endpoints this tenant may call, and how many applicants they may include in one <span className="mono">print-forms</span> request.</div>
+        <div className="d">Whether this partner may use the Partner API at all, which API groups it may call, and how many applicants it may include in one <span className="mono">print-forms</span> request. Every partner is listed on <a href="/admin/partner-api/access">Partner API → API Access</a>.</div>
+      </div>
+
+      <div className="pac-switch" style={{ margin: '12px 0 4px' }}>
+        <Toggle on={enabled} onChange={setEnabled} disabled={busy} label="Partner API access" />
+        <span><b>{enabled ? 'API access on' : 'API access off'}</b>
+          <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>
+            {enabled ? 'It may call the API groups ticked below.' : 'Every call is refused and it cannot create keys. The groups below apply once it is switched on.'}
+          </span>
+        </span>
       </div>
       {err && <div className="banner warn" style={{ margin: '10px 0' }}>{err}</div>}
       {savedAt && !err && <div className="banner ok" style={{ margin: '10px 0' }}>Saved — effective on the next partner call.</div>}
@@ -250,9 +260,12 @@ function PartnerProfilePage() {
         </>
       ) : null}
 
-      <PartnerKeysPanel tenantId={data.id} title="API keys" />
+      {/* Access first: whether this partner may use the API at all decides
+          whether its keys mean anything. Platform operators only — the API
+          refuses anyone else. */}
+      {me?.isSuperAdmin && <ApiAccessControlPanel slug={slug} tenant={data} onSaved={load} />}
 
-      <ApiAccessControlPanel slug={slug} tenant={data} onSaved={load} />
+      <PartnerKeysPanel tenantId={data.id} title="API keys" />
 
       {/* Platform operators only: this is what lets a partner send REAL bids. */}
       {me?.isSuperAdmin && <PartnerBidLimitsPanel tenantId={data.id} />}

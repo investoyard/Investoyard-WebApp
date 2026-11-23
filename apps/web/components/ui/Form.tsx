@@ -134,9 +134,9 @@ export function FormActions({ children }: { children: React.ReactNode }) {
 }
 
 /** An on/off toggle switch. */
-export function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} disabled={disabled}
+    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
       className={`switch${on ? ' on' : ''}`} onClick={() => onChange(!on)}>
       <span className="knob" />
     </button>

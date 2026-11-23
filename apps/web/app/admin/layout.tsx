@@ -16,7 +16,7 @@ type IconName = Parameters<typeof Icon>[0]['name'];
  *  "My …" pages that key off homeTenant have nothing to show there
  *  (My API Keys, for example: the platform tenant owns no partner keys —
  *  superadmin manages them per-partner from Tenants → view). */
-type NavLeaf = { href: string; label: string; perm?: string; hidePlatform?: boolean };
+type NavLeaf = { href: string; label: string; perm?: string; hidePlatform?: boolean; superOnly?: boolean };
 type NavNode = { key: string; label: string; icon: IconName; perm?: string; href?: string; children?: NavLeaf[] };
 
 // Menu taxonomy — matches the operator's IPO-console design. Real pages where we have
@@ -83,6 +83,8 @@ const NAV: NavNode[] = [
   // (they manage keys per-partner from Tenants → view instead).
   { key: 'partner-api', label: 'Partner API', icon: 'key', children: [
     { href: '/admin/partner-api/docs', label: 'API Docs' },
+    // Which partners may use the API at all — platform operators only.
+    { href: '/admin/partner-api/access', label: 'API Access', superOnly: true },
     { href: '/admin/partner-api/keys', label: 'My API Keys', perm: 'partner-api.keys.manage', hidePlatform: true },
     { href: '/admin/partner-api/calls', label: 'API Calls', perm: 'partner-api.calls.view' },
     { href: '/admin/partner-api/prints', label: 'Print Report', perm: 'partner-api.prints.view' },
@@ -230,7 +232,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const nav = NAV
     .map((n) => ({
       ...n,
-      children: n.children?.filter((c) => (!c.perm || operatorCan(me, c.perm)) && !(c.hidePlatform && onPlatform)),
+      children: n.children?.filter((c) => (!c.perm || operatorCan(me, c.perm)) && !(c.hidePlatform && onPlatform) && !(c.superOnly && !me.isSuperAdmin)),
     }))
     .filter((n) => (!n.perm || operatorCan(me, n.perm)) && (n.href || (n.children && n.children.length)));
   const roleLabel = me.isSuperAdmin ? 'Super Admin' : (me.memberships[0]?.role ?? 'Operator');

@@ -135,3 +135,9 @@ export class PartnerBidLimitsDto {
   @IsNumber() maxBidsPerDay!: number;
   @IsNumber() maxAmountPerDay!: number;
 }
+
+/** A partner's API switch and the API groups it may call (2026-11-23). Either field may be sent alone. */
+export class PartnerApiAccessDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) scopes?: string[];
+}

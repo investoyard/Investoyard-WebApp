@@ -154,6 +154,8 @@ export interface PartnerDetail {
   /** Scope keys this tenant may call on /partner/v1. Empty = inherit from
    *  parent (branches). Defaults for a new partner: print-forms + ipos:read. */
   partnerApiScopes?: string[];
+  /** The partner's API switch (2026-11-23). Off = no API at all, whatever the scopes say. */
+  partnerApiEnabled?: boolean;
   counts: { branches: number; users: number; operators: number };
   createdAt: string;
   /** What this channel publishes about itself — see the Content panel. */
@@ -227,7 +229,27 @@ export const updatePartnerKeyIps = (id: string, ipAllowlist: string[]) =>
   });
 /** What a key on this tenant may be given — the tenant's own scopes. */
 export const partnerKeyScopeOptions = (tenantId: string) =>
-  authed<{ tenantScopes: string[] }>(`${API}/admin/partner-keys/${tenantId}/scope-options`, { method: 'GET' });
+  authed<{ tenantScopes: string[]; enabled?: boolean; reason?: 'off' | 'parent-off' | null }>(`${API}/admin/partner-keys/${tenantId}/scope-options`, { method: 'GET' });
+
+/** One partner on Partner API → Access (platform operators only). */
+export interface PartnerAccessRow {
+  tenantId: string; slug: string; name: string; type: 'partner' | 'branch'; status: string; parentSlug: string | null;
+  /** its own switch */
+  enabled: boolean;
+  /** its own API groups; [] on a branch = its parent's */
+  scopes: string[];
+  /** what actually applies, after a branch's parent is taken into account */
+  effective: { enabled: boolean; scopes: string[]; reason: 'off' | 'parent-off' | null };
+  keys: { live: number; test: number; revoked: number };
+  calls30d: number; refused30d: number; lastCallAt: string | null;
+}
+export const fetchPartnerAccess = () =>
+  authed<PartnerAccessRow[]>(`${API}/admin/partner-api-access`, { method: 'GET' });
+/** Switch a partner's API on or off, and/or set its API groups. Either field may be sent alone. */
+export const setPartnerAccess = (tenantId: string, body: { enabled?: boolean; scopes?: string[] }) =>
+  authed<{ tenantId: string; enabled: boolean; scopes: string[]; reason: 'off' | 'parent-off' | null }>(`${API}/admin/partner-api-access/${tenantId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
 /** Change a key's scopes; [] = everything its partner has. */
 export const updatePartnerKeyScopes = (id: string, scopes: string[]) =>
   authed<{ keyId: string; scopes: string[] }>(`${API}/admin/partner-keys/${id}/scopes`, {

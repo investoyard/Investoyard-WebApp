@@ -124,3 +124,50 @@ export function keyScopesProblem(tenantScopes: readonly string[], keyScopes: rea
   }
   return null;
 }
+
+/* ── The per-partner ON/OFF switch (2026-11-23) ──────────────────────────────
+ *
+ * Sir's rule: only a partner the operator has allowed may use the API at all.
+ * Before this there was no switch — and unticking every scope did NOT turn a
+ * partner off: an empty list meant "inherit", and the walk ran up to the
+ * PLATFORM tenant, whose default is print forms + the IPO list. So every
+ * partner could call those two the moment it created a key, which it can do
+ * for itself on My API Keys.
+ *
+ * Now `Tenant.partnerApiEnabled` (default false) is the switch, and the scope
+ * list says which API groups an enabled partner may call. An EMPTY list on a
+ * partner means NONE. Only a BRANCH inherits, from its parent partner — and a
+ * branch is on only when its own switch AND its parent's are on.
+ */
+
+export interface PartnerAccessNode {
+  type: string;
+  enabled: boolean;
+  scopes: readonly string[];
+}
+
+export interface PartnerApiAccess {
+  enabled: boolean;
+  /** what an enabled partner may call; always empty when not enabled */
+  scopes: PartnerScope[];
+  /** why it is off: its own switch, or the parent partner's (branches only) */
+  reason: 'off' | 'parent-off' | null;
+}
+
+export const PARTNER_API_OFF_MESSAGE =
+  'API access is not enabled for your account. Contact us to request it.';
+
+/**
+ * A tenant's API access. `chain[0]` is the tenant, `chain[1]` its parent and so
+ * on; the walk only ever needs to go as far as the first non-branch tenant.
+ */
+export function partnerApiAccess(chain: readonly PartnerAccessNode[]): PartnerApiAccess {
+  const off = (reason: 'off' | 'parent-off'): PartnerApiAccess => ({ enabled: false, scopes: [], reason });
+  const [t, ...rest] = chain;
+  if (!t || !t.enabled) return off('off');
+  const own = t.scopes.filter(isPartnerScope);
+  if (t.type !== 'branch') return { enabled: true, scopes: own, reason: null };
+  const parent = partnerApiAccess(rest);
+  if (!parent.enabled) return off('parent-off');
+  return { enabled: true, scopes: own.length ? own : parent.scopes, reason: null };
+}

@@ -1110,6 +1110,7 @@ export class AdminService {
         // types lag until the pool cycle re-runs `prisma generate`.
         partnerMaxApplicantsPerCall: (t as any).partnerMaxApplicantsPerCall ?? 25,
         partnerApiScopes: ((t as any).partnerApiScopes ?? []) as string[],
+        partnerApiEnabled: (t as any).partnerApiEnabled === true,
       };
     });
   }
