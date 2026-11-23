@@ -2617,5 +2617,61 @@ The family is already tracked here; these are new shapes, and **three of five re
 - **The "Live subscription poller" Provider Keys card never worked**: `subscription` was not in the server's `PROVIDER_SPECS`, so the card loaded blank and Save failed "Unknown provider". The stored row held only defaults. Added (with `alerts`); both cards are platform-only.
 - **`/api/ipos` is now 4 MB at build time and over Next's 2 MB fetch cache**, so it is re-fetched rather than cached — stale-cache replay cannot affect the catalogue any more.
 
+## The admin dashboard, rebuilt (2026-11-23)
+
+**Why: the old one was wrong on almost every figure.** Measured against the database the same day:
+- it read the dead `Ipo.status` column, so it said **0 live · 130 upcoming** while 2 were open and 3 upcoming, and its "Live" IPO table was empty;
+- it counted **4,379 partner-printed forms as "applications"** (there were zero online bids);
+- it showed **"₹34.5 Cr in flight"**, which was the amount on every form ever printed minus what was allotted — money we never hold;
+- it cut its days at 5:30 am (UTC dates);
+- its activity times were in UTC.
+
+**Operator's choices**: forms printed and online bids counted separately · 7 days by default with a 7/30/90 switch · partner admins get the same layout with only their own data · Recent activity removed from the dashboard (the audit log keeps every entry) · Allotment to-dos not wanted.
+
+### Where each figure comes from
+- **The market half is worked out in the browser from the same enriched IPO list the public pages use**, so the dashboard cannot disagree with `/subscription`. That half is which IPOs are in play, their stage, subscription (`subscriptionTable().total`), applications (`total.bidCount`), GMP and the Print/Bid switches.
+  - The list comes from `getRecentIposEnriched(30)` in `lib/api.ts`: `/ipos?view=light&recentDays=30` passed through the same `enrich()` as `getIpos()`. It throws on failure, so "API down" is not shown as "nothing in play".
+- **Everything only the database knows comes from `GET /admin/dashboard/:slug?days=7|30|90`.** The route is the same as before; the service is new (`apps/api/src/modules/dashboard/`) and the old `AdminService.dashboard()` is deleted. It returns:
+  - forms and online bids per India day, today, the window and all time;
+  - partner calls and refusals;
+  - per in-play IPO: forms printed, refusals today and form numbers left;
+  - partner activity, partners gone quiet and the onboarding pipeline;
+  - subscription readers, investor sign-ups, SMS/email, and system status.
+  It answers in ~0.2 s.
+- **Forms printed** = `applyMethod 'pdf'`, not test, not draft. **Online bids** = `applyMethod 'native'`, live and test kept apart.
+- **Form numbers left** are counted across EVERY partner, because the series is one per IPO shared by all of them. A series is flagged when 200 or fewer numbers are left, or 5% of the range.
+- **Investor sign-ups count investors' own applicants only.** Every partner print mints a profile under the partner's service account, which read 26 "applicants added" in a week against 1 real sign-up until it was excluded.
+- **All Application/User/InvestorProfile reads run in one transaction that clears `app.current_tenant_id` first** — the documented pooled-connection RLS fix.
+
+### What a partner admin sees, and why it is enforced in two places
+- **`AdminService.dashboardScope()` decides the scope.** For a non-platform operator it narrows the subtree to their own scope. **The platform blocks come back only when the caller has scope `all` AND the tenant asked for is the platform** (`platformView`): exchange logins, readers, sign-ups, messages, the onboarding queue and partners gone quiet. A superadmin who picks a partner in the filter sees that partner's view. Proved on the deployed code:
+  - a real SIHL admin got only SIHL (10 forms today, 559 in 30 days) and none of the platform blocks;
+  - asking for the platform dashboard as SIHL was refused with "Outside your scope".
+- **The page fetches `/admin/alerts` and `/admin/subscription/readiness` only when the dashboard says `platformView`.** Partner roles hold `ipos.view`, so before this a partner would have been shown the platform-wide subscription-check card, which lists every IPO and links to our edit screens.
+- **Operator-only links are hidden for a partner**: IPO Operations, "Turn printing on", "Add the IPO", "API Access". The partner/branch picker appears only when there is something to pick: partners, for a platform operator; branches, for a partner.
+- **Proved in headless Chrome as both roles, 20 checks.** One failure was my own test: it searched the whole page, including the left menu, rather than the dashboard.
+
+### Cards
+- Alerts (platform only) · status strip (logins, subscription freshness, alerts, last night's rebuild).
+- Four tiles: live now · opening in 7 days · forms printed today · subscription readers today. A partner sees its API calls today in place of the readers tile.
+- **IPOs in play.** Rows: open, closing today, opening within 7 days, or allotment or listing today. Each row has a "Needs attention" chip set:
+  - printing off while open;
+  - partner calls refused today;
+  - form numbers low or used up, or no series at all;
+  - platform only: no reservation table, no ASBA template, no GMP today.
+- **Partner refusals**, grouped by what fixes them (`refusalKind()` in `refusal-kind.ts`, 6 tests, kept in its own file so a test can load it). Each group is marked **"Printing is on now"** or **"Added since"** when it is already fixed.
+- Forms-printed chart, as columns in India days with a table view, plus the top IPOs by forms.
+- Partner activity · partners gone quiet · partner pipeline · online bids.
+- Readers · sign-ups · SMS & email.
+- It refreshes every minute while the tab is visible.
+
+### Found while doing it
+- **The audit log is 4,370 partner prints plus investor OTP steps.** The activity query (still in the API, no longer shown) excludes them.
+- **Prudent has the API switched on with a live key and has never called** — the first "gone quiet" partner.
+- **SHREESIDHI and FOODLINK opened within days with no reservation table** — the first live "Needs attention" rows.
+- **A refused call with text "WinAnsi cannot encode … (0x0009)"** is a print that failed on a TAB character in the partner's data. It shows under "other refusals". Worth a fix in the PDF filler (strip control characters) if it recurs.
+- **`refusalKind` could not be tested while it lived in the service file**: the spec pulled in `AdminService`, which the stricter test compiler rejects over an unrelated old type narrowing at `admin.service.ts:1061`.
+- **The new service was proved against the real database BEFORE the handshake** with no second API and no scratch build in the repo. `ts.transpileModule` compiled the one `.ts` file into a temp `.js` inside `dist`, so its imports resolved; it was run with a stand-in admin service and deleted after.
+
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.

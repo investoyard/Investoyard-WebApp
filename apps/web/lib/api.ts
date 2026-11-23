@@ -429,6 +429,19 @@ export async function getIpos(): Promise<IpoListItem[]> {
   return iposShared;
 }
 
+/**
+ * Live, upcoming and recently closed IPOs (closed in the last `days` days),
+ * ENRICHED exactly as getIpos() enriches them — for the admin dashboard, which
+ * must agree with the public pages but has no use for the whole 3 MB catalogue
+ * (2026-11-23). Browser only. Throws on failure, so the caller can tell
+ * "the API is unreachable" from "nothing is in play".
+ */
+export async function getRecentIposEnriched(days = 30): Promise<IpoListItem[]> {
+  const res = await fetch(apiUrl(`/ipos?view=light&recentDays=${days}`), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`IPO list: HTTP ${res.status}`);
+  return ((await res.json()) as IpoDetail[]).map(enrich);
+}
+
 export async function getIpoDetail(symbol: string): Promise<IpoFull | undefined> {
   // Live API only — no MOCK fallback (the placeholder-symbol page renders "not found"
   // when the API is unreachable rather than serving a fake company card).

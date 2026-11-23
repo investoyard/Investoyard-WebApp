@@ -644,21 +644,44 @@ export interface AdminReport {
 }
 export const fetchReports = (slug: string) => authed<AdminReport>(`${API}/admin/reports/${slug}`, { method: 'GET' });
 
-export interface AdminDashboard {
-  scope: { slug: string; name: string };
-  counts: {
-    tenants: number; operators: number; partners: number; branches: number; clients: number;
-    iposOpen: number; iposTotal: number; iposUpcoming: number; iposClosed: number;
-    applications: number; amount: number; allotmentRate: number | null; blocked: number; refunds: number;
-  };
-  byStatus: Record<string, number>;
-  topIpos: { symbol: string; name: string; applications: number; amount: number; allotted: number }[];
-  topPartners: { code: string; name: string; applications: number; amount: number }[];
-  partnerStatus: { active: number; suspended: number };
-  trend7: { date: string; count: number }[];
-  livePerformance: { symbol: string; name: string; status: string; type: string; band: string | null; gmp: number | null; subscription: number | null }[];
+/* ── Admin dashboard (rebuilt 2026-11-23) ──────────────────────────────────
+   Forms printed and online bids are separate; every day is an India day. The
+   market half (which IPOs are in play and their figures) is worked out in the
+   page from the enriched IPO list, like the public pages. */
+export type RefusalKind = 'print-off' | 'not-in-catalogue' | 'api-off' | 'scope' | 'limit' | 'other';
+export interface DashPartner {
+  id: string; slug: string; name: string; code: string | null; type: 'partner' | 'branch'; status: string; parentName: string | null;
+  apiOn: boolean; keysLive: number; keysTest: number;
+  formsToday: number; formsWindow: number; forms30: number;
+  calls: number; refused: number; lastCallAt: string | null; quiet: boolean;
 }
-export const fetchDashboard = (slug: string) => authed<AdminDashboard>(`${API}/admin/dashboard/${slug}`, { method: 'GET' });
+export interface DashData {
+  generatedAt: string;
+  scope: { slug: string; name: string; type: string };
+  platformView: boolean;
+  window: { days: number; from: string; to: string; today: string };
+  forms: { today: number; window: number; allTime: number; byDay: { day: string; forms: number; bids: number }[]; byIpo: { symbol: string; name: string; forms: number }[] };
+  bids: { live: { today: number; window: number; byStatus: Record<string, number> }; testWindow: number };
+  calls: { today: number; refusedToday: number };
+  partners: DashPartner[];
+  refusals: {
+    calls24h: number; refused24h: number; callsWindow: number; refusedWindow: number;
+    groups: { kind: RefusalKind; symbol: string | null; reason: string; count24h: number; countWindow: number; lastAt: string; partners: string[] }[];
+  };
+  inPlay: Record<string, { formsAll: number; formsToday: number; refusedToday: number; series: { kind: string; left: number; size: number } | null }>;
+  status: null | {
+    logins: { id: string; exchange: string; member: string; pausedAt: string | null; pausedReason: string | null }[];
+    subscription: { openIpos: number; newestAsOf: string | null; withoutFigures: string[]; polling: boolean; windowFromMin: number; windowToMin: number };
+    alerts: { open: number; critical: number };
+    rebuild: { at: string; status: string; detail: string } | null;
+  };
+  readers: null | { today: { people: number; views: number }; yesterday: { people: number }; liveNow: number; topIpos: { symbol: string; people: number }[]; botHitsToday: number; botLogReadAt: string | null };
+  signups: null | { total: number; today: number; window: number; withApplicant: number; profilesWindow: number };
+  messages: null | { window: Record<string, { sent: number; failed: number }>; today: Record<string, { sent: number; failed: number }>; lastFailure: { channel: string; at: string; error: string } | null };
+  pipeline: null | { waiting: number; changesRequested: number; approved: number; rejected: number; approvedThisMonth: number; partnersApiOn: number; partnersTotal: number };
+  activity: { id: string; at: string; action: string; targetType: string | null; label: string | null; actor: string | null }[];
+}
+export const fetchDashboard = (slug: string, days = 7) => authed<DashData>(`${API}/admin/dashboard/${slug}?days=${days}`, { method: 'GET' });
 
 /**
  * Not-yet-closed issues whose subscription the poller CANNOT compute — so their

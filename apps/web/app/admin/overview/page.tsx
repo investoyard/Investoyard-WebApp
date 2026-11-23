@@ -1,156 +1,421 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOperator } from '@/lib/operator-context';
 import { operatorCan } from '@/lib/operator';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
 import { PartnerBranchFilter } from '@/components/admin/Filters';
-import { DonutChart, AreaChart } from '@/components/admin/Charts';
 import { Icon } from '@/components/Icon';
-import { inr } from '@/lib/format';
 import * as api from '@/lib/tenants-admin';
+import { getRecentIposEnriched } from '@/lib/api';
+import {
+  stageOf, stageLabel, toneOf, compareForList, subscriptionTable, shortName,
+  istToday, istDaysUntil, istClock, type IpoListItem, type Stage,
+} from '@investoyard/shared-types';
 
-const STATUS_COLORS: Record<string, string> = {
-  allotted: '#12925a', submitted: '#3c2e7e', pending: '#5645a6', mandate_pending: '#e0a200',
-  not_allotted: '#98a0ae', refunded: '#2f66d0', failed: '#d8412a', rejected: '#d8412a', draft: '#c8ccd4',
-};
-const STCLS: Record<string, string> = { allotted: 'ok', not_allotted: 'mut', submitted: 'brand', pending: 'brand', draft: 'mut', failed: 'warn', rejected: 'warn' };
-const today = () => new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+/*
+ * THE ADMIN DASHBOARD (rebuilt 2026-11-23, operator + business-head brief).
+ *
+ * One screen that answers "what needs me today". The old one read the dead
+ * Ipo.status column (0 live while two issues were open), counted partner-printed
+ * forms as applications, showed "₹34.5 Cr in flight" for paper forms whose money
+ * we never hold, and cut its days at 5:30 am.
+ *
+ * WHERE EACH FIGURE COMES FROM, so nobody has to guess:
+ *  - which IPOs are in play, their stage, subscription and applications: the
+ *    enriched IPO list and the shared resolvers the public pages use — so the
+ *    dashboard cannot disagree with /subscription;
+ *  - forms, bids, partner calls, refusals, form numbers left, readers, sign-ups,
+ *    messages and system state: GET /admin/dashboard/:slug (DashboardService).
+ * Every day is an India day. Partner admins see the same layout limited to
+ * their own data; the platform blocks only appear for a platform operator.
+ */
 
-function Stat({ icon, cls, n, label, sub }: { icon: Parameters<typeof Icon>[0]['name']; cls?: string; n: string; label: string; sub?: React.ReactNode }) {
+const IST_MS = 330 * 60_000;
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const n = (x: number) => x.toLocaleString('en-IN');
+const istDayOf = (iso: string) => new Date(Date.parse(iso) + IST_MS).toISOString().slice(0, 10);
+const dayLabel = (ymd: string) => `${Number(ymd.slice(8, 10))} ${MON[Number(ymd.slice(5, 7)) - 1]}`;
+const addDay = (ymd: string, k: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + k * 86_400_000).toISOString().slice(0, 10);
+/** "today 3:52 pm" · "yesterday 9 am" · "21 Nov 4:10 pm" — always India time. */
+function when(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = istDayOf(iso), t = istClock(Date.parse(iso)) ?? '';
+  const today = istToday();
+  if (d === today) return `today ${t}`;
+  if (d === addDay(today, -1)) return `yesterday ${t}`;
+  return `${dayLabel(d)} ${t}`;
+}
+function ago(iso: string | null | undefined): string {
+  if (!iso) return 'never';
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
+function dateRange(o?: string, c?: string): string {
+  if (!o || !c) return o ? `opens ${dayLabel(o)}` : '—';
+  return o.slice(0, 7) === c.slice(0, 7)
+    ? `${Number(o.slice(8))}–${Number(c.slice(8))} ${MON[Number(c.slice(5, 7)) - 1]}`
+    : `${dayLabel(o)} – ${dayLabel(c)}`;
+}
+const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+
+const LIVE_STAGES: Stage[] = ['closingtoday', 'opentoday', 'live'];
+
+type Chip = { tone: 'bad' | 'warn' | 'mut' | 'ok'; text: string; title?: string };
+interface PlayRow {
+  ipo: any; stage: Stage; label: string; tone: string;
+  why: 'live' | 'opening' | 'allotment' | 'listing';
+  times: number | null; bids: number | null; asOf: string | null;
+  gmp: number | null; startPrint: boolean; startBid: boolean;
+  forms: { all: number; today: number }; chips: Chip[];
+}
+
+/** Everything about one IPO that needs a person, worded as what to do. */
+function readinessOf(ipo: any, stage: Stage, hasTable: boolean, play: api.DashData['inPlay'][string] | undefined, platformView: boolean): Chip[] {
+  const ex = ipo.extra ?? {};
+  const live = LIVE_STAGES.includes(stage);
+  const out: Chip[] = [];
+  if (play?.refusedToday) out.push({ tone: 'bad', text: `${play.refusedToday} partner call${play.refusedToday === 1 ? '' : 's'} refused today` });
+  if (live && ex.startPrint !== true) out.push({ tone: 'bad', text: 'Printing is off', title: 'Partners asking to print this IPO are refused. Turn Start Print on in IPO Operations.' });
+  const s = play?.series;
+  if (s && s.left <= 0) out.push({ tone: 'bad', text: 'Form numbers used up', title: `The ${s.kind} series of ${n(s.size)} numbers is finished — new prints get no form number.` });
+  else if (s && s.left <= Math.max(200, s.size * 0.05)) out.push({ tone: 'warn', text: `${n(s.left)} form numbers left`, title: `${s.kind} series, ${n(s.size)} numbers in all.` });
+  else if (!s && ex.startPrint === true) out.push({ tone: 'warn', text: 'No form-number series', title: 'Printing is on but no form-number range is set — forms print without a number.' });
+  if (platformView) {
+    if (!hasTable) out.push({ tone: 'bad', text: 'No reservation table', title: 'Without the reservation split the poller cannot work out subscription, and a bidding day that passes cannot be recovered.' });
+    const docs: any[] = Array.isArray(ipo.documents) ? ipo.documents : [];
+    if ((live || ex.startPrint === true) && !docs.some((d) => typeof d?.type === 'string' && d.type.startsWith('asba_form') && d.url)) {
+      out.push({ tone: 'warn', text: 'No ASBA form template', title: 'Upload the blank ASBA form so printed forms are filled on the real template.' });
+    }
+    const log: any[] = Array.isArray(ex.gmpLog) ? ex.gmpLog : [];
+    if (live && log[log.length - 1]?.d !== istToday()) out.push({ tone: 'warn', text: 'No GMP today', title: log.length ? `Last entered ${dayLabel(String(log[log.length - 1].d))}.` : 'No GMP has been entered for this IPO.' });
+  }
+  return out;
+}
+
+function buildPlay(ipos: IpoListItem[], dash: api.DashData | null): PlayRow[] {
+  const today = istToday();
+  const rows: PlayRow[] = [];
+  for (const raw of ipos) {
+    const ipo: any = raw;
+    const stage = stageOf(ipo);
+    let why: PlayRow['why'] | null = null;
+    if (LIVE_STAGES.includes(stage)) why = 'live';
+    else if ((stage === 'upcoming' || stage === 'preapply')) { const d = istDaysUntil(ipo.openDate); if (d != null && d >= 0 && d <= 7) why = 'opening'; }
+    if (!why && ipo.allotmentDate === today) why = 'allotment';
+    if (!why && ipo.listingDate === today) why = 'listing';
+    if (!why) continue;
+    const table = subscriptionTable(ipo);
+    const play = dash?.inPlay[ipo.symbol];
+    rows.push({
+      ipo, stage, label: stageLabel(ipo), tone: toneOf(ipo), why,
+      times: table?.total?.times ?? null,
+      bids: table?.total?.bidCount ?? null,
+      asOf: ipo.subscriptionAsOf ?? null,
+      gmp: typeof ipo.gmp === 'number' ? ipo.gmp : null,
+      startPrint: ipo.extra?.startPrint === true, startBid: ipo.extra?.startBid === true,
+      forms: { all: play?.formsAll ?? 0, today: play?.formsToday ?? 0 },
+      chips: readinessOf(ipo, stage, !!table, play, !!dash?.platformView),
+    });
+  }
+  return rows.sort((a, b) => compareForList(a.ipo, b.ipo));
+}
+
+function Tile({ icon, label, value, sub, tone, href }: { icon: Parameters<typeof Icon>[0]['name']; label: string; value: string; sub: React.ReactNode; tone?: 'brand' | 'pos' | 'blue' | 'gold'; href?: string }) {
+  const body = (
+    <>
+      <div className="db-tile-top"><span className={`db-tile-ic ${tone ?? 'brand'}`}><Icon name={icon} size={18} /></span><span className="db-tile-l">{label}</span></div>
+      <div className="db-tile-n mono">{value}</div>
+      <div className="db-tile-s">{sub}</div>
+    </>
+  );
+  return href ? <a className="db-tile" href={href}>{body}</a> : <div className="db-tile">{body}</div>;
+}
+
+/** Forms printed per India day, as columns with the figure on the tallest and on today. */
+function FormsChart({ byDay }: { byDay: api.DashData['forms']['byDay'] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const hasBids = byDay.some((d) => d.bids > 0);
+  const max = Math.max(1, ...byDay.map((d) => d.forms + d.bids));
+  const step = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = [1, 2, 2.5, 5, 10].map((m) => m * step).find((v) => v >= max) ?? max;
+  const peak = byDay.reduce((best, d, i) => (d.forms + d.bids > byDay[best].forms + byDay[best].bids ? i : best), 0);
+  const last = byDay.length - 1;
+  const every = byDay.length <= 10 ? 1 : byDay.length <= 31 ? 5 : 15;
+  const total = byDay.reduce((s, d) => s + d.forms, 0);
   return (
-    <div className={`stat ${cls ?? ''}`}>
-      <div className="stat-row">
-        <span className="ic"><Icon name={icon} size={22} /></span>
-        <div className="stat-fig"><div className="l">{label}</div><div className="n mono">{n}</div></div>
+    <div className="db-chart">
+      {hasBids && <div className="db-legend"><span><i className="db-sw forms" />Forms printed</span><span><i className="db-sw bids" />Online bids</span></div>}
+      <div className="db-plot" role="img" aria-label={`Forms printed per day: ${n(total)} over ${byDay.length} days, most on ${dayLabel(byDay[peak].day)} (${n(byDay[peak].forms)}).`} onMouseLeave={() => setHover(null)}>
+        <div className="db-grid" aria-hidden="true">
+          {[top, top / 2, 0].map((v) => <div key={v} className="db-gl"><span>{n(Math.round(v))}</span></div>)}
+        </div>
+        <div className="db-cols">
+          {byDay.map((d, i) => {
+            const v = d.forms + d.bids;
+            const showVal = v > 0 && (i === peak || (i === last && byDay.length <= 31));
+            return (
+              <div key={d.day} className={`db-col${hover === i ? ' on' : ''}`} onMouseEnter={() => setHover(i)}>
+                <div className="db-stack" style={{ height: `${(v / top) * 100}%` }}>
+                  {showVal && <span className="db-val">{n(v)}</span>}
+                  {d.bids > 0 && <span className="db-seg bids" style={{ flexGrow: d.bids }} />}
+                  {d.forms > 0 && <span className="db-seg forms" style={{ flexGrow: d.forms }} />}
+                </div>
+                <span className="db-x">{i % every === 0 || i === last ? (i === last ? 'Today' : dayLabel(d.day)) : ''}</span>
+              </div>
+            );
+          })}
+        </div>
+        {hover != null && (
+          <div className="db-tip" style={{ left: `${((hover + 0.5) / byDay.length) * 100}%` }}>
+            <b>{hover === last ? 'Today' : dayLabel(byDay[hover].day)}</b>
+            <span>{n(byDay[hover].forms)} forms printed</span>
+            {hasBids && <span>{n(byDay[hover].bids)} online bids</span>}
+          </div>
+        )}
       </div>
-      {sub && <div className="sub-line">{sub}</div>}
+      <details className="db-tbl-toggle">
+        <summary>Show as a table</summary>
+        <table className="table db-mini">
+          <thead><tr><th>Day</th><th className="r">Forms printed</th>{hasBids && <th className="r">Online bids</th>}</tr></thead>
+          <tbody>{[...byDay].reverse().map((d) => <tr key={d.day}><td>{dayLabel(d.day)}</td><td className="r mono">{n(d.forms)}</td>{hasBids && <td className="r mono">{n(d.bids)}</td>}</tr>)}</tbody>
+        </table>
+      </details>
     </div>
   );
 }
+
+const REFUSAL_TEXT: Record<api.RefusalKind, (sym: string | null) => string> = {
+  'print-off': (s) => `Printing was off for ${s ?? 'an IPO'}`,
+  'not-in-catalogue': (s) => `${s ?? 'An IPO'} was not in our catalogue`,
+  'api-off': () => 'A partner with the API switched off called it',
+  scope: () => 'Called an API the key or account is not allowed',
+  limit: () => 'Went over a limit',
+  other: () => 'Other refusals',
+};
 
 export default function AdminOverview() {
   const me = useOperator();
   const home = me?.homeTenant.slug ?? 'investoyard-platform';
   const [scope, setScope] = useState(home);
-  const [d, setD] = useState<api.AdminDashboard | null>(null);
+  const [days, setDays] = useState(7);
+  const [dash, setDash] = useState<api.DashData | null>(null);
+  const [ipos, setIpos] = useState<IpoListItem[] | null>(null);
   const [tree, setTree] = useState<api.AdminTenant[]>([]);
-  const [activity, setActivity] = useState<api.AuditEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  /** The daily subscription check — see `SubscriptionWatch` at the foot of this file. */
+  const [iposErr, setIposErr] = useState<string | null>(null);
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  /** The daily subscription check and the feed watch — shown only when the alert list is not available to this operator. */
   const [readiness, setReadiness] = useState<api.SubscriptionReadiness | null>(null);
   /** Operator alerts — platform operators only (the API refuses anyone else). */
   const [alerts, setAlerts] = useState<api.AlertList | null>(null);
+  const live = useRef({ scope, days });
+  live.current = { scope, days };
 
-  const loadDash = useCallback(async (slug: string) => {
-    try { setD(await api.fetchDashboard(slug)); setErr(null); }
-    catch (e: any) { setErr(String(e?.message ?? e)); }
-  }, []);
-  useEffect(() => {
-    (async () => {
-      try {
-        const [, t, a, r] = await Promise.all([
-          loadDash(home),
-          api.fetchTree().then(setTree).catch(() => {}),
-          operatorCan(me, 'audit.view') ? api.fetchAudit().then(setActivity).catch(() => {}) : Promise.resolve(),
-          /* Caught, never surfaced as a page error: a failure here must not put a
-             red banner over a dashboard that is otherwise fine. The card simply
-             does not render. */
-          operatorCan(me, 'ipos.view') ? api.fetchSubscriptionReadiness().then(setReadiness).catch(() => {}) : Promise.resolve(),
-          me?.isSuperAdmin ? api.fetchAlerts().then(setAlerts).catch(() => {}) : Promise.resolve(),
-        ]);
-        void t; void a; void r;
-      } finally { setLoading(false); }
-    })();
+  const load = useCallback(async () => {
+    const { scope: s, days: d } = live.current;
+    await Promise.all([
+      api.fetchDashboard(s, d).then(async (x) => {
+        setDash(x); setErr(null);
+        if (x.platformView) {
+          await Promise.all([
+            api.fetchAlerts().then(setAlerts).catch(() => setAlerts(null)),
+            api.fetchSubscriptionReadiness().then(setReadiness).catch(() => setReadiness(null)),
+          ]);
+        } else { setAlerts(null); setReadiness(null); }
+      }).catch((e) => setErr(String(e?.message ?? e))),
+      getRecentIposEnriched(30).then((x) => { setIpos(x); setIposErr(null); }).catch((e) => setIposErr(String(e?.message ?? e))),
+    ]);
+    setLoadedAt(Date.now());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [me?.id]);
+
+  useEffect(() => { api.fetchTree().then(setTree).catch(() => {}); }, []);
+  useEffect(() => { void load(); }, [load, scope, days]);
+  /* Refresh every minute while the page is open and visible: an alert or a
+     refused partner call should not wait for someone to reload. */
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 60_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const play = useMemo(() => (ipos ? buildPlay(ipos, dash) : []), [ipos, dash]);
 
   if (!operatorCan(me, 'dashboard.view')) return <NoAccess />;
 
-  const c = d?.counts;
-  const flow = d ? Object.entries(d.byStatus).map(([label, value]) => ({ label: label.replace(/_/g, ' '), value, color: STATUS_COLORS[label] ?? '#7565bd' })) : [];
-  const partnerDonut = d ? [
-    { label: 'Active', value: d.partnerStatus.active, color: '#12925a' },
-    { label: 'Suspended', value: d.partnerStatus.suspended, color: '#d8412a' },
-  ].filter((x) => x.value > 0) : [];
-  const trend = d ? d.trend7.map((t) => ({ label: t.date.slice(5), value: t.count })) : [];
-  const maxPartner = Math.max(1, ...(d?.topPartners.map((p) => p.applications) ?? [1]));
+  const pv = !!dash?.platformView;
+  const liveRows = play.filter((r) => r.why === 'live');
+  const opening = play.filter((r) => r.why === 'opening');
+  const attention = play.filter((r) => r.chips.some((c) => c.tone === 'bad')).length;
+  const symbols = new Set((ipos ?? []).map((i: any) => i.symbol));
+  const printOn = new Map((ipos ?? []).map((i: any) => [i.symbol, i.extra?.startPrint === true]));
+  const quiet = (dash?.partners ?? []).filter((p) => p.quiet);
+  const partnersShown = (dash?.partners ?? []).filter((p) => p.apiOn || p.calls > 0 || p.forms30 > 0);
+  const partnersHidden = (dash?.partners.length ?? 0) - partnersShown.length;
 
   return (
-    <>
+    <div className="db">
       <PageHead
         title="Dashboard"
-        sub={`Welcome back, ${me?.name ?? 'there'}.`}
+        sub={`${dayLabel(istToday())} · ${dash ? (pv ? 'Whole platform' : dash.scope.name) : '…'}${loadedAt ? ` · updated ${istClock(loadedAt)}, refreshes every minute` : ''}`}
         actions={
-          <div className="row" style={{ gap: 10, alignItems: 'flex-end' }}>
-            <PartnerBranchFilter tree={tree} homeSlug={home} onScope={(s) => { setScope(s); loadDash(s); }} />
-            <span className="st mut" style={{ height: 40, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="calendar" size={14} /> {today()}</span>
+          <div className="db-actions">
+            {(me?.isSuperAdmin ? tree.some((t) => t.type === 'partner') : tree.some((t) => t.type === 'branch')) && <PartnerBranchFilter tree={tree} homeSlug={home} onScope={(s) => setScope(s)} />}
+            <div className="filter">
+              <span className="fl">Period</span>
+              <div className="seg" role="group" aria-label="Period">
+                {[7, 30, 90].map((d) => <button key={d} type="button" className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{d} days</button>)}
+              </div>
+            </div>
           </div>
         }
       />
-      {err && <div className="banner warn" style={{ marginBottom: 16 }}>{err} — is the API running?</div>}
-      {/* ABOVE the stat grid and OUTSIDE the loading gate: this is the one thing on
-          the dashboard that is losing data while it is not looked at, and it must
-          not wait on the counts to render. */}
-      <AlertsCard data={alerts} />
-      <SubscriptionWatch data={readiness} />
-      <FeedWatch data={readiness} />
-      {loading || !c || !d ? <Loader /> : (
+
+      {err && <div className="banner bad" style={{ marginBottom: 16 }}><span>The dashboard could not load: {err}</span></div>}
+
+      {/* Alerts first: the only things here that lose data while nobody looks. */}
+      {dash?.platformView && (alerts ? <AlertsCard data={alerts} /> : <><SubscriptionWatch data={readiness} /><FeedWatch data={readiness} /></>)}
+
+      {!dash ? <Loader /> : (
         <>
-          {/* ---- headline counts ---- */}
-          <div className="stat-grid">
-            <Stat icon="trending" n={String(c.iposTotal)} label="Total IPOs" sub={<><b>{c.iposOpen}</b> live · <b>{c.iposUpcoming}</b> upcoming · <b>{c.iposClosed}</b> closed</>} />
-            <Stat icon="doc" cls="a-blue" n={c.applications.toLocaleString('en-IN')} label="Total Applications" sub={<>{inr(Math.max(0, c.blocked))} in flight</>} />
-            <Stat icon="globe" n={String(c.partners)} label="Total Partners" sub={<><b>{d.partnerStatus.active}</b> active</>} />
-            <Stat icon="share" n={String(c.branches)} label="Total Branches" sub={<>across <b>{c.partners}</b> partners</>} />
-            <Stat icon="users" cls="a-green" n={c.clients.toLocaleString('en-IN')} label="Total Clients" sub={<>registered investors</>} />
+          {dash.status && <StatusStrip s={dash.status} />}
+
+          <div className="db-tiles">
+            <Tile icon="trending" tone="pos" label="Live now" href="#in-play"
+              value={ipos ? String(liveRows.length) : '…'}
+              sub={liveRows.length ? <>{liveRows.filter((r) => r.stage === 'closingtoday').length ? <><b>{liveRows.filter((r) => r.stage === 'closingtoday').map((r) => r.ipo.symbol).join(', ')}</b> {liveRows.filter((r) => r.stage === 'closingtoday').length === 1 ? 'closes' : 'close'} today</> : <>next close <b>{dayLabel(liveRows[0].ipo.closeDate)}</b></>}</> : 'No IPO is open today'} />
+            <Tile icon="calendar" label="Opening in 7 days" href="#in-play"
+              value={ipos ? String(opening.length) : '…'}
+              sub={opening.length ? <>next <b>{opening[0].ipo.symbol}</b> on {dayLabel(opening[0].ipo.openDate)}</> : 'None scheduled'} />
+            <Tile icon="doc" tone="blue" label="Forms printed today"
+              value={n(dash.forms.today)}
+              sub={<><b>{n(dash.forms.window)}</b> in {dash.window.days} days · online bids <b>{n(dash.bids.live.today)}</b></>} />
+            {dash.readers ? (
+              <Tile icon="users" tone="gold" label="Subscription readers today" href="/admin/reports/visitors"
+                value={n(dash.readers.today.people)}
+                sub={<><b>{n(dash.readers.liveNow)}</b> on the pages now · yesterday <b>{n(dash.readers.yesterday.people)}</b></>} />
+            ) : (
+              <Tile icon="exchange" tone="gold" label="API calls today" href="/admin/partner-api/calls"
+                value={n(dash.calls.today)}
+                sub={dash.calls.refusedToday ? <><b>{n(dash.calls.refusedToday)}</b> refused</> : 'none refused'} />
+            )}
           </div>
 
-          {/* ---- live IPO performance + application flow ---- */}
-          <div className="dash-2">
-            <div className="card">
-              <div className="card-head"><span className="t">IPO Performance <span className="st ok" style={{ marginLeft: 4 }}>Live</span></span><a className="linklike" href="/admin/catalog" style={{ fontSize: 13 }}>View all →</a></div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%' }}>
-                  <thead><tr><th>IPO</th><th>Price band</th><th>Subscription</th><th>GMP</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {d.livePerformance.length === 0 ? <tr><td colSpan={5} className="muted" style={{ padding: 14 }}>No live IPOs right now.</td></tr> :
-                      d.livePerformance.map((i) => (
-                        <tr key={i.symbol}>
-                          <td><b className="mono">{i.symbol}</b><div className="sub">{i.name}</div></td>
-                          <td className="mono">{i.band ?? '—'}</td>
-                          <td>{i.subscription != null ? (
-                            <span className="row" style={{ gap: 8 }}><span className="subx"><i style={{ width: `${Math.min(100, (i.subscription / 50) * 100)}%` }} /></span><b className="mono" style={{ fontSize: 12.5 }}>{i.subscription.toFixed(1)}×</b></span>
-                          ) : <span className="muted">—</span>}</td>
-                          <td className="mono" style={{ color: i.gmp != null && i.gmp > 0 ? 'var(--pos)' : i.gmp != null && i.gmp < 0 ? 'var(--neg)' : undefined }}>{i.gmp != null ? `${i.gmp > 0 ? '+' : ''}${i.gmp}` : '—'}</td>
-                          <td><span className={`st ${STCLS[i.status] ?? 'brand'}`}>{i.status}</span></td>
+          {/* ---------- IPOs in play ---------- */}
+          <div className="card db-card" id="in-play">
+            <div className="card-head">
+              <span className="t">IPOs in play <span className="count-badge">{play.length}</span>{attention > 0 && <span className="st bad">{attention} need attention</span>}</span>
+              {pv && <a className="linklike" href="/admin/catalog/operations">IPO Operations →</a>}
+            </div>
+            {iposErr ? <div className="card-pad"><span className="muted">The IPO list could not load: {iposErr}</span></div>
+              : !ipos ? <Loader />
+              : play.length === 0 ? <div className="card-pad muted">No IPO is open, opening in the next 7 days, or has allotment or listing today.</div>
+              : (
+                <div className="db-scroll">
+                  <table className="table db-play">
+                    <thead>
+                      <tr>
+                        <th>IPO</th><th>Status</th><th className="r">Subscribed</th>{pv && <th className="r">Exp. Premium</th>}
+                        <th className="r">Forms printed</th><th>Print · Bid</th><th>Needs attention</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {play.map((r) => (
+                        <tr key={r.ipo.symbol}>
+                          <td>
+                            <a className="db-ipo" href={`/admin/catalog/view?id=${r.ipo.id}`} title={r.ipo.name}>{shortName(r.ipo.name)}</a>
+                            <div className="db-sub"><span className="mono">{r.ipo.symbol}</span> · {r.ipo.type === 'sme' ? 'SME' : 'Mainboard'}</div>
+                          </td>
+                          <td>
+                            <span className={`status t-${r.tone}`}>{r.label}</span>
+                            <div className="db-sub">{r.why === 'allotment' ? 'Allotment today' : r.why === 'listing' ? 'Listing today' : dateRange(r.ipo.openDate, r.ipo.closeDate)}</div>
+                          </td>
+                          <td className="r">
+                            {r.times != null ? <b className="mono">{r.times.toFixed(2)}×</b> : <span className="muted">—</span>}
+                            <div className="db-sub">{r.bids != null ? `${n(r.bids)} applications` : r.times != null ? '' : r.why === 'opening' ? 'not open yet' : 'no figures'}</div>
+                            {r.asOf && r.times != null && <div className="db-sub">updated {ago(r.asOf)}</div>}
+                          </td>
+                          {pv && <td className="r mono">{r.gmp != null ? `${r.gmp > 0 ? '+' : r.gmp < 0 ? '−' : ''}₹${Math.abs(r.gmp)}` : <span className="muted">—</span>}</td>}
+                          <td className="r">
+                            <b className="mono">{n(r.forms.all)}</b>
+                            <div className="db-sub">{r.forms.today ? `${n(r.forms.today)} today` : 'none today'}</div>
+                          </td>
+                          <td>
+                            <span className={`db-gate${r.startPrint ? ' on' : ''}`} title={r.startPrint ? 'Start Print is on' : 'Start Print is off'}>Print</span>
+                            <span className={`db-gate${r.startBid ? ' on' : ''}`} title={r.startBid ? 'Start Bid is on' : 'Start Bid is off'}>Bid</span>
+                          </td>
+                          <td>
+                            {r.chips.length === 0 ? <span className="st ok">Ready</span> : (
+                              <div className="db-chips">{r.chips.map((c) => <span key={c.text} className={`st ${c.tone}`} title={c.title}>{c.text}</span>)}</div>
+                            )}
+                          </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="card"><div className="card-head"><span className="t">Application Flow</span></div>
-              <div className="card-pad">{flow.length ? <DonutChart data={flow} /> : <p className="muted">No applications yet.</p>}</div>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              )}
           </div>
 
-          {/* ---- trend + partners ---- */}
-          <div className="dash-2">
-            <div className="card"><div className="card-head"><span className="t">Applications — last 7 days</span><a className="linklike" href="/admin/reports-live" style={{ fontSize: 13 }}>Reports →</a></div>
-              <div className="card-pad">{trend.some((t) => t.value > 0) ? <AreaChart data={trend} height={160} /> : <p className="muted">No applications in the last 7 days.</p>}</div>
-            </div>
-            <div className="card"><div className="card-head"><span className="t">Applications by Partner</span></div>
+          {/* ---------- refusals + trend ---------- */}
+          <div className="db-row2">
+            <div className="card db-card">
+              <div className="card-head">
+                <span className="t">Partner refusals {dash.refusals.refused24h > 0 && <span className="st bad">{n(dash.refusals.refused24h)} in 24 h</span>}</span>
+                <a className="linklike" href="/admin/partner-api/calls">API Calls →</a>
+              </div>
               <div className="card-pad">
-                {d.topPartners.length === 0 ? <p className="muted">No applications yet.</p> : (
-                  <div className="dash-bars">
-                    {d.topPartners.map((p) => (
-                      <div className="dash-bar" key={p.code}>
-                        <span className="nm">{p.name} <span className="muted mono" style={{ fontSize: 11 }}>{p.code}</span></span>
-                        <span className="vv">{p.applications.toLocaleString('en-IN')}</span>
-                        <span className="track"><i style={{ width: `${(p.applications / maxPartner) * 100}%` }} /></span>
+                <p className="db-lead">
+                  Last 24 hours: <b>{n(dash.refusals.refused24h)}</b> of {n(dash.refusals.calls24h)} calls refused.
+                  {' '}Last {dash.window.days} days: <b>{n(dash.refusals.refusedWindow)}</b> of {n(dash.refusals.callsWindow)}
+                  {dash.refusals.callsWindow > 0 && <> ({pct(dash.refusals.refusedWindow, dash.refusals.callsWindow)}%)</>}.
+                </p>
+                {dash.refusals.groups.length === 0 ? <p className="db-ok"><Icon name="check" size={15} /> No partner call was refused in the last {dash.window.days} days.</p> : (
+                  <ul className="db-ref">
+                    {dash.refusals.groups.map((g) => {
+                      const fixed = g.kind === 'not-in-catalogue' ? !!g.symbol && symbols.has(g.symbol)
+                        : g.kind === 'print-off' ? !!g.symbol && printOn.get(g.symbol) === true : false;
+                      return (
+                        <li key={`${g.kind}-${g.symbol}-${g.reason}`}>
+                          <div className="db-ref-top">
+                            <b>{g.kind === 'other' ? g.reason : REFUSAL_TEXT[g.kind](g.symbol)}</b>
+                            {fixed ? <span className="st ok">{g.kind === 'print-off' ? 'Printing is on now' : 'Added since'}</span>
+                              : !pv ? null
+                              : g.kind === 'print-off' ? <a className="linklike" href="/admin/catalog/operations">Turn printing on →</a>
+                              : g.kind === 'not-in-catalogue' ? <a className="linklike" href="/admin/catalog/new">Add the IPO →</a>
+                              : g.kind === 'api-off' || g.kind === 'scope' ? <a className="linklike" href="/admin/partner-api/access">API Access →</a> : null}
+                          </div>
+                          <div className="db-sub">
+                            {n(g.countWindow)} in {dash.window.days} days{g.count24h ? <> · <b>{n(g.count24h)}</b> in the last 24 h</> : ''} · {g.partners.join(', ')} · last {when(g.lastAt)}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <div className="card db-card">
+              <div className="card-head">
+                <span className="t">Forms printed — last {dash.window.days} days <span className="count-badge">{n(dash.forms.window)}</span></span>
+                <a className="linklike" href="/admin/partner-api/prints">Print report →</a>
+              </div>
+              <div className="card-pad">
+                <FormsChart byDay={dash.forms.byDay} />
+                {dash.forms.byIpo.length > 0 && (
+                  <div className="db-byipo">
+                    <div className="db-h">Most forms this period</div>
+                    {dash.forms.byIpo.map((r) => (
+                      <div key={r.symbol} className="db-bar">
+                        <span className="nm" title={r.name}><span className="mono">{r.symbol}</span> <span className="muted">{shortName(r.name)}</span></span>
+                        <span className="vv mono">{n(r.forms)}</span>
+                        <span className="tr"><i style={{ width: `${(r.forms / dash.forms.byIpo[0].forms) * 100}%` }} /></span>
                       </div>
                     ))}
                   </div>
@@ -159,56 +424,181 @@ export default function AdminOverview() {
             </div>
           </div>
 
-          {/* ---- IPO-wise summary + (partner overview + activity) ---- */}
-          <div className="dash-2">
-            <div className="card"><div className="card-head"><span className="t">IPO-wise Application Summary</span><a className="linklike" href="/admin/reports-live" style={{ fontSize: 13 }}>Full report →</a></div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%' }}>
-                  <thead><tr><th>IPO</th><th style={{ textAlign: 'right' }}>Applications</th><th style={{ textAlign: 'right' }}>Allotted</th><th style={{ textAlign: 'right' }}>Amount</th><th></th></tr></thead>
-                  <tbody>
-                    {d.topIpos.length === 0 ? <tr><td colSpan={5} className="muted" style={{ padding: 14 }}>No applications yet.</td></tr> :
-                      d.topIpos.map((r) => (
-                        <tr key={r.symbol}>
-                          <td><b className="mono">{r.symbol}</b><div className="sub">{r.name}</div></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{r.applications.toLocaleString('en-IN')}</td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{r.allotted}</td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{inr(r.amount)}</td>
-                          <td style={{ textAlign: 'right' }}><a className="icon-btn" href="/admin/applications" title="View applications"><Icon name="eye" size={15} /></a></td>
+          {/* ---------- partner activity ---------- */}
+          {dash.partners.length > 0 && (
+            <div className="card db-card">
+              <div className="card-head">
+                <span className="t">Partner activity <span className="count-badge">{partnersShown.length}</span></span>
+                <a className="linklike" href={pv ? '/admin/partner-api/access' : '/admin/partner-api/keys'}>{pv ? 'API Access →' : 'API Keys →'}</a>
+              </div>
+              {partnersShown.length === 0 ? <div className="card-pad muted">No partner has the API switched on or printed a form in 30 days.</div> : (
+                <div className="db-scroll">
+                  <table className="table db-partners">
+                    <thead>
+                      <tr><th>Partner</th><th>API</th><th className="r">Forms today</th><th className="r">Forms {dash.window.days} days</th>{dash.window.days !== 30 && <th className="r">Forms 30 days</th>}<th className="r">Calls {dash.window.days} days</th><th className="r">Refused</th><th>Last call</th></tr>
+                    </thead>
+                    <tbody>
+                      {partnersShown.map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            {pv ? <a className="db-ipo" href={`/admin/tenants/view?slug=${encodeURIComponent(p.slug)}`}>{p.name}</a> : <b>{p.name}</b>}
+                            <div className="db-sub">{p.code ? <span className="mono">{p.code}</span> : null}{p.type === 'branch' ? ` · branch of ${p.parentName ?? '—'}` : ''}{p.quiet && <> · <span className="db-quiet">quiet</span></>}</div>
+                          </td>
+                          <td>
+                            <span className={`st ${p.apiOn ? 'ok' : 'mut'}`}>{p.apiOn ? 'On' : 'Off'}</span>
+                            <div className="db-sub">{p.keysLive + p.keysTest ? `${p.keysLive} live · ${p.keysTest} test key${p.keysLive + p.keysTest === 1 ? '' : 's'}` : 'no keys'}</div>
+                          </td>
+                          <td className="r mono">{n(p.formsToday)}</td>
+                          <td className="r mono">{n(p.formsWindow)}</td>
+                          {dash.window.days !== 30 && <td className="r mono">{n(p.forms30)}</td>}
+                          <td className="r mono">{n(p.calls)}</td>
+                          <td className="r">{p.refused ? <><b className="mono db-neg">{n(p.refused)}</b><div className="db-sub">{pct(p.refused, p.calls)}%</div></> : <span className="mono muted">0</span>}</td>
+                          <td><span title={p.lastCallAt ? when(p.lastCallAt) : undefined}>{ago(p.lastCallAt)}</span></td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
-              </div>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {partnersHidden > 0 && <div className="db-foot">{partnersHidden} partner{partnersHidden === 1 ? '' : 's'} with the API off and no forms in 30 days not shown.</div>}
             </div>
-            <div className="dash-side">
-              <div className="card"><div className="card-head"><span className="t">Partner / Branch Overview</span></div>
+          )}
+
+          {/* ---------- quiet partners · pipeline · online bids ---------- */}
+          <div className={`db-row3${pv ? '' : ' one'}`}>
+            {pv && (
+              <div className="card db-card">
+                <div className="card-head"><span className="t">Partners gone quiet {quiet.length > 0 && <span className="st warn">{quiet.length}</span>}</span></div>
                 <div className="card-pad">
-                  {partnerDonut.length ? <DonutChart data={partnerDonut} size={150} /> : <p className="muted">No partners yet.</p>}
-                  <div className="sub-line" style={{ marginTop: 14 }}><b>{c.partners}</b> partners · <b>{c.branches}</b> branches · <b>{c.operators}</b> operators</div>
+                  {quiet.length === 0 ? <p className="db-ok"><Icon name="check" size={15} /> Every partner with the API on has called in the last 7 days.</p> : (
+                    <ul className="db-list">
+                      {quiet.map((p) => (
+                        <li key={p.id}>
+                          <a className="db-ipo" href={`/admin/tenants/view?slug=${encodeURIComponent(p.slug)}`}>{p.name}</a>
+                          <div className="db-sub">API on · {p.keysLive} live, {p.keysTest} test key{p.keysLive + p.keysTest === 1 ? '' : 's'} · {p.lastCallAt ? `last call ${ago(p.lastCallAt)}` : 'has never called'}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
-              {operatorCan(me, 'audit.view') && (
-                <div className="card"><div className="card-head"><span className="t">Recent activity</span><a className="linklike" href="/admin/audit-live" style={{ fontSize: 13 }}>View all →</a></div>
+            )}
+            {pv && dash.pipeline && (
+              <div className="card db-card">
+                <div className="card-head"><span className="t">Partner pipeline</span><a className="linklike" href="/admin/tenants/applications">Applications →</a></div>
+                <div className="card-pad">
+                  <div className="db-kv">
+                    <div><span>Waiting for review</span><b className={dash.pipeline.waiting ? 'db-warn' : ''}>{n(dash.pipeline.waiting)}</b></div>
+                    <div><span>Changes requested</span><b>{n(dash.pipeline.changesRequested)}</b></div>
+                    <div><span>Approved this month</span><b>{n(dash.pipeline.approvedThisMonth)}</b></div>
+                    <div><span>API switched on</span><b>{n(dash.pipeline.partnersApiOn)} <small>of {n(dash.pipeline.partnersTotal)} partners</small></b></div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="card db-card">
+              <div className="card-head"><span className="t">Online bids</span><a className="linklike" href={pv ? '/admin/bidding/report' : '/admin/partner-api/bids'}>Bids →</a></div>
+              <div className="card-pad">
+                <div className="db-kv">
+                  <div><span>Live bids today</span><b>{n(dash.bids.live.today)}</b></div>
+                  <div><span>Live bids, {dash.window.days} days</span><b>{n(dash.bids.live.window)}</b></div>
+                  <div><span>Test bids, {dash.window.days} days</span><b>{n(dash.bids.testWindow)}</b></div>
+                </div>
+                {Object.keys(dash.bids.live.byStatus).length > 0 ? (
+                  <div className="db-chips" style={{ marginTop: 10 }}>
+                    {Object.entries(dash.bids.live.byStatus).sort((a, b) => b[1] - a[1]).map(([s, c]) => <span key={s} className="st mut">{s.replace(/_/g, ' ')} {n(c)}</span>)}
+                  </div>
+                ) : dash.bids.live.window === 0 && <p className="db-note">Live online bidding has not started yet. Printed forms are counted separately above.</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* ---------- readers · sign-ups · messages (platform) ---------- */}
+          {pv && (
+            <div className="db-row3">
+              {dash.readers && (
+                <div className="card db-card">
+                  <div className="card-head"><span className="t">Subscription readers</span><a className="linklike" href="/admin/reports/visitors">Visitors →</a></div>
                   <div className="card-pad">
-                    {activity.length === 0 ? <p className="muted">No recent activity.</p> : (
-                      <ul className="activity">
-                        {activity.slice(0, 6).map((a) => (
-                          <li key={a.id}>
-                            <span className="adot" />
-                            <span style={{ minWidth: 0 }}><b style={{ fontSize: 13 }}>{a.action.replace(/[._]/g, ' ')}</b>{a.targetLabel && <span className="muted"> · {a.targetLabel}</span>}</span>
-                            <span className="at">{a.at.slice(5, 16).replace('T', ' ')}</span>
-                          </li>
+                    <div className="db-kv">
+                      <div><span>People today</span><b>{n(dash.readers.today.people)}</b></div>
+                      <div><span>Yesterday</span><b>{n(dash.readers.yesterday.people)}</b></div>
+                      <div><span>On the pages now</span><b>{n(dash.readers.liveNow)}</b></div>
+                      <div><span>Bot hits today</span><b>{n(dash.readers.botHitsToday)}</b></div>
+                    </div>
+                    {dash.readers.topIpos.length > 0 && <div className="db-note">Most read today: {dash.readers.topIpos.map((t) => `${t.symbol} (${t.people})`).join(', ')}</div>}
+                    <div className="db-note">People are counted once a day without cookies. Bot hits come from the server log{dash.readers.botLogReadAt ? `, read ${ago(dash.readers.botLogReadAt)}` : ''}.</div>
+                  </div>
+                </div>
+              )}
+              {dash.signups && (
+                <div className="card db-card">
+                  <div className="card-head"><span className="t">Investor sign-ups</span><a className="linklike" href="/admin/clients">Clients →</a></div>
+                  <div className="card-pad">
+                    <div className="db-kv">
+                      <div><span>New accounts today</span><b>{n(dash.signups.today)}</b></div>
+                      <div><span>New accounts, {dash.window.days} days</span><b>{n(dash.signups.window)}</b></div>
+                      <div><span>Accounts in all</span><b>{n(dash.signups.total)}</b></div>
+                      <div><span>Have added an applicant</span><b>{n(dash.signups.withApplicant)} <small>of {n(dash.signups.total)}</small></b></div>
+                    </div>
+                    <div className="db-note">Applicants added by investors in {dash.window.days} days: <b>{n(dash.signups.profilesWindow)}</b>. Partner prints are not counted here.</div>
+                  </div>
+                </div>
+              )}
+              {dash.messages && (
+                <div className="card db-card">
+                  <div className="card-head"><span className="t">SMS &amp; email</span><a className="linklike" href="/admin/templates/log">Message log →</a></div>
+                  <div className="card-pad">
+                    <table className="table db-mini">
+                      <thead><tr><th></th><th className="r">Today</th><th className="r">{dash.window.days} days</th><th className="r">Failed</th></tr></thead>
+                      <tbody>
+                        {(['sms', 'email', 'whatsapp'] as const).map((c) => (
+                          <tr key={c}>
+                            <td>{c === 'sms' ? 'SMS' : c === 'email' ? 'Email' : 'WhatsApp'}</td>
+                            <td className="r mono">{n(dash.messages!.today[c]?.sent ?? 0)}</td>
+                            <td className="r mono">{n(dash.messages!.window[c]?.sent ?? 0)}</td>
+                            <td className="r mono">{(dash.messages!.window[c]?.failed ?? 0) > 0 ? <b className="db-neg">{n(dash.messages!.window[c].failed)}</b> : <span className="muted">0</span>}</td>
+                          </tr>
                         ))}
-                      </ul>
-                    )}
+                      </tbody>
+                    </table>
+                    {dash.messages.lastFailure && <div className="db-note">Last failure: {dash.messages.lastFailure.channel.toUpperCase()} {when(dash.messages.lastFailure.at)} — {dash.messages.lastFailure.error || 'no reason given'}</div>}
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          )}
+
         </>
       )}
-    </>
+    </div>
+  );
+}
+
+/** One line: exchange logins, subscription figures, alerts, last night's site rebuild. */
+function StatusStrip({ s }: { s: NonNullable<api.DashData['status']> }) {
+  const ex = (e: string) => (e.startsWith('NSE') ? 'NSE' : e.startsWith('BSE') ? 'BSE' : e);
+  const hm = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+  const stale = s.subscription.newestAsOf && s.subscription.polling && Date.now() - Date.parse(s.subscription.newestAsOf) > 15 * 60_000;
+  const rebuildOk = s.rebuild?.status === 'ok';
+  return (
+    <div className="db-strip" role="list" aria-label="System status">
+      {s.logins.map((l) => (
+        <a key={l.id} role="listitem" href="/admin/rails-live" className={`db-si ${l.pausedAt ? 'bad' : 'ok'}`} title={l.pausedReason ?? `${l.member} — login working`}>
+          <i />{ex(l.exchange)} login <b>{l.pausedAt ? 'paused' : 'OK'}</b>
+        </a>
+      ))}
+      <span role="listitem" className={`db-si ${s.subscription.openIpos === 0 ? 'mut' : stale || s.subscription.withoutFigures.length ? 'warn' : 'ok'}`}>
+        <i />Subscription {s.subscription.openIpos === 0 ? <b>no IPO open</b>
+          : s.subscription.newestAsOf ? <>updated <b>{ago(s.subscription.newestAsOf)}</b>{!s.subscription.polling && ` · polling ${hm(s.subscription.windowFromMin)}–${hm(s.subscription.windowToMin)}`}</> : <b>no figures yet</b>}
+      </span>
+      <span role="listitem" className={`db-si ${s.alerts.critical ? 'bad' : s.alerts.open ? 'warn' : 'ok'}`}>
+        <i />{s.alerts.open ? <><b>{s.alerts.open}</b> open alert{s.alerts.open === 1 ? '' : 's'}</> : 'No open alerts'}
+      </span>
+      <span role="listitem" className={`db-si ${!s.rebuild ? 'mut' : rebuildOk ? 'ok' : 'bad'}`} title={s.rebuild?.detail}>
+        <i />Site rebuild {s.rebuild ? <><b>{rebuildOk ? 'OK' : 'failed'}</b> {when(s.rebuild.at)}</> : <b>unknown</b>}
+      </span>
+    </div>
   );
 }
 

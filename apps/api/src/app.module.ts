@@ -39,6 +39,7 @@ import { GmpFeedModule } from './modules/gmp-feed/gmp-feed.module';
 import { PartnerOnboardingModule } from './modules/partner-onboarding/partner-onboarding.module';
 import { MessageLogApiModule } from './modules/message-log/message-log.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { AlertsModule } from './modules/alerts/alerts.module';
     WhatsappModule,
     SubscriptionModule,
     MetricsModule,
+    DashboardModule,
     MastersModule,
     BiddingModule,
     PartnerModule,

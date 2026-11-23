@@ -2136,75 +2136,21 @@ export class AdminService {
     });
   }
 
-  /** Admin home overview — headline counts, live-IPO performance, per-partner & 7-day trends. */
-  async dashboard(callerId: string, slug: string) {
+  /**
+   * Who the admin dashboard is for (DashboardService, 2026-11-23): the tenant
+   * asked for, the tenant ids it may read (its subtree, narrowed to the
+   * caller's own scope for a non-platform operator), and whether this is a
+   * platform operator looking at the whole platform — the only case that gets
+   * the platform blocks (exchange logins, readers, sign-ups, messages,
+   * onboarding queue).
+   */
+  async dashboardScope(callerId: string, slug: string) {
     await this.assertSlugScope(callerId, slug);
-    const rep = await this.reports(callerId, slug); // scope + application aggregate (runUnscoped inside)
+    const scope = await this.callerScope(callerId);
     const tenant = await this.tenantBySlug(slug);
-    const ids = await this.subtreeIds(tenant.id);
-    const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
-
-    return tenantContext.runUnscoped(async () => {
-      const [operators, allIpos, liveIpos, channels, clients, apps7, appAgg] = await Promise.all([
-        this.prisma.membership.count({ where: { tenantId: { in: ids }, status: 'active' } }),
-        this.prisma.ipo.findMany({ select: { status: true } }),
-        this.prisma.ipo.findMany({
-          where: { status: 'open' }, orderBy: { closeDate: 'asc' }, take: 8,
-          select: {
-            symbol: true, name: true, status: true, type: true, priceBandMin: true, priceBandMax: true,
-            gmps: { orderBy: { asOf: 'desc' }, take: 1, select: { value: true } },
-            subscriptions: { orderBy: { asOf: 'desc' }, take: 1, select: { timesSubscribed: true } },
-          },
-        }),
-        this.prisma.tenant.findMany({ where: { id: { in: ids }, type: { in: ['partner', 'branch'] } }, select: { type: true, status: true } }),
-        this.prisma.user.count({ where: { tenantId: { in: ids }, username: null, mobile: { not: null } } }),
-        this.prisma.application.findMany({ where: { tenantId: { in: ids }, createdAt: { gte: since } }, select: { createdAt: true } }),
-        this.prisma.application.groupBy({ by: ['tenantId'], where: { tenantId: { in: ids } }, _count: { _all: true }, _sum: { amount: true } }),
-      ]);
-
-      const iposByStatus: Record<string, number> = {};
-      for (const i of allIpos) iposByStatus[i.status] = (iposByStatus[i.status] ?? 0) + 1;
-
-      const partners = channels.filter((t) => t.type === 'partner').length;
-      const branches = channels.filter((t) => t.type === 'branch').length;
-      const partnerActive = channels.filter((t) => t.status === 'active').length;
-
-      // 7-day application trend (zero-filled)
-      const dayMap: Record<string, number> = {};
-      for (let d = 0; d < 7; d++) { const dt = new Date(since); dt.setDate(since.getDate() + d); dayMap[dt.toISOString().slice(0, 10)] = 0; }
-      for (const a of apps7) { const k = a.createdAt.toISOString().slice(0, 10); if (k in dayMap) dayMap[k]++; }
-      const trend7 = Object.entries(dayMap).map(([date, count]) => ({ date, count }));
-
-      // top partners/branches by application volume
-      const meta = new Map((await this.prisma.tenant.findMany({ where: { id: { in: appAgg.map((a) => a.tenantId) } }, select: { id: true, name: true, code: true } })).map((t) => [t.id, t]));
-      const topPartners = appAgg
-        .map((a) => ({ code: meta.get(a.tenantId)?.code ?? '—', name: meta.get(a.tenantId)?.name ?? '—', applications: a._count._all, amount: Number(a._sum.amount ?? 0) }))
-        .sort((a, b) => b.applications - a.applications).slice(0, 5);
-
-      return {
-        scope: rep.scope,
-        counts: {
-          tenants: ids.length, operators, partners, branches, clients,
-          iposOpen: iposByStatus['open'] ?? 0, iposTotal: allIpos.length,
-          iposUpcoming: iposByStatus['upcoming'] ?? 0, iposClosed: (iposByStatus['closed'] ?? 0) + (iposByStatus['listed'] ?? 0),
-          applications: rep.totals.applications, amount: rep.totals.amount,
-          allotmentRate: rep.allotment.allotmentRate,
-          blocked: rep.totals.amount - rep.allotment.totalAllottedAmount,
-          refunds: rep.allotment.totalRefund,
-        },
-        byStatus: rep.totals.byStatus,
-        topIpos: rep.byIpo.slice(0, 6),
-        topPartners,
-        partnerStatus: { active: partnerActive, suspended: channels.length - partnerActive },
-        trend7,
-        livePerformance: liveIpos.map((i) => ({
-          symbol: i.symbol, name: i.name, status: i.status, type: i.type,
-          band: i.priceBandMin != null ? `₹${Number(i.priceBandMin)}–${Number(i.priceBandMax)}` : null,
-          gmp: i.gmps[0] ? Number(i.gmps[0].value) : null,
-          subscription: i.subscriptions[0] ? Number(i.subscriptions[0].timesSubscribed) : null,
-        })),
-      };
-    });
+    let ids = await tenantContext.runUnscoped(() => this.subtreeIds(tenant.id));
+    if (!scope.superadmin) ids = ids.filter((i) => scope.tenantIds.has(i));
+    return { tenant, ids, platformView: scope.superadmin && tenant.type === 'platform' };
   }
 
   /** The subtree's applications serialised as CSV (the rows behind the report). */

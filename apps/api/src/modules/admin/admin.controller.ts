@@ -745,11 +745,7 @@ export class AdminController {
     return this.admin.listConsumerPrints(req.user.sub, slug);
   }
 
-  @Get('dashboard/:slug')
-  @RequirePermissions('dashboard.view')
-  dashboard(@Req() req: any, @Param('slug') slug: string) {
-    return this.admin.dashboard(req.user.sub, slug);
-  }
+  // GET dashboard/:slug moved to DashboardModule (2026-11-23).
 
   @Get('reports/:slug')
   @RequirePermissions('reports.view')
