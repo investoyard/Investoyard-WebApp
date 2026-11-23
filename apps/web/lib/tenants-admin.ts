@@ -1909,3 +1909,25 @@ export const savePartnerBidLimits = (tenantId: string, body: { enabled: boolean;
   authed<PartnerBidLimitsView>(`${API}/admin/partner-bid-limits/${tenantId}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
+
+/* ── API Docs page: whose account it shows, and Try it (2026-11-23) ───────── */
+export interface PartnerDocsContext {
+  /** true for a platform operator, who picks which partner to view as */
+  operator: boolean;
+  tenant: { id: string; slug: string; name: string; type: string } | null;
+  enabled?: boolean;
+  reason?: 'off' | 'parent-off' | null;
+  scopes?: string[];
+  maxApplicantsPerCall?: number;
+  keys?: { live: number; test: number };
+  /** real values to prefill Try it with */
+  samples?: { applicationRef: string | null; printedIpoSymbol: string | null; openIpoSymbol: string | null };
+}
+export const fetchPartnerDocsContext = (tenantId?: string) =>
+  authed<PartnerDocsContext>(`${API}/admin/partner-api/docs-context${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`, { method: 'GET' });
+export interface PartnerTryResult { status: number; ms: number; body: any }
+/** Run one Partner API endpoint as the signed-in partner (or the partner an operator picked). */
+export const tryPartnerEndpoint = (req: { tenantId?: string; endpoint: string; query?: Record<string, string>; body?: unknown }) =>
+  authed<PartnerTryResult>(`${API}/admin/partner-api/try`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req),
+  });

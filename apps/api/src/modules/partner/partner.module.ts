@@ -13,6 +13,7 @@ import {
 } from './partner.controller';
 import { SuperadminGuard } from '../../common/superadmin.guard';
 import { PartnerService } from './partner.service';
+import { PartnerTryService } from './partner-try.service';
 import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard } from './partner-scope';
 import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
@@ -27,6 +28,6 @@ import { PartnerCallLogInterceptor } from './partner-call-log.interceptor';
 @Module({
   imports: [ApplicationsModule, RailModule, JwtModule.register({})],
   controllers: [PartnerAccessAdminController, PartnerController, PartnerKeysAdminController, PartnerReportsAdminController, PartnerWebhookAdminController, PartnerBidLimitsAdminController],
-  providers: [PartnerService, PartnerBidsService, PartnerWebhooksService, SuperadminGuard, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
+  providers: [PartnerService, PartnerTryService, PartnerBidsService, PartnerWebhooksService, SuperadminGuard, PartnerApiKeyGuard, PartnerScopeGuard, PartnerCallLogInterceptor, PrismaService, PiiVaultService, JwtAuthGuard, PermissionsGuard],
 })
 export class PartnerModule {}

@@ -1,13 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UseGuards, UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
-import { RequirePermissions } from '../../common/require-permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../../common/require-permissions.decorator';
 import { PartnerApiKeyGuard } from './partner.guard';
 import { PartnerScopeGuard, RequireScope, partnerClientIp } from './partner-scope';
 import { PartnerBidsService, type PartnerCtx } from './partner-bids.service';
 import { PartnerWebhooksService } from './partner-webhooks.service';
 import { SuperadminGuard } from '../../common/superadmin.guard';
 import { PartnerService } from './partner.service';
+import { PartnerTryService } from './partner-try.service';
 import {
   CreatePartnerKeyDto, PartnerBidBatchDto, PartnerBidModifyDto, PartnerBidRefDto, PartnerBidUpiDto,
   PartnerApiAccessDto, PartnerBidLimitsDto, PartnerKeyIpAllowlistDto, PartnerPrintFormsDto, PartnerSimulateDto, PartnerWebhookDto, UpdatePartnerKeyScopesDto,
@@ -198,7 +199,28 @@ export class PartnerReportsAdminController {
     private readonly partner: PartnerService,
     private readonly bids: PartnerBidsService,
     private readonly hooks: PartnerWebhooksService,
+    private readonly tryer: PartnerTryService,
   ) {}
+
+  /**
+   * The API Docs page: whose account it is showing, what that account may call,
+   * and real values to prefill Try it with. A partner login sees its own; a
+   * platform operator passes the partner it picked.
+   */
+  @Get('docs-context')
+  @RequireAnyPermission('partner-api.keys.manage', 'partner-api.prints.view')
+  async docsContext(@Req() req: any, @Query('tenantId') tenantId?: string) {
+    return this.tryer.context(req.user.sub, await this.partner.reportScope(), tenantId);
+  }
+
+  /** Try it: run one Partner API endpoint as the signed-in partner, without a key. */
+  @Post('try')
+  @RequireAnyPermission('partner-api.keys.manage', 'partner-api.prints.view')
+  async tryEndpoint(@Req() req: any, @Body() body: any) {
+    return this.tryer.run(req.user.sub, await this.partner.reportScope(), {
+      tenantId: body?.tenantId, endpoint: body?.endpoint, query: body?.query, body: body?.body,
+    });
+  }
 
   /** Partner bids (Phase 2) — operator sees every partner, a partner its own. */
   @Get('bids')

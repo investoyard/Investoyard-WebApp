@@ -1,672 +1,502 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { PARTNER_SCOPE_META, PARTNER_BID_BATCH_MAX } from '@investoyard/shared-types';
 import { useOperator } from '@/lib/operator-context';
 import { NoAccess } from '@/components/AdminUI';
 import { PageHead } from '@/components/ui/Form';
 import { Loader } from '@/components/ui/Loader';
 import { Icon } from '@/components/Icon';
 import * as api from '@/lib/tenants-admin';
-import { PARTNER_BID_BATCH_MAX, PARTNER_SCOPE_META } from '@investoyard/shared-types';
-
-/** Sample applicants JSON pre-loaded into the Test panel textarea. Trimmed
- *  down from the SAMPLE_REQUEST — this is JUST the applicants array so the
- *  operator can paste a real payload without editing the wrapper. */
-const SAMPLE_APPLICANTS = JSON.stringify([
-  {
-    fullName: 'Rakesh Kumar',
-    pan: 'ABCDE1234F',
-    depository: 'NSDL',
-    dpId: 'IN301234',
-    clientId: '12345678',
-    bankAccount: '004501234567',
-    bankName: 'HDFC Bank',
-    branchName: 'Andheri West',
-    address: 'Flat 402, Sunrise Apartments, Link Road',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    pincode: '400053',
-    email: 'rakesh.kumar@example.com',
-    mobile: '9876543210',
-    lots: 2,
-    shareQty: 530,
-    sharePrice: 425,
-    amount: 225250,
-    category: 'sHNI',
-  },
-], null, 2);
+import {
+  API_BASE, ENDPOINTS, ERRORS, GROUPS, LANGS, WEBHOOK_EVENTS, WEBHOOK_SAMPLE, WEBHOOK_VERIFY,
+  codeSample, exampleUrl, prettyJson, type ApiEndpoint, type ApiField, type ApiParam, type Lang,
+} from '@/lib/partnerApiDocs';
 
 /**
- * Partner API documentation — visible to any signed-in operator (platform and
- * partner logins alike), so integrating brokers can self-serve the contract.
- */
-
-/*
- * THE SAMPLES QUOTE THE REAL BASE URL, DERIVED NOT TYPED. An operator copies
- * the curl block and runs it; a host typed into a template literal survives a
- * domain move silently and hands them a command that resolves nowhere. Falls
- * back to the dev origin, which is what NEXT_PUBLIC_API_URL is absent for.
+ * Partner API reference (rebuilt 2026-11-23). Every endpoint is laid out the
+ * same way — what it does, whether this account may call it, its parameters,
+ * request examples in five languages, real example responses and what the
+ * fields mean — with Try it running the real endpoint as the signed-in
+ * partner. The content is `lib/partnerApiDocs.ts`; this file only draws it.
  *
- * The API host is deliberately NOT the site host — the two are separate
- * origins (that is what the CORS allow-list exists for), and as of the
- * 2026-10-15 domain move the API stayed put while the site changed.
+ * A partner sees its own account: APIs it may call in full, the rest listed
+ * as "not enabled" (operator decision). A platform operator picks a partner to
+ * view as; with none picked every API is shown and Try it waits for a pick.
  */
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api').replace(/\/+$/, '');
-const API_HOST = (() => {
-  try { return new URL(API_BASE).host; } catch { return 'localhost:3000'; }
-})();
 
-const SAMPLE_REQUEST = `POST /partner/v1/print-forms
-Host: ${API_HOST}
-Content-Type: application/json
-X-Api-Key: pk_a1b2c3d4e5f6.<secret>
+const LABEL = new Map<string, string>(PARTNER_SCOPE_META.map((s) => [s.key, s.label]));
+const LANG_KEY = 'iy.apidocs.lang';
 
-{
-  "ipoSymbol": "ARDEE",
-  "applicants": [
-    {
-      "fullName": "Rakesh Kumar",
-      "pan": "ABCDE1234F",
-      "depository": "NSDL",             // or "CDSL"
-      "dpId": "IN301234",               // NSDL only — CDSL: omit
-      "clientId": "12345678",           // CDSL: 16-digit demat number
-      "bankAccount": "004501234567",    // optional
-      "bankName": "HDFC Bank",          // optional (prefills the form)
-      "branchName": "Andheri West",     // optional (prints in the branch box)
-      "address": "Flat 402, Sunrise Apartments, Link Road",  // optional
-      "city": "Mumbai",                 // optional
-      "state": "Maharashtra",           // optional
-      "pincode": "400053",              // optional
-      "email": "rakesh.kumar@example.com",   // optional (prints on templates that carry it)
-      "mobile": "9876543210",           // optional
-      "familyGroup": "KUMAR-HUF",       // optional — prints in the form's group box
-
-      "lots": 2,                        // FINAL values — printed exactly as sent
-      "shareQty": 530,
-      "sharePrice": 425,
-      "amount": 225250,
-      "category": "sHNI"                // Retail | sHNI | bHNI | Shareholder | Employee
-    }
-  ]
-}`;
-
-const SAMPLE_RESPONSE = `201 Created
-{
-  "ipoSymbol": "ARDEE",
-  "batchId": "1f7c…",
-  "applications": [
-    {
-      "applicationRef": "8a2e…",     // keep this — allotment reconciliation
-      "formNo": "100234",            // from the IPO's PDF-printing series
-      "fullName": "Rakesh Kumar",
-      "category": "sHNI",
-      "lots": 2,
-      "amount": 225250
-    }
-  ],
-  "filename": "ARDEE_100234.pdf",
-  "pdfBase64": "JVBERi0xLjcK…"       // all applicants merged into ONE PDF
-}`;
-
-const SAMPLE_CURL = `curl -X POST ${API_BASE}/partner/v1/print-forms \\
-  -H "Content-Type: application/json" \\
-  -H "X-Api-Key: pk_a1b2c3d4e5f6.<secret>" \\
-  -d @request.json`;
-
-const FIELDS: [string, string, string][] = [
-  ['ipoSymbol', 'string · required', 'Investoyard IPO symbol (case-insensitive). Printing must be enabled for the issue.'],
-  ['applicants[]', 'array · 1 to your limit', 'One entry per applicant; all forms return merged in one PDF. The limit is 25 per call unless the operator has raised it (at most 500).'],
-  ['fullName / pan', 'optional', 'Printed verbatim — NO format validation. Anything omitted prints blank.'],
-  ['depository / dpId / clientId', 'optional', 'NSDL: dpId (IN + 6 digits) + 8-digit clientId · CDSL: 16-digit demat in clientId, no dpId. Omitted depository is treated as CDSL.'],
-  ['bankAccount / bankName / branchName', 'optional', 'The form’s account boxes print the BANK ACCOUNT number, bank name and branch. Bank account is stored encrypted (PII vault).'],
-  ['address / city / state / pincode', 'optional', 'Applicant’s postal address. Printed on templates that carry an address block; omitted parts print blank.'],
-  ['email / mobile', 'optional', 'Contact fields. Printed on templates that carry them (mainly for Retail syndicate blanks); stored on the applicant record.'],
-  ['familyGroup', 'optional', 'Grouping label printed in the form’s FamilyGroup box.'],
-  ['lots / shareQty / sharePrice / amount', 'optional', 'FINAL figures computed by you — printed exactly as sent, never derived or corrected.'],
-  ['category', 'optional', 'Retail · sHNI · bHNI · Shareholder · Employee. With amount, picks the blank: ≤ ₹5L normal, > ₹5L syndicate, Shareholder form for the shareholder quota.'],
-];
-
-const ERRORS: [string, string][] = [
-  ['400', 'The request was not accepted. Print forms: malformed JSON, more applicants than your limit, or printing not enabled for the IPO (values themselves are never validated). Bids: the body carries a problems list naming every bid and every reason — fix them all and send the batch again.'],
-  ['401', 'Missing, malformed, invalid or revoked X-Api-Key, or your account is not active.'],
-  ['403', 'Not allowed: the endpoint needs a scope this key or your account lacks (the message says which), the key is used from an address outside its allowlist, or a live bid is outside your live bidding limits (problems lists why).'],
-  ['404', 'No IPO with that symbol, or no record of yours with that ref or orderId.'],
-  ['409', 'A bid conflicts: that PAN already has a live application for this IPO in the same quota, or the orderId was already used for a different IPO.'],
-  ['500', 'Unexpected failure — the call is logged; retry, and send us the time and keyId if it persists.'],
-];
-
-/* ── Every other endpoint (2026-11-20). Each block is the contract as the API
-   implements it; the scope column comes from PARTNER_SCOPE_META, the same list
-   the API's guard enforces, so the two cannot disagree about who may call what. */
-
-type Param = [name: string, type: string, notes: string];
-interface EndpointDoc {
-  id: string;
-  method: 'GET' | 'POST';
-  path: string;
-  scope: string;
-  summary: string;
-  params?: Param[];
-  paramsLabel?: string;
-  sample?: string;
-  sampleLabel?: string;
-  note?: string;
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button type="button" className="apx-copy" aria-label={label}
+      onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1400); }); }}>
+      <Icon name={done ? 'check' : 'copy'} size={13} /> {done ? 'Copied' : label}
+    </button>
+  );
 }
 
-const READ_ENDPOINTS: EndpointDoc[] = [
-  {
-    id: 'prints', method: 'GET', path: '/partner/v1/prints', scope: 'prints:read',
-    summary: 'The forms your account has printed, newest first. Only your own records.',
-    paramsLabel: 'Query — all optional',
-    params: [
-      ['ipoSymbol', 'string', 'Only prints for this IPO. An unknown symbol returns 404.'],
-      ['batchId', 'string', 'Only the applications from one print-forms call.'],
-      ['from · to', 'YYYY-MM-DD', 'India dates, both ends included.'],
-      ['page · per', 'integer', 'Page from 1; per defaults to 50, at most 200.'],
-    ],
-    sample: `{
-  "total": 132, "page": 1, "per": 50,
-  "rows": [{
-    "applicationRef": "9b2f…", "batchId": "4d7a…", "formNo": "100234",
-    "ipoSymbol": "ARDEE", "printedAt": "2026-11-20T06:41:12.000Z", "keyId": "pk_a1b2c3d4e5f6",
-    "fullName": "Rakesh Kumar", "panMasked": "ABC****4F",
-    "category": "sHNI", "lots": 2, "shareQty": 530, "amount": 225250
-  }]
-}`,
-  },
-  {
-    id: 'print-detail', method: 'GET', path: '/partner/v1/prints/detail?ref={applicationRef}', scope: 'prints:read',
-    summary: 'One print. Adds the depository, DP ID, bank and branch; the client ID and bank account come back masked to their last four digits.',
-  },
-  {
-    id: 'print-pdf', method: 'GET', path: '/partner/v1/prints/pdf?ref={applicationRef}', scope: 'prints:read',
-    summary: 'The same form again, with the same form number, filled from the data you sent the first time. Use this rather than calling print-forms again, which would create a second record and take a new number.',
-    sample: `{ "applicationRef": "9b2f…", "formNo": "100234", "filename": "ARDEE_100234.pdf", "pdfBase64": "JVBERi0x…" }`,
-  },
-  {
-    id: 'allotment', method: 'GET', path: '/partner/v1/allotment?ipoSymbol={symbol}  |  ?ref={applicationRef}', scope: 'allotment:read',
-    summary: 'The allotment result of your own applications, once the registrar file is in. It does not look up other PANs.',
-    paramsLabel: 'Each row',
-    params: [
-      ['result', 'string', 'allotted · not_allotted (not picked) · rejected (registrar reason in reason) · pending (nothing recorded yet).'],
-      ['allottedLots · allottedShares', 'integer', 'null while pending.'],
-      ['allottedAmount · refundAmount', 'number', 'Rupees. null while pending.'],
-      ['registrarFileReceived', 'boolean', 'true with result "pending" means the file is in but this application could not be matched — send us its applicationRef.'],
-    ],
-  },
-  {
-    id: 'ipos', method: 'GET', path: '/partner/v1/ipos?status=&board=&instrument=&limit=&offset=', scope: 'ipos:read',
-    summary: 'The IPO catalogue, newest opening first. status is upcoming, open, closed, listed or withdrawn — worked out from the issue dates, as our own site does. board is mainboard or sme; limit is 1–200 (default 50).',
-    sample: `{ "total": 1319, "limit": 50, "offset": 0, "ipos": [ { "symbol": "ARDEE", "name": "…", "board": "mainboard", … } ] }`,
-  },
-  {
-    id: 'ipo', method: 'GET', path: '/partner/v1/ipos/{symbol}', scope: 'ipos:read',
-    summary: 'One IPO: dates, price band, lot size, minimum amount, issue size, registrar, documents and issue details.',
-  },
-  {
-    id: 'subscription', method: 'GET', path: '/partner/v1/ipos/{symbol}/subscription', scope: 'subscription:read',
-    summary: 'The latest subscription figure for each category, with the time we last read it from the exchange. On request.',
-    sample: `{ "symbol": "ARDEE", "asOf": "2026-11-20T11:30:05.000Z",
-  "categories": [ { "category": "retail", "timesSubscribed": 4.12, "asOf": "…" } ] }`,
-  },
-  {
-    id: 'gmp', method: 'GET', path: '/partner/v1/ipos/{symbol}/gmp', scope: 'gmp:read',
-    summary: 'The latest Grey Market Premium, always with its disclaimer. On request, and unavailable to an account whose GMP is switched off.',
-  },
-];
-
-const BID_REQUEST = `POST /partner/v1/bids
-X-Api-Key: pk_a1b2c3d4e5f6.<secret>
-
-{
-  "ipoSymbol": "ARDEE",
-  "bids": [
-    {
-      "orderId":    "ORD-2026-000123",   // yours — a repeat returns the same bid
-      "consentRef": "CONSENT-88412",     // your record of the client's instruction
-      "fullName":   "Rakesh Kumar",
-      "pan":        "ABCDE1234F",
-      "depository": "NSDL",              // or "CDSL" (no dpId; 16-digit clientId)
-      "dpId":       "IN301234",
-      "clientId":   "12345678",
-      "upiId":      "rakesh@okhdfcbank",
-      "category":   "retail",            // retail | shni | shareholder | employee
-      "lots":       1,
-      "atCutoff":   true                 // or "price": 425
-    }
-  ]
-}`;
-
-const BID_RESPONSE = `201 Created
-{
-  "ipoSymbol": "ARDEE", "mode": "test", "batchId": "c41e…",
-  "bids": [
-    { "orderId": "ORD-2026-000123", "ref": "5b38…", "applicationNumber": "TESTMWOUL…0",
-      "status": "submitted", "amount": 13428, "replayed": false }
-  ]
-}`;
-
-const BID_FIELDS: Param[] = [
-  ['orderId', 'string · required', 'Up to 64 letters, digits, . _ : -. Sending one you already used returns that bid (replayed: true) and places nothing new.'],
-  ['consentRef', 'string · required', 'Your reference for the client’s instruction and consent. We keep it with the instruction; you keep the consent.'],
-  ['fullName · pan', 'string · required', 'The applicant’s own. One public bid per PAN per IPO, plus one per reserved quota — across every channel.'],
-  ['depository · dpId · clientId', 'string · required', 'NSDL: dpId IN + 6 digits, clientId 8 digits. CDSL: no dpId, clientId is the 16-digit demat number.'],
-  ['upiId', 'string · required', 'The applicant’s own; the mandate request goes there.'],
-  ['category', 'string · required', 'retail · shni · shareholder · employee (quotas only where offered). Must agree with the amount: retail ≤ ₹2 lakh on mainboard (exactly the minimum lots on SME), shni above ₹2 lakh. Everything ≤ ₹5 lakh — the UPI cap — so big-HNI goes through print forms.'],
-  ['lots', 'integer · required', 'At least the category’s minimum for this IPO.'],
-  ['atCutoff · price', 'boolean · number', 'Cut-off for retail and quotas only; otherwise a price inside the band.'],
-];
-
-const BID_CHANGES: EndpointDoc[] = [
-  { id: 'bid-modify', method: 'POST', path: '/partner/v1/bids/modify', scope: 'bids:write',
-    summary: 'Body: ref or orderId, consentRef, lots, and price or atCutoff. An HNI bid at the exchange may only be raised, never lowered.' },
-  { id: 'bid-cancel', method: 'POST', path: '/partner/v1/bids/cancel', scope: 'bids:write',
-    summary: 'Body: ref or orderId, consentRef. Once at the exchange, only retail and reserved-quota bids may be withdrawn.' },
-  { id: 'bid-upi', method: 'POST', path: '/partner/v1/bids/upi', scope: 'bids:write',
-    summary: 'Body: ref or orderId, consentRef, upiId. Refused once the funds are blocked — the block sits behind the old UPI ID.' },
-  { id: 'bid-read', method: 'GET', path: '/partner/v1/bids?ref= | ?orderId= | ?ipoSymbol=&status=&page=&per=', scope: 'bids:read',
-    summary: 'One bid with its full history, or a page of them. A key sees only bids in its own mode — a test key sees test bids.' },
-  { id: 'bid-summary', method: 'GET', path: '/partner/v1/bids/summary?ipoSymbol={symbol}', scope: 'bids:read',
-    summary: 'Bids and rupees by status for one IPO.' },
-  { id: 'bid-limits', method: 'GET', path: '/partner/v1/bids/limits', scope: 'bids:read',
-    summary: 'Your live bidding limits — the IPOs, the cap per bid, bids per day and rupees per day — and what you have used today.' },
-];
-
-const BID_STATUSES = 'submitted (queued) · mandate_pending (sent; waiting for the investor) · upi_blocked (funds blocked) · dp_verified · confirmed · allotted · not_allotted · released (refunded) · cancelled · rejected · failed';
-
-const SIMULATE = `POST /partner/v1/test/simulate        (test keys only)
-{ "ref": "5b38…", "event": "mandate_accepted" }
-
-events: mandate_accepted · mandate_rejected · exchange_rejected
-        allotted (with "allottedLots") · not_allotted · refund`;
-
-const WEBHOOK_EVENTS = 'bid.accepted · bid.sent · bid.funds_blocked · bid.demat_verified · bid.rejected · bid.instruction_refused · bid.cancelled · bid.allotment · bid.refund · bid.status';
-
-const WEBHOOK_SAMPLE = `POST https://your-server.example/investoyard/webhooks
-X-Investoyard-Event: bid.funds_blocked
-X-Investoyard-Delivery: 7c1d…
-X-Investoyard-Signature: t=1700000000,v1=<hex>
-
-{
-  "id": "7c1d…", "event": "bid.funds_blocked", "occurredAt": "2026-11-20T10:38:27.162Z", "mode": "live",
-  "data": { "ref": "5b38…", "orderId": "ORD-2026-000123", "ipoSymbol": "ARDEE", "status": "upi_blocked",
-            "applicationNumber": "48313001", "amount": 13428, "upiStatus": "…", "reason": null, "allotment": null }
-}`;
-
-const WEBHOOK_VERIFY = `import crypto from 'node:crypto';
-
-// Use the RAW request body, before any JSON parsing.
-function verify(rawBody, header, secret) {
-  const { t, v1 } = Object.fromEntries(header.split(',').map((p) => p.split('=')));
-  const expected = crypto.createHmac('sha256', secret).update(\`\${t}.\${rawBody}\`).digest('hex');
-  const fresh = Math.abs(Date.now() / 1000 - Number(t)) < 300;   // refuse anything older than 5 minutes
-  return fresh && expected.length === v1.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
-}`;
-
-const SCOPE_OF = new Map<string, string>(PARTNER_SCOPE_META.map((s) => [s.key, s.label]));
-
-const pre = { background: 'var(--bg-2)', borderRadius: 10, padding: 14, fontSize: 12, overflowX: 'auto', marginTop: 12 } as const;
-
-/** One endpoint: method, path, the scope it needs, what it does, and its contract. */
-function Endpoint({ e }: { e: EndpointDoc }) {
+function Code({ code, title, tools }: { code: string; title?: ReactNode; tools?: ReactNode }) {
   return (
-    <div id={e.id} className="apd-ep">
-      <div className="apd-ep-head">
-        <span className={`apd-method ${e.method === 'POST' ? 'post' : 'get'}`}>{e.method}</span>
-        <span className="mono apd-path">{e.path}</span>
-        <span className="st mut" title={SCOPE_OF.get(e.scope) ?? e.scope}>{e.scope}</span>
+    <div className="apx-code">
+      <div className="apx-code-bar">
+        <span className="apx-code-t">{title}</span>
+        <span className="apx-code-tools">{tools}<CopyButton text={code} /></span>
       </div>
-      <p className="apd-sum">{e.summary}</p>
-      {e.params && (
-        <>
-          {e.paramsLabel && <div className="apd-label">{e.paramsLabel}</div>}
-          <table className="table">
-            <tbody>
-              {e.params.map(([n, t, d]) => (
-                <tr key={n}><td className="mono" style={{ whiteSpace: 'nowrap' }}>{n}</td><td style={{ whiteSpace: 'nowrap' }}>{t}</td><td>{d}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-      {e.sample && <pre className="mono" style={pre}>{e.sample}</pre>}
-      {e.note && <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>{e.note}</p>}
+      <pre className="mono">{code}</pre>
     </div>
   );
 }
 
-/** The index at the top: every endpoint, grouped as the page is. */
-const INDEX: { title: string; anchor: string; items: [string, string, string][] }[] = [
-  { title: 'Print forms', anchor: 'print-forms', items: [['POST', '/print-forms', 'print-forms']] },
-  { title: 'Your records', anchor: 'records', items: [
-    ['GET', '/prints', 'prints'], ['GET', '/prints/detail', 'print-detail'], ['GET', '/prints/pdf', 'print-pdf'], ['GET', '/allotment', 'allotment'],
-  ] },
-  { title: 'IPO data', anchor: 'ipo-data', items: [
-    ['GET', '/ipos', 'ipos'], ['GET', '/ipos/{symbol}', 'ipo'], ['GET', '/ipos/{symbol}/subscription', 'subscription'], ['GET', '/ipos/{symbol}/gmp', 'gmp'],
-  ] },
-  { title: 'Bids', anchor: 'bids', items: [
-    ['POST', '/bids', 'bid-place'], ['POST', '/bids/modify', 'bid-modify'], ['POST', '/bids/cancel', 'bid-cancel'], ['POST', '/bids/upi', 'bid-upi'],
-    ['GET', '/bids', 'bid-read'], ['GET', '/bids/summary', 'bid-summary'], ['GET', '/bids/limits', 'bid-limits'], ['POST', '/test/simulate', 'test-mode'],
-  ] },
-  { title: 'Webhooks', anchor: 'webhooks', items: [['POST', 'to your server', 'webhooks']] },
+function Method({ m }: { m: string }) {
+  return <span className={`apd-method ${m === 'POST' ? 'post' : 'get'}`}>{m}</span>;
+}
+
+function ParamTable({ params }: { params: ApiParam[] }) {
+  return (
+    <div className="apx-tbl-wrap">
+      <table className="table apx-tbl">
+        <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+        <tbody>
+          {params.map((p) => (
+            <tr key={p.name}>
+              <td className="mono apx-nm">{p.name}{p.in === 'path' && <span className="apx-in">in path</span>}</td>
+              <td className="mono apx-ty">{p.type}</td>
+              <td>{p.required ? <span className="st warn">Required</span> : <span className="muted">Optional</span>}</td>
+              <td>{p.description}{p.example && <div className="apx-eg">e.g. <span className="mono">{p.example}</span></div>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FieldTable({ fields, showRequired }: { fields: ApiField[]; showRequired?: boolean }) {
+  return (
+    <div className="apx-tbl-wrap">
+      <table className="table apx-tbl">
+        <thead><tr><th>Field</th><th>Type</th>{showRequired && <th>Required</th>}<th>Description</th></tr></thead>
+        <tbody>
+          {fields.map((f) => (
+            <tr key={f.name}>
+              <td className="mono apx-nm">{f.name}</td>
+              <td className="mono apx-ty">{f.type}</td>
+              {showRequired && <td>{f.required ? <span className="st warn">Required</span> : <span className="muted">Optional</span>}</td>}
+              <td>{f.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CodeTabs({ ep, lang, setLang }: { ep: ApiEndpoint; lang: Lang; setLang: (l: Lang) => void }) {
+  const tabs = (
+    <span className="apx-tabs" role="tablist" aria-label="Language">
+      {LANGS.map((l) => (
+        <button key={l.id} type="button" role="tab" aria-selected={lang === l.id} className={lang === l.id ? 'on' : ''} onClick={() => setLang(l.id)}>{l.label}</button>
+      ))}
+    </span>
+  );
+  return <Code code={codeSample(lang, ep)} title={tabs} />;
+}
+
+function ResponseTabs({ ep }: { ep: ApiEndpoint }) {
+  const [i, setI] = useState(0);
+  const r = ep.responses[i] ?? ep.responses[0];
+  const tabs = (
+    <span className="apx-tabs" role="tablist" aria-label="Response">
+      {ep.responses.map((x, k) => (
+        <button key={x.status} type="button" role="tab" aria-selected={i === k} className={`${i === k ? 'on' : ''} s${String(x.status)[0]}`} onClick={() => setI(k)}>{x.status}</button>
+      ))}
+    </span>
+  );
+  return (
+    <>
+      <Code code={prettyJson(r.body)} title={tabs} />
+      <div className="apx-when"><b>{r.status}</b> — {r.when}</div>
+    </>
+  );
+}
+
+/* ── Try it ──────────────────────────────────────────────────────────────── */
+
+const L = () => String.fromCharCode(65 + Math.floor(Math.random() * 26));
+const randomPan = () => `${L()}${L()}${L()}P${L()}${String(Math.floor(1000 + Math.random() * 9000))}${L()}`;
+
+/** Prefill Try it with real values for this account, so the first click returns data. */
+function trySeed(ep: ApiEndpoint, ctx: api.PartnerDocsContext | null) {
+  const s = ctx?.samples;
+  const ipoSym = ep.group === 'ipos' ? (s?.openIpoSymbol || s?.printedIpoSymbol) : (s?.printedIpoSymbol || s?.openIpoSymbol);
+  const values: Record<string, string> = {};
+  for (const p of ep.params ?? []) {
+    let v = p.example ?? '';
+    if ((p.name === 'symbol' || p.name === 'ipoSymbol') && ipoSym) v = ipoSym;
+    if (p.name === 'ref' && ep.group !== 'bids') v = s?.applicationRef ?? '';
+    if (p.name === 'ref' && ep.group === 'bids') v = '';
+    values[p.name] = v;
+  }
+  let body = ep.body ? JSON.parse(JSON.stringify(ep.body)) : undefined;
+  if (body && typeof body === 'object') {
+    if ('ipoSymbol' in body && (s?.openIpoSymbol || s?.printedIpoSymbol)) body.ipoSymbol = s?.openIpoSymbol || s?.printedIpoSymbol;
+    if (ep.id === 'bid-place' && Array.isArray(body.bids)) {
+      const stamp = Date.now().toString(36).toUpperCase();
+      body.bids = body.bids.map((b: any) => ({ ...b, orderId: `TRY-${stamp}`, pan: randomPan() }));
+    }
+  }
+  return { values, bodyText: body ? prettyJson(body) : '' };
+}
+
+function TryPanel({ ep, ctx, tenantId }: { ep: ApiEndpoint; ctx: api.PartnerDocsContext | null; tenantId?: string }) {
+  const seed = useMemo(() => trySeed(ep, ctx), [ep, ctx]);
+  const [values, setValues] = useState(seed.values);
+  const [bodyText, setBodyText] = useState(seed.bodyText);
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<api.PartnerTryResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setValues(seed.values); setBodyText(seed.bodyText); setRes(null); setErr(null); }, [seed]);
+
+  const blocked = !ctx?.tenant ? 'Choose a partner at the top of the page to try this as them.' : null;
+
+  const send = async () => {
+    setBusy(true); setErr(null); setRes(null);
+    try {
+      let body: unknown;
+      if (ep.method === 'POST') {
+        try { body = JSON.parse(bodyText || '{}'); } catch (e: any) { throw new Error(`The request body is not valid JSON: ${e?.message ?? e}`); }
+      }
+      const q: Record<string, string> = {};
+      for (const [k, v] of Object.entries(values)) if (v.trim()) q[k] = v.trim();
+      setRes(await api.tryPartnerEndpoint({ tenantId, endpoint: ep.id, query: q, body }));
+      if (ep.id === 'bid-place') setBodyText(trySeed(ep, ctx).bodyText); // fresh orderId + PAN for the next go
+    } catch (e: any) { setErr(String(e?.message ?? e)); } finally { setBusy(false); }
+  };
+
+  const pdf = res?.body?.pdfBase64 as string | undefined;
+  const download = () => {
+    if (!pdf) return;
+    const bin = atob(pdf); const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = res?.body?.filename ?? 'form.pdf';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+  const shown = res ? prettyJson(pdf ? { ...res.body, pdfBase64: `${pdf.slice(0, 48)}… (${Math.round(pdf.length / 1024)} KB — use Download PDF)` } : res.body) : '';
+
+  return (
+    <div className="apx-try">
+      {ep.tryNote && <p className="apx-try-note">{ep.tryNote}</p>}
+      {blocked ? <div className="banner warn">{blocked}</div> : (
+        <>
+          {(ep.params ?? []).length > 0 && (
+            <div className="apx-try-grid">
+              {(ep.params ?? []).map((p) => (
+                <label key={p.name} className="apx-try-f">
+                  <span className="mono">{p.name}{p.required && <b className="apx-req"> *</b>}</span>
+                  <input className="input mono" value={values[p.name] ?? ''} placeholder={p.example ?? p.type}
+                    onChange={(e) => setValues((v) => ({ ...v, [p.name]: e.target.value }))} />
+                </label>
+              ))}
+            </div>
+          )}
+          {ep.method === 'POST' && (
+            <label className="apx-try-f">
+              <span>Request body (JSON)</span>
+              <textarea className="input mono apx-try-body" rows={Math.min(18, Math.max(5, bodyText.split('\n').length + 1))}
+                value={bodyText} spellCheck={false} onChange={(e) => setBodyText(e.target.value)} />
+            </label>
+          )}
+          <div className="apx-try-act">
+            <button className="btn btn-sm" disabled={busy} onClick={send}><Icon name="arrow-right" size={14} /> {busy ? 'Sending…' : 'Send request'}</button>
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => { setValues(seed.values); setBodyText(trySeed(ep, ctx).bodyText); setRes(null); setErr(null); }}>Reset</button>
+            <span className="muted mono apx-try-url">{ep.method} {exampleUrl(ep, values).replace(API_BASE, '')}</span>
+          </div>
+          {err && <div className="banner bad">{err}</div>}
+          {res && (
+            <div className="apx-try-res">
+              <div className="apx-try-head">
+                <span className={`apx-status s${String(res.status)[0]}`}>{res.status}</span>
+                <span className="muted">{res.ms} ms</span>
+                {pdf && <button className="btn btn-sm" onClick={download}><Icon name="download" size={14} /> Download PDF</button>}
+              </div>
+              <Code code={shown} title="Response" />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── One endpoint ────────────────────────────────────────────────────────── */
+
+function EndpointSection({ ep, enabled, ctx, tenantId, lang, setLang }: {
+  ep: ApiEndpoint; enabled: boolean; ctx: api.PartnerDocsContext | null; tenantId?: string; lang: Lang; setLang: (l: Lang) => void;
+}) {
+  const [tryOpen, setTryOpen] = useState(false);
+  const path = `${API_BASE}${ep.path}`;
+  return (
+    <section id={ep.id} className={`apx-ep${enabled ? '' : ' off'}`}>
+      <div className="apx-ep-top">
+        <h3>{ep.title}</h3>
+        {enabled
+          ? <span className="st ok" title={`Needs: ${LABEL.get(ep.scope) ?? ep.scope}`}>Enabled</span>
+          : <span className="st mut"><Icon name="lock" size={11} /> Not enabled for your account</span>}
+      </div>
+      <div className="apx-path">
+        <Method m={ep.method} />
+        <span className="mono">{ep.path}</span>
+        <CopyButton text={path} label="Copy URL" />
+      </div>
+      <p className="apx-sum">{ep.summary}</p>
+      <div className="apx-needs">Needs the <b>{LABEL.get(ep.scope) ?? ep.scope}</b> API group <span className="mono muted">({ep.scope})</span></div>
+
+      {!enabled ? (
+        <div className="banner warn apx-off-note">
+          <span>This API is not switched on for your account. Ask the Investoyard team to enable <b>{LABEL.get(ep.scope) ?? ep.scope}</b> if you need it.</span>
+        </div>
+      ) : (
+        <>
+          {ep.details?.map((d) => <p key={d} className="apx-p">{d}</p>)}
+
+          {ep.params && ep.params.length > 0 && (<><h4>Parameters</h4><ParamTable params={ep.params} /></>)}
+          {ep.bodyFields && (<><h4>Request body</h4><FieldTable fields={ep.bodyFields} showRequired /></>)}
+
+          <h4>Example request</h4>
+          <CodeTabs ep={ep} lang={lang} setLang={setLang} />
+
+          <h4>Responses</h4>
+          <ResponseTabs ep={ep} />
+
+          {ep.responseFields && (<><h4>Response fields</h4><FieldTable fields={ep.responseFields} /></>)}
+
+          <div className="apx-try-wrap">
+            <button type="button" className={`apx-try-toggle${tryOpen ? ' on' : ''}`} aria-expanded={tryOpen} onClick={() => setTryOpen((o) => !o)}>
+              <Icon name="bolt" size={14} /> Try it <Icon name={tryOpen ? 'chevron-down' : 'chevron-right'} size={14} />
+            </button>
+            {tryOpen && <TryPanel ep={ep} ctx={ctx} tenantId={tenantId} />}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ── The page ────────────────────────────────────────────────────────────── */
+
+const GUIDES = [
+  { id: 'quick-start', title: 'Quick start' },
+  { id: 'authentication', title: 'Authentication' },
+];
+const AFTER = [
+  { id: 'webhooks', title: 'Webhooks' },
+  { id: 'errors', title: 'Errors' },
+  { id: 'limits', title: 'Limits' },
 ];
 
 export default function PartnerApiDocsPage() {
   const me = useOperator();
+  const [ctx, setCtx] = useState<api.PartnerDocsContext | null | undefined>(undefined);
+  const [partners, setPartners] = useState<api.PartnerAccessRow[]>([]);
+  const [asTenant, setAsTenant] = useState('');
+  const [lang, setLangState] = useState<Lang>('curl');
+  const [active, setActive] = useState('quick-start');
 
-  // Test panel state
-  const [ipos, setIpos] = useState<api.AdminIpo[]>([]);
-  const [testIpo, setTestIpo] = useState<string>('');
-  const [testPayload, setTestPayload] = useState<string>(SAMPLE_APPLICANTS);
-  const [testBusy, setTestBusy] = useState(false);
-  const [testErr, setTestErr] = useState<string | null>(null);
-  const [testResp, setTestResp] = useState<api.PartnerTestPrintResult | null>(null);
+  useEffect(() => { try { const l = localStorage.getItem(LANG_KEY) as Lang | null; if (l && LANGS.some((x) => x.id === l)) setLangState(l); } catch { /* private window */ } }, []);
+  const setLang = useCallback((l: Lang) => { setLangState(l); try { localStorage.setItem(LANG_KEY, l); } catch { /* ignore */ } }, []);
 
-  // Only IPOs where printing is enabled — the test flow tolerates disabled ones
-  // on the backend, but a dropdown of them keeps the demo relevant.
   useEffect(() => {
     if (!me) return;
-    api.fetchAllIpos().then((r) => setIpos(r)).catch(() => setIpos([]));
-  }, [me]);
+    api.fetchPartnerDocsContext(asTenant || undefined).then(setCtx).catch(() => setCtx(null));
+  }, [me, asTenant]);
+  useEffect(() => { if (me?.isSuperAdmin) api.fetchPartnerAccess().then(setPartners).catch(() => setPartners([])); }, [me]);
 
-  const testableIpos = useMemo(
-    () =>
-      ipos
-        .filter((x) => (x.extra as any)?.startPrint === true)
-        .sort((a, b) => a.symbol.localeCompare(b.symbol)),
-    [ipos],
-  );
+  const operator = ctx?.operator ?? !!me?.isSuperAdmin;
+  // An operator with no partner picked reads the whole reference.
+  const allOpen = operator && !ctx?.tenant;
+  const enabledScopes = new Set<string>(allOpen ? PARTNER_SCOPE_META.map((s) => s.key) : (ctx?.enabled ? ctx?.scopes ?? [] : []));
+  const isOn = (ep: ApiEndpoint) => enabledScopes.has(ep.scope);
 
-  const runTest = async () => {
-    setTestBusy(true); setTestErr(null); setTestResp(null);
-    try {
-      let applicants: unknown;
-      try { applicants = JSON.parse(testPayload); }
-      catch (e: any) { throw new Error(`Applicants JSON is not valid: ${e?.message ?? e}`); }
-      if (!Array.isArray(applicants) || applicants.length === 0) throw new Error('Applicants must be a non-empty JSON array.');
-      const resp = await api.testPartnerPrint({ ipoSymbol: testIpo, applicants });
-      setTestResp(resp);
-    } catch (e: any) {
-      setTestErr(String(e?.message ?? e));
-    } finally {
-      setTestBusy(false);
-    }
-  };
-
-  const downloadTestPdf = () => {
-    if (!testResp) return;
-    const bin = atob(testResp.pdfBase64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    const blob = new Blob([arr], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = testResp.filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  };
+  // Which section is on screen, for the menu. Read positions directly — an
+  // IntersectionObserver picks the topmost intersecting section, which for a
+  // tall one is the section already scrolled past.
+  const ids = useMemo(() => [...GUIDES.map((g) => g.id), ...ENDPOINTS.map((e) => e.id), ...AFTER.map((g) => g.id)], []);
+  const last = useRef(0);
+  useEffect(() => {
+    const onScroll = () => {
+      const now = Date.now(); if (now - last.current < 120) return; last.current = now;
+      let cur = ids[0];
+      for (const id of ids) { const el = document.getElementById(id); if (el && el.getBoundingClientRect().top < 140) cur = id; }
+      setActive(cur);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [ids]);
 
   if (!me) return <Loader />;
   if (!me.username) return <NoAccess />;
 
-  return (
-    <div style={{ maxWidth: 980 }}>
-      <PageHead title="Partner API" sub="Print ASBA forms, read your records and allotment results, read IPO data, and place bids — over one authenticated API." />
+  const tenantId = operator ? (ctx?.tenant?.id ?? undefined) : undefined;
+  const firstCall = `curl "${API_BASE}/partner/v1/ipos?status=open&limit=5" \\\n  -H "X-Api-Key: YOUR_KEY_ID.YOUR_SECRET"`;
+  const onCount = PARTNER_SCOPE_META.filter((s) => enabledScopes.has(s.key)).length;
 
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Endpoints</div><div className="d">Base URL <span className="mono">{API_BASE}</span>. Every path below starts with <span className="mono">/partner/v1</span>.</div></div>
-        <div className="apd-index">
-          {INDEX.map((g) => (
-            <div key={g.anchor}>
-              <a className="apd-index-t" href={`#${g.anchor}`}>{g.title}</a>
-              {g.items.map(([m, p, id]) => (
-                <a key={id + p} className="apd-index-i" href={`#${id}`}>
-                  <span className={`apd-method ${m === 'POST' ? 'post' : 'get'}`}>{m}</span> <span className="mono">{p}</span>
+  return (
+    <div className="apx">
+      <PageHead title="Partner API" sub="Print ASBA forms, read your records and allotment results, read IPO data, and place UPI bids for your clients — over one API." />
+
+      {/* Whose account this page is showing */}
+      <div className="apx-acct">
+        {operator && (
+          <label className="apx-acct-pick">
+            <span>View as partner</span>
+            <select className="input" value={asTenant} onChange={(e) => setAsTenant(e.target.value)}>
+              <option value="">All APIs — no partner</option>
+              {partners.map((p) => <option key={p.tenantId} value={p.tenantId}>{p.name}{p.effective.enabled ? '' : ' (API off)'}</option>)}
+            </select>
+          </label>
+        )}
+        {ctx === undefined ? <span className="muted">Loading your account…</span> : ctx?.tenant ? (
+          <div className="apx-acct-facts">
+            <span className="apx-acct-name">{ctx.tenant.name}</span>
+            {ctx.enabled
+              ? <span className="st ok">API on</span>
+              : <span className="st bad">API off — every call is refused</span>}
+            {ctx.enabled && <span className="muted">{onCount} of {PARTNER_SCOPE_META.length} API groups</span>}
+            <span className="muted">{ctx.keys?.live ?? 0} live · {ctx.keys?.test ?? 0} test key{(ctx.keys?.test ?? 0) === 1 ? '' : 's'}</span>
+            <span className="muted">Up to {ctx.maxApplicantsPerCall ?? 25} applicants per print call</span>
+          </div>
+        ) : allOpen ? <span className="muted">Showing every API. Pick a partner to see what it may call and to use Try it.</span> : null}
+        <div className="apx-acct-base">
+          <span className="muted">Base URL</span>
+          <span className="mono">{API_BASE}</span>
+          <CopyButton text={API_BASE} />
+        </div>
+      </div>
+
+      {ctx?.tenant && !ctx.enabled && (
+        <div className="banner bad" style={{ marginBottom: 16 }}>
+          <span><b>API access is not enabled for this account.</b> Every call is refused with 403 and no key can be created.
+          {operator ? ' Switch it on in Partner API → API Access.' : ' Contact the Investoyard team to request it.'}</span>
+        </div>
+      )}
+
+      {/* Jump menu for narrow screens, where the side menu is hidden */}
+      <select className="input apx-jump" value={active} onChange={(e) => { document.getElementById(e.target.value)?.scrollIntoView({ behavior: 'smooth' }); }} aria-label="Jump to">
+        {GUIDES.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+        {GROUPS.map((g) => (
+          <optgroup key={g.id} label={g.title}>
+            {ENDPOINTS.filter((e) => e.group === g.id).map((e) => <option key={e.id} value={e.id}>{e.title}{isOn(e) ? '' : ' (not enabled)'}</option>)}
+          </optgroup>
+        ))}
+        {AFTER.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+      </select>
+
+      <div className="apx-layout">
+        <nav className="apx-nav" aria-label="API reference">
+          <div className="apx-nav-g">Get started</div>
+          {GUIDES.map((g) => <a key={g.id} href={`#${g.id}`} className={active === g.id ? 'on' : ''}>{g.title}</a>)}
+          {GROUPS.map((g) => (
+            <div key={g.id}>
+              <div className="apx-nav-g">{g.title}</div>
+              {ENDPOINTS.filter((e) => e.group === g.id).map((e) => (
+                <a key={e.id} href={`#${e.id}`} className={`${active === e.id ? 'on' : ''}${isOn(e) ? '' : ' off'}`}
+                  title={isOn(e) ? undefined : 'Not enabled for your account'}>
+                  <Method m={e.method} /><span>{e.title}</span>{!isOn(e) && <Icon name="lock" size={11} />}
                 </a>
               ))}
             </div>
           ))}
-        </div>
-      </div></div>
+          <div className="apx-nav-g">More</div>
+          {AFTER.map((g) => <a key={g.id} href={`#${g.id}`} className={active === g.id ? 'on' : ''}>{g.title}</a>)}
+        </nav>
 
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Authentication</div></div>
-        <p style={{ fontSize: 14, lineHeight: 1.6, margin: '10px 0 0' }}>
-          Every call carries the header <span className="mono">X-Api-Key: keyId.secret</span>. Create and revoke keys on{' '}
-          <a href="/admin/partner-api/keys">My API Keys</a>. The secret is shown once at creation — store it in your secret
-          manager. A revoked key fails with <span className="mono">401</span> immediately. All traffic is HTTPS-only, and every
-          call — including a refused one — appears in your <a href="/admin/partner-api/calls">API Calls</a> report.
-        </p>
-        <p style={{ fontSize: 14, lineHeight: 1.6, margin: '10px 0 0' }}>
-          A key is <b>live</b> or <b>test</b>. A test key behaves the same on every endpoint except bids, which go to a simulator
-          and never reach an exchange. A key can be limited to some of your scopes, and to a list of server addresses — a live
-          key needs that list before it can place or read bids.
-        </p>
-      </div></div>
+        <div className="apx-main">
+          <section id="quick-start" className="apx-guide">
+            <h2>Quick start</h2>
+            <ol className="apx-steps">
+              <li>
+                <b>Get an API key.</b>{' '}
+                {operator
+                  ? <>Create it on the partner’s page (Partners → the partner → API keys). The secret is shown once.</>
+                  : <>Create one on <a href="/admin/partner-api/keys">My API Keys</a>. The secret is shown once — keep it in your server’s secret store, never in a browser or app.</>}
+                {' '}Start with a <b>test</b> key: everything works the same, and bids go to a simulator.
+              </li>
+              <li>
+                <b>Make your first call.</b> List the IPOs open today:
+                <Code code={firstCall} title="Your first call" />
+              </li>
+              <li>
+                <b>Read the answer.</b> A 2xx status means success and the body is JSON. Anything else returns a JSON body with
+                {' '}<span className="mono">statusCode</span> and a <span className="mono">message</span> that says what to fix — see <a href="#errors">Errors</a>.
+                Every call, including refused ones, appears in <a href="/admin/partner-api/calls">API Calls</a>.
+              </li>
+            </ol>
+          </section>
 
-      {/* The scope list is shared with the API's guard, so this table cannot
-          promise an endpoint the guard does not know about. */}
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head">
-          <div className="t">Scopes — what a key can call</div>
-          <div className="d">
-            The operator switches scopes on for your account; each key can then be limited further on{' '}
-            <a href="/admin/partner-api/keys">My API Keys</a>. A key with no scopes of its own can use everything your account has.
-            Full request and response details for every endpoint are in the <a href="/partner-api#list-prints">API reference</a>.
-          </div>
-        </div>
-        <table className="table" style={{ marginTop: 10 }}>
-          <thead><tr><th>Scope</th><th>Endpoints</th><th>What it is for</th></tr></thead>
-          <tbody>
-            {PARTNER_SCOPE_META.map((s) => (
-              <tr key={s.key}>
-                <td className="mono" style={{ whiteSpace: 'nowrap' }}>{s.key}</td>
-                <td className="mono" style={{ fontSize: 12.5 }}>{s.endpoints.map((e) => <div key={e}>{e}</div>)}</td>
-                <td style={{ fontSize: 13.5 }}>{s.hint}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div></div>
-
-      <div id="print-forms" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Print forms</div><div className="d">You send FINAL, pre-computed data for up to your per-call limit of applicants; we store it and return the prefilled ASBA forms as one PDF, printed exactly as sent.</div></div>
-        <div className="apd-ep-head" style={{ marginTop: 10 }}>
-          <span className="apd-method post">POST</span>
-          <span className="mono apd-path">/partner/v1/print-forms</span>
-          <span className="st mut">print-forms</span>
-        </div>
-        <pre className="mono" style={{ background: 'var(--bg-2)', borderRadius: 10, padding: 14, fontSize: 12, overflowX: 'auto', marginTop: 12 }}>{SAMPLE_REQUEST}</pre>
-        <table className="table" style={{ marginTop: 14 }}>
-          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-          <tbody>
-            {FIELDS.map(([f, t, n]) => (
-              <tr key={f}><td className="mono" style={{ whiteSpace: 'nowrap' }}>{f}</td><td style={{ whiteSpace: 'nowrap' }}>{t}</td><td>{n}</td></tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.55 }}>
-          <b>Note.</b> <span className="mono">ifsc</span> and <span className="mono">upiId</span> used to be accepted here — both
-          are now <b>silently ignored</b>. The ASBA form carries Bank Account, Bank Name and Branch only (the ASBA block runs on
-          the applicant’s own bank statement, so no interbank routing is needed); UPI is an electronic rail that doesn’t appear on
-          the physical form. Requests that still include either field are stripped by the validator and processed as if omitted —
-          backwards-compatible for any partner still integrated against the old shape.
-        </p>
-      </div></div>
-
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Print forms — response</div><div className="d">Form numbers allocate from the SAME per-IPO series as Investoyard&apos;s own prints — sequential and reconciliation-safe.</div></div>
-        <pre className="mono" style={{ background: 'var(--bg-2)', borderRadius: 10, padding: 14, fontSize: 12, overflowX: 'auto', marginTop: 12 }}>{SAMPLE_RESPONSE}</pre>
-      </div></div>
-
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Print forms — from the command line</div></div>
-        <pre className="mono" style={{ background: 'var(--bg-2)', borderRadius: 10, padding: 14, fontSize: 12, overflowX: 'auto', marginTop: 12 }}>{SAMPLE_CURL}</pre>
-      </div></div>
-
-      <div className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head">
-          <div className="t">Print forms — try it here <span className="st ok" style={{ marginLeft: 8 }}>dry-run</span></div>
-          <div className="d">
-            Runs a real dry-run through the print engine using your session — <b>no API key</b>, <b>no rows persisted</b>, and
-            <b> no form numbers consumed</b>. Every form prints with <span className="mono">formNo:&nbsp;&quot;TEST&quot;</span> so
-            the sample is unmistakable. Use this to verify a payload shape and preview the ASBA template that will be picked
-            for a given amount / category.
-          </div>
-        </div>
-
-        <div className="row" style={{ gap: 10, marginTop: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-          <select
-            className="input"
-            style={{ minWidth: 240 }}
-            value={testIpo}
-            onChange={(e) => setTestIpo(e.target.value)}
-          >
-            <option value="">— Select an IPO —</option>
-            {testableIpos.map((x) => (
-              <option key={x.id} value={x.symbol}>{x.symbol} · {x.name}</option>
-            ))}
-            {testableIpos.length === 0 && ipos.length > 0 && (
-              <option disabled>(no IPOs have Start Printing turned on)</option>
-            )}
-          </select>
-          <button
-            className="btn"
-            disabled={testBusy || !testIpo}
-            onClick={runTest}
-          >
-            {testBusy ? 'Testing…' : 'Run test'}
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            disabled={testBusy}
-            onClick={() => { setTestPayload(SAMPLE_APPLICANTS); setTestResp(null); setTestErr(null); }}
-          >
-            Reset sample
-          </button>
-        </div>
-
-        <label className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Applicants JSON (array — same shape as the real endpoint)</label>
-        <textarea
-          className="input mono"
-          rows={16}
-          value={testPayload}
-          onChange={(e) => setTestPayload(e.target.value)}
-          style={{ fontSize: 12, lineHeight: 1.55, marginTop: 6, width: '100%', resize: 'vertical' }}
-          spellCheck={false}
-        />
-
-        {testErr && <div className="banner warn" style={{ marginTop: 12 }}>{testErr}</div>}
-
-        {testResp && (
-          <>
-            <div className="row" style={{ gap: 10, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn" onClick={downloadTestPdf}>
-                <Icon name="download" size={14} /> Download {testResp.filename}
-              </button>
-              <span className="st brand">{testResp.applications.length} form{testResp.applications.length === 1 ? '' : 's'} generated</span>
-              <span className="muted" style={{ fontSize: 12.5 }}>All formNo are <span className="mono">TEST</span>, batchId is <span className="mono">DRY-RUN</span> — no data was saved.</span>
+          <section id="authentication" className="apx-guide">
+            <h2>Authentication</h2>
+            <p className="apx-p">Send your key on every request in the <span className="mono">X-Api-Key</span> header, as <span className="mono">keyId.secret</span>. Requests must use HTTPS. A revoked key is refused with 401 straight away.</p>
+            <Code code={`X-Api-Key: pk_a1b2c3d4e5f6.7f3c…your secret…`} title="Header" />
+            <div className="apx-facts">
+              <div><b>Live and test keys.</b> A test key works the same on every API, except that its bids go to a simulator and never reach an exchange.</div>
+              <div><b>API groups.</b> We switch on the API groups your account may use. A key can be limited to some of them — a reporting server that only reads allotment does not need a key that can print.</div>
+              <div><b>IP allowlist.</b> A key can be locked to your server addresses. A live key must have one before it can place or read bids.</div>
             </div>
-            <pre
-              className="mono"
-              style={{ background: 'var(--bg-2)', borderRadius: 10, padding: 14, fontSize: 12, marginTop: 12, overflowX: 'auto' }}
-            >
-{JSON.stringify(
-  { ...testResp, pdfBase64: testResp.pdfBase64.slice(0, 60) + '… (truncated · use Download to save)' },
-  null,
-  2,
-)}
-            </pre>
-          </>
-        )}
-      </div></div>
+          </section>
 
-      {/* ── Your records ── */}
-      <div id="records" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Your records</div><div className="d">The forms you printed, the same PDF again, and allotment results. PAN, client ID and bank account are masked in every read — even details you sent us yourself — so a leaked key cannot read them back.</div></div>
-        {READ_ENDPOINTS.slice(0, 4).map((e) => <Endpoint key={e.id} e={e} />)}
-      </div></div>
+          {GROUPS.map((g) => (
+            <div key={g.id} className="apx-group">
+              <div className="apx-group-h"><h2>{g.title}</h2><p>{g.intro}</p></div>
+              {ENDPOINTS.filter((e) => e.group === g.id).map((e) => (
+                <EndpointSection key={e.id} ep={e} enabled={isOn(e)} ctx={ctx ?? null} tenantId={tenantId} lang={lang} setLang={setLang} />
+              ))}
+            </div>
+          ))}
 
-      {/* ── IPO data ── */}
-      <div id="ipo-data" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">IPO data</div><div className="d">The catalogue our own site shows. Subscription and GMP are available on request.</div></div>
-        {READ_ENDPOINTS.slice(4).map((e) => <Endpoint key={e.id} e={e} />)}
-      </div></div>
+          <section id="webhooks" className="apx-guide">
+            <h2>Webhooks</h2>
+            <p className="apx-p">
+              Set an https address on <a href="/admin/partner-api/webhooks">Webhooks</a>. Whenever one of your bids changes, we send a signed POST with the event and the
+              bid’s current state, so you do not have to keep asking.
+            </p>
+            <div className="apx-chips">{WEBHOOK_EVENTS.map((e) => <span key={e} className="st brand mono">{e}</span>)}</div>
+            <h4>What we send</h4>
+            <Code code={`POST https://your-server.example/investoyard/webhooks\nX-Investoyard-Event: bid.funds_blocked\nX-Investoyard-Delivery: 7c1d9e2a-…\nX-Investoyard-Signature: t=1700000000,v1=<hex>\n\n${prettyJson(WEBHOOK_SAMPLE)}`} title="Example delivery" />
+            <h4>Check the signature</h4>
+            <Code code={WEBHOOK_VERIFY} title="Node.js" />
+            <p className="apx-p">
+              Answer with any 2xx within 10 seconds. Anything else is retried after 1 minute, 5 minutes, 30 minutes, then 2, 6, 12 and 24 hours, and then marked failed —
+              you can send it again from the Webhooks page. A delivery can arrive twice or out of order: use <span className="mono">X-Investoyard-Delivery</span> to ignore
+              repeats, and treat the bid’s <span className="mono">status</span> as the truth. Get bids is always the backup.
+            </p>
+          </section>
 
-      {/* ── Bids ── */}
-      <div id="bids" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head">
-          <div className="t">Bids</div>
-          <div className="d">UPI bids for your clients, placed under our exchange membership. Live bidding is switched on per account, for named IPOs, within a cap per bid, bids per day and rupees per day.</div>
+          <section id="errors" className="apx-guide">
+            <h2>Errors</h2>
+            <div className="apx-tbl-wrap">
+              <table className="table apx-tbl">
+                <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+                <tbody>{ERRORS.map((x) => <tr key={x.status}><td className="mono apx-nm">{x.status} {x.title}</td><td>{x.meaning}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <h4>Every error looks like this</h4>
+            <Code code={prettyJson({ statusCode: 403, error: 'Forbidden', message: 'This endpoint requires the "prints:read" scope. Your account does not have it enabled — contact the operator to request it.' })} title="Error body" />
+          </section>
+
+          <section id="limits" className="apx-guide">
+            <h2>Limits</h2>
+            <div className="apx-facts">
+              <div><b>Print forms:</b> up to {ctx?.maxApplicantsPerCall ?? 25} applicants per call{operator && !ctx?.tenant ? ' (25 unless raised for the partner, at most 500)' : ''}.</div>
+              <div><b>Bids:</b> up to {PARTNER_BID_BATCH_MAX} per call, all or nothing. Live bidding is limited per account: named IPOs, a cap per bid, bids per day and rupees per day — see Your live bidding limits.</div>
+              <div><b>Lists:</b> at most 200 rows per page.</div>
+              <div><b>Personal details</b> you send are stored encrypted under your account only, and come back masked in every read.</div>
+            </div>
+          </section>
         </div>
-        <div className="banner warn" style={{ margin: '10px 0' }}>
-          Live bidding is not open yet. Build and test with a <b>test key</b>: its bids go to a simulator and never reach an exchange.
-        </div>
-        <div id="bid-place" className="apd-ep">
-          <div className="apd-ep-head">
-            <span className="apd-method post">POST</span>
-            <span className="mono apd-path">/partner/v1/bids</span>
-            <span className="st mut">bids:write</span>
-          </div>
-          <p className="apd-sum">
-            Up to {PARTNER_BID_BATCH_MAX} bids per call, <b>all or nothing</b>: every bid is checked first, and if any fails none is
-            placed and every problem is listed with its position. A placed bid is sent to the exchange within seconds.
-          </p>
-          <pre className="mono" style={pre}>{BID_REQUEST}</pre>
-          <table className="table" style={{ marginTop: 12 }}>
-            <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-            <tbody>{BID_FIELDS.map(([n, t, d]) => <tr key={n}><td className="mono" style={{ whiteSpace: 'nowrap' }}>{n}</td><td style={{ whiteSpace: 'nowrap' }}>{t}</td><td>{d}</td></tr>)}</tbody>
-          </table>
-          <pre className="mono" style={pre}>{BID_RESPONSE}</pre>
-        </div>
-        {BID_CHANGES.map((e) => <Endpoint key={e.id} e={e} />)}
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}><b>Statuses:</b> {BID_STATUSES}.</p>
-      </div></div>
-
-      {/* ── Test mode ── */}
-      <div id="test-mode" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head">
-          <div className="t">Test mode</div>
-          <div className="d">
-            Bids from a test key get the same checks, responses and webhooks as live ones, but they go to a simulator, are accepted
-            for any IPO in the catalogue (open or not), get application numbers starting <span className="mono">TEST</span>, and are
-            invisible to live keys. Move a test bid on with:
-          </div>
-        </div>
-        <pre className="mono" style={pre}>{SIMULATE}</pre>
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>A full cycle: place → <span className="mono">bid.sent</span> → mandate_accepted → allotted → refund.</p>
-      </div></div>
-
-      {/* ── Webhooks ── */}
-      <div id="webhooks" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head">
-          <div className="t">Webhooks</div>
-          <div className="d">
-            Set an https endpoint on <a href="/admin/partner-api/webhooks">Webhooks</a>. Whenever one of your bids changes we send a
-            signed <span className="mono">POST</span> with the event and the bid&apos;s current state. Events: {WEBHOOK_EVENTS}.
-          </div>
-        </div>
-        <pre className="mono" style={pre}>{WEBHOOK_SAMPLE}</pre>
-        <div className="apd-label" style={{ marginTop: 14 }}>Check the signature</div>
-        <pre className="mono" style={pre}>{WEBHOOK_VERIFY}</pre>
-        <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 10 }}>
-          Answer with any 2xx within 10 seconds. Anything else is retried after 1 minute, 5 minutes, 30 minutes, then 2, 6, 12 and
-          24 hours, and then marked failed — you can send it again from the Webhooks page. A delivery can arrive more than once or
-          out of order: use <span className="mono">X-Investoyard-Delivery</span> to ignore repeats and treat the bid&apos;s
-          <span className="mono"> status</span> as the truth. <span className="mono">GET /bids</span> is always the backup.
-        </p>
-      </div></div>
-
-      <div id="errors" className="card" style={{ marginBottom: 18 }}><div className="card-pad">
-        <div className="fs-head"><div className="t">Errors</div></div>
-        <table className="table" style={{ marginTop: 10 }}>
-          <thead><tr><th style={{ width: 80 }}>Status</th><th>Meaning</th></tr></thead>
-          <tbody>{ERRORS.map(([c, m]) => <tr key={c}><td className="mono">{c}</td><td>{m}</td></tr>)}</tbody>
-        </table>
-        <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
-          Notes: you own the correctness of quantities/amounts and your clients&apos; consent; Investoyard prints what you send.
-          Client PII is stored encrypted under your account only. IP allowlists and scopes are set per key on My API Keys.
-        </p>
-      </div></div>
+      </div>
     </div>
   );
 }

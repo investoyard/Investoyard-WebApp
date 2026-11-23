@@ -72,7 +72,7 @@ export default function PartnerAccessPage() {
       />
 
       {err && <div className="banner bad" style={{ marginBottom: 14 }}>{err}</div>}
-      {msg && !err && <div className="banner ok" style={{ marginBottom: 14 }}>{msg} Takes effect on their next call.</div>}
+      {msg && !err && <div className="banner ok" style={{ marginBottom: 14 }}>{`${msg} Takes effect on their next call.`}</div>}
 
       <div className="card">
         <div className="card-head">

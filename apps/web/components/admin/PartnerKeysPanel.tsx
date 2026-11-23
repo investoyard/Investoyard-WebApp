@@ -113,8 +113,8 @@ export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string;
 
       {enabled === false && (
         <div className="banner warn" style={{ margin: '10px 0' }}>
-          <b>API access is switched off for this account.</b> Every call is refused and no new key can be made.
-          The Investoyard team switches it on in Partner API → Access.
+          <span><b>API access is switched off for this account.</b> Every call is refused and no new key can be made.
+          The Investoyard team switches it on in Partner API → API Access.</span>
         </div>
       )}
 
