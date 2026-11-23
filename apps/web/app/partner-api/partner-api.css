@@ -554,3 +554,37 @@
   padding: .3rem .7rem; white-space: nowrap;
 }
 .pa-dl:hover { background: var(--pa-brand-soft); }
+
+/* ── Endpoints drawn from lib/partnerApiDocs.ts (2026-11-23) ─────────────── */
+.pa-group > p { color: var(--text-muted); }
+.pa-ep { border-top: 1px solid var(--pa-code-border); padding-top: .5rem; }
+.pa .pa-ep-title { font-size: 1.15rem; margin: 1.25rem 0 .6rem; }
+.pa-scope-line { font-size: .85rem; color: var(--text-muted); }
+.pa-legend { font-size: .82rem; color: var(--text-muted); margin-top: -.75rem; }
+/* A response header carries a sentence ("When the forms were printed"), not a label. */
+.pa-code-head.pa-resp-head { text-transform: none; letter-spacing: 0; justify-content: flex-start; font-size: .8rem; }
+.pa-resp-head .pa-status { margin-right: .5rem; }
+
+/* Language tabs (code-tabs.tsx): one on screen, all five in print. */
+.pa-code-head.pa-tabs-head { justify-content: flex-start; gap: 2px; flex-wrap: wrap; padding: .35rem .5rem; text-transform: none; letter-spacing: 0; }
+.pa-tabs-head button { border: 0; background: transparent; font: 600 .78rem var(--font-sans), sans-serif; padding: .3rem .65rem; border-radius: 6px; color: var(--text-muted); cursor: pointer; }
+.pa-tabs-head button:hover { color: var(--text); }
+.pa-tabs-head button.on { background: var(--pa-brand-soft); color: var(--brand); }
+.pa-tab-panel { display: none; }
+.pa-tab-panel.on { display: block; }
+.pa-tab-print-label { display: none; }
+.pa-tab-print-note { display: none; }
+
+@media print {
+  .pa-tab-panel { display: none !important; }
+  .pa-tab-panel.pa-tab-print { display: block !important; }
+  .pa-tab-print-label { display: block; font: 600 7.5pt var(--font-sans), sans-serif; color: #5c6187; padding: 2mm 3mm 0; text-transform: uppercase; letter-spacing: .05em; }
+  .pa-tab-print-note { display: block; font-size: 8pt; color: #5c6187; margin: 0; padding: 1.5mm 3mm 2mm; border-top: 1px solid #d9dbe5; }
+  .pa-ep { border-top: 0; }
+}
+
+/* Endpoint field tables: names like applicants[].address · city · state · pincode are long,
+   and the base rule keeps them on one line, which squeezed Notes to a sliver. */
+.pa-ep .pa-fields td.pa-name { white-space: normal; overflow-wrap: break-word; min-width: 8rem; max-width: 15rem; }
+.pa-ep .pa-fields td.pa-type { white-space: normal; overflow-wrap: break-word; max-width: 11rem; }
+.pa-ep .pa-fields td.pa-notes { min-width: 14rem; }

@@ -10,7 +10,7 @@
 import {
   OPERATIONAL_COLUMNS, OPERATIONAL_EXTRA, CONTENT_EXTRA, REPORTING_EXTRA,
   DEAD_EXTRA, ALIAS_EXTRA, CLASSIFIED_EXTRA_KEYS,
-  bucketOf, unclassifiedKeys, partnerV1Extra, offerLegFrom,
+  bucketOf, unclassifiedKeys, offerLegFrom,
 } from './operationalContract';
 
 /** Every key the IPO entry form writes into `extra`, read off payload(). */
@@ -114,46 +114,4 @@ describe('offer legs — both storage shapes', () => {
   });
 });
 
-describe('partner v1 projection', () => {
-  const record = {
-    shareResv: { qib: { on: true, pct: '50' } },   // operational
-    lotSize: 34,                                    // operational (column, not extra)
-    companyDescription: '<p>About</p>',             // content
-    applicationsReceived: '1200',                   // reporting — must not appear
-    importedAt: '2026-08-01',                       // reporting — must not appear
-    retailCutOff: '425',                            // dead — must not appear
-    freshIssueCr: 300,                              // alias — must not appear
-  };
-
-  it('carries operational and content through', () => {
-    const v = partnerV1Extra(record);
-    expect(v.shareResv).toBeDefined();
-    expect(v.companyDescription).toBe('<p>About</p>');
-  });
-
-  it('never leaks reporting, dead or alias keys', () => {
-    const v = partnerV1Extra(record);
-    for (const k of ['applicationsReceived', 'importedAt', 'retailCutOff', 'freshIssueCr']) {
-      expect(v[k]).toBeUndefined();
-    }
-  });
-
-  it('drops blanks so a partner sees absence, not empty string', () => {
-    expect(partnerV1Extra({ sponsorBank: '', faceValue: '10' })).toEqual({ faceValue: '10' });
-  });
-
-  it('survives a null extra', () => {
-    expect(partnerV1Extra(null)).toEqual({});
-    expect(partnerV1Extra(undefined)).toEqual({});
-  });
-
-  /**
-   * The promise in one test: a reporting field added tomorrow cannot change
-   * what a partner integrating today receives.
-   */
-  it('is unchanged when a brand-new reporting field appears on the record', () => {
-    const before = partnerV1Extra(record);
-    const after = partnerV1Extra({ ...record, someFutureReportField: 'x', anotherOne: 42 });
-    expect(after).toEqual(before);
-  });
-});
+/* The partner projection moved to partnerIpoDetails.spec.ts (2026-11-23). */

@@ -30,9 +30,9 @@
  *   ALIAS        The same fact stored twice in incompatible shapes, pending
  *                consolidation. Each entry names the key that wins.
  *
- * `partnerV1View()` at the bottom is the mechanism the whole split exists for:
- * the partner API serialises OPERATIONAL + CONTENT and nothing else, so adding
- * a reporting field can never alter a partner response.
+ * The partner API does NOT serialise these buckets: it sends the explicit
+ * allow-list in `partnerIpoDetails.ts`, so neither a reporting field nor a new
+ * operational one can alter a partner response.
  */
 
 /* ── Layer 1: real columns on Ipo ─────────────────────────────────────────── */
@@ -166,14 +166,12 @@ export function unclassifiedKeys(extra: Record<string, unknown> | null | undefin
 }
 
 /**
- * What the partner API v1 serialises: the operational contract plus optional
- * content, and nothing else.
- *
- * This is the promise the layering buys — a partner integrating today keeps
- * working through every reporting field we ever add, because reporting keys
- * cannot reach this projection. Reporting data, when partners want it, gets its
- * own endpoints rather than widening these.
+ * The partner API no longer serialises these buckets. Since 2026-11-23 it sends an
+ * explicit allow-list — `partnerIpoDetails` — because OPERATIONAL includes our own
+ * operating data (form-number series, ASBA file names, the Start Bid / Start Print
+ * switches) that a partner must not see.
  */
+
 /**
  * Read an offer leg, whichever shape it was stored in.
  *
@@ -203,13 +201,4 @@ export function offerLegFrom(
   const cr = Number(x[crKey]);
   if (Number.isFinite(cr) && cr > 0) return { basis: 'amount', value: cr };
   return undefined;
-}
-
-export function partnerV1Extra(extra: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(extra ?? {})) {
-    if (v === undefined || v === null || v === '') continue;
-    if (OPERATIONAL_EXTRA_SET.has(k) || CONTENT_EXTRA_SET.has(k)) out[k] = v;
-  }
-  return out;
 }

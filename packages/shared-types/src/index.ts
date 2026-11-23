@@ -354,3 +354,4 @@ export * from './asbaForm';
 
 /* What each kind of sign-up agrees to, and the consent version it records. */
 export * from './signupNotice';
+export * from './partnerIpoDetails';

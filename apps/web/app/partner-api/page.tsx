@@ -1,7 +1,13 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { PartnerApiScrollSpy } from './scroll-spy';
-import { PARTNER_BID_BATCH_MAX, PARTNER_SCOPE_META } from '@investoyard/shared-types';
+import type { ReactNode } from 'react';
+import { PARTNER_SCOPE_META } from '@investoyard/shared-types';
+import {
+  ENDPOINTS, ERRORS, GROUPS, LANGS, PUBLIC_BASE, WEBHOOK_EVENTS, WEBHOOK_SAMPLE, WEBHOOK_VERIFY,
+  codeSample, prettyJson, type ApiEndpoint, type Lang,
+} from '@/lib/partnerApiDocs';
+import { PaCodeTabs } from './code-tabs';
 /* The canonical and og:url are ABSOLUTE by necessity, so they are built from
    the one origin constant rather than typed — a page with a stale canonical
    tells Google its own domain is a duplicate of a domain we no longer use. */
@@ -36,6 +42,93 @@ export const metadata: Metadata = {
     type: 'article',
   },
 };
+
+const SCOPE_LABEL = new Map<string, string>(PARTNER_SCOPE_META.map((s) => [s.key, s.label]));
+
+/** A field table with the required dot, shared by parameters, body and response fields. */
+function PaFields({ rows, head }: { rows: { name: string; type: string; required?: boolean; notes: ReactNode }[]; head?: string }) {
+  const anyRequired = rows.some((r) => r.required);
+  return (
+    <>
+      <div className="pa-fields"><table>
+        <thead><tr><th>{head ?? 'Field'}</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.name}>
+              <td className="pa-name">{r.required && <span className="pa-req-dot"></span>}{r.name.split("].").map((part, i, all) => <span key={i}>{part}{i < all.length - 1 ? <>].<wbr /></> : null}</span>)}</td>
+              <td className="pa-type">{r.type}</td>
+              <td className="pa-notes">{r.notes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table></div>
+      {anyRequired && <p className="pa-legend"><span className="pa-req-dot"></span> Required</p>}
+    </>
+  );
+}
+
+/** One endpoint, laid out exactly like the admin API Docs page lays it out. */
+function PaEndpoint({ ep }: { ep: ApiEndpoint }) {
+  const samples = Object.fromEntries(LANGS.map((l) => [l.id, codeSample(l.id, ep, PUBLIC_BASE)])) as Record<Lang, string>;
+  return (
+    <section id={ep.id} className="pa-section pa-ep">
+      <h3 className="pa-ep-title">{ep.title}</h3>
+      <div className="pa-endpoint">
+        <span className={`pa-method ${ep.method === 'POST' ? 'pa-post' : 'pa-get'}`}>{ep.method}</span>
+        <span className="pa-endpoint-path">{ep.path}</span>
+      </div>
+      <p>{ep.summary}</p>
+      <p className="pa-scope-line">Needs the <code>{ep.scope}</code> scope — {SCOPE_LABEL.get(ep.scope) ?? ep.scope}.</p>
+      {ep.details?.map((d) => <p key={d}>{d}</p>)}
+      {ep.id === 'print-forms' && (
+        <div className="pa-callout">
+          <div className="pa-icon">i</div>
+          <div><p style={{ margin: 0 }}><strong>The API does not accept <code>ifsc</code> or <code>upiId</code> here.</strong> The printed ASBA form carries only the bank account, bank name and branch — the block runs on the applicant&apos;s own bank account, and UPI does not appear on the paper form. Requests that include either field succeed, and the values are ignored.</p></div>
+        </div>
+      )}
+
+      {ep.params && ep.params.length > 0 && (
+        <>
+          <h4>Parameters</h4>
+          <PaFields head="Parameter" rows={ep.params.map((p) => ({
+            name: p.name, type: p.type, required: p.required,
+            notes: <>{p.in === 'path' ? <em>In the path. </em> : null}{p.description}{p.example ? <> e.g. <code>{p.example}</code></> : null}</>,
+          }))} />
+        </>
+      )}
+      {ep.bodyFields && (
+        <>
+          <h4>Request body</h4>
+          <PaFields rows={ep.bodyFields.map((f) => ({ name: f.name, type: f.type, required: f.required, notes: f.description }))} />
+        </>
+      )}
+      {ep.body !== undefined && (
+        <div className="pa-code">
+          <div className="pa-code-head"><span>Body — application/json</span><span>example</span></div>
+          <pre>{prettyJson(ep.body)}</pre>
+        </div>
+      )}
+
+      <h4>Example request</h4>
+      <PaCodeTabs samples={samples} />
+
+      <h4>Responses</h4>
+      {ep.responses.map((r) => (
+        <div key={r.status} className="pa-code">
+          <div className="pa-code-head pa-resp-head"><span><span className={`pa-status ${r.status < 300 ? 'pa-ok' : 'pa-err'}`}>{r.status}</span> {r.when}</span></div>
+          <pre>{prettyJson(r.body)}</pre>
+        </div>
+      ))}
+
+      {ep.responseFields && (
+        <>
+          <h4>Response fields</h4>
+          <PaFields rows={ep.responseFields.map((f) => ({ name: f.name, type: f.type, notes: f.description }))} />
+        </>
+      )}
+    </section>
+  );
+}
 
 /**
  * Public Partner API reference page.
@@ -89,7 +182,7 @@ export default function PartnerApiDoc() {
           <span className="plt-cover-rule" />
           <p>
             The print-forms contract: authentication, the full request field list, the response
-            and the error codes — with curl, JavaScript and Python examples.
+            and the error codes — with a cURL example to start from.
           </p>
         </div>
 
@@ -127,16 +220,14 @@ export default function PartnerApiDoc() {
             <a href="#authentication">Authentication</a>
             <a href="#base-url">Base URL &amp; versioning</a>
 
-            <div className="pa-toc-label">Endpoints</div>
-            <a href="#print-forms" className="pa-nested">POST /print-forms</a>
-            <a href="#list-ipos" className="pa-nested">GET /ipos</a>
-            <a href="#get-ipo" className="pa-nested">GET /ipos/{'{'}symbol{'}'}</a>
-            <a href="#list-prints" className="pa-nested">GET /prints</a>
-            <a href="#get-print" className="pa-nested">GET /prints/detail · /pdf</a>
-            <a href="#allotment" className="pa-nested">GET /allotment</a>
-            <a href="#bids" className="pa-nested">POST /bids</a>
-            <a href="#bid-changes" className="pa-nested">Change or cancel</a>
-            <a href="#bid-status" className="pa-nested">GET /bids</a>
+            {GROUPS.map((g) => (
+              <div key={g.id}>
+                <div className="pa-toc-label">{g.title}</div>
+                {ENDPOINTS.filter((e) => e.group === g.id).map((e) => (
+                  <a key={e.id} href={`#${e.id}`} className="pa-nested">{e.title}</a>
+                ))}
+              </div>
+            ))}
 
             <div className="pa-toc-label">Reference</div>
             <a href="#webhooks">Webhooks</a>
@@ -275,403 +366,59 @@ export default function PartnerApiDoc() {
             <p>The API lives under <code>/v1</code>. We version by <strong>breaking change</strong>, not by feature release. New optional request fields, new response fields, new endpoints, and new enum values on existing fields do <strong>not</strong> bump the version — v1 stays v1 as we add. We publish a new major version only when the shape of an existing field changes, an existing field is required to disappear, or auth semantics change.</p>
           </section>
 
-          {/* ── POST /print-forms ── */}
-          <section id="print-forms" className="pa-section">
-            <h2><span className="pa-num">04</span>Print forms</h2>
-            <p>Store final application data and receive prefilled ASBA form(s) as one merged PDF. Applications land in the partner's tenant with <code>applyMethod: &quot;pdf&quot;</code>; form numbers come from the same per-IPO PDF series the operator's own applications use.</p>
-
-            <div className="pa-endpoint">
-              <span className="pa-method pa-post">POST</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>print-forms</b></span>
-            </div>
-
-            <h3>Request body</h3>
-            <p>Two top-level fields: the IPO's ticker symbol and an array of applicants. Up to <strong>100 applicants per request</strong>. The endpoint returns one merged PDF with a page per applicant, in the order sent.</p>
-
-            <div className="pa-code">
-              <div className="pa-code-head"><span>Body — application/json</span><span>example</span></div>
-              <pre>{`{
-  "ipoSymbol": "PERNIASPOP",
-  "applicants": [
-    {
-      "fullName":    "Ananya Kapoor",
-      "pan":         "AAAPK1234C",
-      "depository":  "CDSL",
-      "clientId":    "1201060012345678",
-      "bankAccount": "123456789012",
-      "bankName":    "HDFC Bank",
-      "branchName":  "Andheri West",
-      "address":     "12 Sea View Rd",
-      "city":        "Mumbai",
-      "state":       "Maharashtra",
-      "pincode":     "400058",
-      "email":       "ananya@example.com",
-      "mobile":      "9820012345",
-      "category":    "Retail",
-      "lots":        2,
-      "shareQty":    52,
-      "sharePrice":  575,
-      "amount":      29900
-    }
-  ]
-}`}</pre>
-            </div>
-
-            <h4>Top-level fields</h4>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>ipoSymbol</td><td className="pa-type">string</td><td className="pa-notes">Ticker symbol as it appears in the catalog (e.g. <code>PERNIASPOP</code>). Case-insensitive.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>applicants</td><td className="pa-type">Applicant[]</td><td className="pa-notes">1 to 100 applicants. See applicant schema below.</td></tr>
-              </tbody>
-            </table></div>
-            <p style={{ fontSize: '.85rem', color: 'var(--text-muted)', marginTop: '-.5rem' }}><span className="pa-req-dot"></span> Required</p>
-
-            <h4>Applicant schema</h4>
-            <p>Every applicant field is <strong>optional</strong>. Missing values print as blanks on the form. There is no schema-level validation on PAN format, demat length, bid amount, or category caps — the correctness of every value is the partner's responsibility.</p>
-
-            <div className="pa-fields"><table>
-              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name">fullName</td><td className="pa-type">string</td><td className="pa-notes">Applicant's full name as on the demat account.</td></tr>
-                <tr><td className="pa-name">pan</td><td className="pa-type">string</td><td className="pa-notes">10-character PAN. Stored under your tenant's PII vault.</td></tr>
-                <tr><td className="pa-name">depository</td><td className="pa-type"><code>&quot;NSDL&quot; | &quot;CDSL&quot;</code></td><td className="pa-notes">Selects which demat identifier layout to print.</td></tr>
-                <tr><td className="pa-name">dpId</td><td className="pa-type">string</td><td className="pa-notes"><strong>NSDL only.</strong> Format <code>IN</code> + 6 digits. For CDSL, leave blank.</td></tr>
-                <tr><td className="pa-name">clientId</td><td className="pa-type">string</td><td className="pa-notes">NSDL: 8 digits. CDSL: 16-digit demat account number.</td></tr>
-                <tr><td className="pa-name">bankAccount</td><td className="pa-type">string</td><td className="pa-notes">Bank account number for the ASBA block. Stored under your tenant's PII vault.</td></tr>
-                <tr><td className="pa-name">bankName</td><td className="pa-type">string</td><td className="pa-notes">Bank name — printed on the form.</td></tr>
-                <tr><td className="pa-name">branchName</td><td className="pa-type">string</td><td className="pa-notes">Branch name — printed on the form.</td></tr>
-                <tr><td className="pa-name">address</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">city</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">state</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">pincode</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">email</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">mobile</td><td className="pa-type">string</td><td className="pa-notes"></td></tr>
-                <tr><td className="pa-name">familyGroup</td><td className="pa-type">string</td><td className="pa-notes">Grouping label — fills the form's <em>FamilyGroup</em> box for print organisation.</td></tr>
-                <tr><td className="pa-name">category</td><td className="pa-type"><code>enum</code></td><td className="pa-notes">One of <code>&quot;Retail&quot;</code>, <code>&quot;sHNI&quot;</code>, <code>&quot;bHNI&quot;</code>, <code>&quot;Shareholder&quot;</code>, <code>&quot;Employee&quot;</code>.</td></tr>
-                <tr><td className="pa-name">lots</td><td className="pa-type">integer ≥ 0</td><td className="pa-notes">Number of lots bid. Printed verbatim.</td></tr>
-                <tr><td className="pa-name">shareQty</td><td className="pa-type">integer ≥ 0</td><td className="pa-notes">Final share quantity. Printed verbatim.</td></tr>
-                <tr><td className="pa-name">sharePrice</td><td className="pa-type">number ≥ 0</td><td className="pa-notes">Bid price per share.</td></tr>
-                <tr><td className="pa-name">amount</td><td className="pa-type">number ≥ 0</td><td className="pa-notes">Total blocked amount in rupees.</td></tr>
-              </tbody>
-            </table></div>
-
-            <div className="pa-callout">
-              <div className="pa-icon">i</div>
-              <div>
-                <p style={{ margin: 0 }}><strong>The API does not accept <code>ifsc</code> or <code>upiId</code>.</strong> The printed ASBA form carries only Bank Account, Bank Name, and Branch Name — the block runs on the applicant's own bank statement (no interbank routing means IFSC has no role), and UPI is a separate electronic rail that does not appear on the physical form at all. Requests containing either field succeed but the values are silently discarded.</p>
+          {/*
+            * EVERY ENDPOINT BELOW IS DRAWN FROM lib/partnerApiDocs.ts (2026-11-23) —
+            * the same content the admin API Docs page renders, so the public
+            * reference and the PDF cannot drift from it. Before this, this page
+            * still said 100 applicants per call (the default is 25), "200 OK"
+            * for a print (it is 201) and a PAN mask the API never returns.
+            *
+            * The PDF is the print-forms contract only: the Print forms group
+            * prints, every other group is pa-noprint.
+            */}
+          {GROUPS.map((g, gi) => {
+            const eps = ENDPOINTS.filter((e) => e.group === g.id);
+            return (
+              <div key={g.id} className={g.id === 'print' ? undefined : 'pa-noprint'}>
+                <section id={`g-${g.id}`} className="pa-section pa-group">
+                  <h2><span className="pa-num">{String(gi + 4).padStart(2, '0')}</span>{g.title}</h2>
+                  <p>{g.intro}</p>
+                  {g.id === 'bids' && (
+                    <div className="pa-callout pa-warn">
+                      <div className="pa-icon">!</div>
+                      <div><strong>Live bidding is not open yet.</strong> Use a <strong>test key</strong>: its bids go to a simulator and never reach an exchange, so you can build and test your whole integration now. See <a href="#test-mode">Test mode</a>.</div>
+                    </div>
+                  )}
+                </section>
+                {eps.map((e) => <PaEndpoint key={e.id} ep={e} />)}
               </div>
-            </div>
-
-            <h3>Response</h3>
-            <p><span className="pa-status pa-ok">200 OK</span> The response body carries the list of created applications and the merged PDF as base64.</p>
-
-            <div className="pa-code">
-              <div className="pa-code-head"><span>Response — application/json</span><span>example (truncated)</span></div>
-              <pre>{`{
-  "ipoSymbol": "PERNIASPOP",
-  "batchId":   "6b3f2d7c-1a4e-4b8c-9f2d-1e3c4b5a6d7f",
-  "applications": [
-    {
-      "applicationRef": "clw3k9qx0000v7u01g5h8m2b",
-      "formNo":         "PERNIASPOP-000042",
-      "fullName":       "Ananya Kapoor",
-      "category":       "Retail",
-      "lots":           2,
-      "amount":         29900
-    }
-  ],
-  "filename":  "PERNIASPOP-2026-09-07-forms.pdf",
-  "pdfBase64": "JVBERi0xLjcKJcTl8uXrp/Og0MTGCjQg…"
-}`}</pre>
-            </div>
-
-            <h4>Response fields</h4>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name">ipoSymbol</td><td className="pa-type">string</td><td className="pa-notes">Echoes the request.</td></tr>
-                <tr><td className="pa-name">batchId</td><td className="pa-type">string</td><td className="pa-notes">UUID linking every application created in this call. Useful for reconciliation.</td></tr>
-                <tr><td className="pa-name">applications</td><td className="pa-type">object[]</td><td className="pa-notes">One entry per applicant, in the order sent. Carries the assigned form number and the applicationRef (Investoyard's stable ID).</td></tr>
-                <tr><td className="pa-name">filename</td><td className="pa-type">string</td><td className="pa-notes">Suggested filename for the merged PDF.</td></tr>
-                <tr><td className="pa-name">pdfBase64</td><td className="pa-type">string</td><td className="pa-notes">The full merged PDF encoded as base64. Decode with <code>Buffer.from(str, &apos;base64&apos;)</code> or equivalent.</td></tr>
-              </tbody>
-            </table></div>
-
-            <h3>Examples</h3>
-
-            <h4>cURL</h4>
-            <div className="pa-code">
-              <div className="pa-code-head"><span>bash</span></div>
-              <pre>{`# Save the response body to disk, then extract the PDF.
-curl https://<your-base-url>/partner/v1/print-forms \\
-  -H "Content-Type: application/json" \\
-  -H "X-Api-Key: pk_a1b2c3d4.3f9e7c5b…" \\
-  -d @request.json \\
-  -o response.json
-
-jq -r '.pdfBase64' response.json | base64 -d > forms.pdf`}</pre>
-            </div>
-
-            <h4>Node.js</h4>
-            <div className="pa-code">
-              <div className="pa-code-head"><span>javascript</span></div>
-              <pre>{`import fs from 'node:fs/promises';
-
-const res = await fetch('https://<your-base-url>/partner/v1/print-forms', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Api-Key': process.env.INVESTOYARD_API_KEY,
-  },
-  body: JSON.stringify({
-    ipoSymbol: 'PERNIASPOP',
-    applicants: [ /* … */ ],
-  }),
-});
-
-if (!res.ok) throw new Error(\`\${res.status} \${await res.text()}\`);
-const { pdfBase64, filename } = await res.json();
-await fs.writeFile(filename, Buffer.from(pdfBase64, 'base64'));`}</pre>
-            </div>
-
-            <h4>Python</h4>
-            <div className="pa-code">
-              <div className="pa-code-head"><span>python</span></div>
-              <pre>{`import os, base64, requests
-
-r = requests.post(
-    "https://<your-base-url>/partner/v1/print-forms",
-    headers={"X-Api-Key": os.environ["INVESTOYARD_API_KEY"]},
-    json={
-        "ipoSymbol": "PERNIASPOP",
-        "applicants": [ # … ],
-    },
-    timeout=60,
-)
-r.raise_for_status()
-data = r.json()
-with open(data["filename"], "wb") as f:
-    f.write(base64.b64decode(data["pdfBase64"]))`}</pre>
-            </div>
-          </section>
-
-          {/* ── GET /ipos ── */}
-          <section id="list-ipos" className="pa-section pa-noprint">
-            <h2><span className="pa-num">05</span>List IPOs</h2>
-            <p>List IPOs from the catalog, optionally filtered by board type, instrument, or status. Every response is projected through the operational contract, so adding an internal reporting field can never change your payload.</p>
-
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>ipos</b></span>
-            </div>
-
-            <h4>Query parameters</h4>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Parameter</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name">board</td><td className="pa-type">string</td><td className="pa-notes">Filter by <code>&quot;mainboard&quot;</code> or <code>&quot;sme&quot;</code>.</td></tr>
-                <tr><td className="pa-name">instrument</td><td className="pa-type">string</td><td className="pa-notes">Filter by instrument type (e.g. <code>&quot;ipo&quot;</code>).</td></tr>
-                <tr><td className="pa-name">status</td><td className="pa-type">string</td><td className="pa-notes">One of <code>&quot;upcoming&quot;</code>, <code>&quot;open&quot;</code>, <code>&quot;closed&quot;</code>, <code>&quot;listed&quot;</code>.</td></tr>
-                <tr><td className="pa-name">limit</td><td className="pa-type">integer</td><td className="pa-notes">Page size. Default is server-side; do not depend on a specific default.</td></tr>
-                <tr><td className="pa-name">offset</td><td className="pa-type">integer</td><td className="pa-notes">Offset for pagination.</td></tr>
-              </tbody>
-            </table></div>
-          </section>
-
-          {/* ── GET /ipos/:symbol ── */}
-          <section id="get-ipo" className="pa-section pa-noprint">
-            <h2><span className="pa-num">06</span>Get one IPO</h2>
-            <p>Return the full catalog record for a single IPO by ticker symbol.</p>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/ipos/<b>{'{symbol}'}</b></span>
-            </div>
-            <p style={{ fontSize: '.9rem' }}>Response is a single IPO record shaped by the same operational contract as the list endpoint.</p>
-          </section>
-
-          {/* ── GET /prints ── */}
-          <section id="list-prints" className="pa-section pa-noprint">
-            <h2><span className="pa-num">07</span>Your print records</h2>
-            <p>The forms your account has printed, newest first. Needs the <code>prints:read</code> scope. Only your own records are ever returned.</p>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>prints</b></span>
-            </div>
-            <h4>Query parameters — all optional</h4>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Parameter</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name">ipoSymbol</td><td className="pa-type">string</td><td className="pa-notes">Only prints for this IPO. An unknown symbol returns <code>404</code>.</td></tr>
-                <tr><td className="pa-name">batchId</td><td className="pa-type">string</td><td className="pa-notes">Only the applications from one <code>print-forms</code> call.</td></tr>
-                <tr><td className="pa-name">from · to</td><td className="pa-type">date</td><td className="pa-notes"><code>YYYY-MM-DD</code>, India time, both ends included.</td></tr>
-                <tr><td className="pa-name">page · per</td><td className="pa-type">integer</td><td className="pa-notes">Page number (from 1) and page size. <code>per</code> defaults to 50 and is capped at 200.</td></tr>
-              </tbody>
-            </table></div>
-            <div className="pa-code">
-              <div className="pa-code-head"><span>Response — application/json</span><span>200 OK</span></div>
-              <pre>{`{
-  "total": 132, "page": 1, "per": 50,
-  "rows": [
-    {
-      "applicationRef": "9b2f0c1e-…",
-      "batchId":        "4d7a…",
-      "formNo":         "40012345",
-      "ipoSymbol":      "PERNIASPOP",
-      "printedAt":      "2026-11-20T06:41:12.000Z",
-      "keyId":          "pk_a1b2c3d4",
-      "fullName":       "Rakesh Kumar",
-      "panMasked":      "ABCDE**34F",
-      "category":       "sHNI",
-      "lots":           2,
-      "shareQty":       530,
-      "amount":         225250
-    }
-  ]
-}`}</pre>
-            </div>
-          </section>
-
-          {/* ── GET /prints/detail + /prints/pdf ── */}
-          <section id="get-print" className="pa-section pa-noprint">
-            <h2><span className="pa-num">08</span>One print, and its PDF again</h2>
-            <p>Read one record, or download the same form again — same form number, filled from the data you sent the first time. Use this instead of calling <code>print-forms</code> a second time, which would create a second record and take a new form number. Both need <code>prints:read</code>.</p>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/prints/<b>detail</b>?ref=<b>{'{applicationRef}'}</b></span>
-            </div>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/prints/<b>pdf</b>?ref=<b>{'{applicationRef}'}</b></span>
-            </div>
-            <p style={{ fontSize: '.9rem' }}><code>ref</code> is the <code>applicationRef</code> that <code>print-forms</code> returned. <code>detail</code> adds the depository, DP ID, bank and branch to the list fields; the client ID and bank account come back masked to their last four digits. <code>pdf</code> returns <code>{'{ applicationRef, formNo, filename, pdfBase64 }'}</code>, the same shape as <code>print-forms</code>.</p>
-            <div className="pa-callout">
-              <div className="pa-icon">i</div>
-              <div>PAN, client ID and bank account are masked in every read, including details you sent us yourself. They are your records, but a leaked API key must not become a way to read them back.</div>
-            </div>
-          </section>
-
-          {/* ── GET /allotment ── */}
-          <section id="allotment" className="pa-section pa-noprint">
-            <h2><span className="pa-num">09</span>Allotment results</h2>
-            <p>The allotment outcome of your own applications, once the registrar has published and we have imported its file. Needs the <code>allotment:read</code> scope. It answers for applications you printed through this API; it does not look up other PANs.</p>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>allotment</b>?ipoSymbol=<b>{'{symbol}'}</b></span>
-            </div>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-get">GET</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>allotment</b>?ref=<b>{'{applicationRef}'}</b></span>
-            </div>
-            <p style={{ fontSize: '.9rem' }}>Send <code>ipoSymbol</code> for every application on one IPO (paged with <code>page</code> and <code>per</code>), or <code>ref</code> for one application.</p>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name">result</td><td className="pa-type">string</td><td className="pa-notes"><code>allotted</code> · <code>not_allotted</code> (not picked in the draw) · <code>rejected</code> (the registrar gave a reason, in <code>reason</code>) · <code>pending</code> (no result recorded yet).</td></tr>
-                <tr><td className="pa-name">allottedLots · allottedShares</td><td className="pa-type">integer</td><td className="pa-notes"><code>null</code> while pending.</td></tr>
-                <tr><td className="pa-name">allottedAmount · refundAmount</td><td className="pa-type">number</td><td className="pa-notes">Rupees, from the application amount. <code>null</code> while pending.</td></tr>
-                <tr><td className="pa-name">registrarFileReceived</td><td className="pa-type">boolean</td><td className="pa-notes">Whether we hold the registrar&apos;s file for this IPO. <code>true</code> with <code>result: &quot;pending&quot;</code> means the file is in but this application could not be matched — contact support with its <code>applicationRef</code>.</td></tr>
-                <tr><td className="pa-name">applicationRef · formNo · ipoSymbol · fullName · panMasked · appliedLots · recordedAt</td><td className="pa-type">—</td><td className="pa-notes">As in the print records.</td></tr>
-              </tbody>
-            </table></div>
-          </section>
-
-          {/* ── POST /bids ── */}
-          <section id="bids" className="pa-section pa-noprint">
-            <h2><span className="pa-num">10</span>Place bids</h2>
-            <p>Place UPI bids for your clients under our exchange membership. Needs the <code>bids:write</code> scope. Up to {PARTNER_BID_BATCH_MAX} bids per call, <strong>all or nothing</strong>: every bid is checked first, and if any fails none is placed and every problem is listed.</p>
-            <div className="pa-callout pa-warn">
-              <div className="pa-icon">!</div>
-              <div><strong>Live bidding is not open yet.</strong> Use a <strong>test key</strong>: its bids go to a simulator and never reach an exchange, so you can build and test your whole integration now. See <a href="#test-mode">Test mode</a>.</div>
-            </div>
-            <div className="pa-endpoint">
-              <span className="pa-method pa-post">POST</span>
-              <span className="pa-endpoint-path">/partner/v1/<b>bids</b></span>
-            </div>
-            <div className="pa-code">
-              <div className="pa-code-head"><span>Body — application/json</span><span>example</span></div>
-              <pre>{`{
-  "ipoSymbol": "PERNIASPOP",
-  "bids": [
-    {
-      "orderId":    "ORD-2026-000123",
-      "consentRef": "CONSENT-88412",
-      "fullName":   "Rakesh Kumar",
-      "pan":        "ABCDE1234F",
-      "depository": "NSDL",
-      "dpId":       "IN301234",
-      "clientId":   "12345678",
-      "upiId":      "rakesh@okhdfcbank",
-      "category":   "retail",
-      "lots":       1,
-      "atCutoff":   true
-    }
-  ]
-}`}</pre>
-            </div>
-            <div className="pa-fields"><table>
-              <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
-              <tbody>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>orderId</td><td className="pa-type">string</td><td className="pa-notes">Your own id for this bid. <strong>Sending the same orderId again returns the bid it made</strong> (<code>replayed: true</code>) and places nothing new, so a retried call is always safe.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>consentRef</td><td className="pa-type">string</td><td className="pa-notes">Your reference for the client&apos;s instruction and consent to this bid. We keep it with the instruction; you keep the consent itself.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>pan · fullName</td><td className="pa-type">string</td><td className="pa-notes">The applicant&apos;s own PAN and name. One public bid per PAN per IPO, plus one in each reserved quota — across every channel, not only yours.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>depository · dpId · clientId</td><td className="pa-type">string</td><td className="pa-notes">NSDL: <code>dpId</code> is IN and six digits, <code>clientId</code> eight digits. CDSL: no <code>dpId</code>, <code>clientId</code> is the sixteen-digit demat number.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>upiId</td><td className="pa-type">string</td><td className="pa-notes">The applicant&apos;s own UPI ID; the mandate request goes there.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>category</td><td className="pa-type">string</td><td className="pa-notes"><code>retail</code>, <code>shni</code>, <code>shareholder</code> or <code>employee</code> (reserved quotas only where the IPO offers them). It must agree with the amount: retail up to ₹2 lakh on mainboard (exactly the minimum lots on SME), small-HNI above ₹2 lakh. A UPI mandate is capped at ₹5 lakh, so big-HNI bids go through print forms.</td></tr>
-                <tr><td className="pa-name"><span className="pa-req-dot"></span>lots</td><td className="pa-type">integer</td><td className="pa-notes">At least the category&apos;s minimum for this IPO.</td></tr>
-                <tr><td className="pa-name">atCutoff · price</td><td className="pa-type">boolean · number</td><td className="pa-notes">Cut-off is for retail and reserved quotas only. Otherwise send a <code>price</code> inside the price band.</td></tr>
-              </tbody>
-            </table></div>
-            <p style={{ fontSize: '.9rem' }}>The response lists each bid with its <code>ref</code> (our id — keep it), our <code>applicationNumber</code>, its status and amount. A bid is then sent to the exchange within seconds; you hear about every step by <a href="#webhooks">webhook</a>.</p>
-          </section>
-
-          {/* ── change a bid ── */}
-          <section id="bid-changes" className="pa-section pa-noprint">
-            <h2><span className="pa-num">11</span>Change or cancel a bid</h2>
-            <p>Each takes <code>ref</code> or <code>orderId</code>, and a <code>consentRef</code> for the client&apos;s instruction. Needs <code>bids:write</code>.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>modify</b></span></div>
-            <p style={{ fontSize: '.9rem' }}>New <code>lots</code> (and <code>price</code> or <code>atCutoff</code>). SEBI does not let an HNI bid at the exchange be lowered — only raised.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>cancel</b></span></div>
-            <p style={{ fontSize: '.9rem' }}>Withdraw a bid. Once at the exchange, only retail and reserved-quota bids may be withdrawn.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/bids/<b>upi</b></span></div>
-            <p style={{ fontSize: '.9rem' }}>A new <code>upiId</code>. Refused once the funds are blocked — the block sits behind the old UPI ID.</p>
-          </section>
-
-          {/* ── read ── */}
-          <section id="bid-status" className="pa-section pa-noprint">
-            <h2><span className="pa-num">12</span>Bid status</h2>
-            <p>Needs <code>bids:read</code>. A key reads only bids in its own mode — a test key sees test bids.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/<b>bids</b>?ref= | ?orderId=</span></div>
-            <p style={{ fontSize: '.9rem' }}>One bid with its full history. Without <code>ref</code> or <code>orderId</code>, a page of bids filtered by <code>ipoSymbol</code> and <code>status</code>.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/bids/<b>summary</b>?ipoSymbol=</span></div>
-            <p style={{ fontSize: '.9rem' }}>Bids and rupees by status for one IPO.</p>
-            <div className="pa-endpoint"><span className="pa-method pa-get">GET</span><span className="pa-endpoint-path">/partner/v1/bids/<b>limits</b></span></div>
-            <p style={{ fontSize: '.9rem' }}>Your live bidding limits and what you have used today. Live bidding is switched on per partner by the operator, for named IPOs, with a cap per bid, a number of bids per day and rupees per day — counted across every IPO in the India day. A live batch that would go past any of them is refused whole, with each reason listed.</p>
-            <p style={{ fontSize: '.9rem' }}>Statuses: <code>submitted</code> (queued) · <code>mandate_pending</code> (sent; waiting for the investor) · <code>upi_blocked</code> (funds blocked) · <code>dp_verified</code> · <code>confirmed</code> · <code>allotted</code> · <code>not_allotted</code> · <code>released</code> (refunded) · <code>cancelled</code> · <code>rejected</code> · <code>failed</code>.</p>
-          </section>
+            );
+          })}
 
           {/* ── webhooks ── */}
           <section id="webhooks" className="pa-section pa-noprint">
-            <h2><span className="pa-num">13</span>Webhooks</h2>
-            <p>Set an https endpoint under <strong>Partner API → Webhooks</strong> in the partner admin. Whenever one of your bids changes we send a <code>POST</code> with the event and the bid&apos;s current state. Events: <code>bid.accepted</code>, <code>bid.sent</code>, <code>bid.funds_blocked</code>, <code>bid.demat_verified</code>, <code>bid.rejected</code>, <code>bid.instruction_refused</code>, <code>bid.cancelled</code>, <code>bid.allotment</code>, <code>bid.refund</code>, <code>bid.status</code>.</p>
+            <h2><span className="pa-num">{String(GROUPS.length + 4).padStart(2, '0')}</span>Webhooks</h2>
+            <p>Set an https endpoint under <strong>Partner API → Webhooks</strong> in the partner admin. Whenever one of your bids changes we send a signed <code>POST</code> with the event and the bid&apos;s current state, so you do not have to keep asking.</p>
+            <p>Events: {WEBHOOK_EVENTS.map((e, i) => <span key={e}>{i ? ', ' : ''}<code>{e}</code></span>)}.</p>
             <div className="pa-code">
-              <div className="pa-code-head"><span>Verify a delivery — Node.js</span></div>
-              <pre>{`import crypto from 'node:crypto';
+              <div className="pa-code-head"><span>Example delivery</span></div>
+              <pre>{`POST https://your-server.example/investoyard/webhooks
+X-Investoyard-Event: bid.funds_blocked
+X-Investoyard-Delivery: 7c1d9e2a-…
+X-Investoyard-Signature: t=1700000000,v1=<hex>
 
-// header: X-Investoyard-Signature: t=1700000000,v1=<hex>
-function verify(rawBody, header, secret) {
-  const { t, v1 } = Object.fromEntries(header.split(',').map((p) => p.split('=')));
-  const expected = crypto.createHmac('sha256', secret).update(\`\${t}.\${rawBody}\`).digest('hex');
-  const fresh = Math.abs(Date.now() / 1000 - Number(t)) < 300;
-  return fresh && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
-}`}</pre>
+${prettyJson(WEBHOOK_SAMPLE)}`}</pre>
+            </div>
+            <div className="pa-code">
+              <div className="pa-code-head"><span>Check the signature — Node.js</span></div>
+              <pre>{WEBHOOK_VERIFY}</pre>
             </div>
             <p style={{ fontSize: '.9rem' }}>Answer with any 2xx within 10 seconds. Anything else is retried — after 1 minute, 5 minutes, 30 minutes, 2, 6, 12 and 24 hours — then marked failed, and can be sent again from the admin. Deliveries can arrive more than once and out of order: use <code>X-Investoyard-Delivery</code> to ignore repeats, and the bid&apos;s <code>status</code> as the truth. <code>GET /bids</code> is always the backup.</p>
           </section>
 
           {/* ── test mode ── */}
           <section id="test-mode" className="pa-section pa-noprint">
-            <h2><span className="pa-num">14</span>Test mode</h2>
+            <h2><span className="pa-num">{String(GROUPS.length + 5).padStart(2, '0')}</span>Test mode</h2>
             <p>Ask for a <strong>test key</strong> (or create one under <strong>My API Keys</strong>). Bids placed with it behave like live bids — the same checks, the same responses, the same webhooks — except that they:</p>
             <ul>
               <li>go to a simulator and never reach an exchange;</li>
@@ -679,15 +426,13 @@ function verify(rawBody, header, secret) {
               <li>get application numbers starting <code>TEST</code>;</li>
               <li>are invisible to live keys and to every live rule.</li>
             </ul>
-            <p>Move a test bid on with:</p>
-            <div className="pa-endpoint"><span className="pa-method pa-post">POST</span><span className="pa-endpoint-path">/partner/v1/test/<b>simulate</b></span></div>
-            <p style={{ fontSize: '.9rem' }}><code>{'{ "ref": "…", "event": "mandate_accepted" }'}</code> — events: <code>mandate_accepted</code>, <code>mandate_rejected</code>, <code>exchange_rejected</code>, <code>allotted</code> (with <code>allottedLots</code>), <code>not_allotted</code>, <code>refund</code>. A full cycle: place → <code>bid.sent</code> → <code>mandate_accepted</code> → <code>allotted</code> → <code>refund</code>.</p>
+            <p>Move a test bid on with <a href="#simulate">Simulate the next step</a>. A full cycle: place → <code>bid.sent</code> → <code>mandate_accepted</code> → <code>allotted</code> → <code>refund</code>.</p>
             <p style={{ fontSize: '.9rem' }}>A <strong>live</strong> key that places bids must have an IP allowlist; requests from any other address are refused. A test key is held to its allowlist only when one is set.</p>
           </section>
 
           {/* ── Scopes ── */}
           <section id="scopes" className="pa-section pa-noprint">
-            <h2><span className="pa-num">15</span>Scopes and keys</h2>
+            <h2><span className="pa-num">{String(GROUPS.length + 6).padStart(2, '0')}</span>Scopes and keys</h2>
             <p>Each endpoint needs a scope. The operator switches scopes on for your account; you can then limit any key to some of them, so a system that only reads allotment results does not hold a key that can print forms. A key with no scopes of its own can use everything your account has.</p>
             <div className="pa-fields"><table>
               <thead><tr><th>Scope</th><th>Opens</th><th>For a new partner</th></tr></thead>
@@ -706,48 +451,25 @@ function verify(rawBody, header, secret) {
 
           {/* ── Error responses ── */}
           <section id="errors" className="pa-section">
-            <h2><span className="pa-num">16</span>Error responses</h2>
-            <p>All errors are JSON with a machine-readable status code and a human-readable message. The <code>Content-Type</code> is <code>application/json</code>. HTTP status classes:</p>
+            <h2><span className="pa-num">{String(GROUPS.length + 7).padStart(2, '0')}</span>Error responses</h2>
+            <p>All errors are JSON with the HTTP status in <code>statusCode</code> and a <code>message</code> that says what to fix. The <code>Content-Type</code> is <code>application/json</code>.</p>
 
             <div className="pa-fields"><table>
-              <thead><tr><th>Status</th><th>Meaning</th><th>Typical cause</th></tr></thead>
+              <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
               <tbody>
-                <tr>
-                  <td className="pa-name"><span className="pa-status pa-err">400</span></td>
-                  <td className="pa-notes">Bad request</td>
-                  <td className="pa-notes">The body failed schema validation, or the IPO is not accepting prints yet. Example: <code>&quot;Form printing is not enabled for PERNIASPOP yet.&quot;</code></td>
-                </tr>
-                <tr>
-                  <td className="pa-name"><span className="pa-status pa-err">401</span></td>
-                  <td className="pa-notes">Unauthorised</td>
-                  <td className="pa-notes">Missing <code>X-Api-Key</code>, malformed header (not <code>keyId.secret</code>), invalid or revoked key, or partner account not active.</td>
-                </tr>
-                <tr>
-                  <td className="pa-name"><span className="pa-status pa-err">403</span></td>
-                  <td className="pa-notes">Forbidden</td>
-                  <td className="pa-notes">The endpoint needs a scope this key, or your account, does not have. The message names the scope and says which of the two lacks it.</td>
-                </tr>
-                <tr>
-                  <td className="pa-name"><span className="pa-status pa-err">404</span></td>
-                  <td className="pa-notes">Not found</td>
-                  <td className="pa-notes">No IPO in the catalog matches the <code>ipoSymbol</code> you sent, or no record of yours matches the <code>ref</code>.</td>
-                </tr>
-                <tr className="pa-noprint">
-                  <td className="pa-name"><span className="pa-status pa-err">409</span></td>
-                  <td className="pa-notes">Conflict</td>
-                  <td className="pa-notes">A bid: this PAN already has a live application for this IPO in the same quota, or the orderId was already used for a different IPO.</td>
-                </tr>
-                <tr>
-                  <td className="pa-name"><span className="pa-status pa-err">5xx</span></td>
-                  <td className="pa-notes">Server error</td>
-                  <td className="pa-notes">Rare — retry with exponential backoff. If the error persists, contact support with the request timestamp; every request is logged for audit.</td>
-                </tr>
+                {ERRORS.map((x) => (
+                  /* 409 is a bid conflict — the PDF is the print-forms contract only. */
+                  <tr key={x.status} className={x.status === 409 ? 'pa-noprint' : undefined}>
+                    <td className="pa-name"><span className="pa-status pa-err">{x.status}</span> {x.title}</td>
+                    <td className="pa-notes">{x.meaning}</td>
+                  </tr>
+                ))}
               </tbody>
             </table></div>
 
             <h3>Example error body</h3>
             <div className="pa-code">
-              <div className="pa-code-head"><span>Response — application/json</span><span>401 Unauthorised</span></div>
+              <div className="pa-code-head"><span>Response — application/json</span><span>401 Unauthorized</span></div>
               <pre>{`{
   "statusCode": 401,
   "message":    "Invalid or revoked API key.",
@@ -758,7 +480,7 @@ function verify(rawBody, header, secret) {
 
           {/* ── Limits & behaviour ── */}
           <section id="limits" className="pa-section pa-noprint">
-            <h2><span className="pa-num">17</span>Limits &amp; behaviour</h2>
+            <h2><span className="pa-num">{String(GROUPS.length + 8).padStart(2, '0')}</span>Limits &amp; behaviour</h2>
             <div className="pa-fields"><table>
               <thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead>
               <tbody>
@@ -768,7 +490,7 @@ function verify(rawBody, header, secret) {
                 <tr><td className="pa-name">PII vaulting</td><td className="pa-notes">PAN and bank account are tokenised per tenant on write. Read endpoints never return the raw values.</td></tr>
                 <tr><td className="pa-name">Audit trail</td><td className="pa-notes">Every print-forms call writes an audit row: <code>keyId</code>, IPO, applicant count, batchId. PII is never audited.</td></tr>
                 <tr><td className="pa-name">Rate limits</td><td className="pa-notes">No hard rate limit today. Sustained bursts above a few requests per second are visible on the operator's monitoring; if that becomes a routine pattern, please coordinate on a scheduled window.</td></tr>
-                <tr><td className="pa-name">Timeouts</td><td className="pa-notes">Merging 100 forms takes several seconds. Set your client timeout to at least 60s.</td></tr>
+                <tr><td className="pa-name">Timeouts</td><td className="pa-notes">Merging a large batch of forms takes several seconds. Set your client timeout to at least 60s.</td></tr>
                 <tr><td className="pa-name">Reporting</td><td className="pa-notes">Your own print records and allotment results can be read through <code>/prints</code> and <code>/allotment</code>. Every call — including a refused one — is also in the operator&apos;s API Call Report, by partner, key, day and IPO.</td></tr>
                 <tr><td className="pa-name">Endpoint access</td><td className="pa-notes">Each endpoint needs a scope. The operator switches scopes on for your account and you can limit each key further — see <a href="#scopes">Scopes and keys</a>. Defaults for a new partner: print-forms and the IPO catalogue reads.</td></tr>
               </tbody>
@@ -777,7 +499,7 @@ function verify(rawBody, header, secret) {
 
           {/* ── Support ── */}
           <section id="support" className="pa-section">
-            <h2 className="pa-noprint"><span className="pa-num">18</span>Support</h2>
+            <h2 className="pa-noprint"><span className="pa-num">{String(GROUPS.length + 9).padStart(2, '0')}</span>Support</h2>
             <p className="pa-noprint">Questions about the API, key issuance, incident reports, and feature requests: contact the operator through your existing empanelment channel, or reach out to your Investoyard relationship manager.</p>
             <p className="pa-noprint">When reporting an integration issue, include: the request timestamp (UTC), your keyId (never the secret), the endpoint called, the HTTP status you received, and the response body — this is enough for us to trace the call in the audit log.</p>
 

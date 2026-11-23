@@ -126,9 +126,17 @@ const SAMPLE_IPO = {
   symbol: 'ARDEE', name: 'Ardee Engineering Limited', board: 'mainboard', instrument: 'ipo', status: 'open',
   exchanges: ['NSE', 'BSE'], openDate: '2026-11-19', closeDate: '2026-11-23', allotmentDate: '2026-11-24', listingDate: '2026-11-26',
   priceBandMin: 129, priceBandMax: 136, lotSize: 110, issueSizeCr: 900.5, isin: 'INE000A01014', registrar: 'Kfin Technologies Ltd.',
-  logoUrl: `${API_BASE}/uploads/…`, objectsOfIssue: '<ul><li>…</li></ul>', reservations: ['shareholder'],
-  documents: [{ type: 'rhp', url: `${API_BASE}/uploads/…` }],
-  details: { sector: 'Industrials', industry: 'Engineering', leads: ['…'], faceValue: '2', mechanism: 'book_built', refundDate: '2026-11-25', dematDate: '2026-11-25', '…': '…' },
+  logoUrl: 'https://…/uploads/…', reservations: ['shareholder'],
+  documents: [{ type: 'RHP', url: 'https://…/uploads/…' }],
+  details: {
+    faceValue: 2, sector: 'Industrials', industry: 'Engineering', mechanism: 'book_built', tickSize: 1,
+    discounts: { employee: 6 }, totalShares: 66210000, freshIssue: { basis: 'amount', value: 600 }, offerForSale: { basis: 'shares', value: 22080000 },
+    biddingOpensAt: '2026-11-19T10:00:00+05:30', biddingClosesAt: '2026-11-23T17:00:00+05:30', upiMandateCutoff: '2026-11-23T17:00:00+05:30',
+    anchorDate: '2026-11-18', refundDate: '2026-11-25', dematDate: '2026-11-25',
+    leadManagers: ['SBI Capital Markets Limited'], sponsorBanks: 'Axis Bank Limited and ICICI Bank Limited',
+    registrarContact: { url: 'https://example.com/allotment-status', phone: '040-67162222' },
+    companyWebsite: 'https://www.example.com/', promoters: 'Mr A. Sharma and Mrs B. Sharma',
+  },
 };
 
 export const ENDPOINTS: ApiEndpoint[] = [
@@ -272,8 +280,16 @@ export const ENDPOINTS: ApiEndpoint[] = [
       { name: 'ipos[].status', type: 'string', description: 'upcoming · open · closed · listed · withdrawn.' },
       { name: 'ipos[].priceBandMin · priceBandMax', type: 'number', description: 'Rupees per share. Equal for a fixed-price issue.' },
       { name: 'ipos[].issueSizeCr', type: 'number', description: 'Issue size in crore rupees.' },
-      { name: 'ipos[].documents', type: 'array', description: 'RHP, DRHP and blank ASBA forms, each with a download URL.' },
-      { name: 'ipos[].details', type: 'object', description: 'Further issue details as we hold them: sector, industry, lead managers, face value, refund and demat dates, and more.' },
+      { name: 'ipos[].documents', type: 'array', description: 'The issuer’s documents — RHP, DRHP, prospectus — each with a download URL.' },
+      { name: 'ipos[].details', type: 'object', description: 'Further details, each present only when we hold it — see the rows below.' },
+      { name: 'details.faceValue · tickSize · totalShares', type: 'number', description: 'Face value (₹), price step (₹) and total shares offered.' },
+      { name: 'details.mechanism', type: 'string', description: 'book_built or fixed_price.' },
+      { name: 'details.discounts', type: 'object', description: 'Rupees off the price per share for retail, employee or shareholder, where the issue gives one.' },
+      { name: 'details.freshIssue · offerForSale', type: 'object', description: 'Each leg of the offer: basis is shares or amount (₹ crore), with its value.' },
+      { name: 'details.biddingOpensAt · biddingClosesAt · upiMandateCutoff', type: 'string', description: 'Date and time with the India offset, e.g. 2026-11-23T17:00:00+05:30.' },
+      { name: 'details.anchorDate · refundDate · dematDate', type: 'YYYY-MM-DD', description: 'Anchor allotment, refunds start, shares credited to demat.' },
+      { name: 'details.leadManagers · sponsorBanks · registrarContact', type: 'array · string · object', description: 'The merchant bankers, the UPI sponsor bank(s), and the registrar’s allotment page, email and phone.' },
+      { name: 'details.companyWebsite · promoters · listingPrice', type: 'string · string · object', description: 'The company’s site and promoters; after listing, the NSE and BSE listing prices.' },
     ],
   },
   {
@@ -492,8 +508,14 @@ export type Lang = (typeof LANGS)[number]['id'];
 
 const KEY = 'YOUR_KEY_ID.YOUR_SECRET';
 
+/**
+ * The public page and its PDF print no host at all (operator decision,
+ * 2026-10-14) — a plausible hostname gets pasted into code and half-works.
+ */
+export const PUBLIC_BASE = 'https://<your-base-url>';
+
 /** The full URL with example values filled in. */
-export function exampleUrl(ep: ApiEndpoint, values?: Record<string, string>): string {
+export function exampleUrl(ep: ApiEndpoint, values?: Record<string, string>, base: string = API_BASE): string {
   const v = (p: ApiParam) => values?.[p.name] ?? p.example ?? '';
   let path = ep.path;
   for (const p of ep.params ?? []) if (p.in === 'path') path = path.replace(`{${p.name}}`, encodeURIComponent(v(p) || p.name));
@@ -501,14 +523,14 @@ export function exampleUrl(ep: ApiEndpoint, values?: Record<string, string>): st
     .filter((p) => p.in === 'query' && (p.required || v(p)))
     .map((p) => `${p.name}=${encodeURIComponent(v(p) || `<${p.name}>`)}`)
     .join('&');
-  return `${API_BASE}${path}${qs ? `?${qs}` : ''}`;
+  return `${base}${path}${qs ? `?${qs}` : ''}`;
 }
 
 const json = (b: unknown, indent = 2) => JSON.stringify(b, null, indent);
 const indentBy = (s: string, n: number) => s.split('\n').map((l, i) => (i === 0 ? l : ' '.repeat(n) + l)).join('\n');
 
-export function codeSample(lang: Lang, ep: ApiEndpoint): string {
-  const url = exampleUrl(ep);
+export function codeSample(lang: Lang, ep: ApiEndpoint, base: string = API_BASE): string {
+  const url = exampleUrl(ep, undefined, base);
   const post = ep.method === 'POST';
   const body = post ? json(ep.body ?? {}) : '';
   switch (lang) {

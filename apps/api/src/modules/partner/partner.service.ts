@@ -6,7 +6,7 @@ import { PiiVaultService } from '../../common/pii-vault.service';
 import { ApplicationsService } from '../applications/applications.service';
 import { tenantContext } from '../../common/tenant-context';
 import { sha256 } from './partner.guard';
-import { PARTNER_API_OFF_MESSAGE, effectiveIpoStatus, isPartnerScope, istToday, keyScopesProblem, partnerV1Extra } from '@investoyard/shared-types';
+import { PARTNER_API_OFF_MESSAGE, effectiveIpoStatus, isPartnerScope, istToday, isPublicDoc, keyScopesProblem, partnerIpoDetails } from '@investoyard/shared-types';
 import { resolveTenantAccess, resolveTenantScopes } from './partner-scope';
 import { PartnerApplicantDto, PartnerPrintFormsDto } from './partner.dto';
 
@@ -1132,11 +1132,12 @@ export class PartnerService {
       isin: ipo.isin ?? undefined,
       registrar: ipo.registrar ?? undefined,
       logoUrl: ipo.logoUrl ?? undefined,
-      objectsOfIssue: ipo.objectsOfIssue ?? undefined,
       reservations: ipo.reservations?.length ? ipo.reservations : undefined,
       listingGainPct: dec(ipo.listingGainPct),
-      documents: (ipo.documents ?? []).map((d: any) => ({ type: d.type, url: d.url })),
-      details: partnerV1Extra(ipo.extra as any),
+      // The issuer's documents only — our blank ASBA templates are print-engine assets.
+      documents: (ipo.documents ?? []).filter(isPublicDoc).map((d: any) => ({ type: d.type, url: d.url })),
+      // An ALLOW-LIST since 2026-11-23: only the details a partner needs (operator decision).
+      details: partnerIpoDetails(ipo.extra as any),
     };
   }
 
