@@ -2666,7 +2666,7 @@ The family is already tracked here; these are new shapes, and **three of five re
 - It refreshes every minute while the tab is visible.
 
 ### Found while doing it
-- **The audit log is 4,370 partner prints plus investor OTP steps.** The activity query (still in the API, no longer shown) excludes them.
+- **The audit log is 4,370 partner prints plus investor OTP steps.** That is why an activity list on the dashboard was mostly noise. It was removed from the page on 2026-11-23 and **its query was dropped from the API on 2026-11-25** (the `activity` field is gone from the response and from the web type); the audit log screen still has every entry.
 - **Prudent has the API switched on with a live key and has never called** — the first "gone quiet" partner.
 - **SHREESIDHI and FOODLINK opened within days with no reservation table** — the first live "Needs attention" rows.
 - **A refused call with text "WinAnsi cannot encode … (0x0009)"** is a print that failed on a TAB character in the partner's data. It shows under "other refusals". **Fixed 2026-11-25** — see *A tab in a partner's data failed the whole print*.

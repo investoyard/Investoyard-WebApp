@@ -322,33 +322,6 @@ export class DashboardService {
         };
       }
 
-      /* ---- recent activity, with who did it and the IPO named ---- */
-      const slugs = platformView ? null : (await this.prisma.tenant.findMany({ where: { id: { in: ids } }, select: { slug: true } })).map((t) => t.slug);
-      const audit = await this.prisma.auditLog.findMany({
-        /* Operator actions only. Partner prints (4,370 rows) already have their own
-           blocks, and investor OTP steps are sign-in chatter, not activity. */
-        where: {
-          ...(slugs ? { tenantSlug: { in: slugs } } : {}),
-          AND: [
-            { action: { notIn: ['partner.print-forms', 'partner.reprint', 'partner.test-print', 'auth.signup.exists'] } },
-            { NOT: { action: { startsWith: 'auth.otp' } } },
-          ],
-        },
-        orderBy: { at: 'desc' }, take: 10,
-      });
-      const actorIds = [...new Set(audit.map((a) => a.actorId).filter(Boolean) as string[])];
-      const actors = actorIds.length ? await this.prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, username: true } }) : [];
-      const ipoIds = [...new Set(audit.filter((a) => !a.targetLabel && a.targetType === 'ipo' && a.targetId).map((a) => a.targetId!))];
-      const ipoNames = ipoIds.length ? await this.prisma.ipo.findMany({ where: { id: { in: ipoIds } }, select: { id: true, symbol: true } }) : [];
-      const activity = audit.map((a) => {
-        const u = actors.find((x) => x.id === a.actorId);
-        return {
-          id: a.id, at: a.at.toISOString(), action: a.action, targetType: a.targetType ?? null,
-          label: a.targetLabel || ipoNames.find((i) => i.id === a.targetId)?.symbol || null,
-          actor: u?.name || u?.username || (a.actorMobile ? `••••${a.actorMobile.slice(-4)}` : null),
-        };
-      });
-
       return {
         generatedAt: now.toISOString(),
         scope: { slug: tenant.slug, name: tenant.name, type: tenant.type },
@@ -365,7 +338,6 @@ export class DashboardService {
         },
         partners, refusals, inPlay,
         status, readers, signups: rls.signups, messages, pipeline,
-        activity,
       };
     });
   }

@@ -679,7 +679,6 @@ export interface DashData {
   signups: null | { total: number; today: number; window: number; withApplicant: number; profilesWindow: number };
   messages: null | { window: Record<string, { sent: number; failed: number }>; today: Record<string, { sent: number; failed: number }>; lastFailure: { channel: string; at: string; error: string } | null };
   pipeline: null | { waiting: number; changesRequested: number; approved: number; rejected: number; approvedThisMonth: number; partnersApiOn: number; partnersTotal: number };
-  activity: { id: string; at: string; action: string; targetType: string | null; label: string | null; actor: string | null }[];
 }
 export const fetchDashboard = (slug: string, days = 7) => authed<DashData>(`${API}/admin/dashboard/${slug}?days=${days}`, { method: 'GET' });
 
