@@ -317,11 +317,21 @@ function step(label, file, args, cwd) {
   say(tail.map((l) => '  | ' + l).join('\n'));
   return r.status === 0;
 }
+/* THE PARTNER BUILD LOCK, shared with scripts/partner-sites-watch.js: the watcher rebuilds a live
+   partner's design within a minute of a saved change, and two builds of one design at once would
+   fight over apps/partner/out. Wait up to 15 minutes for a watcher build to finish, then take it. */
+const BUILD_LOCK = path.join('C:/ProgramData/Investoyard', 'partner-build.lock');
+for (const until = Date.now() + 15 * 60_000; Date.now() < until;) {
+  try { fs.writeFileSync(BUILD_LOCK, 'nightly ' + process.pid + ' ' + new Date().toISOString() + '\n', { flag: 'wx' }); break; }
+  catch { try { if (Date.now() - fs.statSync(BUILD_LOCK).mtimeMs > 2 * 3600_000) { fs.rmSync(BUILD_LOCK, { force: true }); continue; } } catch { continue; } }
+  spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},10000)']);
+}
 const partnerSteps = [
   step('partner designs (live)', path.join(PARTNER, 'scripts', 'publish-live.mjs'), [], PARTNER),
   step('partner designs (admin previews)', path.join(PARTNER, 'scripts', 'publish-preview.mjs'), [], PARTNER),
   step('partner routes', path.join(ROOT, 'scripts', 'partner-routes.js'), ['--apply'], ROOT),
 ];
+try { fs.rmSync(BUILD_LOCK, { force: true }); } catch { /* gone */ }
 if (partnerSteps.some((x) => !x)) {
   done(1, 'partner-failed', { ...after, note: `website ok (${after.ipoPages} pages); partner steps: ${partnerSteps.map((x) => (x ? 'ok' : 'FAIL')).join('/')}` });
 }

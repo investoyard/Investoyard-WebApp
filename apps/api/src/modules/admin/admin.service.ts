@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomBytes } from 'crypto';
 import { Resolver } from 'node:dns';
 import { networkInterfaces } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,6 +27,7 @@ import {
   TenantPageKey,
   contentGaps,
   mergeContentPatch,
+  partnerSiteGate,
   stripOperatorOnlyIdentity,
 } from '@investoyard/shared-types';
 
@@ -1432,6 +1434,55 @@ export class AdminService {
    * A PATCH, not a replace — see `mergeContentPatch`: a blanked box deletes its
    * field, and a field the patch does not mention is left alone.
    */
+  /**
+   * The partner site go-live switch (2026-11-25). SUPER ADMIN ONLY, and it
+   * cannot be turned ON until the legal name and the grievance officer are
+   * filled in (`partnerSiteGate`). Turning it off is always allowed.
+   */
+  async setPartnerSiteLive(callerId: string, slug: string, live: boolean) {
+    const scope = await this.callerScope(callerId);
+    if (!scope.superadmin) throw new ForbiddenException('Only a platform admin can switch a partner site live.');
+    return tenantContext.runUnscoped(async () => {
+      const t = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      if (t.type !== 'partner' && t.type !== 'branch') throw new BadRequestException('Only a partner or branch has a partner site.');
+      if (live) {
+        const missing = partnerSiteGate({ name: t.name, content: await this.tenantContent(t.id) as any });
+        if (missing.length) throw new BadRequestException({ message: `Fill these in before the site can go live: ${missing.join(', ')}.`, problems: missing });
+      }
+      await this.prisma.tenant.update({ where: { id: t.id }, data: { partnerSiteLive: live } as any });
+      await this.prisma.auditLog.create({
+        data: { action: 'tenant.site-live', actorId: callerId, targetType: 'tenant', targetId: t.id, targetLabel: `${t.name} (${t.slug})`, tenantSlug: t.slug, detail: { live } as any },
+      }).catch(() => { /* best-effort */ });
+      return this.partnerSiteStatus(callerId, slug);
+    });
+  }
+
+  /**
+   * Where a partner's public site stands: the switch, what blocks it, and what
+   * the watcher last did (C:/ProgramData/Investoyard/partner-sites-status.json,
+   * written by scripts/partner-routes.js and scripts/partner-sites-watch.js).
+   * Readable by the partner's own admins through My Organisation.
+   */
+  async partnerSiteStatus(_callerId: string, slug: string) {
+    return tenantContext.runUnscoped(async () => {
+      const t: any = await this.prisma.tenant.findUnique({ where: { slug } });
+      if (!t) throw new NotFoundException(`Tenant '${slug}' not found`);
+      const content: any = await this.tenantContent(t.id);
+      let file: any = null;
+      try { file = JSON.parse(readFileSync('C:/ProgramData/Investoyard/partner-sites-status.json', 'utf8')); } catch { /* not written yet */ }
+      const at = file?.updatedAt ? Date.parse(file.updatedAt) : NaN;
+      return {
+        live: t.partnerSiteLive === true,
+        missing: partnerSiteGate({ name: t.name, content }),
+        domain: t.customDomain ?? null,
+        design: content?.site?.template ?? 'default',
+        watcher: { updatedAt: file?.updatedAt ?? null, running: Number.isFinite(at) && Date.now() - at < 3 * 60_000 },
+        site: file?.partners?.[t.slug] ?? null,
+      };
+    });
+  }
+
   async updateTenantContent(
     callerId: string,
     slug: string,

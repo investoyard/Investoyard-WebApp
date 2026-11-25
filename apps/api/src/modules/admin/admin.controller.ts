@@ -268,6 +268,10 @@ class UpdateOperatorDto {
   @IsOptional() @Matches(/^\d{10}$/, { message: 'mobile must be 10 digits' }) mobile?: string;
 }
 
+class PartnerSiteLiveDto {
+  @IsBoolean() live!: boolean;
+}
+
 @Controller('admin')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminController {
@@ -513,6 +517,20 @@ export class AdminController {
    * rides on. It needed no service change — `updateTenantContent` validates the
    * key against TENANT_CONTENT_KEYS, which now carries 'site'.
    */
+  /** Partner site go-live switch — Super Admin only (checked in the service), gated on the legal details. */
+  @Patch('tenants/:slug/site-live')
+  @RequirePermissions('tenants.manage')
+  setPartnerSiteLive(@Req() req: any, @Param('slug') slug: string, @Body() dto: PartnerSiteLiveDto) {
+    return this.admin.setPartnerSiteLive(req.user.sub, slug, dto.live === true);
+  }
+
+  /** Where the partner site stands. The partner's own admins read theirs through My Organisation. */
+  @Get('tenants/:slug/site-status')
+  @RequireAnyPermission('tenant.site.manage', 'tenants.manage')
+  partnerSiteStatus(@Req() req: any, @Param('slug') slug: string) {
+    return this.admin.partnerSiteStatus(req.user.sub, slug);
+  }
+
   @Patch('tenants/:slug/content/site')
   @RequirePermissions('tenant.site.manage')
   updateTenantSite(@Req() req: any, @Param('slug') slug: string, @Body() dto: TenantSiteDto) {

@@ -200,6 +200,28 @@ export const updateTenantContact = (slug: string, patch: Partial<TenantContact>)
  * `false` IS SENT, NOT OMITTED. Omitting a toggle leaves the stored value
  * alone, so a cleared checkbox would never turn anything off.
  */
+/** Where a partner's public site stands (2026-11-25): the go-live switch, what blocks it, what the watcher last did. */
+export interface PartnerSiteStatus {
+  live: boolean;
+  /** Labels of what must be filled in before it may go live; empty = allowed. */
+  missing: string[];
+  domain: string | null;
+  /** The design saved in admin. */
+  design: string;
+  watcher: { updatedAt: string | null; running: boolean };
+  site: null | {
+    state?: 'off' | 'blocked' | 'own' | 'rebuild' | 'live' | 'failed';
+    message?: string; liveDesign?: string | null; liveSince?: string | null;
+    building?: boolean; lastBuildAt?: string; lastBuildOk?: boolean; lastBuildNote?: string | null;
+  };
+}
+export const fetchPartnerSiteStatus = (slug: string) =>
+  authed<PartnerSiteStatus>(`${API}/admin/tenants/${slug}/site-status`, { method: 'GET' });
+export const setPartnerSiteLive = (slug: string, live: boolean) =>
+  authed<PartnerSiteStatus>(`${API}/admin/tenants/${slug}/site-live`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live }),
+  });
+
 export const updateTenantSite = (slug: string, patch: Partial<TenantSite>) =>
   authed<ContentSaved>(`${API}/admin/tenants/${slug}/content/site`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),

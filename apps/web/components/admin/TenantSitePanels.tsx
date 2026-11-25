@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RichText } from '@/components/ui/RichText';
 import * as api from '@/lib/tenants-admin';
 import {
@@ -753,12 +753,101 @@ function SitePreview({ slug, template, domain }: {
 }
 
 
-export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void }) {
+/* ── Partner site: live or not, and what the domain shows now (2026-11-25) ── */
+
+const istTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+
+/**
+ * THE STATUS LINE, and for a Super Admin the go-live switch. Once a partner is
+ * switched live, a saved design reaches their domain within about a minute and
+ * a brand or legal-details change within about two (the design is rebuilt):
+ * scripts/partner-sites-watch.js on the server does it. Everything shown here
+ * comes from the server's own status, so the panel never claims a change is
+ * live before it is.
+ */
+function SiteLive({ slug, savedDesign, canPublish, nudge }: { slug: string; savedDesign: string; canPublish: boolean; nudge: number }) {
+  const [st, setSt] = useState<api.PartnerSiteStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => api.fetchPartnerSiteStatus(slug).then((x) => { setSt(x); }).catch(() => {}), [slug]);
+  useEffect(() => { void load(); }, [load, nudge]);
+
+  const site = st?.site ?? null;
+  const own = savedDesign === DEFAULT_TEMPLATE;
+  const pending = !!st?.live && !own && !!st?.domain && st.missing.length === 0 && (site?.building || site?.state === 'rebuild' || site?.liveDesign !== savedDesign);
+  /* Faster while something is on its way, so "Live" appears soon after it is. */
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) void load(); }, pending ? 8000 : 60000);
+    return () => clearInterval(t);
+  }, [load, pending]);
+
+  if (!st) return <div className="banner" style={{ marginBottom: 12 }}><span>Checking the partner site…</span></div>;
+
+  const label = (id?: string | null) => (id ? templateMeta(id as api.SiteTemplate).label : '');
+  const dom = st.domain ? <b>{st.domain}</b> : 'their domain';
+  let tone = 'warn', line: React.ReactNode;
+  if (!st.live) {
+    tone = '';
+    line = <>Not live — {dom} shows the Investoyard site. {canPublish ? 'Switch it live when the partner is ready.' : 'Ask the Investoyard team to switch your site live.'}</>;
+  } else if (st.missing.length) {
+    tone = 'bad';
+    line = <>Switched live, but held back until these are filled in: <b>{st.missing.join(', ')}</b>.</>;
+  } else if (!st.domain) {
+    line = <>Switched live, but no domain is set yet (Branding → Custom domain).</>;
+  } else if (own) {
+    tone = 'ok';
+    line = <>Live — {dom} shows our own layout in the partner&apos;s brand.</>;
+  } else if (site?.building) {
+    line = <>Publishing the latest changes to {dom}… usually about a minute.</>;
+  } else if (site?.state === 'failed') {
+    tone = 'bad';
+    line = <>Could not switch {dom}: {site.message}. The previous version was kept.</>;
+  } else if (site?.lastBuildOk === false && site?.state === 'rebuild') {
+    tone = 'bad';
+    line = <>The rebuild for {dom} failed; it will be tried again in 30 minutes. {dom} keeps its previous version.</>;
+  } else if (site?.state === 'live' && site.liveDesign === savedDesign) {
+    tone = 'ok';
+    line = <>Live on {dom} · <b>{label(savedDesign)}</b>{site.liveSince ? <> · since {istTime(site.liveSince)}</> : null}</>;
+  } else {
+    line = <>Applying — {dom} will show <b>{label(savedDesign)}</b> within about a minute{site?.state === 'rebuild' ? ' (it is being rebuilt first)' : ''}.</>;
+  }
+
+  const toggle = async (live: boolean) => {
+    if (!live && !window.confirm(`Take this partner's site offline? ${st.domain ?? 'Their domain'} goes back to the Investoyard site.`)) return;
+    setBusy(true); setErr(null);
+    try { setSt(await api.setPartnerSiteLive(slug, live)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className={`banner${tone ? ' ' + tone : ''}`}><span>{line}</span></div>
+      {st.live && !st.watcher.running ? (
+        <div className="banner warn" style={{ marginTop: 8 }}>
+          <span>The publishing service on the server is not running, so changes are not being applied right now. They will apply as soon as it is back.</span>
+        </div>
+      ) : null}
+      {canPublish ? (
+        <div className="tplp-actions" style={{ marginTop: 10 }}>
+          {st.live
+            ? <button className="btn btn-sm" disabled={busy} onClick={() => toggle(false)}>{busy ? 'Saving…' : 'Take site offline'}</button>
+            : <button className="btn btn-sm btn-primary" disabled={busy || st.missing.length > 0} onClick={() => toggle(true)}>{busy ? 'Saving…' : 'Switch site live'}</button>}
+          {!st.live && st.missing.length ? <span className="hint">Fill in first: {st.missing.join(', ')} (Published identity and contact).</span> : null}
+        </div>
+      ) : null}
+      {err ? <div className="banner bad" style={{ marginTop: 8 }}><span>{err}</span></div> : null}
+    </div>
+  );
+}
+
+export function TemplatePanel({ slug, tenant, onSaved, canPublish = false }: { slug: string; tenant: api.PartnerDetail; onSaved: () => void; canPublish?: boolean }) {
   const stored: api.TenantSite = tenant.content?.site ?? {};
   const [d, setD] = useState<api.TenantSite>(() => ({ ...stored }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [nudge, setNudge] = useState(0);
 
   const set = <K extends keyof api.TenantSite>(k: K, v: api.TenantSite[K]) => setD((p) => ({ ...p, [k]: v }));
   const txt = (k: keyof api.TenantSite) => String((d as any)[k] ?? '');
@@ -787,6 +876,7 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
         rmRole: txt('rmRole'), rmBlurb: txt('rmBlurb'), rmContact: txt('rmContact'), rmCta: txt('rmCta'),
       });
       setSavedAt(Date.now());
+      setNudge((n) => n + 1);
       onSaved();
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
@@ -800,20 +890,7 @@ export function TemplatePanel({ slug, tenant, onSaved }: { slug: string; tenant:
         its own — header, pages, type and layout — showing the same IPO data from the same
         place, in the partner&apos;s own name and colour.
       </p>
-      {/* SAID PLAINLY, because the setting otherwise saves, reports success and
-          changes nothing visible — which reads as a broken panel. A partner
-          design reaches the partner's domain only once that partner has been
-          switched on for the partner site (a server step:
-          `node scripts/partner-routes.js --enable <slug>`). After that, the
-          routes task applies this choice within about ten minutes, and later
-          changes here follow by themselves. */}
-      <div className="banner warn" style={{ marginBottom: 12 }}>
-        Choosing a design saves it for this partner and previews it below. Once this partner is
-        switched on for the partner site,
-        {tenant.customDomain ? <> <b>{tenant.customDomain}</b></> : ' their domain'} changes to the
-        chosen design within about 10 minutes, and later changes here follow by themselves. Until
-        they are switched on, it keeps showing the Investoyard layout.
-      </div>
+      <SiteLive slug={slug} savedDesign={isSiteTemplate(stored.template) ? stored.template : DEFAULT_TEMPLATE} canPublish={canPublish} nudge={nudge} />
 
       {/* ---- the design ---- */}
       <div className="tplp-grid">

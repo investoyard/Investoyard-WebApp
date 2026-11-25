@@ -349,6 +349,7 @@ export * from './pollWindow';
 export * from './appNoSearch';
 export * from './tenantSite';
 export * from './tenantContent';
+export * from './partnerSite';
 export * from './richText';
 export * from './asbaForm';
 

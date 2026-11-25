@@ -3,9 +3,12 @@
  * Send each partner's domain to the design chosen for it in admin.
  *
  *   node scripts/partner-routes.js                  dry run: what would be routed, and why not
- *   node scripts/partner-routes.js --apply          write the routes (switched-on partners only)
- *   node scripts/partner-routes.js --enable finwave     switch a partner on   (add --apply to act now)
- *   node scripts/partner-routes.js --disable finwave    switch a partner off  (add --apply to act now)
+ *   node scripts/partner-routes.js --apply          write the routes (partners switched live in admin only)
+ *
+ * Normally run by scripts/partner-sites-watch.js every ~20 seconds, so a saved
+ * design reaches the partner's domain within a minute. Each run writes
+ * C:/ProgramData/Investoyard/partner-sites-status.json, which the admin
+ * Site layout panel reads.
  *
  *
  * HOW A DOMAIN REACHES A DESIGN
@@ -25,9 +28,12 @@
  *
  * WHAT KEEPS THIS FROM BREAKING A LIVE SITE
  *
- *  - A PARTNER MUST BE SWITCHED ON (--enable) before admin's choice reaches
- *    their domain. Once on, later design changes in admin apply on the next run
- *    by themselves. A partner on "our own layout" is never routed.
+ *  - A PARTNER MUST BE SWITCHED LIVE in admin (Super Admin, the "Partner site
+ *    live" switch, Tenant.partnerSiteLive → `siteLive` on the registry) AND have
+ *    its legal name and grievance officer filled in (partnerSiteGate). Once
+ *    live, later design changes in admin apply on the next run by themselves.
+ *    A partner on "our own layout" is never routed. (Until 2026-11-25 the switch
+ *    was a server-side list, --enable/--disable; that list is no longer read.)
  *  - A DEAD API CHANGES NOTHING. If the tenant list cannot be read, the map is
  *    left exactly as it is; an empty answer must never clear every route.
  *  - A domain is routed only when the published design really is there AND its
@@ -47,8 +53,15 @@ const ROOT = path.resolve(__dirname, '..');
 const LIVE = path.join(ROOT, 'apps', 'web', 'out');
 const MAP = path.join(LIVE, 'partner-routes.config');
 const WEBCFG = path.join(LIVE, 'web.config');
-const DATA = 'C:/ProgramData/Investoyard';
-const STATE = path.join(DATA, 'partner-sites.json');
+const DATA = process.env.PARTNER_SITES_DATA || 'C:/ProgramData/Investoyard'; // override only for tests
+const STATUS = path.join(DATA, 'partner-sites-status.json');
+/* One run at a time: the watcher, the nightly rebuild and a hand run must not write the map together. */
+const LOCK = path.join(DATA, 'partner-routes.lock');
+let locked = false;
+function lock() {
+  try { if (Date.now() - fs.statSync(LOCK).mtimeMs > 10 * 60_000) fs.rmSync(LOCK, { force: true }); } catch { /* none */ }
+  try { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); locked = true; return true; } catch { return false; }
+}
 const LOG = path.join(DATA, 'partner-routes.log');
 const API = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:3000/api').replace(/\/$/, '');
 /* The addresses this box answers on. A binding may be tied to either, so a domain counts as served if EITHER answers (see CLAUDE.md). */
@@ -57,31 +70,40 @@ const ADDRS = ['192.168.46.88', '127.0.0.1'];
 const OWN = new Set(['investoyard.com', 'www.investoyard.com', 'allotment.investoyard.com', 'newipoapi.finwave.co', 'console.finwave.co', 'localhost']);
 const HOST_RE = /^(?=.{4,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
-const { SITE_TEMPLATES } = require(path.join(ROOT, 'packages', 'shared-types', 'dist'));
+const { SITE_TEMPLATES, partnerSiteGate } = require(path.join(ROOT, 'packages', 'shared-types', 'dist'));
 const DESIGNS = SITE_TEMPLATES.map((t) => t.id).filter((id) => id !== 'default');
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const quiet = args.includes('--quiet');
+/* The watcher runs this every ~20 s: log a run only when something happened, or the log is noise. */
+const logChangesOnly = args.includes('--log-changes-only');
 const argOf = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
 
 const out = [];
 const say = (s = '') => { out.push(s); if (!quiet) console.log(s); };
 function finish(code, summary) {
   /* One line per run in the log even when quiet, so a schedule that silently stopped working shows up as a gap. */
-  try { fs.mkdirSync(DATA, { recursive: true }); fs.appendFileSync(LOG, `${new Date().toISOString()} ${summary}\n` + (code ? out.map((l) => '  ' + l).join('\n') + '\n' : '')); } catch { /* never the thing that fails */ }
+  try { fs.mkdirSync(DATA, { recursive: true }); if (!(logChangesOnly && code === 0 && /^ok: no change/.test(summary))) fs.appendFileSync(LOG, `${new Date().toISOString()} ${summary}\n` + (code ? out.map((l) => '  ' + l).join('\n') + '\n' : '')); } catch { /* never the thing that fails */ }
+  if (locked) { try { fs.rmSync(LOCK, { force: true }); } catch { /* gone */ } }
   if (quiet && code) console.error(out.join('\n'));
   process.exit(code);
 }
 
-/* ------------------------------------------------------------------ state */
-function readState() {
-  try { const j = JSON.parse(fs.readFileSync(STATE, 'utf8')); return { enabled: Array.isArray(j.enabled) ? j.enabled.filter((s) => typeof s === 'string') : [] }; }
-  catch { return { enabled: [] }; }
-}
-function writeState(st) {
-  fs.mkdirSync(DATA, { recursive: true });
-  fs.writeFileSync(STATE, JSON.stringify({ enabled: [...new Set(st.enabled)].sort(), updatedAt: new Date().toISOString() }, null, 2) + '\n');
+/* ------------------------------------------------------------------ status */
+/** What the admin panel shows. Merged, so the watcher's own fields (a rebuild in progress) survive. */
+function writeStatus(rows, extra = {}) {
+  let prev = {};
+  try { prev = JSON.parse(fs.readFileSync(STATUS, 'utf8')); } catch { /* first run */ }
+  const partners = {};
+  const now = new Date().toISOString();
+  for (const r of rows) {
+    const old = (prev.partners || {})[r.slug] || {};
+    partners[r.slug] = { ...old, domain: r.domain === '-' ? null : r.domain, design: r.design, state: r.state, message: r.status, checkedAt: now,
+      liveDesign: r.state === 'live' ? r.design : (r.state === 'blocked' || r.state === 'off' || r.state === 'own' ? null : old.liveDesign ?? null),
+      liveSince: r.state === 'live' ? (old.state === 'live' && old.liveDesign === r.design ? old.liveSince : now) : null };
+  }
+  try { fs.mkdirSync(DATA, { recursive: true }); const tmp = STATUS + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ ...prev, ...extra, updatedAt: now, partners }, null, 2)); fs.renameSync(tmp, STATUS); } catch { /* the panel just shows an older status */ }
 }
 
 /* ------------------------------------------------------------------ fetch */
@@ -144,15 +166,10 @@ function touch(file) { const now = new Date(); fs.utimesSync(file, now, now); }
 
 /* ------------------------------------------------------------------ main */
 (async () => {
-  const st = readState();
-  const en = argOf('--enable'), dis = argOf('--disable');
-  if (en || dis) {
-    const slug = en || dis;
-    if (!/^[a-z0-9-]+$/.test(slug || '')) { say('usage: --enable <tenant-slug> | --disable <tenant-slug>'); finish(2, 'bad args'); }
-    st.enabled = en ? [...st.enabled, slug] : st.enabled.filter((s) => s !== slug);
-    writeState(st);
-    say(`${slug} switched ${en ? 'ON' : 'OFF'}. Switched on: ${st.enabled.length ? st.enabled.join(', ') : 'nobody'}`);
-    say('');
+  if (!lock()) { say('another partner-routes run is in progress; leaving it to that run.'); finish(0, 'ok: no change (busy)'); }
+  if (argOf('--enable') || argOf('--disable')) {
+    say('The go-live switch is in admin now: Partners → the partner → Site layout → "Partner site live" (Super Admin).');
+    finish(2, 'refused: --enable/--disable retired');
   }
 
   const cfg = fs.existsSync(WEBCFG) ? fs.readFileSync(WEBCFG, 'utf8') : '';
@@ -170,18 +187,21 @@ function touch(file) { const now = new Date(); fs.utimesSync(file, now, now); }
     if (!t || t.type === 'direct') continue;
     const design = t.content && t.content.site && t.content.site.template;
     const dom = String(t.customDomain || '').trim().toLowerCase().replace(/\.$/, '');
-    const row = { slug: t.slug, domain: dom || '-', design: design || 'default', status: '' };
+    const row = { slug: t.slug, domain: dom || '-', design: design || 'default', status: '', state: '' };
     rows.push(row);
-    if (!dom) { row.status = 'no custom domain'; continue; }
-    if (!design || design === 'default') { row.status = 'our own layout - not routed (served by investoyard.com pages)'; continue; }
-    if (!DESIGNS.includes(design)) { row.status = `unknown design "${design}" - not routed`; continue; }
-    if (!HOST_RE.test(dom) || OWN.has(dom) || OWN.has(dom.replace(/^www\./, ''))) { row.status = 'domain refused (not a valid partner host)'; continue; }
+    if (t.siteLive !== true) { row.state = 'off'; row.status = 'not switched live (admin: Partner site live)'; continue; }
+    const missing = partnerSiteGate({ name: t.name, content: t.content });
+    if (missing.length) { row.state = 'blocked'; row.status = 'switched live, but missing: ' + missing.join(', '); continue; }
+    if (!dom) { row.state = 'blocked'; row.status = 'no custom domain'; continue; }
+    if (!design || design === 'default') { row.state = 'own'; row.status = 'our own layout - not routed (served by investoyard.com pages)'; continue; }
+    if (!DESIGNS.includes(design)) { row.state = 'blocked'; row.status = `unknown design "${design}" - not routed`; continue; }
+    if (!HOST_RE.test(dom) || OWN.has(dom) || OWN.has(dom.replace(/^www\./, ''))) { row.state = 'blocked'; row.status = 'domain refused (not a valid partner host)'; continue; }
     const index = path.join(LIVE, '_partner', design, 'index.html');
     let html = '';
     try { html = fs.readFileSync(index, 'utf8'); } catch { /* missing */ }
-    if (variantOf(html) !== design) { row.status = `design "${design}" is not published at _partner/${design}/ - run publish-live`; continue; }
-    if (!html.includes(`"${dom}"`)) { row.status = 'domain not in the published build - rebuild needed (publish-live)'; continue; }
-    if (!st.enabled.includes(t.slug)) { row.status = 'ready, but NOT SWITCHED ON (--enable ' + t.slug + ')'; continue; }
+    if (variantOf(html) !== design) { row.state = 'rebuild'; row.status = `design "${design}" is not published at _partner/${design}/ - run publish-live`; continue; }
+    if (!html.includes(`"${dom}"`)) { row.state = 'rebuild'; row.status = 'domain not in the published build - rebuild needed (publish-live)'; continue; }
+    row.state = 'live';
     row.status = 'ROUTED';
     want.set(dom, design);
     const twin = dom.startsWith('www.') ? dom.slice(4) : `www.${dom}`;
@@ -198,6 +218,7 @@ function touch(file) { const now = new Date(); fs.utimesSync(file, now, now); }
   const removed = [...before.keys()].filter((k) => !want.has(k));
   say(`routes now: ${before.size ? [...before].map(([k, v]) => `${k}->${v}`).join(', ') : 'none'}`);
   say(`routes wanted: ${entries.length ? entries.map(([k, v]) => `${k}->${v}`).join(', ') : 'none'}`);
+  writeStatus(rows);
   if (same && fs.existsSync(MAP)) { say('no change.'); finish(0, `ok: no change (${entries.length} routes)`); }
   if (!apply) { say('dry run - nothing written. Add --apply to write.'); finish(0, 'dry run'); }
   if (!wired) { say('REFUSED: the live web.config does not read the routes yet, so writing them would do nothing.'); finish(1, 'refused: web.config not wired'); }
@@ -243,6 +264,8 @@ function touch(file) { const now = new Date(); fs.utimesSync(file, now, now); }
     touch(WEBCFG);
     const back = await served('investoyard.com');
     say(`after restore: investoyard.com ${back ? back.status + ', ' + back.body.length + ' bytes' : 'NO ANSWER - check the site now'}`);
+    for (const r of rows) if (r.state === 'live') { r.state = 'failed'; r.status = 'could not be switched: ' + problems.join('; '); }
+    writeStatus(rows, { lastProblem: { at: new Date().toISOString(), problems } });
     finish(1, 'rolled back: ' + problems.join('; '));
   }
   say(`done: ${entries.length} route(s) live, all checks passed.`);

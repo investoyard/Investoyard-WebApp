@@ -256,7 +256,7 @@ function PartnerProfilePage() {
           <BrandingPanel slug={slug} tenant={data} onSaved={load} />
           <ContentPanel slug={slug} tenant={data} onSaved={load} />
           <PagesPanel slug={slug} tenant={data} onSaved={load} />
-          <TemplatePanel slug={slug} tenant={data} onSaved={load} />
+          <TemplatePanel slug={slug} tenant={data} onSaved={load} canPublish={!!me?.isSuperAdmin} />
         </>
       ) : null}
 

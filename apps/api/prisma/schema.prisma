@@ -261,6 +261,14 @@ model Tenant {
   /// See `partnerApiAccess` in shared-types.
   partnerApiEnabled Boolean @default(false)
 
+  /// Partner public site — the go-live switch (2026-11-25). OFF by default.
+  /// Super Admin only, and it cannot be turned on until the legal name and the
+  /// grievance officer are filled in (`partnerSiteGate` in shared-types). Once
+  /// on, a saved design or brand change reaches the partner's domain by itself
+  /// (scripts/partner-sites-watch.js). Public on the /tenants registry as
+  /// `siteLive`, which is what the watcher reads.
+  partnerSiteLive Boolean @default(false)
+
   createdAt      DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
 

@@ -73,6 +73,9 @@ export class TenantsService {
          the same reasoning that put identity and contact here. */
       footerLogoUrl: t.footerLogoUrl ?? undefined,
       faviconUrl: t.faviconUrl ?? undefined,
+      /* Whether this partner's public site is switched live. Not sensitive — a live site is
+         public by definition — and it is what scripts/partner-sites-watch.js reads. */
+      siteLive: t.partnerSiteLive === true,
       flags: await this.settings.publicFlags(t.id),
       /*
        * WHO OPERATES THIS SITE, so a white-label domain stops publishing OURS.

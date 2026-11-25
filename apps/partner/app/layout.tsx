@@ -4,6 +4,7 @@ import variant from '@variant';
 import { loadTenants } from '@/core/data.server';
 import { partnerRegistry, prepaintScript } from '@/core/tenant.server';
 import { TenantProvider } from '@/core/tenant';
+import { partnerSiteFingerprintList } from '@investoyard/shared-types';
 
 /*
  * No metadataBase and no canonical on purpose: one export serves every
@@ -37,12 +38,18 @@ const UNCONFIGURED_CSS =
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const registry = partnerRegistry(await loadTenants());
+  const tenants = await loadTenants();
+  const registry = partnerRegistry(tenants);
+  /* WHAT THIS BUILD BAKED, per partner. scripts/partner-sites-watch.js compares it with the live
+     registry and rebuilds this design when a live partner's brand, logo, domain or legal details
+     changed since (packages/shared-types/src/partnerSite.ts). */
+  const fingerprints = partnerSiteFingerprintList(tenants.filter((t: any) => t.type !== 'direct') as any);
   return (
     <html lang="en" className={variant.fontClassName} data-variant={variant.name} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: prepaintScript(registry, !!process.env.PARTNER_PREVIEW) }} />
         <style dangerouslySetInnerHTML={{ __html: UNCONFIGURED_CSS }} />
+        <meta name="pw-fp" content={fingerprints} />
       </head>
       <body>
         <div id="pw-unconf" role="status" hidden>
