@@ -21,6 +21,13 @@
  *  2. RE-ROUTES the domain (scripts/partner-routes.js --apply): a changed
  *     design takes effect in seconds, with its own checks and rollback.
  *
+ * IT DOES ALMOST NOTHING WHEN NOTHING CHANGED (2026-11-25, measured): each pass
+ * is one ~20 ms read of the tenant registry, compared with the previous one.
+ * The router — a separate Node process, ~110-140 ms of CPU — runs only when
+ * something it decides on changed (switch, design, domain, brand or legal
+ * details, a published design file), after this watcher rebuilt something,
+ * and as a full safety check every 10 minutes. Idle cost ~0.02% of the box.
+ *
  * It never builds over uncommitted work under apps/partner or the packages it
  * reads (a build publishes the working tree), it never builds while the
  * nightly rebuild holds the partner build lock, and it builds only for LIVE
@@ -41,8 +48,12 @@ const BUILD_LOCK = path.join(DATA, 'partner-build.lock');
 const LIVE = path.join(ROOT, 'apps', 'web', 'out');
 const PARTNER = path.join(ROOT, 'apps', 'partner');
 const API = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:3000/api').replace(/\/$/, '');
-const TICK_MS = 20_000;
+const TICK_MS = Number(process.env.PARTNER_WATCH_TICK_MS) || 20_000; // override only for tests
 const RETRY_FAILED_MS = 30 * 60_000;
+/** A full re-check even when nothing changed: catches a website deploy, a nightly rebuild or a hand edit of the map. */
+const FULL_CHECK_MS = Number(process.env.PARTNER_WATCH_FULL_MS) || 10 * 60_000; // override only for tests
+/** How often an idle watcher rewrites its heartbeat. The admin panel calls it stopped after 3 minutes. */
+const HEARTBEAT_MS = 60_000;
 const WATCH = ['apps/partner', 'packages/shared-types', 'packages/i18n'];
 
 const { SITE_TEMPLATES, partnerSiteGate, partnerSiteFingerprint, parsePartnerSiteFingerprints } =
@@ -106,7 +117,17 @@ function startForwarder() {
   spawn(process.execPath, [path.join(ROOT, 'scripts', 'api-forward.js')], { cwd: ROOT, detached: true, stdio: ['ignore', out, out], windowsHide: true }).unref();
 }
 /** The fingerprints a published design baked, by partner slug. Empty when the design is not published. */
+const bakedCache = new Map(); // design -> { mtimeMs, value }
+function indexMtime(design) { try { return fs.statSync(path.join(LIVE, '_partner', design, 'index.html')).mtimeMs; } catch { return 0; } }
 function baked(design) {
+  const mt = indexMtime(design);
+  const hit = bakedCache.get(design);
+  if (hit && hit.mtimeMs === mt) return hit.value;
+  const value = readBaked(design);
+  bakedCache.set(design, { mtimeMs: mt, value });
+  return value;
+}
+function readBaked(design) {
   try {
     const html = fs.readFileSync(path.join(LIVE, '_partner', design, 'index.html'), 'utf8');
     if (((html.match(/<html[^>]*\sdata-variant="([a-z0-9-]+)"/) || [])[1]) !== design) return null;
@@ -120,6 +141,9 @@ function patchStatus(fn) {
   try { j = JSON.parse(fs.readFileSync(STATUS, 'utf8')); } catch { /* first run */ }
   fn(j);
   j.watcherAt = new Date().toISOString();
+  /* The API reports the watcher running while this is fresh; the router also writes it. */
+  j.updatedAt = j.watcherAt;
+  lastBeat = Date.now();
   try { fs.mkdirSync(DATA, { recursive: true }); const tmp = STATUS + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(j, null, 2)); fs.renameSync(tmp, STATUS); } catch { /* the panel shows an older status */ }
 }
 function takeBuildLock() {
@@ -132,6 +156,18 @@ function takeBuildLock() {
 }
 
 /* ------------------------------------------------------------ one pass */
+let lastBeat = 0;
+let lastSig = '';
+let lastRouteRun = 0;
+/** Everything the router decides on, so an unchanged registry and unchanged design files mean nothing to do. */
+function signature(tenants) {
+  const rows = tenants.filter((t) => t && t.type !== 'direct').map((t) => [
+    t.slug, t.siteLive === true, (t.content && t.content.site && t.content.site.template) || 'default',
+    String(t.customDomain || '').trim().toLowerCase(), partnerSiteFingerprint(t),
+    partnerSiteGate({ name: t.name, content: t.content }).length,
+  ]);
+  return JSON.stringify([rows, DESIGNS.map(indexMtime)]);
+}
 const failed = new Map(); // `${design}:${fingerprints}` -> time it failed
 let lastNote = '';
 async function pass() {
@@ -164,6 +200,7 @@ async function pass() {
     console.log(String(r.stdout || '').trim());
     return;
   }
+  let built = false;
   if (need.size) {
     const todo = [...need.entries()].filter(([d, list]) => {
       const key = `${d}:${list.map((x) => x.fp).join(',')}`;
@@ -183,6 +220,7 @@ async function pass() {
       let r;
       try { r = spawnSync(process.execPath, [path.join(PARTNER, 'scripts', 'publish-live.mjs'), ...designs], { cwd: PARTNER, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true }); }
       finally { fs.rmSync(BUILD_LOCK, { force: true }); }
+      built = true;
       const tail = (String(r.stdout || '') + String(r.stderr || '')).trim().split('\n').slice(-6).join(' | ');
       for (const [d, list] of todo) {
         const ok = (() => { const have = baked(d); return !!have && list.every((x) => have.get(x.slug) === x.fp); })();
@@ -198,10 +236,19 @@ async function pass() {
     patchStatus((j) => { j.watcherNote = note; });
   } else if (lastNote) { lastNote = ''; patchStatus((j) => { j.watcherNote = ''; }); }
 
-  /* 2. route: the router has its own checks and rollback, and writes the per-partner status */
-  const rr = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'partner-routes.js'), '--apply', '--quiet', '--log-changes-only'], { cwd: ROOT, encoding: 'utf8', windowsHide: true });
-  if (rr.status !== 0) log(`routes: exit ${rr.status} ${String(rr.stderr || '').trim().split('\n').slice(0, 4).join(' | ')}`);
-  patchStatus(() => {});
+  /* 2. route — only when something it decides on changed, after a rebuild, or as the 10-minute
+     safety check. The router has its own checks and rollback, and writes the per-partner status. */
+  const sig = signature(tenants);
+  if (built || sig !== lastSig || Date.now() - lastRouteRun >= FULL_CHECK_MS) {
+    const rr = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'partner-routes.js'), '--apply', '--quiet', '--log-changes-only'], { cwd: ROOT, encoding: 'utf8', windowsHide: true });
+    if (rr.status !== 0) log(`routes: exit ${rr.status} ${String(rr.stderr || '').trim().split('\n').slice(0, 4).join(' | ')}`);
+    lastRouteRun = Date.now();
+    /* After a rebuild the design files changed; take the signature fresh so the next pass does not re-run. */
+    lastSig = built ? signature(tenants) : sig;
+    patchStatus(() => {});
+  } else if (Date.now() - lastBeat >= HEARTBEAT_MS) {
+    patchStatus(() => {});
+  }
 }
 
 /* ------------------------------------------------------------ main */
