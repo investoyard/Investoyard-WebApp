@@ -1,4 +1,5 @@
 import { PDFDocument, PDFName, StandardFonts, rgb } from 'pdf-lib';
+import { winAnsiDeep } from './pdf-text';
 
 /**
  * ASBA form overlay engine.
@@ -63,7 +64,9 @@ export const RESIDENT_FIELDS: Record<string, Field> = {
   upi:           { kind: 'grid', x: 110, y: 350, step: 11, size: 8 },  // UPI up to 45 boxes
 };
 
-export async function fillAsbaForm(templateBytes: Uint8Array | ArrayBuffer, d: AsbaOverlayData, fields = RESIDENT_FIELDS): Promise<Buffer> {
+export async function fillAsbaForm(templateBytes: Uint8Array | ArrayBuffer, raw: AsbaOverlayData, fields = RESIDENT_FIELDS): Promise<Buffer> {
+  // Helvetica draws WinAnsi only; one tab in a partner field used to fail the whole print.
+  const d = winAnsiDeep(raw);
   const pdf = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
 
   // Preferred path: the template has AcroForm fields → fill by name.

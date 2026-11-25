@@ -1,4 +1,5 @@
 import { PDFDocument, PDFTextField, PDFName, PDFString, PDFRef, PDFDict, StandardFonts, rgb } from 'pdf-lib';
+import { winAnsiDeep } from './pdf-text';
 import { parseDefaultAppearance, createFontResolver, burnInFontSize } from './asba-font';
 
 /**
@@ -112,7 +113,9 @@ function splitName(full: string, max1 = 14, max2 = 17): [string, string] {
  * Fill the template's AcroForm with the applicant data and flatten it.
  * Returns null when the PDF has no form fields (caller falls back to overlay).
  */
-export async function fillAsbaAcroForm(template: Buffer, d: AsbaFormData, flatten = true): Promise<Buffer | null> {
+export async function fillAsbaAcroForm(template: Buffer, raw: AsbaFormData, flatten = true): Promise<Buffer | null> {
+  // Helvetica draws WinAnsi only; one tab in a partner field used to fail the whole print.
+  const d = winAnsiDeep(raw);
   const doc = await PDFDocument.load(template, { ignoreEncryption: true });
   let fields;
   try { fields = doc.getForm().getFields(); } catch { return null; }

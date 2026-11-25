@@ -2669,9 +2669,23 @@ The family is already tracked here; these are new shapes, and **three of five re
 - **The audit log is 4,370 partner prints plus investor OTP steps.** The activity query (still in the API, no longer shown) excludes them.
 - **Prudent has the API switched on with a live key and has never called** — the first "gone quiet" partner.
 - **SHREESIDHI and FOODLINK opened within days with no reservation table** — the first live "Needs attention" rows.
-- **A refused call with text "WinAnsi cannot encode … (0x0009)"** is a print that failed on a TAB character in the partner's data. It shows under "other refusals". Worth a fix in the PDF filler (strip control characters) if it recurs.
+- **A refused call with text "WinAnsi cannot encode … (0x0009)"** is a print that failed on a TAB character in the partner's data. It shows under "other refusals". **Fixed 2026-11-25** — see *A tab in a partner's data failed the whole print*.
 - **`refusalKind` could not be tested while it lived in the service file**: the spec pulled in `AdminService`, which the stricter test compiler rejects over an unrelated old type narrowing at `admin.service.ts:1061`.
 - **The new service was proved against the real database BEFORE the handshake** with no second API and no scratch build in the repo. `ts.transpileModule` compiled the one `.ts` file into a temp `.js` inside `dist`, so its imports resolved; it was run with a stand-in admin service and deleted after.
+
+## A tab in a partner's data failed the whole print (fixed 2026-11-25)
+
+- **Both ASBA fillers draw with `StandardFonts.Helvetica`, which can only encode WinAnsi (Windows-1252).** One character outside it made pdf-lib throw `WinAnsi cannot encode "…"` and the whole print failed: MKSONS 4 times and SFCTECH twice on 29–30 Oct, all on a TAB (0x0009). A ₹ sign, a zero-width space or a Hindi name would fail the same way. The `try` around each `drawText` did not help, because `widthOfTextAtSize` in the shrink-to-fit loop encodes too and sits outside it.
+- **`apps/api/src/modules/applications/pdf-text.ts` cleans the data once, at the top of `fillAsbaAcroForm` and `fillAsbaForm`** (`winAnsiDeep`), so every draw site is covered, including ones added later:
+  - a tab or line break becomes one space;
+  - other control characters and zero-width marks are dropped;
+  - ₹ prints as `Rs.`; unusual spaces and Unicode hyphens/minus print as plain ones;
+  - an accent the font lacks is removed (`ā` → `a`);
+  - anything else prints as `?`, so a gap on paper is visible rather than silent.
+- **It cleans only what is DRAWN.** `Application.partnerPayload` still stores exactly what the partner sent.
+- **9 tests in `pdf-text.spec.ts`**, including one that compares the character table with pdf-lib's own (`@pdf-lib/standard-fonts`) for every code point up to U+2FFF, and two that fill a PDF with a tab through each filler. **Both filler tests failed against the old code with the production error**, which is what shows they test the fault.
+- **The Write tool turned ` ` escapes into the real characters**, and U+2028 inside a regex literal is a line terminator, so the file would not compile. The source now holds only ASCII escapes for invisible characters. **Check a file for non-ASCII bytes after writing one with `\u` escapes in it.**
+- Verified after deploy by filling five real uploaded templates with tabs in the name, address and bank fields: all printed.
 
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.
