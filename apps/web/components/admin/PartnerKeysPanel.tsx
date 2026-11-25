@@ -142,11 +142,14 @@ export function PartnerKeysPanel({ tenantId, title, intro }: { tenantId: string;
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
-            <thead><tr><th>Key ID</th><th>Label</th><th>Can use</th><th>Allowed from</th><th>Status</th><th>Created</th><th>Last used</th><th /></tr></thead>
+            <thead><tr><th>Key ID</th><th>Mode</th><th>Label</th><th>Can use</th><th>Allowed from</th><th>Status</th><th>Created</th><th>Last used</th><th /></tr></thead>
             <tbody>
               {rows.map((k) => (
                 <tr key={k.id}>
-                  <td className="mono">{k.keyId}{k.mode === 'test' && <span className="st warn" style={{ marginLeft: 6 }}>test</span>}</td>
+                  <td className="mono">{k.keyId}</td>
+                  <td>{k.mode === 'test'
+                    ? <span className="st warn" title="Bids go to the simulator and never reach an exchange.">Test</span>
+                    : <span className="st brand" title="Real calls: bids go to the exchange once live bidding is switched on.">Live</span>}</td>
                   <td>{k.label ?? '—'}</td>
                   <td style={{ minWidth: 200 }}>
                     {editing?.id === k.id ? (
