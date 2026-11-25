@@ -1,6 +1,15 @@
 /* Investoyard service worker — app-shell caching + offline fallback.
-   Bump CACHE to invalidate after a deploy. */
-const CACHE = 'investoyard-v2';
+
+   Two rules this file must keep (2026-11-25):
+   1. ONLY A SUCCESSFUL RESPONSE IS EVER STORED. The first version cached
+      whatever came back, so a chunk that answered 404 for a moment during a
+      publish was kept as a 404 for ever and served cache-first: every admin
+      page that needed it crashed with "Application error" until a hard
+      reload bypassed this worker.
+   2. RENAME CACHE whenever the caching rules change. Activation deletes every
+      other cache, which is the only way to clear what browsers already hold.
+      v2 -> v3 clears the poisoned copies from the first version. */
+const CACHE = 'investoyard-v3';
 const CORE = ['/', '/offline.html', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -15,32 +24,37 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+/** Store a copy only when the response is a complete, successful, same-origin one. */
+function keep(req, res) {
+  if (res && res.ok && res.status === 200 && res.type === 'basic') {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => { /* quota — skip */ });
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  const isAsset = url.pathname.startsWith('/_next/') || /\.(css|js|svg|png|jpg|jpeg|webp|woff2?|json|webmanifest|ico)$/.test(url.pathname);
-
-  if (isAsset) {
-    // cache-first for hashed/static assets
+  // Content-hashed build output: a file name never changes content, so
+  // cache-first is safe — as long as only a good copy was ever stored.
+  if (url.pathname.startsWith('/_next/static/')) {
     e.respondWith(
-      caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      }).catch(() => cached)),
+      caches.match(req).then((cached) => cached || fetch(req).then((res) => keep(req, res))),
     );
     return;
   }
 
-  // navigations / pages: network-first, fall back to cache then offline page
+  // Everything else (pages, the RSC payloads, icons, manifest): network first,
+  // stored copy only when offline, then the offline page for a navigation.
   e.respondWith(
-    fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy));
-      return res;
-    }).catch(() => caches.match(req).then((c) => c || caches.match('/')).then((c) => c || caches.match('/offline.html'))),
+    fetch(req).then((res) => keep(req, res)).catch(() =>
+      caches.match(req).then((c) => c || (req.mode === 'navigate'
+        ? caches.match('/').then((h) => h || caches.match('/offline.html'))
+        : Response.error())),
+    ),
   );
 });

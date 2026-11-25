@@ -2687,5 +2687,19 @@ The family is already tracked here; these are new shapes, and **three of five re
 - **The Write tool turned ` ` escapes into the real characters**, and U+2028 inside a regex literal is a line terminator, so the file would not compile. The source now holds only ASCII escapes for invisible characters. **Check a file for non-ASCII bytes after writing one with `\u` escapes in it.**
 - Verified after deploy by filling five real uploaded templates with tabs in the name, address and bank fields: all printed.
 
+## The service worker kept a "not found" for ever (fixed 2026-11-25)
+
+- **Symptom (operator report)**: clicking Dashboard showed "Application error: a client-side exception has occurred"; a refresh loaded the page. It was not a dashboard fault. Today's real dashboard data replayed through the page, by client navigation, after a login and from the partner page, never crashed.
+- **Cause: `apps/web/public/sw.js` stored EVERY response it fetched, error or not, and served `/_next/` files cache-first.** Its cache name (`investoyard-v2`) had not changed since the first commit, so nothing was ever cleared. On 23 Nov, during the dashboard publish, the operator's browser asked for `5485-446df5480e333217.js` and got a 404; the worker kept that 404. The file exists and every admin page needs it, so every page load that went through the worker failed with `ChunkLoadError: Loading chunk 5485 failed`. A reload that skipped the worker fetched every file fresh, which is why "refresh" worked.
+- **How it was found: the IIS log, not the code.** The crash loads show the page HTML and almost no `/_next/` files (served by the worker); the reload seconds later shows every chunk fetched with 200. Then a check of which `/_next/` 404s that browser had ever received, against which of those files still exist, named the one: 25 404s on 23 Nov, one of them for a file still in use. **For "fails on a click, works after refresh", look for 404s in the browser's past, not in the page's code.**
+- **The fix**:
+  - only a complete, successful, same-origin response (`res.ok`, status 200, type `basic`) is stored;
+  - `/_next/static/` stays cache-first (content-hashed, so a good copy never goes stale); pages, RSC payloads, icons and the manifest go network-first, with the stored copy only when offline;
+  - the cache is renamed `investoyard-v3`, and activation deletes every other cache, which is the only way to clear what browsers already hold. **Rename the cache whenever the caching rules change.**
+- **Proved in headless Chrome against the live build**: the old worker plus a stored 404 for that chunk reproduced the exact error; after the new worker took over, only `investoyard-v3` remained, the dashboard and catalog loaded, a 404 chunk and a 404 page were not stored, and good chunks were.
+- **A browser still holding the old worker may show the error once more**: it picks up the new `sw.js` on its next page load, but that load is still served by the old worker. One Ctrl+Shift+R ends it.
+- **Every publish can still 404 an old tab's chunks** (robocopy's `/MIR` purges the previous build's files). That is now harmless: nothing failed is ever stored.
+- **To reproduce a dashboard crash with real data**, dump the real `DashboardService.build()` output from a script in `apps/api/dist` and feed it to the page through CDP `Fetch` interception. A stand-in for `MetricsService.liveCount` must return `{ live: n }`, not `n`: returning a bare number made `liveNow` null and produced a crash that was the test's own fault.
+
 ## Read next
 `docs/Investoyard - Project Status & Handoff.md`, `RUNNING.md`, and the memory files auto-loaded each session.
