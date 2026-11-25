@@ -19,9 +19,12 @@ import {
  * fields mean — with Try it running the real endpoint as the signed-in
  * partner. The content is `lib/partnerApiDocs.ts`; this file only draws it.
  *
- * A partner sees its own account: APIs it may call in full, the rest listed
- * as "not enabled" (operator decision). A platform operator picks a partner to
- * view as; with none picked every API is shown and Try it waits for a pick.
+ * A partner sees ONLY the APIs it may call: the rest are not listed at all,
+ * with no hint that they exist (operator decision 2026-11-25, replacing the
+ * "not enabled" lock rows of 2026-11-23). A platform operator picking a
+ * partner sees exactly that partner's page; with none picked every API is
+ * shown and Try it waits for a pick. Hiding is presentation only — the API
+ * refuses a call outside the account's groups whatever this page shows.
  */
 
 const LABEL = new Map<string, string>(PARTNER_SCOPE_META.map((s) => [s.key, s.label]));
@@ -233,18 +236,15 @@ function TryPanel({ ep, ctx, tenantId }: { ep: ApiEndpoint; ctx: api.PartnerDocs
 
 /* ── One endpoint ────────────────────────────────────────────────────────── */
 
-function EndpointSection({ ep, enabled, ctx, tenantId, lang, setLang }: {
-  ep: ApiEndpoint; enabled: boolean; ctx: api.PartnerDocsContext | null; tenantId?: string; lang: Lang; setLang: (l: Lang) => void;
+function EndpointSection({ ep, ctx, tenantId, lang, setLang }: {
+  ep: ApiEndpoint; ctx: api.PartnerDocsContext | null; tenantId?: string; lang: Lang; setLang: (l: Lang) => void;
 }) {
   const [tryOpen, setTryOpen] = useState(false);
   const path = `${API_BASE}${ep.path}`;
   return (
-    <section id={ep.id} className={`apx-ep${enabled ? '' : ' off'}`}>
+    <section id={ep.id} className="apx-ep">
       <div className="apx-ep-top">
         <h3>{ep.title}</h3>
-        {enabled
-          ? <span className="st ok" title={`Needs: ${LABEL.get(ep.scope) ?? ep.scope}`}>Enabled</span>
-          : <span className="st mut"><Icon name="lock" size={11} /> Not enabled for your account</span>}
       </div>
       <div className="apx-path">
         <Method m={ep.method} />
@@ -254,33 +254,25 @@ function EndpointSection({ ep, enabled, ctx, tenantId, lang, setLang }: {
       <p className="apx-sum">{ep.summary}</p>
       <div className="apx-needs">Needs the <b>{LABEL.get(ep.scope) ?? ep.scope}</b> API group <span className="mono muted">({ep.scope})</span></div>
 
-      {!enabled ? (
-        <div className="banner warn apx-off-note">
-          <span>This API is not switched on for your account. Ask the Investoyard team to enable <b>{LABEL.get(ep.scope) ?? ep.scope}</b> if you need it.</span>
-        </div>
-      ) : (
-        <>
-          {ep.details?.map((d) => <p key={d} className="apx-p">{d}</p>)}
+      {ep.details?.map((d) => <p key={d} className="apx-p">{d}</p>)}
 
-          {ep.params && ep.params.length > 0 && (<><h4>Parameters</h4><ParamTable params={ep.params} /></>)}
-          {ep.bodyFields && (<><h4>Request body</h4><FieldTable fields={ep.bodyFields} showRequired /></>)}
+      {ep.params && ep.params.length > 0 && (<><h4>Parameters</h4><ParamTable params={ep.params} /></>)}
+      {ep.bodyFields && (<><h4>Request body</h4><FieldTable fields={ep.bodyFields} showRequired /></>)}
 
-          <h4>Example request</h4>
-          <CodeTabs ep={ep} lang={lang} setLang={setLang} />
+      <h4>Example request</h4>
+      <CodeTabs ep={ep} lang={lang} setLang={setLang} />
 
-          <h4>Responses</h4>
-          <ResponseTabs ep={ep} />
+      <h4>Responses</h4>
+      <ResponseTabs ep={ep} />
 
-          {ep.responseFields && (<><h4>Response fields</h4><FieldTable fields={ep.responseFields} /></>)}
+      {ep.responseFields && (<><h4>Response fields</h4><FieldTable fields={ep.responseFields} /></>)}
 
-          <div className="apx-try-wrap">
-            <button type="button" className={`apx-try-toggle${tryOpen ? ' on' : ''}`} aria-expanded={tryOpen} onClick={() => setTryOpen((o) => !o)}>
-              <Icon name="bolt" size={14} /> Try it <Icon name={tryOpen ? 'chevron-down' : 'chevron-right'} size={14} />
-            </button>
-            {tryOpen && <TryPanel ep={ep} ctx={ctx} tenantId={tenantId} />}
-          </div>
-        </>
-      )}
+      <div className="apx-try-wrap">
+        <button type="button" className={`apx-try-toggle${tryOpen ? ' on' : ''}`} aria-expanded={tryOpen} onClick={() => setTryOpen((o) => !o)}>
+          <Icon name="bolt" size={14} /> Try it <Icon name={tryOpen ? 'chevron-down' : 'chevron-right'} size={14} />
+        </button>
+        {tryOpen && <TryPanel ep={ep} ctx={ctx} tenantId={tenantId} />}
+      </div>
     </section>
   );
 }
@@ -290,6 +282,14 @@ function EndpointSection({ ep, enabled, ctx, tenantId, lang, setLang }: {
 const GUIDES = [
   { id: 'quick-start', title: 'Quick start' },
   { id: 'authentication', title: 'Authentication' },
+];
+/** The first call the quick start shows: the first of these the account can make. */
+const FIRST_CALL = [
+  { id: 'ipos', text: 'List the IPOs open today:' },
+  { id: 'prints', text: 'List the forms you have printed:' },
+  { id: 'allotment', text: 'Get the allotment results for an IPO:' },
+  { id: 'bid-read', text: 'List your bids:' },
+  { id: 'print-forms', text: 'Print an ASBA form:' },
 ];
 const AFTER = [
   { id: 'webhooks', title: 'Webhooks' },
@@ -319,11 +319,20 @@ export default function PartnerApiDocsPage() {
   const allOpen = operator && !ctx?.tenant;
   const enabledScopes = new Set<string>(allOpen ? PARTNER_SCOPE_META.map((s) => s.key) : (ctx?.enabled ? ctx?.scopes ?? [] : []));
   const isOn = (ep: ApiEndpoint) => enabledScopes.has(ep.scope);
+  // What this page lists: the account's APIs only, nothing about the rest.
+  const shown = ENDPOINTS.filter(isOn);
+  const groupsShown = GROUPS.filter((g) => shown.some((e) => e.group === g.id));
+  const hasBids = enabledScopes.has('bids:write') || enabledScopes.has('bids:read');
+  const hasPrint = enabledScopes.has('print-forms');
+  const after = AFTER.filter((g) => g.id !== 'webhooks' || hasBids);
+  // The reference is withheld when the account has no API at all.
+  const noApi = !allOpen && ctx !== undefined && shown.length === 0;
 
   // Which section is on screen, for the menu. Read positions directly — an
   // IntersectionObserver picks the topmost intersecting section, which for a
   // tall one is the section already scrolled past.
-  const ids = useMemo(() => [...GUIDES.map((g) => g.id), ...ENDPOINTS.map((e) => e.id), ...AFTER.map((g) => g.id)], []);
+  const idKey = [...shown.map((e) => e.id), ...after.map((g) => g.id)].join(',');
+  const ids = useMemo(() => [...GUIDES.map((g) => g.id), ...idKey.split(',').filter(Boolean)], [idKey]);
   const last = useRef(0);
   useEffect(() => {
     const onScroll = () => {
@@ -340,8 +349,12 @@ export default function PartnerApiDocsPage() {
   if (!me.username) return <NoAccess />;
 
   const tenantId = operator ? (ctx?.tenant?.id ?? undefined) : undefined;
-  const firstCall = `curl "${API_BASE}/partner/v1/ipos?status=open&limit=5" \\\n  -H "X-Api-Key: YOUR_KEY_ID.YOUR_SECRET"`;
-  const onCount = PARTNER_SCOPE_META.filter((s) => enabledScopes.has(s.key)).length;
+  const firstEp = FIRST_CALL.map((f) => shown.find((e) => e.id === f.id)).find(Boolean) ?? shown[0];
+  const firstLine = FIRST_CALL.find((f) => f.id === firstEp?.id)?.text ?? (firstEp ? `${firstEp.title}:` : '');
+  const firstCall = firstEp?.id === 'ipos'
+    ? `curl "${API_BASE}/partner/v1/ipos?status=open&limit=5" \\\n  -H "X-Api-Key: YOUR_KEY_ID.YOUR_SECRET"`
+    : firstEp ? codeSample('curl', firstEp, API_BASE) : '';
+  const groupNames = PARTNER_SCOPE_META.filter((s) => enabledScopes.has(s.key)).map((s) => s.label);
 
   return (
     <div className="apx">
@@ -364,7 +377,7 @@ export default function PartnerApiDocsPage() {
             {ctx.enabled
               ? <span className="st ok">API on</span>
               : <span className="st bad">API off — every call is refused</span>}
-            {ctx.enabled && <span className="muted">{onCount} of {PARTNER_SCOPE_META.length} API groups</span>}
+            {ctx.enabled && <span className="muted">{groupNames.length ? groupNames.join(' · ') : 'No API groups switched on'}</span>}
             <span className="muted">{ctx.keys?.live ?? 0} live · {ctx.keys?.test ?? 0} test key{(ctx.keys?.test ?? 0) === 1 ? '' : 's'}</span>
             <span className="muted">Up to {ctx.maxApplicantsPerCall ?? 25} applicants per print call</span>
           </div>
@@ -383,34 +396,41 @@ export default function PartnerApiDocsPage() {
         </div>
       )}
 
+      {ctx?.tenant && ctx.enabled && noApi && (
+        <div className="banner warn" style={{ marginBottom: 16 }}>
+          <span><b>No API groups are switched on for this account.</b>
+          {operator ? ' Choose them in Partner API → API Access.' : ' Contact the Investoyard team to request them.'}</span>
+        </div>
+      )}
+
+      {!noApi && (<>
       {/* Jump menu for narrow screens, where the side menu is hidden */}
       <select className="input apx-jump" value={active} onChange={(e) => { document.getElementById(e.target.value)?.scrollIntoView({ behavior: 'smooth' }); }} aria-label="Jump to">
         {GUIDES.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-        {GROUPS.map((g) => (
+        {groupsShown.map((g) => (
           <optgroup key={g.id} label={g.title}>
-            {ENDPOINTS.filter((e) => e.group === g.id).map((e) => <option key={e.id} value={e.id}>{e.title}{isOn(e) ? '' : ' (not enabled)'}</option>)}
+            {shown.filter((e) => e.group === g.id).map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
           </optgroup>
         ))}
-        {AFTER.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+        {after.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
       </select>
 
       <div className="apx-layout">
         <nav className="apx-nav" aria-label="API reference">
           <div className="apx-nav-g">Get started</div>
           {GUIDES.map((g) => <a key={g.id} href={`#${g.id}`} className={active === g.id ? 'on' : ''}>{g.title}</a>)}
-          {GROUPS.map((g) => (
+          {groupsShown.map((g) => (
             <div key={g.id}>
               <div className="apx-nav-g">{g.title}</div>
-              {ENDPOINTS.filter((e) => e.group === g.id).map((e) => (
-                <a key={e.id} href={`#${e.id}`} className={`${active === e.id ? 'on' : ''}${isOn(e) ? '' : ' off'}`}
-                  title={isOn(e) ? undefined : 'Not enabled for your account'}>
-                  <Method m={e.method} /><span>{e.title}</span>{!isOn(e) && <Icon name="lock" size={11} />}
+              {shown.filter((e) => e.group === g.id).map((e) => (
+                <a key={e.id} href={`#${e.id}`} className={active === e.id ? 'on' : ''}>
+                  <Method m={e.method} /><span>{e.title}</span>
                 </a>
               ))}
             </div>
           ))}
           <div className="apx-nav-g">More</div>
-          {AFTER.map((g) => <a key={g.id} href={`#${g.id}`} className={active === g.id ? 'on' : ''}>{g.title}</a>)}
+          {after.map((g) => <a key={g.id} href={`#${g.id}`} className={active === g.id ? 'on' : ''}>{g.title}</a>)}
         </nav>
 
         <div className="apx-main">
@@ -422,10 +442,10 @@ export default function PartnerApiDocsPage() {
                 {operator
                   ? <>Create it on the partner’s page (Partners → the partner → API keys). The secret is shown once.</>
                   : <>Create one on <a href="/admin/partner-api/keys">My API Keys</a>. The secret is shown once — keep it in your server’s secret store, never in a browser or app.</>}
-                {' '}Start with a <b>test</b> key: everything works the same, and bids go to a simulator.
+                {' '}Start with a <b>test</b> key: everything works the same{hasBids ? ', and bids go to a simulator' : ''}.
               </li>
               <li>
-                <b>Make your first call.</b> List the IPOs open today:
+                <b>Make your first call.</b> {firstLine}
                 <Code code={firstCall} title="Your first call" />
               </li>
               <li>
@@ -441,21 +461,22 @@ export default function PartnerApiDocsPage() {
             <p className="apx-p">Send your key on every request in the <span className="mono">X-Api-Key</span> header, as <span className="mono">keyId.secret</span>. Requests must use HTTPS. A revoked key is refused with 401 straight away.</p>
             <Code code={`X-Api-Key: pk_a1b2c3d4e5f6.7f3c…your secret…`} title="Header" />
             <div className="apx-facts">
-              <div><b>Live and test keys.</b> A test key works the same on every API, except that its bids go to a simulator and never reach an exchange.</div>
+              <div><b>Live and test keys.</b> A test key works the same on every API{hasBids ? ', except that its bids go to a simulator and never reach an exchange' : ''}.</div>
               <div><b>API groups.</b> We switch on the API groups your account may use. A key can be limited to some of them — a reporting server that only reads allotment does not need a key that can print.</div>
-              <div><b>IP allowlist.</b> A key can be locked to your server addresses. A live key must have one before it can place or read bids.</div>
+              <div><b>IP allowlist.</b> A key can be locked to your server addresses.{hasBids ? ' A live key must have one before it can place or read bids.' : ''}</div>
             </div>
           </section>
 
-          {GROUPS.map((g) => (
+          {groupsShown.map((g) => (
             <div key={g.id} className="apx-group">
               <div className="apx-group-h"><h2>{g.title}</h2><p>{g.intro}</p></div>
-              {ENDPOINTS.filter((e) => e.group === g.id).map((e) => (
-                <EndpointSection key={e.id} ep={e} enabled={isOn(e)} ctx={ctx ?? null} tenantId={tenantId} lang={lang} setLang={setLang} />
+              {shown.filter((e) => e.group === g.id).map((e) => (
+                <EndpointSection key={e.id} ep={e} ctx={ctx ?? null} tenantId={tenantId} lang={lang} setLang={setLang} />
               ))}
             </div>
           ))}
 
+          {hasBids && (
           <section id="webhooks" className="apx-guide">
             <h2>Webhooks</h2>
             <p className="apx-p">
@@ -473,6 +494,7 @@ export default function PartnerApiDocsPage() {
               repeats, and treat the bid’s <span className="mono">status</span> as the truth. Get bids is always the backup.
             </p>
           </section>
+          )}
 
           <section id="errors" className="apx-guide">
             <h2>Errors</h2>
@@ -489,14 +511,15 @@ export default function PartnerApiDocsPage() {
           <section id="limits" className="apx-guide">
             <h2>Limits</h2>
             <div className="apx-facts">
-              <div><b>Print forms:</b> up to {ctx?.maxApplicantsPerCall ?? 25} applicants per call{operator && !ctx?.tenant ? ' (25 unless raised for the partner, at most 500)' : ''}.</div>
-              <div><b>Bids:</b> up to {PARTNER_BID_BATCH_MAX} per call, all or nothing. Live bidding is limited per account: named IPOs, a cap per bid, bids per day and rupees per day — see Your live bidding limits.</div>
+              {hasPrint && <div><b>Print forms:</b> up to {ctx?.maxApplicantsPerCall ?? 25} applicants per call{operator && !ctx?.tenant ? ' (25 unless raised for the partner, at most 500)' : ''}.</div>}
+              {hasBids && <div><b>Bids:</b> up to {PARTNER_BID_BATCH_MAX} per call, all or nothing. Live bidding is limited per account: named IPOs, a cap per bid, bids per day and rupees per day — see Your live bidding limits.</div>}
               <div><b>Lists:</b> at most 200 rows per page.</div>
               <div><b>Personal details</b> you send are stored encrypted under your account only, and come back masked in every read.</div>
             </div>
           </section>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
